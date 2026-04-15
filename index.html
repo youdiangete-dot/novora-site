@@ -4,18 +4,71 @@
   <title>NOVORA</title>
   <style>
     body {
+      margin: 0;
       background: black;
-      color: gold;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
-      font-size: 40px;
       font-family: serif;
+    }
+
+    .envelope {
+      width: 300px;
+      height: 200px;
+      background: #1a3d2f; /* 墨绿色 */
+      position: relative;
+      cursor: pointer;
+    }
+
+    .flap {
+      position: absolute;
+      width: 0;
+      height: 0;
+      border-left: 150px solid transparent;
+      border-right: 150px solid transparent;
+      border-bottom: 100px solid #1a3d2f;
+      top: -100px;
+      transform-origin: bottom;
+      transition: 0.6s;
+    }
+
+    .letter {
+      position: absolute;
+      width: 260px;
+      height: 160px;
+      background: #f5f1e6;
+      top: 20px;
+      left: 20px;
+      text-align: center;
+      line-height: 160px;
+      color: black;
+      transform: translateY(0);
+      transition: 0.6s;
+    }
+
+    .open .flap {
+      transform: rotateX(180deg);
+    }
+
+    .open .letter {
+      transform: translateY(-120px);
     }
   </style>
 </head>
+
 <body>
-  NOVORA
+
+<div class="envelope" onclick="openEnvelope(this)">
+  <div class="flap"></div>
+  <div class="letter">NOVORA</div>
+</div>
+
+<script>
+function openEnvelope(el) {
+  el.classList.toggle("open");
+}
+</script>
+
 </body>
 </html>
