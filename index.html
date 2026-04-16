@@ -350,37 +350,39 @@
         width: 220px;
       }
     }
-  .letter-stage {
+ .letter-stage {
   position: relative;
-  width: min(760px, 84vw);
-  min-height: 430px;
+  width: min(820px, 82vw);
+  min-height: 520px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: transparent;
 }
 
 .letter-paper {
   position: relative;
-  width: 100%;
-  min-height: 430px;
-  padding: 56px 64px 52px;
+  width: min(760px, 78vw);
+  min-height: 440px;
+  padding: 78px 86px 64px;
   color: var(--ink);
   text-align: left;
-  background: url("./public/assets/paper_blank_texture.png") center / 100% 100% no-repeat;
-  filter: drop-shadow(0 28px 42px rgba(0,0,0,0.72));
+  background: url("./public/assets/paper_blank_texture.png") center / contain no-repeat;
+  filter: drop-shadow(0 28px 42px rgba(0,0,0,0.78));
+  border-radius: 0;
 }
 
 .typed-letter {
-  max-width: 620px;
+  max-width: 560px;
   margin: 0 auto;
-  font-size: 17px;
-  line-height: 1.75;
+  font-family: "Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive;
+  font-size: 23px;
+  line-height: 1.65;
   letter-spacing: 0.01em;
-  color: rgba(43, 36, 24, 0.88);
+  color: rgba(43, 36, 24, 0.82);
   white-space: pre-line;
   min-height: 250px;
 }
-
 .recipient-step {
   display: none;
   text-align: center;
