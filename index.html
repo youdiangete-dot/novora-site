@@ -80,10 +80,17 @@
     }
 
     .envelope-img {
-      width: min(620px, 82vw);
-      display: block;
-      transition: transform 0.7s ease, opacity 0.7s ease;
-    }
+  width: min(760px, 86vw);
+  display: block;
+  filter:
+    saturate(1.45)
+    hue-rotate(10deg)
+    brightness(0.78)
+    contrast(1.12)
+    sepia(0.08);
+  transition: transform 0.7s ease, opacity 0.7s ease;
+}
+    
 
     .intro.opened .envelope-img {
       transform: translateY(-18px) scale(1.02);
