@@ -350,7 +350,113 @@
         width: 220px;
       }
     }
-  </style>
+  </style>.letter-stage {
+  position: relative;
+  width: min(760px, 84vw);
+  min-height: 430px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.letter-paper {
+  position: relative;
+  width: 100%;
+  min-height: 430px;
+  padding: 56px 64px 52px;
+  color: var(--ink);
+  text-align: left;
+  background: url("./public/assets/paper_blank_texture.png") center / 100% 100% no-repeat;
+  filter: drop-shadow(0 28px 42px rgba(0,0,0,0.72));
+}
+
+.typed-letter {
+  max-width: 620px;
+  margin: 0 auto;
+  font-size: 17px;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+  color: rgba(43, 36, 24, 0.88);
+  white-space: pre-line;
+  min-height: 250px;
+}
+
+.recipient-step {
+  display: none;
+  text-align: center;
+  animation: fadeIn 0.8s ease both;
+}
+
+.recipient-step.active {
+  display: block;
+}
+
+.recipient-title {
+  margin: 0 0 22px;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 600;
+  color: rgba(43, 36, 24, 0.92);
+}
+
+.input-wrap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: stretch;
+  margin: 0 auto 18px;
+  max-width: 620px;
+}
+
+.person-input {
+  min-height: 92px;
+  resize: none;
+  padding: 18px 20px;
+  border: 1px solid rgba(91, 70, 38, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 248, 232, 0.28);
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  outline: none;
+}
+
+.person-input::placeholder {
+  color: rgba(43, 36, 24, 0.45);
+}
+
+.voice-btn {
+  padding: 0 22px;
+  border: 1px solid rgba(91, 70, 38, 0.24);
+  border-radius: 8px;
+  background: rgba(28, 22, 15, 0.78);
+  color: var(--gold);
+  font-family: Georgia, "Times New Roman", serif;
+  cursor: pointer;
+}
+
+.quick-options {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  opacity: 0.72;
+}
+
+.quick-options button {
+  padding: 9px 14px;
+  border: 1px solid rgba(91, 70, 38, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 248, 232, 0.2);
+  color: rgba(43, 36, 24, 0.72);
+  font-family: Georgia, "Times New Roman", serif;
+  cursor: pointer;
+}
+
+.quick-options button:hover {
+  border-color: rgba(199,164,90,0.75);
+  color: var(--gold);
+  background: rgba(28, 22, 15, 0.76);
+}
 </head>
 
 <body>
@@ -372,48 +478,80 @@
     </section>
 
     <section class="story" id="story">
-      <div class="paper-stage">
-      <!-- <img class="silk" src="./public/assets/green_silk_fabric.png" alt=""> -->
-        <!-- <img class="quill" src="./public/assets/quill_pen.png" alt=""> -->
-        <h1 class="paper-title">Who is this jewelry for?</h1>
-        <p class="paper-subtitle">This helps us understand the meaning behind your gift.</p>
+  <div class="letter-stage">
+    <div class="letter-paper">
+      <div class="typed-letter" id="typedLetter"></div>
 
-        <div class="choices">
-          <button class="choice" onclick="selectChoice(this)">
-            <div class="icon">♡</div>
-            <strong>Myself</strong>
-          </button>
+      <div class="recipient-step" id="recipientStep">
+        <h1 class="recipient-title">Who is this piece of love meant for?</h1>
 
-          <button class="choice selected" onclick="selectChoice(this)">
-            <div class="icon">♥</div>
-            <strong>Partner</strong>
-          </button>
+        <div class="input-wrap">
+          <textarea
+            class="person-input"
+            placeholder="Tell us about the person..."
+          ></textarea>
 
-          <button class="choice" onclick="selectChoice(this)">
-            <div class="icon">♚</div>
-            <strong>Family or Friend</strong>
+          <button class="voice-btn" type="button">
+            🎤 Speak your thoughts
           </button>
         </div>
 
-        <div class="dots">
-          <span class="active"></span>
-          <span></span>
-          <span></span>
-          <span></span>
+        <div class="quick-options">
+          <button type="button">My Partner</button>
+          <button type="button">My Family</button>
+          <button type="button">My Friend</button>
+          <button type="button">My Pet</button>
+          <button type="button">Myself</button>
         </div>
 
         <div class="nav">
           <button onclick="backToEnvelope()">← Back</button>
           <button>Next →</button>
-        </div>
       </div>
-    </section>
+    </div>
+  </div>
+</section>
   </main>
 
   <script>
-    function openLetter() {
+const letterText = `This is a one-of-a-kind expression of love —
+designed by you, and brought to life by us.
+
+From different corners of the world,
+we source the finest materials,
+craft them by hand,
+and connect every step through the latest AI technology.
+
+All to create something truly unique —
+a piece that exists only for this love.`;
+
+const questionText = `
+
+Who is this piece of love meant for?`;
+
+let typingTimer;
+
+function typeText(text, element, speed, done) {
+  let i = 0;
+  element.textContent = "";
+  clearInterval(typingTimer);
+
+  typingTimer = setInterval(() => {
+    element.textContent += text.charAt(i);
+    i++;
+
+    if (i >= text.length) {
+      clearInterval(typingTimer);
+      if (done) done();
+    }
+  }, speed);
+}
+
+function openLetter() {
   const intro = document.getElementById("intro");
   const story = document.getElementById("story");
+  const typedLetter = document.getElementById("typedLetter");
+  const recipientStep = document.getElementById("recipientStep");
 
   intro.classList.add("opened");
 
@@ -421,24 +559,36 @@
     intro.classList.add("hidden");
     intro.style.display = "none";
     story.classList.add("active");
+
+    recipientStep.classList.remove("active");
+
+    typeText(letterText, typedLetter, 38, () => {
+      setTimeout(() => {
+        typeText(letterText + questionText, typedLetter, 34, () => {
+          setTimeout(() => {
+            recipientStep.classList.add("active");
+          }, 500);
+        });
+      }, 1000);
+    });
   }, 650);
 }
 
-    function backToEnvelope() {
-      const intro = document.getElementById("intro");
-      const story = document.getElementById("story");
+function backToEnvelope() {
+  const intro = document.getElementById("intro");
+  const story = document.getElementById("story");
+  const typedLetter = document.getElementById("typedLetter");
+  const recipientStep = document.getElementById("recipientStep");
 
-      story.classList.remove("active");
-      intro.classList.remove("hidden");
-      intro.classList.remove("opened");
-    }
+  clearInterval(typingTimer);
+  typedLetter.textContent = "";
+  recipientStep.classList.remove("active");
 
-    function selectChoice(button) {
-      document.querySelectorAll(".choice").forEach(item => {
-        item.classList.remove("selected");
-      });
-      button.classList.add("selected");
-    }
-  </script>
+  story.classList.remove("active");
+  intro.style.display = "block";
+  intro.classList.remove("hidden");
+  intro.classList.remove("opened");
+}
+</script>
 </body>
 </html>
