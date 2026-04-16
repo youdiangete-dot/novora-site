@@ -362,14 +362,20 @@
 
 .letter-paper {
   position: relative;
-  width: min(980px, 84vw);
+  width: min(960px, 84vw);
   min-height: 560px;
-  padding: 96px 130px 78px;
+  padding: 70px 86px 56px;
   color: var(--ink);
   text-align: left;
-  background: url("./public/assets/paper_blank_texture.png") center / 100% 100% no-repeat;
-  filter: drop-shadow(0 28px 42px rgba(0,0,0,0.78));
-  border-radius: 0;
+  background:
+    linear-gradient(rgba(238, 224, 190, 0.92), rgba(213, 187, 138, 0.88)),
+    url("./public/assets/paper_blank_texture.png") center / cover no-repeat;
+  border: 1px solid rgba(104, 79, 42, 0.22);
+  box-shadow:
+    0 30px 50px rgba(0,0,0,0.72),
+    inset 0 0 45px rgba(103, 73, 34, 0.18);
+  border-radius: 2px;
+  overflow: hidden;
 }
 .typed-letter {
   max-width: 560px;
