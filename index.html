@@ -455,13 +455,31 @@
   opacity: 0.86;
 }
 .quick-options button {
-  padding: 9px 14px;
-  border: 1px solid rgba(91, 70, 38, 0.2);
-  border-radius: 999px;
-  background: rgba(255, 248, 232, 0.2);
-  color: rgba(43, 36, 24, 0.72);
+  width: 92px;
+  height: 76px;
+  padding: 8px 6px;
+  border: 1px solid rgba(91, 70, 38, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 248, 232, 0.18);
+  color: rgba(43, 36, 24, 0.78);
   font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
   cursor: pointer;
+  box-shadow:
+    0 8px 18px rgba(45, 30, 12, 0.14),
+    inset 0 1px 0 rgba(255,255,255,0.35);
+}
+.quick-options button img {
+  width: 28px;
+  height: 28px;
+  display: block;
+  margin: 0 auto 8px;
+  object-fit: contain;
+  opacity: 0.82;
+}
+
+.quick-options button span {
+  display: block;
 }
 
 .quick-options button:hover {
@@ -529,15 +547,31 @@
           </button>
         </div>
 
-        <div class="quick-options">
-          <button type="button">My Partner</button>
-          <button type="button">My Family</button>
-          <button type="button">My Friend</button>
-          <button type="button">My Pet</button>
-          <button type="button">Myself</button>
-        </div>
-
-        <div class="nav">
+      
+      
+          <div class="quick-options">
+  <button type="button">
+    <img src="./public/assets/icon_partner_heart.png" alt="">
+    <span>My Partner</span>
+  </button>
+  <button type="button">
+    <img src="./public/assets/icon_family_friend.png" alt="">
+    <span>My Family</span>
+  </button>
+  <button type="button">
+    <img src="./public/assets/icon_family_friend.png" alt="">
+    <span>My Friend</span>
+  </button>
+  <button type="button">
+    <img src="./public/assets/icon_memory.png" alt="">
+    <span>My Memory</span>
+  </button>
+  <button type="button">
+    <img src="./public/assets/icon_myself.png" alt="">
+    <span>Myself</span>
+  </button>
+</div>
+          <div class="nav">
           <button onclick="backToEnvelope()">← Back</button>
           <button>Next →</button>
       </div>
