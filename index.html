@@ -602,11 +602,21 @@ const questionText = `
 Who is this piece of love meant for?`;
 
 let typingTimer;
+let typingActive = false;
+let typingText = "";
+let typingElement = null;
+let typingDone = null;
 
 function typeText(text, element, speed, done) {
   let i = 0;
-  element.textContent = "";
   clearInterval(typingTimer);
+
+  typingActive = true;
+  typingText = text;
+  typingElement = element;
+  typingDone = done || null;
+
+  element.textContent = "";
 
   typingTimer = setInterval(() => {
     element.textContent += text.charAt(i);
@@ -614,7 +624,14 @@ function typeText(text, element, speed, done) {
 
     if (i >= text.length) {
       clearInterval(typingTimer);
-      if (done) done();
+      typingActive = false;
+      typingText = "";
+      typingElement = null;
+
+      const doneFn = typingDone;
+      typingDone = null;
+
+      if (doneFn) doneFn();
     }
   }, speed);
 }
@@ -661,6 +678,30 @@ function backToEnvelope() {
   intro.classList.remove("hidden");
   intro.classList.remove("opened");
 }
+function finishTypingNow() {
+  if (!typingActive || !typingElement) return;
+
+  clearInterval(typingTimer);
+  typingElement.textContent = typingText;
+
+  typingActive = false;
+  typingText = "";
+  typingElement = null;
+
+  const doneFn = typingDone;
+  typingDone = null;
+
+  if (doneFn) doneFn();
+}
+
+document.addEventListener("click", function () {
+  const story = document.getElementById("story");
+  if (!story || !story.classList.contains("active")) return;
+
+  if (typingActive) {
+    finishTypingNow();
+  }
+});    
 </script>
 </body>
 </html>
