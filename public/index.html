@@ -1033,7 +1033,7 @@ Who is this piece of love meant for?`;
     document.getElementById("summaryBackBtn").addEventListener("click", () => setStep("design"));
     document.getElementById("restartBtn").addEventListener("click", backToEnvelope);
 
-    document.getElementById("finalCta").addEventListener("click", async () => {
+   document.getElementById("finalCta").addEventListener("click", async () => {
   const data = {
     recipient: state.recipient,
     story: state.story,
@@ -1047,17 +1047,46 @@ Who is this piece of love meant for?`;
   try {
     const formData = new FormData();
 
-for (let key in data) {
-  formData.append(key, data[key]);
-}
+    for (let key in data) {
+      formData.append(key, data[key]);
+    }
 
-const response = await fetch("https://formspree.io/f/mykldnny", {
-  method: "POST",
-  body: formData
-});
+    const response = await fetch("https://formspree.io/f/mykldnny", {
+      method: "POST",
+      body: formData
+    });
 
     if (response.ok) {
-      alert("Your custom design request has been sent ✨");
+      summaryStep.innerHTML = `
+        <div>
+          <h3>We’ve Received Your Story</h3>
+          <div style="text-align:center; color: rgba(58,43,24,0.82); line-height: 1.8; font-size: 16px; max-width: 520px; margin: 0 auto;">
+            <p>Thank you for beginning this piece with NOVORA.</p>
+            <p>Your request has been received, and our team will review it personally.</p>
+            <p>We’ll reach out to you within 24 hours to continue shaping your bespoke design.</p>
+          </div>
+
+          <div style="margin-top: 28px; display:flex; gap: 14px; justify-content:center; flex-wrap: wrap;">
+            <button class="final-cta" type="button" id="returnHomeBtn">Return to Home</button>
+            <button class="final-cta" type="button" id="createAnotherBtn">Begin Another Piece</button>
+          </div>
+        </div>
+
+        <div class="helper-note">Your story has been delivered to the NOVORA team.</div>
+      `;
+
+      document.getElementById("returnHomeBtn").addEventListener("click", backToEnvelope);
+      document.getElementById("createAnotherBtn").addEventListener("click", () => {
+        backToEnvelope();
+        personInput.value = "";
+        state.story = "";
+        state.recipient = "My Partner";
+        state.emotion = "Love";
+        state.type = "Ring";
+        state.metal = "18K Gold";
+        state.stone = "Lab-Grown Diamond";
+        state.budget = "$1,500 – $3,000";
+      });
     } else {
       alert("Submission failed. Please try again.");
     }
