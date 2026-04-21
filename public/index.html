@@ -348,9 +348,6 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
   transition: transform 0.2s ease, filter 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
-.emotion-card {
-  background: transparent;
-}
     .quick-options button img {
       width: 40px;
       height: 40px;
@@ -366,18 +363,18 @@
     .emotion-card span,
     .design-chip span { display: block; }
 
-   .quick-options button:hover,
+  .quick-options button:hover,
 .quick-options button.selected,
 .emotion-card:hover,
 .emotion-card.selected {
   color: var(--gold);
- background: url("/assets/button_selected_love.png") center / contain no-repeat;
-  background-color: transparent;
+  background: rgba(255, 248, 232, 0.34);
+  border: 1px solid rgba(108, 82, 42, 0.24);
   transform: translateY(-2px);
-  filter: drop-shadow(0 8px 14px rgba(199,164,90,0.14));
+  filter: none;
   box-shadow:
-    0 12px 20px rgba(45, 30, 12, 0.14),
-    inset 0 1px 0 rgba(255,255,255,0.26);
+    0 10px 18px rgba(45, 30, 12, 0.10),
+    inset 0 1px 0 rgba(255,255,255,0.22);
 }
 .design-chip:hover,
 .design-chip.selected {
