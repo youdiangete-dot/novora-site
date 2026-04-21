@@ -329,7 +329,7 @@
     }
 
     .quick-options button,
-.emotion-card,
+
 .design-chip {
   width: 92px;
   height: 76px;
@@ -348,7 +348,9 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
   transition: transform 0.2s ease, filter 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
-
+.emotion-card {
+  background: transparent;
+}
     .quick-options button img {
       width: 40px;
       height: 40px;
@@ -369,9 +371,8 @@
 .emotion-card:hover,
 .emotion-card.selected {
   color: var(--gold);
-  background:
-    linear-gradient(rgba(255, 247, 224, 0.18), rgba(255, 230, 176, 0.08)),
-    url("/assets/button_selected_love.png") center / 100% 100% no-repeat;
+ background: url("/assets/button_selected_love.png") center / contain no-repeat;
+  background-color: transparent;
   transform: translateY(-2px);
   filter: drop-shadow(0 8px 14px rgba(199,164,90,0.14));
   box-shadow:
