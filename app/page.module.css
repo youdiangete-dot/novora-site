@@ -1,0 +1,162 @@
+.hero {
+  padding-top: 3.6rem;
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 2rem;
+  align-items: center;
+}
+
+.kicker {
+  color: #5a6a57;
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.9rem;
+}
+
+.hero h1 {
+  font-size: clamp(2.2rem, 4.2vw, 3.8rem);
+  line-height: 1.08;
+}
+
+.lead {
+  margin-top: 1rem;
+  font-size: 1.05rem;
+  max-width: 58ch;
+}
+
+.actions {
+  margin-top: 1.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.heroVisual {
+  min-height: 390px;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f8f4ec 0%, #f4ece0 100%);
+}
+
+.image {
+  object-fit: cover;
+}
+
+.fallbackVisual {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(7, auto);
+  place-content: center;
+  gap: 0.55rem;
+  color: #4c4c40;
+  font-weight: 600;
+  padding: 1rem;
+}
+
+.fallbackVisual span {
+  color: #8c7b63;
+}
+
+.heading {
+  font-size: clamp(1.6rem, 2.7vw, 2.3rem);
+  margin-bottom: 1.2rem;
+}
+
+.processGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.processCard {
+  padding: 1.2rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.index {
+  color: #7e9078;
+  font-weight: 700;
+}
+
+.compareGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.compareCard {
+  padding: 1.3rem;
+  border-top: 4px solid #d6c6a9;
+}
+
+.cad {
+  border-top-color: #8aa285;
+  background: #fbfcf8;
+}
+
+.label {
+  color: #35372f;
+  font-weight: 700;
+  margin-bottom: 0.7rem;
+}
+
+.compareCard ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.45rem;
+  color: var(--muted);
+}
+
+.trustList {
+  border-top: 1px solid var(--border);
+}
+
+.trustList p {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cta {
+  text-align: center;
+  padding: 2.2rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.9rem;
+}
+
+@media (max-width: 980px) {
+  .heroGrid,
+  .compareGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .processGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .heroVisual {
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 640px) {
+  .processGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .fallbackVisual {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .fallbackVisual span {
+    display: none;
+  }
+}
