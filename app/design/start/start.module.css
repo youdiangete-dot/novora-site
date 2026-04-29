@@ -1,76 +1,173 @@
-.intro {
-  margin: 1.5rem 0;
-  display: grid;
-  gap: 0.65rem;
-  max-width: 72ch;
+.page {
+  padding: 2rem clamp(1rem, 3vw, 3rem) 3rem;
+  background: linear-gradient(180deg, #fffdf9 0%, #f6f1e8 100%);
+}
+
+.header {
+  margin-bottom: 0.9rem;
 }
 
 .step {
-  color: #50644f;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.intro h1 {
-  color: #2f2d27;
-  font-size: clamp(1.8rem, 3vw, 2.6rem);
-}
-
-.form {
-  padding: 1.5rem;
-  display: grid;
-  gap: 1.4rem;
-}
-
-.label {
-  display: inline-block;
-  font-weight: 600;
-  margin-bottom: 0.55rem;
-}
-
-.uploadCard {
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: #fcf9f3;
-  display: grid;
-  grid-template-columns: minmax(150px, 230px) 1fr;
-  gap: 1rem;
-  padding: 1rem;
-}
-
-.uploadImage {
-  min-height: 160px;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(241, 231, 213, 0.45)),
-    url('/assets/novora_upload_reference_placeholder.png') center/cover no-repeat,
-    linear-gradient(160deg, #f9f3e6 0%, #efe4d2 100%);
-}
-
-.uploadTitle {
-  color: #36352f;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-size: 0.75rem;
+  color: #6f8a72;
   font-weight: 700;
-  margin-bottom: 0.4rem;
 }
 
-.form textarea {
+.header h1 {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  color: #2b241d;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.leftCol {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.card {
+  border: 1px solid #e3d6c6;
+  border-radius: 16px;
+  background: #fffefb;
+  padding: 0.78rem;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  color: #2d261e;
+}
+
+.inlineVisual {
   width: 100%;
-  border: 1px solid var(--border);
-  background: #fff;
-  border-radius: 12px;
-  padding: 0.8rem;
-  font: inherit;
+  max-height: 76px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-top: 0.5rem;
+  border: 1px solid #ecdfcf;
+  background: #f7efdf;
 }
 
-.actions {
+.chips,
+.cardGrid {
   display: flex;
-  justify-content: space-between;
-  gap: 0.6rem;
   flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
 }
 
-@media (max-width: 760px) {
-  .uploadCard {
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chips button,
+.cardGrid button {
+  border: 1px solid #cebca8;
+  background: #fff;
+  color: #3f3328;
+  border-radius: 999px;
+  padding: 0.44rem 0.72rem;
+  font-size: 0.88rem;
+}
+
+.uploadArea {
+  margin-top: 0.55rem;
+  border: 1px dashed #cab6a1;
+  border-radius: 12px;
+  padding: 0.55rem;
+  background: #fff;
+}
+
+.uploadArea img {
+  width: 100%;
+  border-radius: 10px;
+  max-height: 150px;
+  object-fit: cover;
+}
+
+.uploadArea p {
+  margin: 0.45rem 0 0;
+  font-size: 0.88rem;
+  color: #645143;
+}
+
+.rightCol {
+  position: sticky;
+  top: 0.8rem;
+}
+
+.stickyBox {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.panelCard {
+  border: 1px solid #e3d6c6;
+  border-radius: 16px;
+  padding: 0.78rem;
+  background: linear-gradient(180deg, #fffefb 0%, #f8f2e9 100%);
+}
+
+.panelCard h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #2f271f;
+}
+
+.panelCard img {
+  width: 100%;
+  margin-top: 0.55rem;
+  border-radius: 10px;
+  border: 1px solid #ebdece;
+  background: #f5ecdd;
+}
+
+.panelCard p,
+.panelCard li {
+  color: #5a4a3e;
+  font-size: 0.88rem;
+  line-height: 1.42;
+}
+
+.panelCard ul {
+  margin: 0.6rem 0 0;
+  padding-left: 1rem;
+}
+
+.note {
+  margin-top: 0.62rem;
+  padding: 0.55rem;
+  border-radius: 10px;
+  background: #edf3ec;
+  border: 1px solid #d4e0d3;
+}
+
+.cta {
+  margin-top: 0.65rem;
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.6rem 0.95rem;
+  background: linear-gradient(120deg, #6f8a72, #8ca88f);
+  color: #fff;
+  font-weight: 650;
+}
+
+@media (max-width: 980px) {
+  .layout {
     grid-template-columns: 1fr;
+  }
+
+  .rightCol {
+    position: static;
   }
 }
