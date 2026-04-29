@@ -3,18 +3,20 @@ import styles from './page.module.css';
 
 const steps = [
   {
-    title: 'How It Works',
-    copy: 'Tell us your story, style, and budget. We generate an AI concept sketch to start your direction quickly.',
+    title: '01 · Guided intake',
+    copy: 'Share the recipient, style, budget, and reference images in a focused custom brief.',
   },
   {
-    title: 'Concept Sketch vs Professional CAD',
-    copy: 'Start with AI sketch exploration first. Move to precision CAD refinement as a separate paid production step.',
+    title: '02 · AI concept sketch',
+    copy: 'Receive a fast visual direction first, before paying for production-grade CAD.',
   },
   {
-    title: 'Why NOVORA',
-    copy: 'Modern U.S.-focused custom jewelry flow with clear milestones from concept to CAD to order center updates.',
+    title: '03 · Paid CAD + order tracking',
+    copy: 'Move into professional CAD, quote review, production updates, QC, packaging, and delivery.',
   },
 ];
+
+const proofPoints = ['No template catalog', 'Designer-reviewed CAD step', 'Transparent order milestones'];
 
 export default function HomePage() {
   return (
@@ -24,8 +26,8 @@ export default function HomePage() {
           <p className={styles.eyebrow}>NOVORA CUSTOM JEWELRY STUDIO</p>
           <h1>Professional custom jewelry, made easier.</h1>
           <p className={styles.lead}>
-            A warm, guided experience for modern bespoke pieces — from AI concept sketch to paid professional CAD,
-            then order center tracking.
+            A warm, guided path for modern bespoke pieces — start with an AI concept sketch, then move into paid
+            professional CAD and order tracking when you are ready.
           </p>
           <div className={styles.ctaRow}>
             <Link href="/design/start" className={styles.primaryCta}>
@@ -34,6 +36,11 @@ export default function HomePage() {
             <a href="#how-it-works" className={styles.secondaryCta}>
               See how it works
             </a>
+          </div>
+          <div className={styles.proofStrip}>
+            {proofPoints.map((point) => (
+              <span key={point}>{point}</span>
+            ))}
           </div>
         </div>
 
