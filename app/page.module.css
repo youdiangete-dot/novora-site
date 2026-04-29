@@ -1,20 +1,24 @@
 .page {
-  padding: 1.55rem clamp(1rem, 2.6vw, 3rem) 3rem;
-  background: linear-gradient(180deg, #fffdf9 0%, #f7f2ea 100%);
+  padding: 1.55rem clamp(1rem, 2.6vw, 3rem) 2.6rem;
+  background:
+    radial-gradient(circle at 85% 4%, rgba(99, 128, 102, 0.08), transparent 28%),
+    linear-gradient(180deg, #fffdf9 0%, #f7f2ea 100%);
 }
 
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 0.98fr) minmax(460px, 1.02fr);
   gap: 1.05rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .heroContent {
-  background: rgba(255, 254, 251, 0.92);
+  display: grid;
+  align-content: center;
+  background: rgba(255, 254, 251, 0.94);
   border: 1px solid #e8ddcf;
   border-radius: 24px;
-  padding: clamp(1.25rem, 2vw, 1.8rem);
+  padding: clamp(1.35rem, 2.2vw, 2rem);
   box-shadow: 0 18px 44px rgba(120, 94, 64, 0.1);
 }
 
@@ -28,8 +32,8 @@
 
 .heroContent h1 {
   margin: 0.72rem 0 0;
-  max-width: 15ch;
-  font-size: clamp(2.4rem, 4.7vw, 4.85rem);
+  max-width: 14ch;
+  font-size: clamp(2.55rem, 4.7vw, 4.85rem);
   line-height: 0.98;
   letter-spacing: -0.055em;
   color: #2a231b;
@@ -53,7 +57,7 @@
 .primaryCta,
 .secondaryCta {
   border-radius: 999px;
-  padding: 0.8rem 1.15rem;
+  padding: 0.82rem 1.18rem;
   font-weight: 700;
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
@@ -121,19 +125,19 @@
 .supportCard,
 .supportCardWide {
   display: grid;
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: 58px 1fr;
   gap: 0.65rem;
   align-items: center;
   border: 1px solid #e5d8c6;
   border-radius: 16px;
-  background: rgba(255, 253, 248, 0.9);
+  background: rgba(255, 253, 248, 0.92);
   padding: 0.58rem;
   box-shadow: 0 8px 24px rgba(120, 94, 64, 0.06);
 }
 
 .supportCardWide {
   grid-column: 1 / -1;
-  grid-template-columns: 96px 1fr;
+  grid-template-columns: 88px 1fr;
 }
 
 .supportCard img,
@@ -146,14 +150,14 @@
 .supportCard h3,
 .supportCardWide h3 {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   color: #2e261e;
 }
 
 .supportCard p,
 .supportCardWide p {
-  margin: 0.18rem 0 0;
-  font-size: 0.82rem;
+  margin: 0.16rem 0 0;
+  font-size: 0.8rem;
   color: #665244;
 }
 
@@ -168,7 +172,7 @@
   border: 1px solid #e2d6c7;
   border-radius: 18px;
   padding: 1rem;
-  background: rgba(255, 254, 251, 0.9);
+  background: rgba(255, 254, 251, 0.92);
   box-shadow: 0 10px 26px rgba(120, 94, 64, 0.06);
 }
 
