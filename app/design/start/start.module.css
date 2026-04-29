@@ -1,0 +1,76 @@
+.intro {
+  margin: 1.5rem 0;
+  display: grid;
+  gap: 0.65rem;
+  max-width: 72ch;
+}
+
+.step {
+  color: #50644f;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.intro h1 {
+  color: #2f2d27;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+}
+
+.form {
+  padding: 1.5rem;
+  display: grid;
+  gap: 1.4rem;
+}
+
+.label {
+  display: inline-block;
+  font-weight: 600;
+  margin-bottom: 0.55rem;
+}
+
+.uploadCard {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #fcf9f3;
+  display: grid;
+  grid-template-columns: minmax(150px, 230px) 1fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.uploadImage {
+  min-height: 160px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(241, 231, 213, 0.45)),
+    url('/assets/novora_upload_reference_placeholder.png') center/cover no-repeat,
+    linear-gradient(160deg, #f9f3e6 0%, #efe4d2 100%);
+}
+
+.uploadTitle {
+  color: #36352f;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.form textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 12px;
+  padding: 0.8rem;
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .uploadCard {
+    grid-template-columns: 1fr;
+  }
+}
