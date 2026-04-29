@@ -1,141 +1,82 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import Image from 'next/image';
 import Link from 'next/link';
 import styles from './page.module.css';
 
-const processSteps = [
+const steps = [
   {
-    title: 'Tell us your idea',
-    body: 'Share your story, inspiration image, and preferences in a guided intake designed for first-time custom buyers.',
+    title: 'How It Works',
+    copy: 'Tell us your story, style, and budget. We generate an AI concept sketch to start your direction quickly.',
   },
   {
-    title: 'Receive an AI concept sketch',
-    body: 'Get an AI-assisted hand-drawn concept sketch so you can align on style before technical production work begins.',
+    title: 'Concept Sketch vs Professional CAD',
+    copy: 'Start with AI sketch exploration first. Move to precision CAD refinement as a separate paid production step.',
   },
   {
-    title: 'Continue to professional CAD',
-    body: 'Move into a paid CAD service led by professional designers for dimensions, structure, and manufacturability.',
+    title: 'Why NOVORA',
+    copy: 'Modern U.S.-focused custom jewelry flow with clear milestones from concept to CAD to order center updates.',
   },
-  {
-    title: 'Track production and delivery',
-    body: 'Follow CAD updates, quote progress, production, QC, packaging, and shipping in your order center.',
-  },
-];
-
-const trustPoints = [
-  'Guided customization for non-experts',
-  'Designer-reviewed CAD workflow',
-  'Stone and material confirmation checkpoints',
-  'Production, QC, packaging, and shipping tracking',
 ];
 
 export default function HomePage() {
-  const heroAsset = '/assets/novora_hero_main_visual.png';
-  const heroAssetPath = path.join(process.cwd(), 'public', heroAsset);
-  const heroExists = fs.existsSync(heroAssetPath);
-
   return (
-    <main>
-      <section className={`section ${styles.hero}`}>
-        <div className="container">
-          <div className={styles.heroGrid}>
-            <div>
-              <p className={styles.kicker}>North America-ready custom jewelry flow</p>
-              <h1>Professional custom jewelry, made easier.</h1>
-              <p className={styles.lead}>
-                Start with an idea, a memory, or a reference image. NOVORA turns it into an AI-assisted hand-drawn
-                concept sketch, then helps you continue into professional CAD and handmade production when you&apos;re ready.
-              </p>
-              <div className={styles.actions}>
-                <Link href="/design/start" className="btn">
-                  Start Your Design
-                </Link>
-                <a href="#how-it-works" className="btnSecondary">
-                  See How It Works
-                </a>
-              </div>
-            </div>
-            <div className={`card ${styles.heroVisual}`}>
-              {heroExists ? (
-                <Image src={heroAsset} alt="NOVORA concept-to-CAD visual" fill className={styles.image} />
-              ) : (
-                <div className={styles.fallbackVisual}>
-                  <p>Inspiration</p>
-                  <span>→</span>
-                  <p>AI Sketch</p>
-                  <span>→</span>
-                  <p>Professional CAD</p>
-                  <span>→</span>
-                  <p>Final Piece Direction</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="how-it-works" className="section">
-        <div className="container">
-          <h2 className={styles.heading}>How It Works</h2>
-          <div className={styles.processGrid}>
-            {processSteps.map((step, index) => (
-              <article key={step.title} className={`card ${styles.processCard}`}>
-                <p className={styles.index}>0{index + 1}</p>
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="concept-vs-cad" className="section">
-        <div className="container">
-          <h2 className={styles.heading}>Concept Sketch vs Professional CAD</h2>
-          <div className={styles.compareGrid}>
-            <article className={`card ${styles.compareCard}`}>
-              <p className={styles.label}>AI Concept Sketch</p>
-              <ul>
-                <li>Fast visual direction</li>
-                <li>AI-assisted</li>
-                <li>Used for inspiration and early design alignment</li>
-                <li>Not production-ready</li>
-              </ul>
-            </article>
-            <article className={`card ${styles.compareCard} ${styles.cad}`}>
-              <p className={styles.label}>Professional CAD</p>
-              <ul>
-                <li>Paid customization step</li>
-                <li>Designer-reviewed</li>
-                <li>Dimensioned and prepared for manufacturing</li>
-                <li>Used for quoting, revisions, and production preparation</li>
-              </ul>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="container">
-          <h2 className={styles.heading}>Why NOVORA</h2>
-          <div className={styles.trustList}>
-            {trustPoints.map((point) => (
-              <p key={point}>{point}</p>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="container">
-          <div className={`card ${styles.cta}`}>
-            <h2>Ready to begin your custom piece?</h2>
-            <Link href="/design/start" className="btn">
-              Start Your Design
+    <main className={styles.page}>
+      <section className={styles.hero}>
+        <div className={styles.heroContent}>
+          <p className={styles.eyebrow}>NOVORA CUSTOM JEWELRY STUDIO</p>
+          <h1>Professional custom jewelry, made easier.</h1>
+          <p className={styles.lead}>
+            A warm, guided experience for modern bespoke pieces — from AI concept sketch to paid professional CAD,
+            then order center tracking.
+          </p>
+          <div className={styles.ctaRow}>
+            <Link href="/design/start" className={styles.primaryCta}>
+              Start your design
             </Link>
+            <a href="#how-it-works" className={styles.secondaryCta}>
+              See how it works
+            </a>
           </div>
         </div>
+
+        <div className={styles.heroVisualColumn}>
+          <div className={styles.heroVisualFrame}>
+            <img src="/assets/novora_hero_main_visual.png" alt="NOVORA custom jewelry hero" className={styles.heroVisual} />
+          </div>
+
+          <div className={styles.supportGrid}>
+            <article className={styles.supportCard}>
+              <img src="/assets/novora_ai_sketch_ring.png" alt="AI sketch ring preview" />
+              <div>
+                <h3>AI Sketch First</h3>
+                <p>Rapid concept direction in minutes.</p>
+              </div>
+            </article>
+
+            <article className={styles.supportCard}>
+              <img src="/assets/novora_cad_ring_wireframe.png" alt="CAD ring wireframe preview" />
+              <div>
+                <h3>Paid CAD Next</h3>
+                <p>Technical precision before production.</p>
+              </div>
+            </article>
+
+            <article className={styles.supportCardWide}>
+              <img src="/assets/novora_jewelry_type_icons_set.png" alt="Jewelry type icon set" />
+              <div>
+                <h3>Choose Your Piece Type</h3>
+                <p>Ring, pendant, and more — with clear guided options.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" className={styles.stepsSection}>
+        {steps.map((step) => (
+          <article key={step.title} className={styles.stepCard}>
+            <h2>{step.title}</h2>
+            <p>{step.copy}</p>
+          </article>
+        ))}
       </section>
     </main>
   );
