@@ -1,35 +1,36 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { CSSProperties, useState } from 'react';
 import styles from './start.module.css';
 
 type Option = {
   value: string;
   label: string;
   detail: string;
-  icon: string;
+  asset: string;
+  position: string;
 };
 
 const recipients: Option[] = [
-  { value: 'myself', label: 'Myself', detail: 'A piece for your own story', icon: 'ME' },
-  { value: 'partner', label: 'Partner', detail: 'Love, anniversary, or milestone', icon: 'LOVE' },
-  { value: 'family-friend', label: 'Family/Friend', detail: 'A thoughtful personal gift', icon: 'GIFT' },
-  { value: 'commemorative', label: 'Commemorative', detail: 'Memory, symbol, or tribute', icon: 'MEM' },
+  { value: 'myself', label: 'Myself', detail: 'A piece for your own story', asset: '/assets/novora_recipient_icons_set.png', position: '12% 26%' },
+  { value: 'partner', label: 'Partner', detail: 'Love, anniversary, or milestone', asset: '/assets/novora_recipient_icons_set.png', position: '38% 26%' },
+  { value: 'family-friend', label: 'Family/Friend', detail: 'A thoughtful personal gift', asset: '/assets/novora_recipient_icons_set.png', position: '64% 26%' },
+  { value: 'commemorative', label: 'Commemorative', detail: 'Memory, symbol, or tribute', asset: '/assets/novora_recipient_icons_set.png', position: '88% 26%' },
 ];
 
 const jewelryTypes: Option[] = [
-  { value: 'ring', label: 'Ring', detail: 'Center stone, band, or statement', icon: 'RING' },
-  { value: 'pendant', label: 'Pendant', detail: 'Symbolic, wearable, personal', icon: 'PEND' },
-  { value: 'earrings', label: 'Earrings', detail: 'Pair, drop, or daily accent', icon: 'EAR' },
-  { value: 'bracelet', label: 'Bracelet', detail: 'Clean, sculptural, or sentimental', icon: 'BRC' },
+  { value: 'ring', label: 'Ring', detail: 'Center stone, band, or statement', asset: '/assets/novora_jewelry_type_icons_set.png', position: '12% 22%' },
+  { value: 'pendant', label: 'Pendant', detail: 'Symbolic, wearable, personal', asset: '/assets/novora_jewelry_type_icons_set.png', position: '38% 22%' },
+  { value: 'earrings', label: 'Earrings', detail: 'Pair, drop, or daily accent', asset: '/assets/novora_jewelry_type_icons_set.png', position: '64% 22%' },
+  { value: 'bracelet', label: 'Bracelet', detail: 'Clean, sculptural, or sentimental', asset: '/assets/novora_jewelry_type_icons_set.png', position: '88% 22%' },
 ];
 
 const styleOptions: Option[] = [
-  { value: 'minimal', label: 'Minimal', detail: 'Clean lines and quiet detail', icon: 'MIN' },
-  { value: 'organic', label: 'Organic', detail: 'Nature-inspired movement', icon: 'ORG' },
-  { value: 'vintage', label: 'Vintage-inspired', detail: 'Heirloom mood, modern finish', icon: 'VINT' },
-  { value: 'bold-modern', label: 'Bold modern', detail: 'Strong silhouette and presence', icon: 'BOLD' },
+  { value: 'minimal', label: 'Minimal', detail: 'Clean lines and quiet detail', asset: '/assets/novora_style_icons_set.png', position: '12% 24%' },
+  { value: 'organic', label: 'Organic', detail: 'Nature-inspired movement', asset: '/assets/novora_style_icons_set.png', position: '38% 24%' },
+  { value: 'vintage', label: 'Vintage-inspired', detail: 'Heirloom mood, modern finish', asset: '/assets/novora_style_icons_set.png', position: '64% 24%' },
+  { value: 'bold-modern', label: 'Bold modern', detail: 'Strong silhouette and presence', asset: '/assets/novora_style_icons_set.png', position: '88% 24%' },
 ];
 
 const budgets = ['Under USD 500', 'USD 500-1200', 'USD 1200-2500', 'USD 2500+'];
@@ -169,6 +170,11 @@ function SelectionSection({
       <div className={styles.optionGrid}>
         {options.map((item) => {
           const isSelected = selected === item.value;
+          const iconStyle = {
+            '--icon-image': `url(${item.asset})`,
+            '--icon-position': item.position,
+          } as CSSProperties;
+
           return (
             <button
               key={item.value}
@@ -177,12 +183,12 @@ function SelectionSection({
               className={`${styles.optionCard} ${isSelected ? styles.optionSelected : ''}`}
               onClick={() => onSelect(item.value)}
             >
-              <span className={styles.iconTile} aria-hidden="true">{item.icon}</span>
+              <span className={styles.iconTile} style={iconStyle} aria-hidden="true" />
               <span className={styles.optionText}>
                 <strong>{item.label}</strong>
                 <small>{item.detail}</small>
               </span>
-              <span className={styles.checkMark} aria-hidden="true">OK</span>
+              <span className={styles.checkMark} aria-hidden="true">Selected</span>
             </button>
           );
         })}
