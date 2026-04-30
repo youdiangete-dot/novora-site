@@ -1,0 +1,101 @@
+.intro {
+  margin: 1.4rem 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.step {
+  color: #4f644f;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.intro h1 {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  color: #2f2d27;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 1rem;
+}
+
+.sketch {
+  min-height: 370px;
+  padding: 1rem;
+  display: grid;
+  place-items: end start;
+  color: #5f5b52;
+  font-weight: 700;
+}
+
+.ring {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(247, 237, 218, 0.4)),
+    url('/assets/novora_ai_sketch_ring.png') center/cover no-repeat,
+    linear-gradient(145deg, #f9f5ed, #f0e6d8);
+}
+
+.pendant {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(247, 237, 218, 0.4)),
+    url('/assets/novora_ai_sketch_pendant.png') center/cover no-repeat,
+    linear-gradient(145deg, #f9f5ed, #f0e6d8);
+}
+
+.summary {
+  padding: 1.25rem;
+}
+
+.summary h2 {
+  margin-bottom: 1rem;
+}
+
+.grid {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.label {
+  font-size: 0.82rem;
+  color: #8d816f;
+  margin-bottom: 0.2rem;
+}
+
+.notice,
+.next {
+  margin-top: 1rem;
+  padding: 1.2rem;
+}
+
+.notice p {
+  color: #374038;
+  font-weight: 600;
+}
+
+.actions {
+  margin-top: 1.2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.next ol {
+  margin: 0.8rem 0 0;
+  padding-left: 1rem;
+  color: var(--muted);
+  display: grid;
+  gap: 0.45rem;
+}
+
+@media (max-width: 980px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .sketch {
+    min-height: 270px;
+  }
+}
