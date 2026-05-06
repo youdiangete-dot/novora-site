@@ -1,0 +1,78 @@
+.title {
+  font-size: clamp(2rem, 3vw, 2.7rem);
+}
+
+.lead {
+  margin-top: 0.65rem;
+}
+
+.summaryGrid {
+  margin-top: 1.2rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.summary {
+  padding: 1.1rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.summary h2 {
+  margin-bottom: 0.2rem;
+}
+
+.timeline {
+  margin-top: 1rem;
+  padding: 1.1rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 0.8rem;
+  padding: 0.35rem 0;
+}
+
+.track {
+  display: grid;
+  justify-items: center;
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  margin-top: 0.3rem;
+}
+
+.done {
+  background: #93ad8e;
+}
+
+.current {
+  background: #4e6b51;
+}
+
+.upcoming {
+  background: #e4ded1;
+}
+
+.line {
+  width: 2px;
+  flex: 1;
+  min-height: 33px;
+  background: #e7dece;
+}
+
+.row h3 {
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
+}
+
+@media (max-width: 760px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
