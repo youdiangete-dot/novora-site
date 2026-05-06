@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { CSSProperties, useState } from 'react';
+import { useState } from 'react';
 import styles from './start.module.css';
 
 type Option = {
@@ -9,28 +9,29 @@ type Option = {
   label: string;
   detail: string;
   asset: string;
-  position: string;
 };
 
 const recipients: Option[] = [
-  { value: 'myself', label: 'Myself', detail: 'A piece for your own story', asset: '/assets/novora_recipient_icons_set.png', position: '12% 26%' },
-  { value: 'partner', label: 'Partner', detail: 'Love, anniversary, or milestone', asset: '/assets/novora_recipient_icons_set.png', position: '38% 26%' },
-  { value: 'family-friend', label: 'Family/Friend', detail: 'A thoughtful personal gift', asset: '/assets/novora_recipient_icons_set.png', position: '64% 26%' },
-  { value: 'commemorative', label: 'Commemorative', detail: 'Memory, symbol, or tribute', asset: '/assets/novora_recipient_icons_set.png', position: '88% 26%' },
+  { value: 'myself', label: 'Myself', detail: 'A piece for your own story', asset: '/assets/icon_recipient_myself.png' },
+  { value: 'partner', label: 'Partner', detail: 'Love, anniversary, or milestone', asset: '/assets/icon_recipient_partner.png' },
+  { value: 'family-friend', label: 'Family/Friend', detail: 'A thoughtful personal gift', asset: '/assets/icon_recipient_family_friend.png' },
+  { value: 'commemorative', label: 'Commemorative', detail: 'Memory, symbol, or tribute', asset: '/assets/icon_recipient_commemorative.png' },
 ];
 
 const jewelryTypes: Option[] = [
-  { value: 'ring', label: 'Ring', detail: 'Center stone, band, or statement', asset: '/assets/novora_jewelry_type_icons_set.png', position: '12% 22%' },
-  { value: 'pendant', label: 'Pendant', detail: 'Symbolic, wearable, personal', asset: '/assets/novora_jewelry_type_icons_set.png', position: '38% 22%' },
-  { value: 'earrings', label: 'Earrings', detail: 'Pair, drop, or daily accent', asset: '/assets/novora_jewelry_type_icons_set.png', position: '64% 22%' },
-  { value: 'bracelet', label: 'Bracelet', detail: 'Clean, sculptural, or sentimental', asset: '/assets/novora_jewelry_type_icons_set.png', position: '88% 22%' },
+  { value: 'ring', label: 'Ring', detail: 'Center stone, band, or statement', asset: '/assets/icon_jewelry_ring.png' },
+  { value: 'pendant', label: 'Pendant', detail: 'Symbolic, wearable, personal', asset: '/assets/icon_jewelry_pendant.png' },
+  { value: 'earrings', label: 'Earrings', detail: 'Pair, drop, or daily accent', asset: '/assets/icon_jewelry_earrings.png' },
+  { value: 'bracelet', label: 'Bracelet', detail: 'Clean, sculptural, or sentimental', asset: '/assets/icon_jewelry_bracelet.png' },
+  { value: 'other', label: 'Other', detail: 'Cufflinks, brooches, pins, hair pieces, tags, keepsakes, pet pieces, or custom forms', asset: '/assets/icon_jewelry_other.png' },
 ];
 
 const styleOptions: Option[] = [
-  { value: 'minimal', label: 'Minimal', detail: 'Clean lines and quiet detail', asset: '/assets/novora_style_icons_set.png', position: '12% 24%' },
-  { value: 'organic', label: 'Organic', detail: 'Nature-inspired movement', asset: '/assets/novora_style_icons_set.png', position: '38% 24%' },
-  { value: 'vintage', label: 'Vintage-inspired', detail: 'Heirloom mood, modern finish', asset: '/assets/novora_style_icons_set.png', position: '64% 24%' },
-  { value: 'bold-modern', label: 'Bold modern', detail: 'Strong silhouette and presence', asset: '/assets/novora_style_icons_set.png', position: '88% 24%' },
+  { value: 'minimal', label: 'Minimal', detail: 'Clean lines and quiet detail', asset: '/assets/icon_style_minimal.png' },
+  { value: 'organic', label: 'Organic', detail: 'Nature-inspired movement', asset: '/assets/icon_style_organic.png' },
+  { value: 'vintage', label: 'Vintage-inspired', detail: 'Heirloom mood, modern finish', asset: '/assets/icon_style_vintage.png' },
+  { value: 'bold-modern', label: 'Bold modern', detail: 'Strong silhouette and presence', asset: '/assets/icon_style_bold_modern.png' },
+  { value: 'your-style', label: 'Your Style', detail: 'Upload photos, sketches, references, or your own direction', asset: '/assets/icon_style_your_style.png' },
 ];
 
 const budgets = ['Under USD 500', 'USD 500-1200', 'USD 1200-2500', 'USD 2500+'];
@@ -108,7 +109,8 @@ export default function DesignStartPage() {
               <span>Optional for the first concept sketch</span>
             </div>
             <div className={styles.uploadArea}>
-              <img src="/assets/novora_upload_reference_placeholder.png" alt="Reference upload placeholder" />
+              <span className={styles.uploadIcon} aria-hidden="true">↑</span>
+              <strong>Drag & drop images here / or click to browse</strong>
               <p>Drop inspiration photos, sketches, or meaningful symbols.</p>
             </div>
           </article>
@@ -170,10 +172,6 @@ function SelectionSection({
       <div className={styles.optionGrid}>
         {options.map((item) => {
           const isSelected = selected === item.value;
-          const iconStyle = {
-            '--icon-image': `url(${item.asset})`,
-            '--icon-position': item.position,
-          } as CSSProperties;
 
           return (
             <button
@@ -183,7 +181,9 @@ function SelectionSection({
               className={`${styles.optionCard} ${isSelected ? styles.optionSelected : ''}`}
               onClick={() => onSelect(item.value)}
             >
-              <span className={styles.iconTile} style={iconStyle} aria-hidden="true" />
+              <span className={styles.iconTile} aria-hidden="true">
+                <img src={item.asset} alt="" />
+              </span>
               <span className={styles.optionText}>
                 <strong>{item.label}</strong>
                 <small>{item.detail}</small>
