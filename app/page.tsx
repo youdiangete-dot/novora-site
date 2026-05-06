@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import HomeCarousel from '../components/HomeCarousel';
 import styles from './page.module.css';
 
 const steps = [
@@ -45,9 +46,7 @@ export default function HomePage() {
         </div>
 
         <div className={styles.heroVisualColumn}>
-          <div className={styles.heroVisualFrame}>
-            <img src="/assets/novora_hero_main_visual.png" alt="NOVORA custom jewelry hero" className={styles.heroVisual} />
-          </div>
+          <HomeCarousel />
 
           <div className={styles.supportGrid}>
             <article className={styles.supportCard}>
