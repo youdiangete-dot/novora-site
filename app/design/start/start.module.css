@@ -40,7 +40,7 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(320px, 0.72fr);
+  grid-template-columns: minmax(0, 1.36fr) minmax(360px, 0.64fr);
   gap: 1.05rem;
   align-items: start;
 }
@@ -141,6 +141,7 @@
   height: 100%;
   display: block;
   object-fit: contain;
+  object-position: center;
   padding: 0;
 }
 
@@ -267,7 +268,7 @@
 .rightCol {
   position: sticky;
   top: 0.8rem;
-  max-width: 440px;
+  width: 100%;
 }
 
 .stickyBox {
