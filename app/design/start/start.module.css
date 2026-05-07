@@ -88,18 +88,24 @@
 .optionCard {
   position: relative;
   width: 100%;
-  min-height: 138px;
-  border: 1px solid #ded1c2;
-  border-radius: 18px;
-  background: linear-gradient(180deg, #fffefc 0%, #fbf7f0 100%);
-  padding: 0.78rem 0.82rem;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 0.52rem;
+  min-height: 168px;
+  border: 1.2px solid #d2c2ae;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.88), transparent 42%),
+    linear-gradient(180deg, #fffdf9 0%, #fbf6ee 100%);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.58rem;
   text-align: left;
   color: #302820;
   cursor: pointer;
-  box-shadow: 0 8px 22px rgba(120, 94, 64, 0.045);
+  overflow: hidden;
+  box-shadow:
+    0 8px 22px rgba(120, 94, 64, 0.055),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.52);
   transition:
     transform 180ms ease,
     border-color 180ms ease,
@@ -120,52 +126,69 @@
 }
 
 .optionSelected {
-  border-color: #8fa994;
-  background: linear-gradient(180deg, #fbfdf8 0%, #f2f7ef 100%);
-  box-shadow: 0 14px 30px rgba(85, 116, 89, 0.09), inset 0 0 0 1px rgba(143, 169, 148, 0.12);
+  border-color: #7f9b84;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.9), transparent 42%),
+    linear-gradient(180deg, #fbfdf8 0%, #f2f7ef 100%);
+  box-shadow:
+    0 12px 28px rgba(85, 116, 89, 0.1),
+    inset 0 0 0 1px rgba(127, 155, 132, 0.18);
 }
 
 .iconTile {
-  width: 92px;
-  height: 70px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
+  width: fit-content;
+  height: fit-content;
+  max-width: 132px;
+  max-height: 98px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  background: rgba(255, 252, 246, 0.34);
+  border: 1px solid rgba(210, 194, 174, 0.26);
+  box-shadow: none;
+  border-radius: 14px;
+  padding: 0.12rem;
   overflow: hidden;
-  background: transparent;
-  transition: transform 180ms ease, filter 180ms ease;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .iconTile img {
-  width: 100%;
-  height: 100%;
   display: block;
+  width: auto;
+  height: auto;
+  max-width: 128px;
+  max-height: 94px;
   object-fit: contain;
-  object-position: center;
+  object-position: left top;
+  border-radius: 11px;
   padding: 0;
 }
 
 .optionCard:hover .iconTile,
 .optionSelected .iconTile {
-  transform: none;
   filter: saturate(1.03) contrast(1.01);
 }
 
 .optionText {
   display: grid;
-  gap: 0.22rem;
-  align-self: end;
+  gap: 0.24rem;
+  margin-top: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .optionText strong {
+  display: block;
   font-size: 0.98rem;
-  line-height: 1.14;
+  line-height: 1.12;
 }
 
 .optionText small {
+  display: block;
   color: #6b5b4e;
   font-size: 0.76rem;
-  line-height: 1.3;
+  line-height: 1.32;
 }
 
 .checkMark {
