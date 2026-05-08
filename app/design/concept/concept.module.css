@@ -181,6 +181,17 @@
   background: linear-gradient(135deg, #f7f1e8 0 50%, #d9d0c1 50% 100%);
 }
 
+.colorNote {
+  background: #f7f2ea;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #5f594f;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0.1rem 0 0;
+  padding: 0.72rem 0.82rem;
+}
+
 .field,
 .compactField {
   display: grid;
