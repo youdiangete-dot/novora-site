@@ -252,6 +252,8 @@
   display: flex;
   justify-content: center;
   min-height: 72px;
+  overflow: hidden;
+  padding: 0.45rem;
 }
 
 .selectedCard .shapePreview {
@@ -272,6 +274,15 @@
 .selectedCard .layoutIcon {
   background: rgba(255, 255, 255, 0.2);
   border-color: #fff;
+}
+
+.shapeImage {
+  display: block;
+  height: 58px;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  width: 76px;
 }
 
 .round {

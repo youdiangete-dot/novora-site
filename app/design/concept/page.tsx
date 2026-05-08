@@ -7,6 +7,7 @@ import styles from './concept.module.css';
 type Option = {
   label: string;
   value: string;
+  assetSrc?: string;
   assetPlaceholder?: string;
   description?: string;
 };
@@ -58,26 +59,68 @@ const stoneQuantities: Option[] = [
 ];
 
 const cutOptions: Option[] = [
-  { label: 'Round', value: 'round', assetPlaceholder: 'round-shape' },
-  { label: 'Oval', value: 'oval', assetPlaceholder: 'oval-shape' },
-  { label: 'Pear', value: 'pear', assetPlaceholder: 'pear-shape' },
-  { label: 'Emerald', value: 'emerald', assetPlaceholder: 'emerald-shape' },
-  { label: 'Cushion', value: 'cushion', assetPlaceholder: 'cushion-shape' },
-  { label: 'Marquise', value: 'marquise', assetPlaceholder: 'marquise-shape' },
-  { label: 'Heart', value: 'heart', assetPlaceholder: 'heart-shape' },
+  {
+    label: 'Round',
+    value: 'round',
+    assetSrc: '/assets/design/concept/cuts/round.png',
+    assetPlaceholder: 'round-shape',
+  },
+  {
+    label: 'Oval',
+    value: 'oval',
+    assetSrc: '/assets/design/concept/cuts/oval.png',
+    assetPlaceholder: 'oval-shape',
+  },
+  {
+    label: 'Pear',
+    value: 'pear',
+    assetSrc: '/assets/design/concept/cuts/pear.png',
+    assetPlaceholder: 'pear-shape',
+  },
+  {
+    label: 'Emerald',
+    value: 'emerald',
+    assetSrc: '/assets/design/concept/cuts/emerald.png',
+    assetPlaceholder: 'emerald-shape',
+  },
+  {
+    label: 'Cushion',
+    value: 'cushion',
+    assetSrc: '/assets/design/concept/cuts/cushion.png',
+    assetPlaceholder: 'cushion-shape',
+  },
+  {
+    label: 'Marquise',
+    value: 'marquise',
+    assetSrc: '/assets/design/concept/cuts/marquise.png',
+    assetPlaceholder: 'marquise-shape',
+  },
+  {
+    label: 'Heart',
+    value: 'heart',
+    assetSrc: '/assets/design/concept/cuts/heart.png',
+    assetPlaceholder: 'heart-shape',
+  },
   {
     label: 'Other fancy cut',
     value: 'other_fancy_cut',
+    assetSrc: '/assets/design/concept/cuts/other-fancy-cut.png',
     assetPlaceholder: 'fancy-cut-library',
     description: 'Choose from future expandable NOVORA supply-chain fancy cut options.',
   },
   {
     label: 'Custom',
     value: 'custom',
+    assetSrc: '/assets/design/concept/cuts/custom.png',
     assetPlaceholder: 'custom-shape-brief',
     description: 'Upload or describe a special shape later.',
   },
-  { label: 'Not sure', value: 'not_sure', assetPlaceholder: 'not-sure-shape' },
+  {
+    label: 'Not sure',
+    value: 'not_sure',
+    assetSrc: '/assets/design/concept/cuts/not-sure.png',
+    assetPlaceholder: 'not-sure-shape',
+  },
 ];
 
 const fancyCuts = [
@@ -109,8 +152,30 @@ const emptyShape: ShapeState = {
   customNote: '',
 };
 
+const enableCutImageAssets = false;
+
 function optionLabel(options: Option[], value: string) {
   return options.find((option) => option.value === value)?.label || '';
+}
+
+function ShapePreview({ option }: { option: Option }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = enableCutImageAssets && option.assetSrc && !imageFailed;
+
+  return (
+    <span className={styles.shapePreview} aria-hidden="true">
+      {showImage ? (
+        <img
+          alt=""
+          className={styles.shapeImage}
+          onError={() => setImageFailed(true)}
+          src={option.assetSrc}
+        />
+      ) : (
+        <span className={`${styles.shapeIcon} ${styles[option.value]}`} />
+      )}
+    </span>
+  );
 }
 
 function ShapeSelector({
@@ -146,9 +211,7 @@ function ShapeSelector({
             }
             type="button"
           >
-            <span className={styles.shapePreview} aria-hidden="true">
-              <span className={`${styles.shapeIcon} ${styles[option.value]}`} />
-            </span>
+            <ShapePreview option={option} />
             <span className={styles.shapeLabel}>{option.label}</span>
             {option.description ? <span className={styles.shapeDescription}>{option.description}</span> : null}
           </button>
