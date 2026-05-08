@@ -401,6 +401,11 @@ export default function DesignConceptPage() {
                   </button>
                 ))}
               </div>
+              <p className={styles.colorNote}>
+                Color availability note: Some colors are easier to match in certain stone types than others. Rare or
+                highly specific colors may require an alternative gemstone, a lab-grown option, or a revised color
+                direction. NOVORA will confirm stone availability before any paid CAD or production step.
+              </p>
               <label className={styles.field}>
                 <span>Custom color note</span>
                 <input
