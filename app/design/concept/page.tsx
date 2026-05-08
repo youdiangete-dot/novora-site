@@ -146,6 +146,63 @@ const additionalDirections: Option[] = [
   { label: 'Not sure', value: 'not_sure', assetPlaceholder: 'not-sure-layout' },
 ];
 
+const accentStoneNeeds: Option[] = [
+  { label: 'Yes', value: 'yes' },
+  { label: 'No', value: 'no' },
+  { label: 'Let NOVORA suggest', value: 'let_novora_suggest' },
+];
+
+const accentStoneTypes: Option[] = [
+  { label: 'Natural diamond', value: 'natural_diamond' },
+  { label: 'Lab-grown diamond', value: 'lab_grown_diamond' },
+  { label: 'Natural gemstone', value: 'natural_gemstone' },
+  { label: 'Lab-grown colored gemstone', value: 'lab_grown_colored_gemstone' },
+  { label: 'Not sure', value: 'not_sure' },
+];
+
+const accentStoneColors: Option[] = [
+  { label: 'White', value: 'white' },
+  { label: 'Champagne', value: 'champagne' },
+  { label: 'Yellow', value: 'yellow' },
+  { label: 'Pink', value: 'pink' },
+  { label: 'Blue', value: 'blue' },
+  { label: 'Green', value: 'green' },
+  { label: 'Red', value: 'red' },
+  { label: 'Purple', value: 'purple' },
+  { label: 'Black', value: 'black' },
+  { label: 'Match main stone', value: 'match_main_stone' },
+  { label: 'Let NOVORA suggest', value: 'let_novora_suggest' },
+];
+
+const accentStoneShapes: Option[] = [
+  { label: 'Round', value: 'round' },
+  { label: 'Oval', value: 'oval' },
+  { label: 'Pear', value: 'pear' },
+  { label: 'Marquise', value: 'marquise' },
+  { label: 'Baguette', value: 'baguette' },
+  { label: 'Mixed small stones', value: 'mixed_small_stones' },
+  { label: 'Let NOVORA suggest', value: 'let_novora_suggest' },
+  { label: 'Not sure', value: 'not_sure' },
+];
+
+const accentStoneQuantityFeelings: Option[] = [
+  { label: 'Minimal', value: 'minimal' },
+  { label: 'Balanced', value: 'balanced' },
+  { label: 'Rich', value: 'rich' },
+  { label: 'Full pave', value: 'full_pave' },
+  { label: 'Not sure', value: 'not_sure' },
+];
+
+const accentStoneLayouts: Option[] = [
+  { label: 'Halo', value: 'halo' },
+  { label: 'Side stones', value: 'side_stones' },
+  { label: 'Scattered', value: 'scattered' },
+  { label: 'Pave band', value: 'pave_band' },
+  { label: 'Cluster', value: 'cluster' },
+  { label: 'Hidden accent', value: 'hidden_accent' },
+  { label: 'Let NOVORA suggest', value: 'let_novora_suggest' },
+];
+
 const emptyShape: ShapeState = {
   shape: '',
   fancyCut: '',
@@ -263,6 +320,13 @@ export default function DesignConceptPage() {
   const [additionalDirection, setAdditionalDirection] = useState('');
   const [additionalCustomDirection, setAdditionalCustomDirection] = useState('');
   const [additionalLayoutNote, setAdditionalLayoutNote] = useState('');
+  const [accentStoneNeed, setAccentStoneNeed] = useState('let_novora_suggest');
+  const [accentStoneType, setAccentStoneType] = useState('not_sure');
+  const [accentStoneColor, setAccentStoneColor] = useState('let_novora_suggest');
+  const [accentStoneShape, setAccentStoneShape] = useState('let_novora_suggest');
+  const [accentStoneQuantityFeeling, setAccentStoneQuantityFeeling] = useState('not_sure');
+  const [accentStoneLayout, setAccentStoneLayout] = useState('let_novora_suggest');
+  const [accentStoneNote, setAccentStoneNote] = useState('');
   const [placeholderMessage, setPlaceholderMessage] = useState('');
 
   const activeShapeCount = quantity === '2' || quantity === '3_plus' ? 2 : 1;
@@ -318,8 +382,31 @@ export default function DesignConceptPage() {
       }
     }
 
+    items.push(
+      ['Accent stones needed', optionLabel(accentStoneNeeds, accentStoneNeed)],
+      ['Accent stone type', optionLabel(accentStoneTypes, accentStoneType)],
+      ['Accent stone color', optionLabel(accentStoneColors, accentStoneColor)],
+      ['Accent stone shape direction', optionLabel(accentStoneShapes, accentStoneShape)],
+      [
+        'Accent stone quantity feeling',
+        optionLabel(accentStoneQuantityFeelings, accentStoneQuantityFeeling),
+      ],
+      ['Accent stone layout direction', optionLabel(accentStoneLayouts, accentStoneLayout)],
+    );
+
+    if (accentStoneNote.trim()) {
+      items.push(['Accent stone note', accentStoneNote.trim()]);
+    }
+
     return items;
   }, [
+    accentStoneColor,
+    accentStoneLayout,
+    accentStoneNeed,
+    accentStoneNote,
+    accentStoneQuantityFeeling,
+    accentStoneShape,
+    accentStoneType,
     activeShapeCount,
     additionalCustomDirection,
     additionalDirection,
@@ -518,6 +605,137 @@ export default function DesignConceptPage() {
               </label>
             </section>
           ) : null}
+
+          <section className={`${styles.selectorGroup} ${styles.accentSection}`}>
+            <div className={styles.sectionHeading}>
+              <h2>Accent stones / Side stones</h2>
+              <p>Set the accent stone direction and overall sparkle feeling for the AI concept sketch brief.</p>
+            </div>
+
+            <p className={styles.helperNote}>
+              Accent stones are used to guide the AI concept sketch direction. Final stone availability and technical
+              setting details will be confirmed before paid CAD or production.
+            </p>
+
+            <div className={styles.compactGrid}>
+              <fieldset className={styles.fieldset}>
+                <legend>Does this piece need accent stones?</legend>
+                <div className={styles.optionRow}>
+                  {accentStoneNeeds.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${
+                        accentStoneNeed === option.value ? styles.selectedChip : ''
+                      }`}
+                      key={option.value}
+                      onClick={() => setAccentStoneNeed(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className={styles.fieldset}>
+                <legend>Accent stone type</legend>
+                <div className={styles.optionRow}>
+                  {accentStoneTypes.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${
+                        accentStoneType === option.value ? styles.selectedChip : ''
+                      }`}
+                      key={option.value}
+                      onClick={() => setAccentStoneType(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className={styles.fieldset}>
+                <legend>Accent stone color</legend>
+                <div className={styles.optionRow}>
+                  {accentStoneColors.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${
+                        accentStoneColor === option.value ? styles.selectedChip : ''
+                      }`}
+                      key={option.value}
+                      onClick={() => setAccentStoneColor(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className={styles.fieldset}>
+                <legend>Accent stone shape direction</legend>
+                <div className={styles.optionRow}>
+                  {accentStoneShapes.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${
+                        accentStoneShape === option.value ? styles.selectedChip : ''
+                      }`}
+                      key={option.value}
+                      onClick={() => setAccentStoneShape(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className={styles.fieldset}>
+                <legend>Accent stone quantity feeling</legend>
+                <div className={styles.optionRow}>
+                  {accentStoneQuantityFeelings.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${
+                        accentStoneQuantityFeeling === option.value ? styles.selectedChip : ''
+                      }`}
+                      key={option.value}
+                      onClick={() => setAccentStoneQuantityFeeling(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className={styles.fieldset}>
+                <legend>Accent stone layout direction</legend>
+                <div className={styles.optionRow}>
+                  {accentStoneLayouts.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${
+                        accentStoneLayout === option.value ? styles.selectedChip : ''
+                      }`}
+                      key={option.value}
+                      onClick={() => setAccentStoneLayout(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+
+            <label className={styles.field}>
+              <span>Optional accent stone note</span>
+              <textarea
+                onChange={(event) => setAccentStoneNote(event.target.value)}
+                placeholder="Example: small white diamonds around the center stone, subtle sparkle, not too crowded."
+                value={accentStoneNote}
+              />
+            </label>
+          </section>
         </form>
 
         <aside className={styles.summaryPanel} aria-label="Brief summary">

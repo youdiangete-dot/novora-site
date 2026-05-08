@@ -192,6 +192,41 @@
   padding: 0.72rem 0.82rem;
 }
 
+.helperNote {
+  background: #f7f2ea;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #5f594f;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0.85rem 0 0;
+  padding: 0.72rem 0.82rem;
+}
+
+.compactGrid {
+  align-items: start;
+  display: grid;
+  gap: 0.95rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.accentSection .fieldset {
+  align-content: start;
+  gap: 0.58rem;
+  margin-top: 0;
+}
+
+.accentSection .optionRow {
+  align-items: flex-start;
+}
+
+.accentSection .choiceChip {
+  align-self: flex-start;
+  line-height: 1.2;
+  min-height: 36px;
+  padding: 0.48rem 0.78rem;
+}
+
 .field,
 .compactField {
   display: grid;
@@ -485,5 +520,9 @@
 
   .shapeCard {
     min-height: 142px;
+  }
+
+  .compactGrid {
+    grid-template-columns: 1fr;
   }
 }
