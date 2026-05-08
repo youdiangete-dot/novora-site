@@ -1,7 +1,41 @@
 .pageShell {
-  max-width: 1180px;
+  isolation: isolate;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 3rem 1.25rem 4rem;
+  overflow: hidden;
+  padding: 3.25rem clamp(1.25rem, 2.2vw, 2.25rem) 4.5rem;
+  position: relative;
+  width: min(100%, 1680px);
+}
+
+.pageShell::before {
+  background: url("data:image/svg+xml,%3Csvg%20width%3D%22780%22%20height%3D%22920%22%20viewBox%3D%220%200%20780%20920%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cg%20stroke%3D%22%238A7658%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20opacity%3D%220.32%22%3E%3Cpath%20d%3D%22M407%20134c-45%2017-78%2059-82%20108-6%2075%2049%20141%20124%20147%2076%206%20142-49%20148-125%204-54-25-105-72-130%22/%3E%3Cpath%20d%3D%22M435%20116c-78%203-143%2064-150%20142-8%2094%2061%20177%20155%20185%2094%207%20177-61%20184-155%204-53-16-104-54-140%22/%3E%3Cpath%20d%3D%22M401%20198l58-39%2063%2037%2021%2069-44%2059-76%205-51-52%2029-79Z%22/%3E%3Cpath%20d%3D%22M401%20198l98%20126M522%20196l-99%20133M372%20277l171-12M459%20159l40%20165%22/%3E%3Cpath%20d%3D%22M132%20536c60-44%20141-41%20195%207%2061%2053%2066%20146%2010%20205-53%2055-139%2058-197%207-64-55-68-153-8-209Z%22/%3E%3Cpath%20d%3D%22M165%20566c44-32%20103-30%20142%205%2045%2039%2048%20108%207%20152-40%2041-103%2044-146%207-47-41-50-114-3-164Z%22/%3E%3Cpath%20d%3D%22M244%20483c-16%2037-44%2057-83%2060M310%20491c12%2032%2035%2052%2070%2063M248%20796v74M217%20835h66%22/%3E%3Cpath%20d%3D%22M520%20603l54-82%2091%2040-11%20107-92%2027-42-92Z%22/%3E%3Cpath%20d%3D%22M574%20521l-12%20174M665%20561l-145%2042M654%20668l-80-147M520%20603l134%2065%22/%3E%3Cpath%20d%3D%22M88%20174h132M104%20211h86M575%20764h115M556%20802h72M613%20724c24-12%2049-12%2074%200%22/%3E%3C/g%3E%3Cg%20stroke%3D%22%23415B45%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20opacity%3D%220.2%22%3E%3Cpath%20d%3D%22M373%2078c86%2040%20144%20126%20148%20222M117%20628c26-86%20101-148%20191-159M521%20714c57%2028%2095%2077%20107%20139%22/%3E%3Ccircle%20cx%3D%22462%22%20cy%3D%22258%22%20r%3D%22182%22/%3E%3Ccircle%20cx%3D%22235%22%20cy%3D%22644%22%20r%3D%22196%22/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  content: '';
+  height: min(86vw, 920px);
+  opacity: 0.36;
+  pointer-events: none;
+  position: absolute;
+  right: -90px;
+  top: 18px;
+  width: min(58vw, 780px);
+  z-index: -1;
+}
+
+.pageShell::after {
+  background:
+    linear-gradient(92deg, transparent 0 22%, rgba(184, 147, 95, 0.08) 22.2%, transparent 22.6%),
+    linear-gradient(88deg, transparent 0 42%, rgba(65, 91, 69, 0.07) 42.2%, transparent 42.6%),
+    linear-gradient(90deg, transparent 0 63%, rgba(184, 147, 95, 0.06) 63.2%, transparent 63.5%);
+  bottom: 4%;
+  content: '';
+  height: 64%;
+  opacity: 0.45;
+  pointer-events: none;
+  position: absolute;
+  right: 2.5rem;
+  transform: rotate(-2deg);
+  width: min(38vw, 560px);
+  z-index: -1;
 }
 
 .intro {
@@ -28,8 +62,8 @@
 .layout {
   align-items: start;
   display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: clamp(1.1rem, 1.8vw, 1.8rem);
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 470px);
 }
 
 .form {
