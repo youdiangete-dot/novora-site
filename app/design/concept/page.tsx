@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { type CSSProperties, useMemo, useState } from 'react';
 import styles from './concept.module.css';
 
@@ -16,6 +17,38 @@ type ShapeState = {
   shape: string;
   fancyCut: string;
   customNote: string;
+};
+
+type SummaryItem = {
+  label: string;
+  value: string;
+};
+
+type StoredConceptBrief = {
+  mainStoneNeed: string;
+  stoneType: string;
+  stoneColor: string;
+  customColor: string;
+  stoneSizeUnit: string;
+  stoneSizeValue: string;
+  quantity: string;
+  stoneOne: ShapeState;
+  stoneTwo: ShapeState;
+  additionalDirection: string;
+  additionalCustomDirection: string;
+  additionalLayoutNote: string;
+  accentStoneNeed: string;
+  accentStoneType: string;
+  accentStoneColor: string;
+  accentStoneShape: string;
+  accentStoneQuantityFeeling: string;
+  accentStoneLayout: string;
+  accentStoneNote: string;
+  metalType: string;
+  metalColor: string;
+  finishDirection: string;
+  metalNote: string;
+  summaryItems: SummaryItem[];
 };
 
 const mainStoneNeeds: Option[] = [
@@ -368,6 +401,7 @@ function ShapeSelector({
 }
 
 export default function DesignConceptPage() {
+  const router = useRouter();
   const [mainStoneNeed, setMainStoneNeed] = useState('not_sure_yet');
   const [stoneType, setStoneType] = useState('not_sure');
   const [stoneColor, setStoneColor] = useState('');
@@ -391,7 +425,6 @@ export default function DesignConceptPage() {
   const [metalColor, setMetalColor] = useState('not_sure');
   const [finishDirection, setFinishDirection] = useState('not_sure');
   const [metalNote, setMetalNote] = useState('');
-  const [placeholderMessage, setPlaceholderMessage] = useState('');
   const [activeStep, setActiveStep] = useState(0);
 
   const activeShapeCount = quantity === '2' || quantity === '3_plus' ? 2 : 1;
@@ -512,6 +545,38 @@ export default function DesignConceptPage() {
 
   function goToNextStep() {
     setActiveStep((step) => Math.min(conceptSteps.length - 1, step + 1));
+  }
+
+  function continueToBrief() {
+    const conceptBrief: StoredConceptBrief = {
+      mainStoneNeed,
+      stoneType,
+      stoneColor,
+      customColor,
+      stoneSizeUnit,
+      stoneSizeValue,
+      quantity,
+      stoneOne,
+      stoneTwo,
+      additionalDirection,
+      additionalCustomDirection,
+      additionalLayoutNote,
+      accentStoneNeed,
+      accentStoneType,
+      accentStoneColor,
+      accentStoneShape,
+      accentStoneQuantityFeeling,
+      accentStoneLayout,
+      accentStoneNote,
+      metalType,
+      metalColor,
+      finishDirection,
+      metalNote,
+      summaryItems: summaryItems.map(([label, value]) => ({ label, value })),
+    };
+
+    window.sessionStorage.setItem('novora_concept_brief', JSON.stringify(conceptBrief));
+    router.push('/design/brief');
   }
 
   return (
@@ -1052,15 +1117,12 @@ export default function DesignConceptPage() {
                 </Link>
                 <button
                   className="btn"
-                  onClick={() =>
-                    setPlaceholderMessage('Next concept step placeholder. No information has been saved yet.')
-                  }
+                  onClick={continueToBrief}
                   type="button"
                 >
                   Continue to next concept step
                 </button>
               </div>
-              {placeholderMessage ? <p className={styles.placeholderMessage}>{placeholderMessage}</p> : null}
             </>
           ) : null}
         </aside>
