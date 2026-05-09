@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { type CSSProperties, useMemo, useState } from 'react';
 import styles from './concept.module.css';
 
 type Option = {
@@ -203,6 +203,58 @@ const accentStoneLayouts: Option[] = [
   { label: 'Let NOVORA suggest', value: 'let_novora_suggest' },
 ];
 
+const metalTypes: Option[] = [
+  { label: 'Sterling Silver', value: 'sterling_silver' },
+  { label: '14K Gold', value: '14k_gold' },
+  { label: '18K Gold', value: '18k_gold' },
+  { label: 'Platinum', value: 'platinum' },
+  { label: 'Not sure', value: 'not_sure' },
+];
+
+const metalColors: Option[] = [
+  { label: 'Yellow', value: 'yellow' },
+  { label: 'White', value: 'white' },
+  { label: 'Rose', value: 'rose' },
+  { label: 'Two-tone', value: 'two_tone' },
+  { label: 'Not sure', value: 'not_sure' },
+];
+
+const finishDirections: Option[] = [
+  { label: 'High polish', value: 'high_polish' },
+  { label: 'Matte', value: 'matte' },
+  { label: 'Brushed', value: 'brushed' },
+  { label: 'Vintage', value: 'vintage' },
+  { label: 'Not sure', value: 'not_sure' },
+];
+
+const conceptSteps = [
+  {
+    label: 'Main stone basics',
+    visualClass: 'visualBasics',
+    backgroundSrc: '/assets/design/concept/backgrounds/gemstone-color-sketch-bg.png',
+  },
+  {
+    label: 'Main stone shape',
+    visualClass: 'visualShape',
+    backgroundSrc: '/assets/design/concept/backgrounds/stone-cut-sketch-bg.png',
+  },
+  {
+    label: 'Accent stones',
+    visualClass: 'visualAccent',
+    backgroundSrc: '/assets/design/concept/backgrounds/accent-stones-sketch-bg.png',
+  },
+  {
+    label: 'Metal & finish',
+    visualClass: 'visualMetal',
+    backgroundSrc: '/assets/design/concept/backgrounds/metal-finish-sketch-bg.png',
+  },
+  {
+    label: 'Review brief',
+    visualClass: 'visualReview',
+    backgroundSrc: '/assets/design/concept/backgrounds/concept-board-sketch-bg.png',
+  },
+];
+
 const emptyShape: ShapeState = {
   shape: '',
   fancyCut: '',
@@ -213,6 +265,14 @@ const enableCutImageAssets = false;
 
 function optionLabel(options: Option[], value: string) {
   return options.find((option) => option.value === value)?.label || '';
+}
+
+function stepVisualStyle(stepIndex: number) {
+  const backgroundSrc = conceptSteps[stepIndex].backgroundSrc;
+
+  return {
+    '--step-bg': backgroundSrc ? `url("${backgroundSrc}")` : 'none',
+  } as CSSProperties;
 }
 
 function ShapePreview({ option }: { option: Option }) {
@@ -327,7 +387,12 @@ export default function DesignConceptPage() {
   const [accentStoneQuantityFeeling, setAccentStoneQuantityFeeling] = useState('not_sure');
   const [accentStoneLayout, setAccentStoneLayout] = useState('let_novora_suggest');
   const [accentStoneNote, setAccentStoneNote] = useState('');
+  const [metalType, setMetalType] = useState('not_sure');
+  const [metalColor, setMetalColor] = useState('not_sure');
+  const [finishDirection, setFinishDirection] = useState('not_sure');
+  const [metalNote, setMetalNote] = useState('');
   const [placeholderMessage, setPlaceholderMessage] = useState('');
+  const [activeStep, setActiveStep] = useState(0);
 
   const activeShapeCount = quantity === '2' || quantity === '3_plus' ? 2 : 1;
 
@@ -398,6 +463,16 @@ export default function DesignConceptPage() {
       items.push(['Accent stone note', accentStoneNote.trim()]);
     }
 
+    items.push(
+      ['Metal type', optionLabel(metalTypes, metalType)],
+      ['Metal color', optionLabel(metalColors, metalColor)],
+      ['Finish direction', optionLabel(finishDirections, finishDirection)],
+    );
+
+    if (metalNote.trim()) {
+      items.push(['Metal note', metalNote.trim()]);
+    }
+
     return items;
   }, [
     accentStoneColor,
@@ -412,7 +487,11 @@ export default function DesignConceptPage() {
     additionalDirection,
     additionalLayoutNote,
     customColor,
+    finishDirection,
     mainStoneNeed,
+    metalColor,
+    metalNote,
+    metalType,
     quantity,
     stoneColor,
     stoneOne,
@@ -422,8 +501,22 @@ export default function DesignConceptPage() {
     stoneTwo,
   ]);
 
+  const isReviewStep = activeStep === conceptSteps.length - 1;
+  const currentStep = conceptSteps[activeStep];
+  const compactSummaryItems = summaryItems.filter(([, value]) => value && value !== 'Not selected').slice(0, 9);
+  const visibleSummaryItems = isReviewStep ? summaryItems : compactSummaryItems;
+
+  function goToPreviousStep() {
+    setActiveStep((step) => Math.max(0, step - 1));
+  }
+
+  function goToNextStep() {
+    setActiveStep((step) => Math.min(conceptSteps.length - 1, step + 1));
+  }
+
   return (
-    <main className={styles.pageShell}>
+    <main className={styles.pageBackground} style={stepVisualStyle(activeStep)}>
+      <div className={styles.pageShell}>
       <section className={styles.intro}>
         <p className={styles.step}>AI Concept Sketch Brief</p>
         <h1>Main stone intake</h1>
@@ -433,13 +526,35 @@ export default function DesignConceptPage() {
         </p>
       </section>
 
-      <div className={styles.layout}>
+      <nav className={styles.progressNav} aria-label="Concept intake progress">
+        {conceptSteps.map((step, index) => (
+          <button
+            aria-current={activeStep === index ? 'step' : undefined}
+            className={`${styles.progressStep} ${activeStep === index ? styles.activeProgressStep : ''}`}
+            key={step.label}
+            onClick={() => setActiveStep(index)}
+            type="button"
+          >
+            <span>{index + 1}</span>
+            {step.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className={`${styles.layout} ${isReviewStep ? styles.reviewLayout : ''}`}>
         <form className={styles.form}>
-          <section className={styles.panel}>
+          {activeStep === 0 ? (
+          <section className={`${styles.panel} ${styles.stepPanel}`}>
             <div className={styles.sectionHeading}>
               <h2>Main stone basics</h2>
               <p>Capture the stone direction before the sketch brief is created.</p>
             </div>
+
+            <div
+              className={`${styles.stepVisual} ${styles[conceptSteps[0].visualClass]}`}
+              aria-hidden="true"
+              style={stepVisualStyle(0)}
+            />
 
             <fieldset className={styles.fieldset}>
               <legend>Does this piece need a main stone?</legend>
@@ -555,13 +670,54 @@ export default function DesignConceptPage() {
               </div>
             </fieldset>
           </section>
+          ) : null}
 
-          <ShapeSelector title="Main stone 1 shape" value={stoneOne} onChange={setStoneOne} />
+          {activeStep === 1 ? (
+            <>
+              <section className={styles.stepVisualPanel}>
+                <div className={styles.sectionHeading}>
+                  <h2>Main stone shape</h2>
+                  <p>Choose the shape direction that will guide the hand-drawn concept sketch.</p>
+                </div>
+                <div
+                  className={`${styles.stepVisual} ${styles[conceptSteps[1].visualClass]}`}
+                  aria-hidden="true"
+                  style={stepVisualStyle(1)}
+                />
+              </section>
 
-          {activeShapeCount === 2 ? <ShapeSelector title="Main stone 2 shape" value={stoneTwo} onChange={setStoneTwo} /> : null}
+              <section className={`${styles.selectorGroup} ${styles.quantityCheck}`}>
+                <fieldset className={styles.fieldset}>
+                  <legend>Main stone quantity</legend>
+                  <div className={styles.optionRow}>
+                    {stoneQuantities.map((option) => (
+                      <button
+                        className={`${styles.choiceChip} ${quantity === option.value ? styles.selectedChip : ''}`}
+                        key={option.value}
+                        onClick={() => setQuantity(option.value)}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <p className={styles.helperNote}>
+                  You can adjust the number of main stones here before choosing the shape direction.
+                </p>
+                {quantity === 'not_sure' ? (
+                  <p className={styles.inlineHint}>NOVORA can suggest the main stone count later.</p>
+                ) : null}
+              </section>
 
-          {quantity === '3_plus' ? (
-            <section className={styles.selectorGroup}>
+              <ShapeSelector title="Main stone 1 shape" value={stoneOne} onChange={setStoneOne} />
+
+              {activeShapeCount === 2 ? (
+                <ShapeSelector title="Main stone 2 shape" value={stoneTwo} onChange={setStoneTwo} />
+              ) : null}
+
+              {quantity === '3_plus' ? (
+                <section className={styles.selectorGroup}>
               <div className={styles.sectionHeading}>
                 <h2>Additional main stones shape direction</h2>
                 <p>Choose a visual direction for the remaining main stones.</p>
@@ -604,13 +760,22 @@ export default function DesignConceptPage() {
                 />
               </label>
             </section>
+              ) : null}
+            </>
           ) : null}
 
+          {activeStep === 2 ? (
           <section className={`${styles.selectorGroup} ${styles.accentSection}`}>
             <div className={styles.sectionHeading}>
               <h2>Accent stones / Side stones</h2>
               <p>Set the accent stone direction and overall sparkle feeling for the AI concept sketch brief.</p>
             </div>
+
+            <div
+              className={`${styles.stepVisual} ${styles[conceptSteps[2].visualClass]}`}
+              aria-hidden="true"
+              style={stepVisualStyle(2)}
+            />
 
             <p className={styles.helperNote}>
               Accent stones are used to guide the AI concept sketch direction. Final stone availability and technical
@@ -736,16 +901,134 @@ export default function DesignConceptPage() {
               />
             </label>
           </section>
+          ) : null}
+
+          {activeStep === 3 ? (
+          <section className={`${styles.selectorGroup} ${styles.accentSection}`}>
+            <div className={styles.sectionHeading}>
+              <h2>Metal / metal direction</h2>
+              <p>Choose the material direction for the AI concept sketch and early quote direction.</p>
+            </div>
+
+            <div
+              className={`${styles.stepVisual} ${styles[conceptSteps[3].visualClass]}`}
+              aria-hidden="true"
+              style={stepVisualStyle(3)}
+            />
+
+            <p className={styles.helperNote}>
+              Metal choices guide the AI concept sketch and early quote direction. Final material cost, strength, and
+              technical feasibility will be confirmed before paid CAD or production.
+            </p>
+
+            <div className={styles.compactGrid}>
+              <fieldset className={styles.fieldset}>
+                <legend>Metal type</legend>
+                <div className={styles.optionRow}>
+                  {metalTypes.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${metalType === option.value ? styles.selectedChip : ''}`}
+                      key={option.value}
+                      onClick={() => setMetalType(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className={styles.fieldset}>
+                <legend>Metal color</legend>
+                <div className={styles.optionRow}>
+                  {metalColors.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${metalColor === option.value ? styles.selectedChip : ''}`}
+                      key={option.value}
+                      onClick={() => setMetalColor(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className={styles.fieldset}>
+                <legend>Finish direction</legend>
+                <div className={styles.optionRow}>
+                  {finishDirections.map((option) => (
+                    <button
+                      className={`${styles.choiceChip} ${
+                        finishDirection === option.value ? styles.selectedChip : ''
+                      }`}
+                      key={option.value}
+                      onClick={() => setFinishDirection(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+
+            <label className={styles.field}>
+              <span>Optional metal note</span>
+              <textarea
+                onChange={(event) => setMetalNote(event.target.value)}
+                placeholder="Example: warm yellow gold look, durable enough for daily wear."
+                value={metalNote}
+              />
+            </label>
+          </section>
+          ) : null}
+
+          {isReviewStep ? (
+            <section className={`${styles.selectorGroup} ${styles.reviewIntro}`}>
+              <div className={styles.sectionHeading}>
+                <h2>Review brief</h2>
+                <p>Confirm the concept direction before continuing to the next AI sketch brief step.</p>
+              </div>
+              <div
+                className={`${styles.stepVisual} ${styles[conceptSteps[4].visualClass]}`}
+                aria-hidden="true"
+                style={stepVisualStyle(4)}
+              />
+              <p className={styles.helperNote}>
+                This brief prepares your AI hand-drawn concept sketch direction. Professional CAD is a separate paid
+                step, and final production feasibility, material cost, and setting details are confirmed later.
+              </p>
+            </section>
+          ) : (
+            <div className={styles.stepActions}>
+              {activeStep === 0 ? (
+                <Link className="btnSecondary" href="/design/start">
+                  Back to /design/start
+                </Link>
+              ) : (
+                <button className="btnSecondary" onClick={goToPreviousStep} type="button">
+                  Back
+                </button>
+              )}
+              <button className="btn" onClick={goToNextStep} type="button">
+                Next
+              </button>
+            </div>
+          )}
         </form>
 
-        <aside className={styles.summaryPanel} aria-label="Brief summary">
+        <aside
+          className={`${styles.summaryPanel} ${isReviewStep ? styles.reviewSummary : styles.compactSummary}`}
+          aria-label="Brief summary"
+        >
           <div className={styles.summaryHeader}>
             <p className={styles.step}>Brief Summary</p>
-            <h2>Main stone direction</h2>
+            <h2>{isReviewStep ? 'Complete concept direction' : currentStep.label}</h2>
           </div>
 
           <dl className={styles.summaryList}>
-            {summaryItems.map(([label, value]) => (
+            {visibleSummaryItems.map(([label, value]) => (
               <div key={label}>
                 <dt>{label}</dt>
                 <dd>{value}</dd>
@@ -758,20 +1041,30 @@ export default function DesignConceptPage() {
             the design direction is confirmed.
           </p>
 
-          <div className={styles.actions}>
-            <Link className="btnSecondary" href="/design/start">
-              Back to /design/start
-            </Link>
-            <button
-              className="btn"
-              onClick={() => setPlaceholderMessage('Next concept step placeholder. No information has been saved yet.')}
-              type="button"
-            >
-              Continue to next concept step
-            </button>
-          </div>
-          {placeholderMessage ? <p className={styles.placeholderMessage}>{placeholderMessage}</p> : null}
+          {isReviewStep ? (
+            <>
+              <div className={styles.actions}>
+                <button className="btnSecondary" onClick={goToPreviousStep} type="button">
+                  Back
+                </button>
+                <Link className="btnSecondary" href="/design/start">
+                  Back to /design/start
+                </Link>
+                <button
+                  className="btn"
+                  onClick={() =>
+                    setPlaceholderMessage('Next concept step placeholder. No information has been saved yet.')
+                  }
+                  type="button"
+                >
+                  Continue to next concept step
+                </button>
+              </div>
+              {placeholderMessage ? <p className={styles.placeholderMessage}>{placeholderMessage}</p> : null}
+            </>
+          ) : null}
         </aside>
+      </div>
       </div>
     </main>
   );
