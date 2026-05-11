@@ -20,10 +20,10 @@ const recipients: Option[] = [
 
 const jewelryTypes: Option[] = [
   { value: 'ring', label: 'Ring', detail: 'Center stone, band, or statement', asset: '/assets/icon_jewelry_ring.png' },
-  { value: 'pendant', label: 'Pendant', detail: 'Symbolic, wearable, personal', asset: '/assets/icon_jewelry_pendant.png' },
-  { value: 'earrings', label: 'Earrings', detail: 'Pair, drop, or daily accent', asset: '/assets/icon_jewelry_earrings.png' },
-  { value: 'bracelet', label: 'Bracelet', detail: 'Clean, sculptural, or sentimental', asset: '/assets/icon_jewelry_bracelet.png' },
-  { value: 'other', label: 'Other', detail: 'Cufflinks, brooches, pins, hair pieces, tags, keepsakes, pet pieces, or custom forms', asset: '/assets/icon_jewelry_other.png' },
+  { value: 'pendant_necklace', label: 'Pendant / Necklace', detail: 'Pendant only, pendant with a matching chain, or a standalone necklace.', asset: '/assets/icon_jewelry_pendant.png' },
+  { value: 'bracelet_bangle', label: 'Bracelet / Bangle', detail: 'Chain bracelet, tennis bracelet, bangle, cuff, charm, or ID bracelet', asset: '/assets/icon_jewelry_bracelet.png' },
+  { value: 'earrings', label: 'Earrings', detail: 'Studs, drops, hoops, huggies, or custom earrings', asset: '/assets/icon_jewelry_earrings.png' },
+  { value: 'other_custom', label: 'Other / custom piece', detail: 'Cufflinks, brooches, pins, hair pieces, tags, keepsakes, or custom forms', asset: '/assets/icon_jewelry_other.png' },
 ];
 
 const styleOptions: Option[] = [
@@ -46,6 +46,7 @@ export default function DesignStartPage() {
   const recipientLabel = recipients.find((item) => item.value === selectedRecipient)?.label;
   const jewelryLabel = jewelryTypes.find((item) => item.value === selectedJewelryType)?.label;
   const styleLabel = styleOptions.find((item) => item.value === selectedStyle)?.label;
+  const conceptHref = `/design/concept?pieceType=${selectedJewelryType}`;
 
   return (
     <main className={styles.page}>
@@ -68,7 +69,7 @@ export default function DesignStartPage() {
           />
 
           <SelectionSection
-            title="Jewelry type"
+            title="Piece type"
             subtitle="Choose a starting form"
             options={jewelryTypes}
             selected={selectedJewelryType}
@@ -109,7 +110,7 @@ export default function DesignStartPage() {
               <span>Optional for the first concept sketch</span>
             </div>
             <div className={styles.uploadArea}>
-              <span className={styles.uploadIcon} aria-hidden="true">↑</span>
+              <span className={styles.uploadIcon} aria-hidden="true">-&gt;</span>
               <strong>Drag & drop images here / or click to browse</strong>
               <p>Drop inspiration photos, sketches, or meaningful symbols.</p>
             </div>
@@ -141,7 +142,7 @@ export default function DesignStartPage() {
               <p className={styles.note}>
                 You will receive an AI concept sketch first. Professional CAD is a separate paid step.
               </p>
-              <Link href="/design/concept" className={styles.cta}>Continue to Concept</Link>
+              <Link href={conceptHref} className={styles.cta}>Continue to Concept</Link>
             </article>
           </div>
         </aside>
