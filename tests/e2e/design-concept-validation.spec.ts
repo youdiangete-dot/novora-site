@@ -216,3 +216,41 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await expect(page.getByText('Manual confirmation').first()).toBeVisible();
   });
 });
+
+test.describe('/design/brief submission', () => {
+  test('submits a valid concept brief and opens the submitted confirmation page', async ({ page }) => {
+    await openConcept(page, 'bracelet_bangle');
+    await chooseButton(page, 'Bangle');
+    await chooseButton(page, 'Metal-only bangle');
+    await goToStoneLogic(page);
+    await goToBriefResult(page);
+
+    await expect(page.getByText('Reference images').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/submitted$/);
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+    await expect(page.getByText(/NOVORA-CB-\d{8}-[A-Z0-9]{4}/)).toBeVisible();
+    await expect(
+      page.getByText(
+        'This is not a CAD-ready production order. Final CAD, pricing, sourcing, and production feasibility are confirmed later.',
+      ),
+    ).toBeVisible();
+
+    const submittedBrief = await page.evaluate(() => {
+      const rawBrief = window.localStorage.getItem('novora_submitted_concept_brief');
+      return rawBrief ? JSON.parse(rawBrief) : null;
+    });
+
+    expect(submittedBrief).toMatchObject({
+      pieceType: 'bracelet_bangle',
+      structure: 'bracelet_bangle',
+      subStructure: 'bangle_metal_only',
+      stoneLogic: 'none',
+      referenceImageCount: 0,
+      referenceImageNames: [],
+    });
+    expect(submittedBrief.conceptBriefId).toMatch(/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/);
+    expect(submittedBrief.submittedAt).toEqual(expect.any(String));
+  });
+});

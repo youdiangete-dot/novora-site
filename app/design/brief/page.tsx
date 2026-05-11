@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import styles from './brief.module.css';
 
@@ -77,6 +78,7 @@ type StoredConceptBrief = {
 };
 
 const STORAGE_KEY = 'novora_concept_brief';
+const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 
 const labels: Record<string, Record<string, string>> = {
   pieceType: {
@@ -420,10 +422,22 @@ function addChainBriefItems(items: SummaryItem[], brief: StoredConceptBrief) {
   addBriefItem(items, 'Chain note', brief.chainNote?.trim() || 'Not sure yet');
 }
 
+function generateConceptBriefId() {
+  const now = new Date();
+  const date = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('');
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, '0');
+
+  return `NOVORA-CB-${date}-${suffix}`;
+}
+
 export default function DesignBriefPage() {
+  const router = useRouter();
   const [brief, setBrief] = useState<StoredConceptBrief | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [confirmationMessage, setConfirmationMessage] = useState('');
 
   useEffect(() => {
     try {
@@ -503,6 +517,29 @@ export default function DesignBriefPage() {
     addBriefItem(items, 'Must avoid', brief.mustAvoid);
     return items;
   }, [brief]);
+
+  function submitConceptBrief() {
+    if (!brief) {
+      return;
+    }
+
+    const submittedBrief = {
+      conceptBriefId: generateConceptBriefId(),
+      submittedAt: new Date().toISOString(),
+      pieceType: brief.pieceType || '',
+      branch: brief.branch || '',
+      structure: brief.structure || '',
+      subStructure: brief.subStructure || '',
+      stoneLogic: brief.stoneLogic || '',
+      referenceImageCount: brief.referenceImageCount || 0,
+      referenceImageNames: brief.referenceImageNames || [],
+      referenceNotes: brief.referenceNotes || '',
+      ...(brief.aiSketchInstruction ? { aiSketchInstruction: brief.aiSketchInstruction } : {}),
+    };
+
+    window.localStorage.setItem(SUBMITTED_BRIEF_STORAGE_KEY, JSON.stringify(submittedBrief));
+    router.push('/design/submitted');
+  }
 
   const aiBrief = useMemo(() => {
     if (!brief) {
@@ -689,14 +726,10 @@ export default function DesignBriefPage() {
             <div className={styles.actions}>
               <button
                 className={styles.primaryButton}
-                onClick={() =>
-                  setConfirmationMessage(
-                    'Your concept brief is prepared. Submission and order intake will be connected in the next step.',
-                  )
-                }
+                onClick={submitConceptBrief}
                 type="button"
               >
-                Prepare my AI concept sketch
+                Submit concept brief
               </button>
               <Link className={styles.secondaryButton} href="/design/pro-cad">
                 Continue to paid CAD process
@@ -706,9 +739,9 @@ export default function DesignBriefPage() {
               </Link>
             </div>
             <p className={styles.readyMessage}>
-              Your brief is ready for NOVORA to prepare the first AI hand-drawn concept sketch.
+              This saves a front-end-only concept brief record for AI hand-drawn sketch review. It does not place an
+              order, upload files, or confirm CAD, pricing, payment, sourcing, or production.
             </p>
-            {confirmationMessage ? <p className={styles.placeholderMessage}>{confirmationMessage}</p> : null}
           </aside>
         </section>
 
