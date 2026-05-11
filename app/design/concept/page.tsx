@@ -345,6 +345,12 @@ const stoneTypes: Option[] = [
   { label: 'Not sure yet', value: 'not_sure' },
 ];
 
+const multiStoneTypeMixes: Option[] = [
+  ...stoneTypes.slice(0, -1),
+  { label: 'Mixed stones', value: 'mixed_stones' },
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
 const stoneColors: Option[] = [
   { label: 'Blue', value: 'blue' },
   { label: 'Green', value: 'green' },
@@ -370,29 +376,10 @@ const cutOptions: Option[] = [
   { label: 'Not sure yet', value: 'not_sure' },
 ];
 
-const multiStoneTypeMixes: Option[] = [
-  { label: 'Lab diamond', value: 'lab_diamond' },
-  { label: 'Natural diamond', value: 'natural_diamond' },
-  { label: 'Lab-grown colored gemstone', value: 'lab_grown_colored_gemstone' },
-  { label: 'Natural colored gemstone', value: 'natural_colored_gemstone' },
-  { label: 'Moissanite', value: 'moissanite' },
-  { label: 'Pearl', value: 'pearl' },
-  { label: 'Mixed stones', value: 'mixed_stones' },
-  { label: 'Not sure yet', value: 'not_sure' },
-];
-
 const multiStoneShapeMixes: Option[] = [
   { label: 'Same shape', value: 'same_shape' },
   { label: 'Mixed shapes', value: 'mixed_shapes' },
-  { label: 'Round', value: 'round' },
-  { label: 'Oval', value: 'oval' },
-  { label: 'Pear', value: 'pear' },
-  { label: 'Emerald', value: 'emerald' },
-  { label: 'Cushion', value: 'cushion' },
-  { label: 'Marquise', value: 'marquise' },
-  { label: 'Heart', value: 'heart' },
-  { label: 'Other fancy cut', value: 'other_fancy_cut' },
-  { label: 'Custom', value: 'custom' },
+  ...cutOptions.slice(0, -1),
   { label: 'Not sure yet', value: 'not_sure' },
 ];
 
@@ -1029,6 +1016,9 @@ function DesignConceptIntake() {
     focalStoneType,
     isBraceletBangle,
     isChainBracelet,
+    multiStoneShapeMix,
+    multiStoneSizeRelationship,
+    multiStoneTypeMix,
     isOtherCustom,
     isPendantNecklace,
     isSimpleBand,
@@ -1404,7 +1394,12 @@ function DesignConceptIntake() {
                       <OptionField title="Stone type / stone mix" options={multiStoneTypeMixes} value={multiStoneTypeMix} onChange={setMultiStoneTypeMix} />
                       <OptionField title="Color direction" options={stoneColors} value={focalStoneColor} onChange={setFocalStoneColor} />
                       <OptionField title="Shape / cut mix" options={multiStoneShapeMixes} value={multiStoneShapeMix} onChange={setMultiStoneShapeMix} />
-                      <OptionField title="Stone size relationship" options={multiStoneSizeRelationships} value={multiStoneSizeRelationship} onChange={setMultiStoneSizeRelationship} />
+                      <OptionField
+                        title="Stone size relationship"
+                        options={multiStoneSizeRelationships}
+                        value={multiStoneSizeRelationship}
+                        onChange={setMultiStoneSizeRelationship}
+                      />
                     </div>
                     <label className={styles.field}>
                       <span>Multi-stone layout direction</span>

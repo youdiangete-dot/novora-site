@@ -257,6 +257,16 @@ const labels: Record<string, Record<string, string>> = {
     pearl: 'Pearl',
     not_sure: 'Not sure yet',
   },
+  multiStoneTypeMix: {
+    lab_diamond: 'Lab diamond',
+    natural_diamond: 'Natural diamond',
+    lab_grown_colored_gemstone: 'Lab-grown colored gemstone',
+    natural_colored_gemstone: 'Natural colored gemstone',
+    moissanite: 'Moissanite',
+    pearl: 'Pearl',
+    mixed_stones: 'Mixed stones',
+    not_sure: 'Not sure yet',
+  },
   focalStoneColor: {
     blue: 'Blue',
     green: 'Green',
@@ -278,16 +288,6 @@ const labels: Record<string, Record<string, string>> = {
     heart: 'Heart',
     other_fancy_cut: 'Other fancy cut',
     custom: 'Custom',
-    not_sure: 'Not sure yet',
-  },
-  multiStoneTypeMix: {
-    lab_diamond: 'Lab diamond',
-    natural_diamond: 'Natural diamond',
-    lab_grown_colored_gemstone: 'Lab-grown colored gemstone',
-    natural_colored_gemstone: 'Natural colored gemstone',
-    moissanite: 'Moissanite',
-    pearl: 'Pearl',
-    mixed_stones: 'Mixed stones',
     not_sure: 'Not sure yet',
   },
   multiStoneShapeMix: {
