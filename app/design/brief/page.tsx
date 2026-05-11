@@ -24,10 +24,19 @@ type StoredConceptBrief = {
   chainLength?: string;
   chainNote?: string;
   manualChainConfirmationRequired?: boolean;
+  braceletStructureNote?: string;
+  stationType?: string;
+  stationSpacing?: string;
+  stationDetailSize?: string;
+  stationSetting?: string;
+  stationNote?: string;
   focalStoneType?: string;
   focalStoneColor?: string;
   focalStoneSize?: string;
   focalStoneShape?: string;
+  multiStoneTypeMix?: string;
+  multiStoneShapeMix?: string;
+  multiStoneSizeRelationship?: string;
   multiStoneLayout?: string;
   repeatedStoneCoverage?: string;
   repeatedStoneFeeling?: string;
@@ -127,6 +136,26 @@ const labels: Record<string, Record<string, string>> = {
     not_sure: 'Not sure yet',
   },
   subStructure: {
+    bangle_metal_only: 'Metal-only bangle',
+    bangle_local_stone: 'Single/local stone accent',
+    bangle_multi_stone: 'Multi-stone bangle',
+    bangle_pave_full: 'Pave / fully set bangle',
+    bangle_custom: 'Custom bangle direction',
+    cuff_metal_only: 'Metal-only cuff',
+    cuff_local_stone: 'Single/local stone accent',
+    cuff_multi_stone: 'Multi-stone cuff',
+    cuff_pave_full: 'Pave / fully set cuff',
+    bracelet_cuff_custom: 'Custom cuff direction',
+    charm_metal_only: 'Metal-only charm bracelet',
+    charm_local_stone: 'Charm with single/local stone',
+    charm_multi_stone: 'Multiple stone charms',
+    charm_pave_stone_set: 'Pave / stone-set charms',
+    charm_custom: 'Custom charm bracelet direction',
+    nameplate_metal_only: 'Metal-only nameplate',
+    nameplate_small_stone_accents: 'Nameplate with small stone accents',
+    nameplate_pave_stone_set: 'Pave / stone-set nameplate',
+    nameplate_engraved_text: 'Engraved / text-focused',
+    nameplate_custom: 'Custom nameplate bracelet direction',
     stud_center_stone: 'Center-stone stud',
     stud_cluster: 'Cluster stud',
     stud_pave: 'Pave stud',
@@ -184,6 +213,33 @@ const labels: Record<string, Record<string, string>> = {
     not_sure: 'Not sure yet',
     special_request: 'Special request / manual confirmation',
   },
+  stationType: {
+    small_stone_stations: 'Small stone stations',
+    pearl_bead_stations: 'Pearl / bead stations',
+    metal_motif_stations: 'Metal motif stations',
+    mixed_stations: 'Mixed stations',
+    not_sure: 'Not sure yet',
+  },
+  stationSpacing: {
+    even_spacing: 'Even spacing',
+    front_focused_stations: 'Front-focused stations',
+    scattered_stations: 'Scattered stations',
+    graduated_spacing: 'Graduated spacing',
+    not_sure: 'Not sure yet',
+  },
+  stationDetailSize: {
+    very_small_accents: 'Very small accents',
+    small_visible_stations: 'Small visible stations',
+    mixed_sizes: 'Mixed sizes',
+    not_sure: 'Not sure yet',
+  },
+  stationSetting: {
+    bezel_set: 'Bezel set',
+    prong_set: 'Prong set',
+    wire_connected: 'Wire connected',
+    fixed_onto_chain: 'Fixed onto chain',
+    not_sure: 'Not sure yet',
+  },
   stoneLogic: {
     none: 'No required stones',
     center_stone: 'Center stone / focal stone',
@@ -222,6 +278,37 @@ const labels: Record<string, Record<string, string>> = {
     heart: 'Heart',
     other_fancy_cut: 'Other fancy cut',
     custom: 'Custom',
+    not_sure: 'Not sure yet',
+  },
+  multiStoneTypeMix: {
+    lab_diamond: 'Lab diamond',
+    natural_diamond: 'Natural diamond',
+    lab_grown_colored_gemstone: 'Lab-grown colored gemstone',
+    natural_colored_gemstone: 'Natural colored gemstone',
+    moissanite: 'Moissanite',
+    pearl: 'Pearl',
+    mixed_stones: 'Mixed stones',
+    not_sure: 'Not sure yet',
+  },
+  multiStoneShapeMix: {
+    same_shape: 'Same shape',
+    mixed_shapes: 'Mixed shapes',
+    round: 'Round',
+    oval: 'Oval',
+    pear: 'Pear',
+    emerald: 'Emerald',
+    cushion: 'Cushion',
+    marquise: 'Marquise',
+    heart: 'Heart',
+    other_fancy_cut: 'Other fancy cut',
+    custom: 'Custom',
+    not_sure: 'Not sure yet',
+  },
+  multiStoneSizeRelationship: {
+    same_size_stones: 'Same size stones',
+    center_larger_side_stones: 'Center larger with smaller side stones',
+    graduated_sizes: 'Graduated sizes',
+    mixed_sizes: 'Mixed sizes',
     not_sure: 'Not sure yet',
   },
   repeatedStoneCoverage: {
@@ -326,6 +413,13 @@ function addBriefItem(items: SummaryItem[], labelText: string, value?: string) {
   }
 }
 
+function addChainBriefItems(items: SummaryItem[], brief: StoredConceptBrief) {
+  addBriefItem(items, 'Chain style', labelRequired('chainStyle', brief.chainStyle));
+  addBriefItem(items, 'Chain thickness / wire profile', labelRequired('chainThickness', brief.chainThickness));
+  addBriefItem(items, 'Chain length', labelRequired('chainLength', brief.chainLength));
+  addBriefItem(items, 'Chain note', brief.chainNote?.trim() || 'Not sure yet');
+}
+
 export default function DesignBriefPage() {
   const [brief, setBrief] = useState<StoredConceptBrief | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -359,7 +453,35 @@ export default function DesignBriefPage() {
     addBriefItem(items, 'Branch', label('branch', brief.branch));
     addBriefItem(items, 'Structure', label('structure', brief.structure));
     addBriefItem(items, 'Sub-structure', label('subStructure', brief.subStructure));
+    if (brief.structure === 'bracelet_chain') {
+      addBriefItem(items, 'Chain bracelet structure note', brief.braceletStructureNote?.trim() || 'Not sure yet');
+    }
+    if (brief.structure === 'necklace_station') {
+      addBriefItem(items, 'Station type', labelRequired('stationType', brief.stationType));
+      addBriefItem(items, 'Station spacing direction', labelRequired('stationSpacing', brief.stationSpacing));
+      addBriefItem(items, 'Station stone / detail size', labelRequired('stationDetailSize', brief.stationDetailSize));
+      addBriefItem(
+        items,
+        'Station setting / connection direction',
+        labelRequired('stationSetting', brief.stationSetting),
+      );
+      addBriefItem(items, 'Station necklace note', brief.stationNote?.trim() || 'Not sure yet');
+    }
+    if (brief.chainIncluded) {
+      addChainBriefItems(items, brief);
+    }
     addBriefItem(items, 'Stone logic', label('stoneLogic', brief.stoneLogic));
+    if (brief.stoneLogic === 'multi_stone') {
+      addBriefItem(items, 'Stone type / stone mix', labelRequired('multiStoneTypeMix', brief.multiStoneTypeMix));
+      addBriefItem(items, 'Color direction', labelRequired('focalStoneColor', brief.focalStoneColor));
+      addBriefItem(items, 'Shape / cut mix', labelRequired('multiStoneShapeMix', brief.multiStoneShapeMix));
+      addBriefItem(
+        items,
+        'Stone size relationship',
+        labelRequired('multiStoneSizeRelationship', brief.multiStoneSizeRelationship),
+      );
+      addBriefItem(items, 'Multi-stone layout direction', brief.multiStoneLayout?.trim() || 'Not sure yet');
+    }
     addBriefItem(items, 'Visual focus', brief.visualFocus);
     addBriefItem(items, 'Style direction', label('styleDirection', brief.styleDirection));
     if (brief.pieceType === 'ring' && brief.structure === 'ring_simple_band') {
@@ -393,6 +515,20 @@ export default function DesignBriefPage() {
     addBriefItem(items, 'Branch', label('branch', brief.branch));
     addBriefItem(items, 'Structure', label('structure', brief.structure));
     addBriefItem(items, 'Sub-structure', label('subStructure', brief.subStructure));
+    if (brief.structure === 'bracelet_chain') {
+      addBriefItem(items, 'Chain bracelet structure note', brief.braceletStructureNote?.trim() || 'Not sure yet');
+    }
+    if (brief.structure === 'necklace_station') {
+      addBriefItem(items, 'Station type', labelRequired('stationType', brief.stationType));
+      addBriefItem(items, 'Station spacing direction', labelRequired('stationSpacing', brief.stationSpacing));
+      addBriefItem(items, 'Station stone / detail size', labelRequired('stationDetailSize', brief.stationDetailSize));
+      addBriefItem(
+        items,
+        'Station setting / connection direction',
+        labelRequired('stationSetting', brief.stationSetting),
+      );
+      addBriefItem(items, 'Station necklace note', brief.stationNote?.trim() || 'Not sure yet');
+    }
     addBriefItem(items, 'Stone logic', label('stoneLogic', brief.stoneLogic));
 
     if (brief.stoneLogic === 'center_stone') {
@@ -411,8 +547,15 @@ export default function DesignBriefPage() {
     }
 
     if (brief.stoneLogic === 'multi_stone') {
-      addBriefItem(items, 'Multi-stone direction', brief.multiStoneLayout);
-      addBriefItem(items, 'Stone direction', [label('focalStoneType', brief.focalStoneType), label('focalStoneColor', brief.focalStoneColor), label('focalStoneShape', brief.focalStoneShape)].filter(Boolean).join(', '));
+      addBriefItem(items, 'Stone type / stone mix', labelRequired('multiStoneTypeMix', brief.multiStoneTypeMix));
+      addBriefItem(items, 'Color direction', labelRequired('focalStoneColor', brief.focalStoneColor));
+      addBriefItem(items, 'Shape / cut mix', labelRequired('multiStoneShapeMix', brief.multiStoneShapeMix));
+      addBriefItem(
+        items,
+        'Stone size relationship',
+        labelRequired('multiStoneSizeRelationship', brief.multiStoneSizeRelationship),
+      );
+      addBriefItem(items, 'Multi-stone layout direction', brief.multiStoneLayout?.trim() || 'Not sure yet');
     }
 
     if (brief.stoneLogic === 'repeated_stone') {
@@ -436,18 +579,7 @@ export default function DesignBriefPage() {
     }
 
     if (brief.chainIncluded) {
-      addBriefItem(
-        items,
-        'Chain direction',
-        [
-          labelRequired('chainStyle', brief.chainStyle),
-          labelRequired('chainThickness', brief.chainThickness),
-          labelRequired('chainLength', brief.chainLength),
-          brief.chainNote?.trim() || 'Chain note: Not sure yet',
-        ]
-          .filter(Boolean)
-          .join(', '),
-      );
+      addChainBriefItems(items, brief);
     }
 
     if (brief.pieceType === 'ring' && brief.structure === 'ring_simple_band') {
