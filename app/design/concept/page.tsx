@@ -37,6 +37,12 @@ type StoredConceptBrief = {
   chainLength: string;
   chainNote: string;
   manualChainConfirmationRequired: boolean;
+  braceletStructureNote: string;
+  stationType: string;
+  stationSpacing: string;
+  stationDetailSize: string;
+  stationSetting: string;
+  stationNote: string;
   focalStoneType: string;
   focalStoneColor: string;
   focalStoneSize: string;
@@ -147,7 +153,7 @@ const pendantStructures: Option[] = [
 
 const necklaceStructures: Option[] = [
   { label: 'Machine-woven chain', value: 'necklace_machine_woven_chain', stoneLogic: 'none', description: 'A simple chain direction with no required stone module.' },
-  { label: 'Station necklace', value: 'necklace_station', stoneLogic: 'optional_stone', description: 'A chain with optional spaced details or small stone stations.' },
+  { label: 'Station necklace', value: 'necklace_station', description: 'A chain with spaced stations, stones, pearls, beads, or motif details.' },
   { label: 'Tennis necklace', value: 'necklace_tennis', stoneLogic: 'repeated_stone', description: 'A continuous matched-stone necklace direction.' },
   { label: 'Stone-set necklace', value: 'necklace_stone_set', stoneLogic: 'repeated_stone', description: 'A necklace where repeated stones are part of the structure.' },
   { label: 'Full pave necklace', value: 'necklace_full_pave', stoneLogic: 'repeated_stone', description: 'Dense stone coverage across the necklace direction.' },
@@ -158,13 +164,48 @@ const necklaceStructures: Option[] = [
 const braceletStructures: Option[] = [
   { label: 'Chain bracelet', value: 'bracelet_chain', stoneLogic: 'none', description: 'A simple chain bracelet direction.' },
   { label: 'Tennis bracelet', value: 'bracelet_tennis', stoneLogic: 'repeated_stone', description: 'A continuous matched-stone bracelet.' },
-  { label: 'Bangle', value: 'bracelet_bangle', stoneLogic: 'optional_stone', description: 'A rigid bangle direction with optional stone detail.' },
-  { label: 'Cuff bracelet', value: 'bracelet_cuff', stoneLogic: 'optional_stone', description: 'A cuff structure with optional stone or symbol detail.' },
-  { label: 'Charm bracelet', value: 'bracelet_charm', stoneLogic: 'optional_stone', description: 'A bracelet with charm or pendant elements.' },
-  { label: 'ID / nameplate bracelet', value: 'bracelet_id_nameplate', stoneLogic: 'optional_stone', description: 'A bracelet focused on text, plate, or symbol detail.' },
+  { label: 'Bangle', value: 'bracelet_bangle', description: 'A rigid bangle direction with its own stone or metal-only choice.' },
+  { label: 'Cuff bracelet', value: 'bracelet_cuff', description: 'A cuff structure with its own stone or metal-only choice.' },
+  { label: 'Charm bracelet', value: 'bracelet_charm', description: 'A charm bracelet direction with charm-specific stone choices.' },
+  { label: 'ID / nameplate bracelet', value: 'bracelet_id_nameplate', description: 'A bracelet focused on text, plate, symbol, or stone detail.' },
   { label: 'Custom bracelet direction', value: 'bracelet_custom', stoneLogic: 'manual_review', description: 'A special bracelet idea NOVORA should review manually.' },
   { label: 'Not sure yet', value: 'not_sure', description: 'Let NOVORA suggest the bracelet structure.' },
 ];
+
+const braceletSubStructures: Record<string, Option[]> = {
+  bracelet_bangle: [
+    { label: 'Metal-only bangle', value: 'bangle_metal_only', stoneLogic: 'none' },
+    { label: 'Single/local stone accent', value: 'bangle_local_stone', stoneLogic: 'center_stone' },
+    { label: 'Multi-stone bangle', value: 'bangle_multi_stone', stoneLogic: 'multi_stone' },
+    { label: 'Pave / fully set bangle', value: 'bangle_pave_full', stoneLogic: 'repeated_stone' },
+    { label: 'Custom bangle direction', value: 'bangle_custom', stoneLogic: 'manual_review' },
+    { label: 'Not sure yet', value: 'not_sure' },
+  ],
+  bracelet_cuff: [
+    { label: 'Metal-only cuff', value: 'cuff_metal_only', stoneLogic: 'none' },
+    { label: 'Single/local stone accent', value: 'cuff_local_stone', stoneLogic: 'center_stone' },
+    { label: 'Multi-stone cuff', value: 'cuff_multi_stone', stoneLogic: 'multi_stone' },
+    { label: 'Pave / fully set cuff', value: 'cuff_pave_full', stoneLogic: 'repeated_stone' },
+    { label: 'Custom cuff direction', value: 'bracelet_cuff_custom', stoneLogic: 'manual_review' },
+    { label: 'Not sure yet', value: 'not_sure' },
+  ],
+  bracelet_charm: [
+    { label: 'Metal-only charm bracelet', value: 'charm_metal_only', stoneLogic: 'none' },
+    { label: 'Charm with single/local stone', value: 'charm_local_stone', stoneLogic: 'center_stone' },
+    { label: 'Multiple stone charms', value: 'charm_multi_stone', stoneLogic: 'multi_stone' },
+    { label: 'Pave / stone-set charms', value: 'charm_pave_stone_set', stoneLogic: 'repeated_stone' },
+    { label: 'Custom charm bracelet direction', value: 'charm_custom', stoneLogic: 'manual_review' },
+    { label: 'Not sure yet', value: 'not_sure' },
+  ],
+  bracelet_id_nameplate: [
+    { label: 'Metal-only nameplate', value: 'nameplate_metal_only', stoneLogic: 'none' },
+    { label: 'Nameplate with small stone accents', value: 'nameplate_small_stone_accents', stoneLogic: 'optional_stone' },
+    { label: 'Pave / stone-set nameplate', value: 'nameplate_pave_stone_set', stoneLogic: 'repeated_stone' },
+    { label: 'Engraved / text-focused', value: 'nameplate_engraved_text', stoneLogic: 'none' },
+    { label: 'Custom nameplate bracelet direction', value: 'nameplate_custom', stoneLogic: 'manual_review' },
+    { label: 'Not sure yet', value: 'not_sure' },
+  ],
+};
 
 const earringStructures: Option[] = [
   { label: 'Stud earrings', value: 'earrings_stud', description: 'Compact stud earring direction.' },
@@ -386,6 +427,37 @@ const repeatedSettingStyles: Option[] = [
   { label: 'Not sure yet', value: 'not_sure' },
 ];
 
+const stationTypes: Option[] = [
+  { label: 'Small stone stations', value: 'small_stone_stations' },
+  { label: 'Pearl / bead stations', value: 'pearl_bead_stations' },
+  { label: 'Metal motif stations', value: 'metal_motif_stations' },
+  { label: 'Mixed stations', value: 'mixed_stations' },
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
+const stationSpacings: Option[] = [
+  { label: 'Even spacing', value: 'even_spacing' },
+  { label: 'Front-focused stations', value: 'front_focused_stations' },
+  { label: 'Scattered stations', value: 'scattered_stations' },
+  { label: 'Graduated spacing', value: 'graduated_spacing' },
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
+const stationDetailSizes: Option[] = [
+  { label: 'Very small accents', value: 'very_small_accents' },
+  { label: 'Small visible stations', value: 'small_visible_stations' },
+  { label: 'Mixed sizes', value: 'mixed_sizes' },
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
+const stationSettings: Option[] = [
+  { label: 'Bezel set', value: 'bezel_set' },
+  { label: 'Prong set', value: 'prong_set' },
+  { label: 'Wire connected', value: 'wire_connected' },
+  { label: 'Fixed onto chain', value: 'fixed_onto_chain' },
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
 const conceptSteps = [
   { label: 'Piece direction', backgroundSrc: '/assets/design/concept/backgrounds/gemstone-color-sketch-bg.png', visualClass: 'visualBasics' },
   { label: 'Stone logic', backgroundSrc: '/assets/design/concept/backgrounds/stone-cut-sketch-bg.png', visualClass: 'visualShape' },
@@ -447,6 +519,12 @@ function DesignConceptIntake() {
   const [chainThickness, setChainThickness] = useState('not_sure');
   const [chainLength, setChainLength] = useState('not_sure');
   const [chainNote, setChainNote] = useState('');
+  const [braceletStructureNote, setBraceletStructureNote] = useState('');
+  const [stationType, setStationType] = useState('not_sure');
+  const [stationSpacing, setStationSpacing] = useState('not_sure');
+  const [stationDetailSize, setStationDetailSize] = useState('not_sure');
+  const [stationSetting, setStationSetting] = useState('not_sure');
+  const [stationNote, setStationNote] = useState('');
 
   const [focalStoneType, setFocalStoneType] = useState('not_sure');
   const [focalStoneColor, setFocalStoneColor] = useState('not_sure');
@@ -500,6 +578,9 @@ function DesignConceptIntake() {
   const isPendantNecklace = pieceType === 'pendant_necklace';
   const isOtherCustom = pieceType === 'other_custom';
   const isSimpleBand = pieceType === 'ring' && structure === 'ring_simple_band';
+  const isBraceletBangle = pieceType === 'bracelet_bangle';
+  const isStationNecklace = pieceType === 'pendant_necklace' && structure === 'necklace_station';
+  const isChainBracelet = pieceType === 'bracelet_bangle' && structure === 'bracelet_chain';
   const manualChainConfirmationRequired =
     chainStyle === 'special_request' || chainThickness === 'special_request' || chainLength === 'special_request';
   const referenceImageNames = referenceImages.map((image) => image.name);
@@ -540,7 +621,12 @@ function DesignConceptIntake() {
     return [];
   }, [branch, pieceType]);
 
-  const currentSubStructureOptions = pieceType === 'earrings' ? earringSubStructures[structure] || [] : [];
+  const currentSubStructureOptions =
+    pieceType === 'earrings'
+      ? earringSubStructures[structure] || []
+      : pieceType === 'bracelet_bangle'
+        ? braceletSubStructures[structure] || []
+        : [];
   const selectedStructure = findOption(structure, [
     ringStructures,
     pendantStructures,
@@ -549,7 +635,10 @@ function DesignConceptIntake() {
     earringStructures,
     customPieceStructures,
   ]);
-  const selectedSubStructure = findOption(subStructure, Object.values(earringSubStructures));
+  const selectedSubStructure = findOption(subStructure, [
+    ...Object.values(earringSubStructures),
+    ...Object.values(braceletSubStructures),
+  ]);
 
   const stoneLogic: StoneLogic = useMemo(() => {
     if (!pieceType || structure === 'not_sure' || branch === 'not_sure') {
@@ -566,6 +655,14 @@ function DesignConceptIntake() {
       }
 
       return selectedSubStructure?.stoneLogic || '';
+    }
+
+    if (pieceType === 'bracelet_bangle') {
+      if (selectedStructure?.stoneLogic === 'manual_review') {
+        return 'manual_review';
+      }
+
+      return selectedSubStructure?.stoneLogic || selectedStructure?.stoneLogic || '';
     }
 
     return selectedStructure?.stoneLogic || '';
@@ -628,6 +725,18 @@ function DesignConceptIntake() {
     setChainNote('');
   }
 
+  function resetBraceletFields() {
+    setBraceletStructureNote('');
+  }
+
+  function resetStationFields() {
+    setStationType('not_sure');
+    setStationSpacing('not_sure');
+    setStationDetailSize('not_sure');
+    setStationSetting('not_sure');
+    setStationNote('');
+  }
+
   function resetCustomFields() {
     setCustomUse('');
     setCustomLook('');
@@ -667,6 +776,8 @@ function DesignConceptIntake() {
     setSubStructure('');
     setEarringPairDirection('');
     resetChainFields();
+    resetBraceletFields();
+    resetStationFields();
     resetStoneFields();
     resetCustomFields();
     resetSketchFields();
@@ -678,6 +789,7 @@ function DesignConceptIntake() {
     setStructure('');
     setSubStructure('');
     resetStoneFields();
+    resetStationFields();
 
     if (nextBranch === 'pendant_only') {
       resetChainFields();
@@ -696,6 +808,10 @@ function DesignConceptIntake() {
     setStructure(nextStructure);
     setSubStructure('');
     resetStoneFields();
+    resetStationFields();
+    if (nextStructure !== 'bracelet_chain') {
+      resetBraceletFields();
+    }
 
     if (nextStructure !== 'ring_simple_band') {
       setBandWidthDirection('not_sure');
@@ -720,7 +836,7 @@ function DesignConceptIntake() {
     setSubStructure(nextSubStructure);
     resetStoneFields();
 
-    if (findOption(nextSubStructure, Object.values(earringSubStructures))?.stoneLogic === 'manual_review') {
+    if (findOption(nextSubStructure, [...Object.values(earringSubStructures), ...Object.values(braceletSubStructures)])?.stoneLogic === 'manual_review') {
       resetStoneFields();
     }
   }
@@ -761,6 +877,20 @@ function DesignConceptIntake() {
       addItem(items, 'Sub-structure', optionLabel(currentSubStructureOptions, subStructure));
     }
 
+    if (isBraceletBangle && subStructure) {
+      const braceletDirectionLabel =
+        structure === 'bracelet_bangle'
+          ? 'Bangle stone direction'
+          : structure === 'bracelet_cuff'
+            ? 'Cuff stone direction'
+            : structure === 'bracelet_charm'
+              ? 'Charm bracelet direction'
+              : structure === 'bracelet_id_nameplate'
+                ? 'Nameplate bracelet direction'
+                : 'Bracelet direction';
+      addRequiredItem(items, braceletDirectionLabel, optionLabel(currentSubStructureOptions, subStructure));
+    }
+
     if (stoneLogic) {
       addItem(items, 'Stone logic', stoneLogic.replace('_', ' '));
     }
@@ -792,8 +922,20 @@ function DesignConceptIntake() {
       addRequiredItem(items, 'Repeated-stone direction note', stoneDirection.trim() || 'Not sure yet');
     }
 
+    if (isStationNecklace) {
+      addRequiredItem(items, 'Station type', optionLabel(stationTypes, stationType));
+      addRequiredItem(items, 'Station spacing direction', optionLabel(stationSpacings, stationSpacing));
+      addRequiredItem(items, 'Station stone / detail size', optionLabel(stationDetailSizes, stationDetailSize));
+      addRequiredItem(items, 'Station setting / connection direction', optionLabel(stationSettings, stationSetting));
+      addRequiredItem(items, 'Station necklace note', stationNote.trim() || 'Not sure yet');
+    }
+
     if (needsOptionalStone) {
       addItem(items, 'Optional stone direction', optionalStoneDirection);
+    }
+
+    if (isChainBracelet) {
+      addRequiredItem(items, 'Chain bracelet structure note', braceletStructureNote.trim() || 'Not sure yet');
     }
 
     if (showChainFields) {
@@ -849,6 +991,7 @@ function DesignConceptIntake() {
     branch,
     bandProfileDirection,
     bandWidthDirection,
+    braceletStructureNote,
     chainLength,
     chainNote,
     chainStyle,
@@ -871,14 +1014,20 @@ function DesignConceptIntake() {
     focalStoneShape,
     focalStoneSize,
     focalStoneType,
+    isBraceletBangle,
+    isChainBracelet,
     multiStoneShapeMix,
     multiStoneSizeRelationship,
     multiStoneTypeMix,
     isOtherCustom,
     isPendantNecklace,
     isSimpleBand,
+    isStationNecklace,
     manualChainConfirmationRequired,
     metalDirection,
+    multiStoneShapeMix,
+    multiStoneSizeRelationship,
+    multiStoneTypeMix,
     multiStoneLayout,
     mustAvoid,
     mustInclude,
@@ -903,6 +1052,11 @@ function DesignConceptIntake() {
     showChainFields,
     silhouette,
     sizeDirection,
+    stationDetailSize,
+    stationNote,
+    stationSetting,
+    stationSpacing,
+    stationType,
     stoneDirection,
     stoneLogic,
     structure,
@@ -941,6 +1095,12 @@ function DesignConceptIntake() {
       chainLength,
       chainNote,
       manualChainConfirmationRequired,
+      braceletStructureNote,
+      stationType,
+      stationSpacing,
+      stationDetailSize,
+      stationSetting,
+      stationNote,
       focalStoneType,
       focalStoneColor,
       focalStoneSize,
@@ -1144,6 +1304,36 @@ function DesignConceptIntake() {
                   </>
                 ) : null}
 
+                {pieceType === 'bracelet_bangle' && currentSubStructureOptions.length > 0 ? (
+                  <fieldset className={styles.fieldset}>
+                    <legend>
+                      {structure === 'bracelet_bangle'
+                        ? 'Bangle stone direction'
+                        : structure === 'bracelet_cuff'
+                          ? 'Cuff stone direction'
+                          : structure === 'bracelet_charm'
+                            ? 'Charm bracelet direction'
+                            : structure === 'bracelet_id_nameplate'
+                              ? 'Nameplate bracelet direction'
+                              : 'Bracelet direction'}
+                    </legend>
+                    <div className={styles.structureGrid}>
+                      {currentSubStructureOptions.map((option) => (
+                        <button
+                          className={`${styles.structureCard} ${
+                            subStructure === option.value ? styles.selectedCard : ''
+                          }`}
+                          key={`${structure}-${option.value}`}
+                          onClick={() => handleSubStructureChange(option.value)}
+                          type="button"
+                        >
+                          <span>{option.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : null}
+
                 {branch === 'fully_custom_pendant_necklace' || needsManualReview || isOtherCustom ? (
                   <p className={styles.helperNote}>{manualReviewText}</p>
                 ) : null}
@@ -1169,6 +1359,17 @@ function DesignConceptIntake() {
                     No required stone module is needed for the selected direction. NOVORA can still use visual notes,
                     metal, finish, and wearability details for the sketch.
                   </p>
+                ) : null}
+
+                {isChainBracelet ? (
+                  <label className={styles.field}>
+                    <span>Chain bracelet structure note</span>
+                    <textarea
+                      onChange={(event) => setBraceletStructureNote(event.target.value)}
+                      placeholder="Example: delicate chain bracelet, ID chain style, charm-ready chain, or no stones."
+                      value={braceletStructureNote}
+                    />
+                  </label>
                 ) : null}
 
                 {needsFocalStone ? (
@@ -1229,6 +1430,29 @@ function DesignConceptIntake() {
                       value={stoneDirection}
                     />
                   </label>
+                ) : null}
+
+                {isStationNecklace ? (
+                  <section className={styles.repeatedStonePanel}>
+                    <div className={styles.sectionHeading}>
+                      <h2>Station necklace direction</h2>
+                      <p>Station necklaces use spaced details along a chain, so they need station-specific sketch guidance.</p>
+                    </div>
+                    <div className={styles.compactGrid}>
+                      <OptionField title="Station type" options={stationTypes} value={stationType} onChange={setStationType} />
+                      <OptionField title="Station spacing direction" options={stationSpacings} value={stationSpacing} onChange={setStationSpacing} />
+                      <OptionField title="Station stone / detail size" options={stationDetailSizes} value={stationDetailSize} onChange={setStationDetailSize} />
+                      <OptionField title="Station setting / connection direction" options={stationSettings} value={stationSetting} onChange={setStationSetting} />
+                    </div>
+                    <label className={styles.field}>
+                      <span>Station necklace note</span>
+                      <textarea
+                        onChange={(event) => setStationNote(event.target.value)}
+                        placeholder="Example: small diamond stations spaced along a fine chain, pearl stations near the front, or mixed gemstone stations."
+                        value={stationNote}
+                      />
+                    </label>
+                  </section>
                 ) : null}
 
                 {needsOptionalStone ? (
@@ -1510,6 +1734,47 @@ function DesignConceptIntake() {
           <TextField label="Custom piece note" value={customPieceNote} onChange={setCustomPieceNote} />
           <TextField label="Production concern note" value={productionConcernNote} onChange={setProductionConcernNote} />
         </div>
+        <section className={`${styles.repeatedStonePanel} ${styles.referencePanel}`}>
+          <div className={styles.sectionHeading}>
+            <h2>Reference images</h2>
+            <p>
+              Upload sketches, inspiration photos, product photos, finished-piece references, logos, symbols, or
+              proportion references for this custom request.
+            </p>
+          </div>
+          <label className={styles.referenceUpload}>
+            <span>Choose image files</span>
+            <input
+              accept="image/*"
+              multiple
+              onChange={(event) => handleReferenceImageChange(event.target.files)}
+              type="file"
+            />
+          </label>
+          {referenceImages.length > 0 ? (
+            <div className={styles.referencePreviewGrid}>
+              {referenceImages.map((image) => (
+                <figure className={styles.referencePreview} key={`manual-${image.name}-${image.previewUrl}`}>
+                  <img alt="" src={image.previewUrl} />
+                  <figcaption>{image.name}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.inlineHint}>No reference images selected yet.</p>
+          )}
+          <label className={styles.field}>
+            <span>Reference notes</span>
+            <textarea
+              onChange={(event) => setReferenceNotes(event.target.value)}
+              placeholder="Example: use the outline from image 1, the clasp idea from image 2, and the engraving style from image 3."
+              value={referenceNotes}
+            />
+          </label>
+          <p className={styles.helperNote}>
+            Reference images guide the AI concept sketch. CAD and production feasibility are confirmed later.
+          </p>
+        </section>
       </section>
     );
   }
