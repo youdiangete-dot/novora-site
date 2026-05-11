@@ -5,6 +5,13 @@ const wrongFocalFields = [
   'Approximate focal size',
 ];
 
+const centerStoneFields = [
+  'Focal stone / pearl / bead type',
+  'Color direction',
+  'Shape / cut direction',
+  'Approximate focal size',
+];
+
 const multiStoneFields = [
   'Stone type / stone mix',
   'Color direction',
@@ -12,6 +19,8 @@ const multiStoneFields = [
   'Stone size relationship',
   'Multi-stone layout direction',
 ];
+
+const multiStoneOnlyFields = multiStoneFields.filter((field) => field !== 'Color direction');
 
 const repeatedStoneFields = [
   'Stone coverage',
@@ -38,35 +47,51 @@ const chainFields = [
 
 const pieceTypeLabels: Record<string, string> = {
   bracelet_bangle: 'Bracelet / Bangle',
+  earrings: 'Earrings',
   other_custom: 'Other / custom piece',
   pendant_necklace: 'Pendant / Necklace',
+  ring: 'Ring',
 };
 
 async function openConcept(page: Page, pieceType: string) {
   await page.goto(`/design/concept?pieceType=${pieceType}`);
   await expect(page.locator('strong').filter({ hasText: pieceTypeLabels[pieceType] })).toBeVisible();
+  await expectForbiddenOptionsAbsent(page);
 }
 
 async function chooseButton(page: Page, name: string) {
   await page.getByRole('button').filter({ hasText: name }).first().click();
+  await expectForbiddenOptionsAbsent(page);
 }
 
 async function goToStoneLogic(page: Page) {
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.locator('form').getByRole('heading', { name: 'Stone logic' })).toBeVisible();
+  await expectForbiddenOptionsAbsent(page);
 }
 
 async function goToMetalAndWearability(page: Page) {
   await page.getByRole('button').filter({ hasText: 'Metal & wearability' }).click();
   await expect(page.locator('form').getByRole('heading', { name: 'Metal, finish & wearability' })).toBeVisible();
+  await expectForbiddenOptionsAbsent(page);
 }
 
-async function goToBriefResult(page: Page) {
+async function goToReviewBrief(page: Page) {
   await page.getByRole('button').filter({ hasText: 'Review brief' }).click();
   await expect(page.locator('form').getByRole('heading', { name: 'Review brief' })).toBeVisible();
+  await expectForbiddenOptionsAbsent(page);
+}
+
+async function continueToBriefResult(page: Page) {
   await page.getByRole('button', { name: 'Continue to next concept step' }).click();
   await expect(page).toHaveURL(/\/design\/brief$/);
   await expect(page.getByRole('heading', { name: 'Your concept direction is ready' })).toBeVisible();
+  await expectForbiddenOptionsAbsent(page);
+}
+
+async function goToBriefResult(page: Page) {
+  await goToReviewBrief(page);
+  await continueToBriefResult(page);
 }
 
 async function expectTextsVisible(scope: Page | Locator, texts: string[]) {
@@ -81,6 +106,88 @@ async function expectTextsAbsent(scope: Page | Locator, texts: string[]) {
   }
 }
 
+async function expectForbiddenOptionsAbsent(scope: Page | Locator) {
+  await expect(scope.getByText('10K Gold', { exact: true })).toHaveCount(0);
+  await expect(scope.getByText(/0\.60 mm\+/)).toHaveCount(0);
+}
+
+async function expectStep5Preserves(page: Page, fields: string[]) {
+  await goToReviewBrief(page);
+  const summary = page.getByLabel('Brief summary');
+  await expectTextsVisible(summary, fields);
+  await expectForbiddenOptionsAbsent(summary);
+}
+
+async function expectBriefPreserves(page: Page, fields: string[]) {
+  await continueToBriefResult(page);
+  await expectTextsVisible(page, fields);
+  await expectForbiddenOptionsAbsent(page);
+}
+
+async function expectFlowPreserves(page: Page, fields: string[]) {
+  await expectStep5Preserves(page, fields);
+  await expectBriefPreserves(page, fields);
+}
+
+async function expectFlowPreservesAs(page: Page, step5Fields: string[], briefFields: string[]) {
+  await expectStep5Preserves(page, step5Fields);
+  await expectBriefPreserves(page, briefFields);
+}
+
+async function uploadReferenceImage(page: Page, name: string) {
+  await page.locator('input[type="file"][accept="image/*"]').setInputFiles({
+    name,
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  });
+  await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
+}
+
+test.describe('/design/concept ring logic', () => {
+  test('Ring -> Center-stone ring uses focal fields only', async ({ page }) => {
+    await openConcept(page, 'ring');
+    await chooseButton(page, 'Center-stone ring');
+    await goToStoneLogic(page);
+
+    const form = page.locator('form');
+    await expectTextsVisible(form, centerStoneFields);
+    await expectTextsAbsent(form, [...multiStoneOnlyFields, ...repeatedStoneFields]);
+
+    await expectFlowPreserves(page, centerStoneFields);
+    await expectTextsAbsent(page, multiStoneOnlyFields);
+    await expectTextsAbsent(page, repeatedStoneFields);
+  });
+
+  test('Ring -> Multi-stone ring uses multi-stone fields only', async ({ page }) => {
+    await openConcept(page, 'ring');
+    await chooseButton(page, 'Multi-stone ring');
+    await goToStoneLogic(page);
+
+    const form = page.locator('form');
+    await expectTextsVisible(form, multiStoneFields);
+    await expectTextsAbsent(form, [...wrongFocalFields, ...repeatedStoneFields]);
+
+    await expectFlowPreserves(page, multiStoneFields);
+    await expectTextsAbsent(page, wrongFocalFields);
+  });
+
+  test('Ring -> Pave / fully set ring uses repeated-stone fields only', async ({ page }) => {
+    await openConcept(page, 'ring');
+    await chooseButton(page, 'Pave / fully set ring');
+    await goToStoneLogic(page);
+
+    const form = page.locator('form');
+    await expectTextsVisible(form, repeatedStoneFields);
+    await expectTextsAbsent(form, [...centerStoneFields, ...multiStoneFields]);
+
+    await expectFlowPreserves(page, repeatedStoneFields);
+    await expectTextsAbsent(page, centerStoneFields);
+  });
+});
+
 test.describe('/design/concept bracelet and necklace logic', () => {
   test('Bracelet / Bangle -> Bangle -> Metal-only bangle hides stone modules', async ({ page }) => {
     await openConcept(page, 'bracelet_bangle');
@@ -92,7 +199,11 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await expect(form.getByText('No required stone module is needed for the selected direction.')).toBeVisible();
     await expectTextsAbsent(form, [...wrongFocalFields, ...multiStoneFields, ...repeatedStoneFields]);
 
-    await goToBriefResult(page);
+    await expectFlowPreservesAs(
+      page,
+      ['Stone logic', 'Reference images'],
+      ['Stone logic', 'No required stones', 'Reference images'],
+    );
     await expect(page.getByText('Stone logic').first()).toBeVisible();
     await expect(page.getByText('No required stones').first()).toBeVisible();
     await expectTextsAbsent(page, wrongFocalFields);
@@ -108,8 +219,7 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await expectTextsVisible(form, multiStoneFields);
     await expectTextsAbsent(form, [...wrongFocalFields, ...repeatedStoneFields]);
 
-    await goToBriefResult(page);
-    await expectTextsVisible(page, multiStoneFields);
+    await expectFlowPreserves(page, multiStoneFields);
     await expectTextsAbsent(page, wrongFocalFields);
   });
 
@@ -123,8 +233,7 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await expectTextsVisible(form, repeatedStoneFields);
     await expectTextsAbsent(form, [...wrongFocalFields, ...multiStoneFields]);
 
-    await goToBriefResult(page);
-    await expectTextsVisible(page, repeatedStoneFields);
+    await expectFlowPreserves(page, repeatedStoneFields);
     await expectTextsAbsent(page, wrongFocalFields);
   });
 
@@ -137,10 +246,11 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     const form = page.locator('form');
     await expect(form.getByRole('heading', { name: 'Custom visual review' })).toBeVisible();
     await expect(form.getByRole('heading', { name: 'Reference images' })).toBeVisible();
+    await expect(form.locator('input[type="file"][accept="image/*"]')).toBeVisible();
     await expect(form.getByText('This direction may require manual confirmation before CAD, sourcing, or production.')).toBeVisible();
     await expectTextsAbsent(form, [...wrongFocalFields, ...multiStoneFields, ...repeatedStoneFields]);
 
-    await goToBriefResult(page);
+    await expectFlowPreserves(page, ['Manual confirmation', 'Reference images']);
     await expect(page.getByText('Manual confirmation').first()).toBeVisible();
     await expect(page.getByText('Reference images').first()).toBeVisible();
   });
@@ -158,7 +268,11 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await goToMetalAndWearability(page);
     await expectTextsVisible(page.locator('form'), chainFields);
 
-    await goToBriefResult(page);
+    await expectFlowPreservesAs(
+      page,
+      ['Stone logic', ...chainFields],
+      ['Stone logic', 'No required stones', ...chainFields],
+    );
     await expect(page.getByText('Stone logic').first()).toBeVisible();
     await expect(page.getByText('No required stones').first()).toBeVisible();
     await expectTextsVisible(page, chainFields);
@@ -178,8 +292,7 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await goToMetalAndWearability(page);
     await expectTextsVisible(page.locator('form'), chainFields);
 
-    await goToBriefResult(page);
-    await expectTextsVisible(page, [...stationFields, ...chainFields]);
+    await expectFlowPreserves(page, [...stationFields, ...chainFields]);
     await expect(page.getByText('Chain direction', { exact: true })).toHaveCount(0);
   });
 
@@ -196,8 +309,7 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await goToMetalAndWearability(page);
     await expectTextsVisible(page.locator('form'), chainFields);
 
-    await goToBriefResult(page);
-    await expectTextsVisible(page, repeatedStoneFields);
+    await expectFlowPreserves(page, repeatedStoneFields);
   });
 
   test('Other / custom piece -> Brooch / pin shows manual review and direct reference upload', async ({ page }) => {
@@ -209,11 +321,34 @@ test.describe('/design/concept bracelet and necklace logic', () => {
     await expect(form.getByRole('heading', { name: 'Custom visual review' })).toBeVisible();
     await expect(form.getByRole('heading', { name: 'Reference images' })).toBeVisible();
     await expect(form.locator('input[type="file"][accept="image/*"]')).toBeVisible();
+    await uploadReferenceImage(page, 'brooch-reference.png');
     await expectTextsAbsent(form, [...wrongFocalFields, ...multiStoneFields, ...repeatedStoneFields]);
 
-    await goToBriefResult(page);
+    await expectFlowPreserves(page, [
+      'Manual confirmation',
+      'Reference images',
+      '1 file(s) selected',
+      'Reference image names',
+      'brooch-reference.png',
+    ]);
     await expect(page.getByText('Reference images').first()).toBeVisible();
     await expect(page.getByText('Manual confirmation').first()).toBeVisible();
+  });
+});
+
+test.describe('/design/concept earring logic', () => {
+  test('Earrings -> Stud earrings -> Pave stud uses repeated-stone fields only', async ({ page }) => {
+    await openConcept(page, 'earrings');
+    await chooseButton(page, 'Stud earrings');
+    await chooseButton(page, 'Pave stud');
+    await goToStoneLogic(page);
+
+    const form = page.locator('form');
+    await expectTextsVisible(form, repeatedStoneFields);
+    await expectTextsAbsent(form, [...centerStoneFields, ...multiStoneFields]);
+
+    await expectFlowPreserves(page, repeatedStoneFields);
+    await expectTextsAbsent(page, centerStoneFields);
   });
 });
 
