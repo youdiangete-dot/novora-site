@@ -28,6 +28,9 @@ type StoredConceptBrief = {
   focalStoneColor?: string;
   focalStoneSize?: string;
   focalStoneShape?: string;
+  multiStoneTypeMix?: string;
+  multiStoneShapeMix?: string;
+  multiStoneSizeRelationship?: string;
   multiStoneLayout?: string;
   repeatedStoneCoverage?: string;
   repeatedStoneFeeling?: string;
@@ -201,6 +204,16 @@ const labels: Record<string, Record<string, string>> = {
     pearl: 'Pearl',
     not_sure: 'Not sure yet',
   },
+  multiStoneTypeMix: {
+    lab_diamond: 'Lab diamond',
+    natural_diamond: 'Natural diamond',
+    lab_grown_colored_gemstone: 'Lab-grown colored gemstone',
+    natural_colored_gemstone: 'Natural colored gemstone',
+    moissanite: 'Moissanite',
+    pearl: 'Pearl',
+    mixed_stones: 'Mixed stones',
+    not_sure: 'Not sure yet',
+  },
   focalStoneColor: {
     blue: 'Blue',
     green: 'Green',
@@ -222,6 +235,27 @@ const labels: Record<string, Record<string, string>> = {
     heart: 'Heart',
     other_fancy_cut: 'Other fancy cut',
     custom: 'Custom',
+    not_sure: 'Not sure yet',
+  },
+  multiStoneShapeMix: {
+    same_shape: 'Same shape',
+    mixed_shapes: 'Mixed shapes',
+    round: 'Round',
+    oval: 'Oval',
+    pear: 'Pear',
+    emerald: 'Emerald',
+    cushion: 'Cushion',
+    marquise: 'Marquise',
+    heart: 'Heart',
+    other_fancy_cut: 'Other fancy cut',
+    custom: 'Custom',
+    not_sure: 'Not sure yet',
+  },
+  multiStoneSizeRelationship: {
+    same_size_stones: 'Same size stones',
+    center_larger_side_stones: 'Center larger with smaller side stones',
+    graduated_sizes: 'Graduated sizes',
+    mixed_sizes: 'Mixed sizes',
     not_sure: 'Not sure yet',
   },
   repeatedStoneCoverage: {
@@ -411,8 +445,15 @@ export default function DesignBriefPage() {
     }
 
     if (brief.stoneLogic === 'multi_stone') {
-      addBriefItem(items, 'Multi-stone direction', brief.multiStoneLayout);
-      addBriefItem(items, 'Stone direction', [label('focalStoneType', brief.focalStoneType), label('focalStoneColor', brief.focalStoneColor), label('focalStoneShape', brief.focalStoneShape)].filter(Boolean).join(', '));
+      addBriefItem(items, 'Stone type / stone mix', labelRequired('multiStoneTypeMix', brief.multiStoneTypeMix));
+      addBriefItem(items, 'Color direction', labelRequired('focalStoneColor', brief.focalStoneColor));
+      addBriefItem(items, 'Shape / cut mix', labelRequired('multiStoneShapeMix', brief.multiStoneShapeMix));
+      addBriefItem(
+        items,
+        'Stone size relationship',
+        labelRequired('multiStoneSizeRelationship', brief.multiStoneSizeRelationship),
+      );
+      addBriefItem(items, 'Multi-stone layout direction', brief.multiStoneLayout?.trim() || 'Not sure yet');
     }
 
     if (brief.stoneLogic === 'repeated_stone') {

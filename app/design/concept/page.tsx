@@ -41,6 +41,9 @@ type StoredConceptBrief = {
   focalStoneColor: string;
   focalStoneSize: string;
   focalStoneShape: string;
+  multiStoneTypeMix: string;
+  multiStoneShapeMix: string;
+  multiStoneSizeRelationship: string;
   multiStoneLayout: string;
   repeatedStoneCoverage: string;
   repeatedStoneFeeling: string;
@@ -301,6 +304,12 @@ const stoneTypes: Option[] = [
   { label: 'Not sure yet', value: 'not_sure' },
 ];
 
+const multiStoneTypeMixes: Option[] = [
+  ...stoneTypes.slice(0, -1),
+  { label: 'Mixed stones', value: 'mixed_stones' },
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
 const stoneColors: Option[] = [
   { label: 'Blue', value: 'blue' },
   { label: 'Green', value: 'green' },
@@ -323,6 +332,21 @@ const cutOptions: Option[] = [
   { label: 'Heart', value: 'heart' },
   { label: 'Other fancy cut', value: 'other_fancy_cut' },
   { label: 'Custom', value: 'custom' },
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
+const multiStoneShapeMixes: Option[] = [
+  { label: 'Same shape', value: 'same_shape' },
+  { label: 'Mixed shapes', value: 'mixed_shapes' },
+  ...cutOptions.slice(0, -1),
+  { label: 'Not sure yet', value: 'not_sure' },
+];
+
+const multiStoneSizeRelationships: Option[] = [
+  { label: 'Same size stones', value: 'same_size_stones' },
+  { label: 'Center larger with smaller side stones', value: 'center_larger_side_stones' },
+  { label: 'Graduated sizes', value: 'graduated_sizes' },
+  { label: 'Mixed sizes', value: 'mixed_sizes' },
   { label: 'Not sure yet', value: 'not_sure' },
 ];
 
@@ -428,6 +452,9 @@ function DesignConceptIntake() {
   const [focalStoneColor, setFocalStoneColor] = useState('not_sure');
   const [focalStoneSize, setFocalStoneSize] = useState('');
   const [focalStoneShape, setFocalStoneShape] = useState('not_sure');
+  const [multiStoneTypeMix, setMultiStoneTypeMix] = useState('not_sure');
+  const [multiStoneShapeMix, setMultiStoneShapeMix] = useState('not_sure');
+  const [multiStoneSizeRelationship, setMultiStoneSizeRelationship] = useState('not_sure');
   const [multiStoneLayout, setMultiStoneLayout] = useState('');
   const [repeatedStoneCoverage, setRepeatedStoneCoverage] = useState('not_sure');
   const [repeatedStoneFeeling, setRepeatedStoneFeeling] = useState('not_sure');
@@ -582,6 +609,9 @@ function DesignConceptIntake() {
     setFocalStoneColor('not_sure');
     setFocalStoneSize('');
     setFocalStoneShape('not_sure');
+    setMultiStoneTypeMix('not_sure');
+    setMultiStoneShapeMix('not_sure');
+    setMultiStoneSizeRelationship('not_sure');
     setMultiStoneLayout('');
     setRepeatedStoneCoverage('not_sure');
     setRepeatedStoneFeeling('not_sure');
@@ -743,10 +773,15 @@ function DesignConceptIntake() {
     }
 
     if (needsMultiStone) {
-      addItem(items, 'Multi-stone layout direction', multiStoneLayout);
-      addItem(items, 'Stone type', optionLabel(stoneTypes, focalStoneType));
-      addItem(items, 'Color direction', optionLabel(stoneColors, focalStoneColor));
-      addItem(items, 'Shape / cut direction', optionLabel(cutOptions, focalStoneShape));
+      addRequiredItem(items, 'Stone type / stone mix', optionLabel(multiStoneTypeMixes, multiStoneTypeMix));
+      addRequiredItem(items, 'Color direction', optionLabel(stoneColors, focalStoneColor));
+      addRequiredItem(items, 'Shape / cut mix', optionLabel(multiStoneShapeMixes, multiStoneShapeMix));
+      addRequiredItem(
+        items,
+        'Stone size relationship',
+        optionLabel(multiStoneSizeRelationships, multiStoneSizeRelationship),
+      );
+      addRequiredItem(items, 'Multi-stone layout direction', multiStoneLayout.trim() || 'Not sure yet');
     }
 
     if (needsRepeatedStone) {
@@ -836,6 +871,9 @@ function DesignConceptIntake() {
     focalStoneShape,
     focalStoneSize,
     focalStoneType,
+    multiStoneShapeMix,
+    multiStoneSizeRelationship,
+    multiStoneTypeMix,
     isOtherCustom,
     isPendantNecklace,
     isSimpleBand,
@@ -907,6 +945,9 @@ function DesignConceptIntake() {
       focalStoneColor,
       focalStoneSize,
       focalStoneShape,
+      multiStoneTypeMix,
+      multiStoneShapeMix,
+      multiStoneSizeRelationship,
       multiStoneLayout,
       repeatedStoneCoverage,
       repeatedStoneFeeling,
@@ -1130,7 +1171,7 @@ function DesignConceptIntake() {
                   </p>
                 ) : null}
 
-                {needsFocalStone || needsMultiStone ? (
+                {needsFocalStone ? (
                   <div className={styles.compactGrid}>
                     <OptionField title="Focal stone / pearl / bead type" options={stoneTypes} value={focalStoneType} onChange={setFocalStoneType} />
                     <OptionField title="Color direction" options={stoneColors} value={focalStoneColor} onChange={setFocalStoneColor} />
@@ -1147,14 +1188,27 @@ function DesignConceptIntake() {
                 ) : null}
 
                 {needsMultiStone ? (
-                  <label className={styles.field}>
-                    <span>Multi-stone layout direction</span>
-                    <textarea
-                      onChange={(event) => setMultiStoneLayout(event.target.value)}
-                      placeholder="Example: three-stone ring, toi et moi layout, graduated stones, or asymmetrical cluster."
-                      value={multiStoneLayout}
-                    />
-                  </label>
+                  <>
+                    <div className={styles.compactGrid}>
+                      <OptionField title="Stone type / stone mix" options={multiStoneTypeMixes} value={multiStoneTypeMix} onChange={setMultiStoneTypeMix} />
+                      <OptionField title="Color direction" options={stoneColors} value={focalStoneColor} onChange={setFocalStoneColor} />
+                      <OptionField title="Shape / cut mix" options={multiStoneShapeMixes} value={multiStoneShapeMix} onChange={setMultiStoneShapeMix} />
+                      <OptionField
+                        title="Stone size relationship"
+                        options={multiStoneSizeRelationships}
+                        value={multiStoneSizeRelationship}
+                        onChange={setMultiStoneSizeRelationship}
+                      />
+                    </div>
+                    <label className={styles.field}>
+                      <span>Multi-stone layout direction</span>
+                      <textarea
+                        onChange={(event) => setMultiStoneLayout(event.target.value)}
+                        placeholder="Example: three-stone ring, toi et moi layout, five-stone band, asymmetrical cluster, or scattered stones."
+                        value={multiStoneLayout}
+                      />
+                    </label>
+                  </>
                 ) : null}
 
                 {needsRepeatedStone ? (
