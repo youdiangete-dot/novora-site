@@ -146,6 +146,22 @@ async function uploadReferenceImage(page: Page, name: string) {
   await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
 }
 
+async function openMetalOnlyBangleBrief(page: Page) {
+  await openConcept(page, 'bracelet_bangle');
+  await chooseButton(page, 'Bangle');
+  await chooseButton(page, 'Metal-only bangle');
+  await goToStoneLogic(page);
+  await goToBriefResult(page);
+}
+
+async function fillValidContactFields(page: Page) {
+  await page.getByLabel('Customer name').fill('Mina Chen');
+  await page.getByLabel('Email address').fill('mina@example.com');
+  await page.getByLabel('Phone or WhatsApp optional').fill('+1 555 0100');
+  await page.getByLabel('Country / region optional').fill('United States');
+  await page.getByLabel('Additional contact note optional').fill('Please follow up in the afternoon.');
+}
+
 test.describe('/design/concept ring logic', () => {
   test('Ring -> Center-stone ring uses focal fields only', async ({ page }) => {
     await openConcept(page, 'ring');
@@ -353,19 +369,51 @@ test.describe('/design/concept earring logic', () => {
 });
 
 test.describe('/design/brief submission', () => {
-  test('submits a valid concept brief and opens the submitted confirmation page', async ({ page }) => {
-    await openConcept(page, 'bracelet_bangle');
-    await chooseButton(page, 'Bangle');
-    await chooseButton(page, 'Metal-only bangle');
-    await goToStoneLogic(page);
-    await goToBriefResult(page);
+  test('requires customer name and email before submitting', async ({ page }) => {
+    await openMetalOnlyBangleBrief(page);
+
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/brief$/);
+    await expect(page.getByText('Customer name is required.')).toBeVisible();
+    await expect(page.getByText('Email address is required.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toHaveCount(0);
+
+    const submittedBrief = await page.evaluate(() => window.localStorage.getItem('novora_submitted_concept_brief'));
+
+    expect(submittedBrief).toBeNull();
+  });
+
+  test('shows an inline error for an invalid email address', async ({ page }) => {
+    await openMetalOnlyBangleBrief(page);
+
+    await page.getByLabel('Customer name').fill('Mina Chen');
+    await page.getByLabel('Email address').fill('mina-at-example');
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/brief$/);
+    await expect(page.getByText('Enter a valid email address.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toHaveCount(0);
+  });
+
+  test('submits valid contact fields and opens the submitted confirmation page', async ({ page }) => {
+    await openMetalOnlyBangleBrief(page);
 
     await expect(page.getByText('Reference images').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Contact for concept review' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'Your contact details are used only to follow up on this concept brief. This MVP currently stores the submitted preview locally in this browser until real backend storage is added.',
+      ),
+    ).toBeVisible();
+    await fillValidContactFields(page);
     await page.getByRole('button', { name: 'Submit concept brief' }).click();
 
     await expect(page).toHaveURL(/\/design\/submitted$/);
     await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
     await expect(page.getByText(/NOVORA-CB-\d{8}-[A-Z0-9]{4}/)).toBeVisible();
+    await expect(page.getByText('Mina Chen')).toBeVisible();
+    await expect(page.getByText('mina@example.com')).toBeVisible();
     await expect(
       page.getByText(
         'This is not a CAD-ready production order. Final CAD, pricing, sourcing, and production feasibility are confirmed later.',
@@ -378,6 +426,11 @@ test.describe('/design/brief submission', () => {
     });
 
     expect(submittedBrief).toMatchObject({
+      customerName: 'Mina Chen',
+      customerEmail: 'mina@example.com',
+      customerPhone: '+1 555 0100',
+      customerCountry: 'United States',
+      contactNote: 'Please follow up in the afternoon.',
       pieceType: 'bracelet_bangle',
       structure: 'bracelet_bangle',
       subStructure: 'bangle_metal_only',
@@ -407,6 +460,9 @@ test.describe('/admin/briefs mock review UI', () => {
           referenceImageNames: ['ring-front.png', 'ring-side.png'],
           referenceNotes: 'Seeded e2e localStorage brief.',
           aiSketchInstruction: 'Keep this as a sketch planning direction only.',
+          customerName: 'Mina Chen',
+          customerEmail: 'mina@example.com',
+          customerCountry: 'United States',
         }),
       );
     });
@@ -419,6 +475,9 @@ test.describe('/admin/briefs mock review UI', () => {
     await expect(page.getByText('No real customer data is stored on a server.')).toBeVisible();
     await expect(page.getByText('Database and protected admin login will be added later.')).toBeVisible();
     await expect(page.getByText('NOVORA-CB-20260512-TEST')).toBeVisible();
+    await expect(page.getByText('Mina Chen')).toBeVisible();
+    await expect(page.getByText('mina@example.com')).toBeVisible();
+    await expect(page.getByText('United States')).toBeVisible();
     await expect(page.getByText('NOVORA-CB-MOCK-0001')).toBeVisible();
 
     await page.getByLabel('Status').selectOption('Need more info');
@@ -445,6 +504,10 @@ test.describe('/admin/briefs mock review UI', () => {
     await expect(page.getByText('This is not a CAD-ready production order.').first()).toBeVisible();
     await expect(page.getByText('Final CAD, pricing, sourcing, and production feasibility are confirmed later.').first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Brief overview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Customer contact' })).toBeVisible();
+    await expect(page.getByText('Mina Chen')).toBeVisible();
+    await expect(page.getByText('mina@example.com')).toBeVisible();
+    await expect(page.getByText('United States')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Design direction' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Reference images metadata' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI sketch instruction' })).toBeVisible();

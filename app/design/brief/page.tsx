@@ -12,6 +12,16 @@ type SummaryItem = {
   value: string;
 };
 
+type ContactFields = {
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  customerCountry: string;
+  contactNote: string;
+};
+
+type ContactErrors = Partial<Record<keyof Pick<ContactFields, 'customerName' | 'customerEmail'>, string>>;
+
 type StoredConceptBrief = {
   pieceType?: string;
   branch?: string;
@@ -79,6 +89,13 @@ type StoredConceptBrief = {
 
 const STORAGE_KEY = 'novora_concept_brief';
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
+const initialContactFields: ContactFields = {
+  customerName: '',
+  customerEmail: '',
+  customerPhone: '',
+  customerCountry: '',
+  contactNote: '',
+};
 
 const labels: Record<string, Record<string, string>> = {
   pieceType: {
@@ -434,9 +451,15 @@ function generateConceptBriefId() {
   return `NOVORA-CB-${date}-${suffix}`;
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export default function DesignBriefPage() {
   const router = useRouter();
   const [brief, setBrief] = useState<StoredConceptBrief | null>(null);
+  const [contactFields, setContactFields] = useState<ContactFields>(initialContactFields);
+  const [contactErrors, setContactErrors] = useState<ContactErrors>({});
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -518,14 +541,57 @@ export default function DesignBriefPage() {
     return items;
   }, [brief]);
 
+  function validateContactFields() {
+    const nextErrors: ContactErrors = {};
+    const customerName = contactFields.customerName.trim();
+    const customerEmail = contactFields.customerEmail.trim();
+
+    if (!customerName) {
+      nextErrors.customerName = 'Customer name is required.';
+    }
+
+    if (!customerEmail) {
+      nextErrors.customerEmail = 'Email address is required.';
+    } else if (!isValidEmail(customerEmail)) {
+      nextErrors.customerEmail = 'Enter a valid email address.';
+    }
+
+    setContactErrors(nextErrors);
+
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  function updateContactField(field: keyof ContactFields, value: string) {
+    setContactFields((current) => ({
+      ...current,
+      [field]: value,
+    }));
+
+    if (field === 'customerName' || field === 'customerEmail') {
+      setContactErrors((current) => ({
+        ...current,
+        [field]: undefined,
+      }));
+    }
+  }
+
   function submitConceptBrief() {
     if (!brief) {
+      return;
+    }
+
+    if (!validateContactFields()) {
       return;
     }
 
     const submittedBrief = {
       conceptBriefId: generateConceptBriefId(),
       submittedAt: new Date().toISOString(),
+      customerName: contactFields.customerName.trim(),
+      customerEmail: contactFields.customerEmail.trim(),
+      customerPhone: contactFields.customerPhone.trim(),
+      customerCountry: contactFields.customerCountry.trim(),
+      contactNote: contactFields.contactNote.trim(),
       pieceType: brief.pieceType || '',
       branch: brief.branch || '',
       structure: brief.structure || '',
@@ -723,6 +789,73 @@ export default function DesignBriefPage() {
               design direction, stone size, material, setting details, feasibility, and early quote direction. Pricing
               and production details are not finalized at this stage.
             </p>
+            <section className={styles.contactSection} aria-label="Contact for concept review">
+              <div className={styles.contactHeading}>
+                <h3>Contact for concept review</h3>
+                <p>
+                  Your contact details are used only to follow up on this concept brief. This MVP currently stores the
+                  submitted preview locally in this browser until real backend storage is added.
+                </p>
+              </div>
+              <label className={styles.fieldLabel}>
+                Customer name
+                <input
+                  aria-invalid={Boolean(contactErrors.customerName)}
+                  aria-describedby={contactErrors.customerName ? 'customer-name-error' : undefined}
+                  className={styles.input}
+                  onChange={(event) => updateContactField('customerName', event.target.value)}
+                  type="text"
+                  value={contactFields.customerName}
+                />
+                {contactErrors.customerName ? (
+                  <span className={styles.errorText} id="customer-name-error">
+                    {contactErrors.customerName}
+                  </span>
+                ) : null}
+              </label>
+              <label className={styles.fieldLabel}>
+                Email address
+                <input
+                  aria-invalid={Boolean(contactErrors.customerEmail)}
+                  aria-describedby={contactErrors.customerEmail ? 'customer-email-error' : undefined}
+                  className={styles.input}
+                  onChange={(event) => updateContactField('customerEmail', event.target.value)}
+                  type="email"
+                  value={contactFields.customerEmail}
+                />
+                {contactErrors.customerEmail ? (
+                  <span className={styles.errorText} id="customer-email-error">
+                    {contactErrors.customerEmail}
+                  </span>
+                ) : null}
+              </label>
+              <label className={styles.fieldLabel}>
+                Phone or WhatsApp optional
+                <input
+                  className={styles.input}
+                  onChange={(event) => updateContactField('customerPhone', event.target.value)}
+                  type="text"
+                  value={contactFields.customerPhone}
+                />
+              </label>
+              <label className={styles.fieldLabel}>
+                Country / region optional
+                <input
+                  className={styles.input}
+                  onChange={(event) => updateContactField('customerCountry', event.target.value)}
+                  type="text"
+                  value={contactFields.customerCountry}
+                />
+              </label>
+              <label className={styles.fieldLabel}>
+                Additional contact note optional
+                <textarea
+                  className={styles.textarea}
+                  onChange={(event) => updateContactField('contactNote', event.target.value)}
+                  value={contactFields.contactNote}
+                />
+              </label>
+            </section>
             <div className={styles.actions}>
               <button
                 className={styles.primaryButton}

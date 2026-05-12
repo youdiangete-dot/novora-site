@@ -7,6 +7,11 @@ import styles from '../brief/brief.module.css';
 type SubmittedConceptBrief = {
   conceptBriefId: string;
   submittedAt: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerCountry?: string;
+  contactNote?: string;
   pieceType?: string;
   branch?: string;
   structure?: string;
@@ -93,7 +98,41 @@ export default function DesignSubmittedPage() {
               <dt>Submitted time</dt>
               <dd>{formatSubmittedTime(submittedBrief.submittedAt)}</dd>
             </div>
+            <div>
+              <dt>Customer name</dt>
+              <dd>{submittedBrief.customerName || 'Not provided'}</dd>
+            </div>
+            <div>
+              <dt>Customer email</dt>
+              <dd>{submittedBrief.customerEmail || 'Not provided'}</dd>
+            </div>
           </dl>
+
+          {(submittedBrief.customerPhone || submittedBrief.customerCountry || submittedBrief.contactNote) ? (
+            <section className={styles.boundaryCard}>
+              <h2>Contact details</h2>
+              <dl className={styles.submittedDetails}>
+                {submittedBrief.customerPhone ? (
+                  <div>
+                    <dt>Phone or WhatsApp</dt>
+                    <dd>{submittedBrief.customerPhone}</dd>
+                  </div>
+                ) : null}
+                {submittedBrief.customerCountry ? (
+                  <div>
+                    <dt>Country / region</dt>
+                    <dd>{submittedBrief.customerCountry}</dd>
+                  </div>
+                ) : null}
+                {submittedBrief.contactNote ? (
+                  <div>
+                    <dt>Contact note</dt>
+                    <dd>{submittedBrief.contactNote}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </section>
+          ) : null}
 
           <section className={styles.boundaryCard}>
             <h2>Important boundary</h2>

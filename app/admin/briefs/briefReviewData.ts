@@ -6,6 +6,11 @@ export type AdminBriefRecord = {
   conceptBriefId: string;
   submittedAt: string;
   lastUpdatedAt?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerCountry?: string;
+  customerPhone?: string;
+  contactNote?: string;
   pieceType?: string;
   branch?: string;
   structure?: string;
@@ -196,12 +201,17 @@ export function loadLocalSubmittedBrief(): AdminBriefRecord | null {
     return {
       ...parsed,
       lastUpdatedAt: parsed.lastUpdatedAt || parsed.submittedAt,
-      referenceImageCount: parsed.referenceImageCount || 0,
-      referenceImageNames: parsed.referenceImageNames || [],
-      referenceNotes: parsed.referenceNotes || '',
-      status: 'New',
-      source: 'localStorage',
-    };
+    referenceImageCount: parsed.referenceImageCount || 0,
+    referenceImageNames: parsed.referenceImageNames || [],
+    referenceNotes: parsed.referenceNotes || '',
+    customerName: parsed.customerName || '',
+    customerEmail: parsed.customerEmail || '',
+    customerCountry: parsed.customerCountry || '',
+    customerPhone: parsed.customerPhone || '',
+    contactNote: parsed.contactNote || '',
+    status: 'New',
+    source: 'localStorage',
+  };
   } catch {
     return null;
   }
