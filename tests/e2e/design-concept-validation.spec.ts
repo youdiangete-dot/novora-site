@@ -389,3 +389,47 @@ test.describe('/design/brief submission', () => {
     expect(submittedBrief.submittedAt).toEqual(expect.any(String));
   });
 });
+
+test.describe('/admin/briefs mock review UI', () => {
+  test('loads the mock admin list and opens a submitted localStorage brief detail', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        'novora_submitted_concept_brief',
+        JSON.stringify({
+          conceptBriefId: 'NOVORA-CB-20260512-TEST',
+          submittedAt: '2026-05-12T08:00:00.000Z',
+          pieceType: 'ring',
+          branch: '',
+          structure: 'ring_center_stone',
+          subStructure: '',
+          stoneLogic: 'center_stone',
+          referenceImageCount: 2,
+          referenceImageNames: ['ring-front.png', 'ring-side.png'],
+          referenceNotes: 'Seeded e2e localStorage brief.',
+          aiSketchInstruction: 'Keep this as a sketch planning direction only.',
+        }),
+      );
+    });
+
+    await page.goto('/admin/briefs');
+
+    await expect(page.getByRole('heading', { name: 'NOVORA Brief Review' })).toBeVisible();
+    await expect(page.getByText('Internal mock admin view. Not connected to a real database.')).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-20260512-TEST')).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-MOCK-0001')).toBeVisible();
+
+    await page
+      .locator('tr')
+      .filter({ hasText: 'NOVORA-CB-20260512-TEST' })
+      .getByRole('link', { name: 'View brief' })
+      .click();
+
+    await expect(page).toHaveURL(/\/admin\/briefs\/NOVORA-CB-20260512-TEST$/);
+    await expect(page.getByText('Concept Brief ID')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'NOVORA-CB-20260512-TEST' })).toBeVisible();
+    await expect(page.getByText('This is front-end-only.')).toBeVisible();
+    await expect(page.getByText('No real customer data is stored on a server')).toBeVisible();
+    await expect(page.getByText('No real upload files are available here')).toBeVisible();
+    await expect(page.getByLabel('Status')).toContainText('New');
+  });
+});
