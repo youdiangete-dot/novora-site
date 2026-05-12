@@ -5,6 +5,7 @@ export type BriefStatus = 'New' | 'Reviewing' | 'Need more info' | 'Ready for CA
 export type AdminBriefRecord = {
   conceptBriefId: string;
   submittedAt: string;
+  lastUpdatedAt?: string;
   pieceType?: string;
   branch?: string;
   structure?: string;
@@ -21,6 +22,7 @@ export type AdminBriefRecord = {
 type StoredSubmittedBrief = Omit<AdminBriefRecord, 'status' | 'source'>;
 
 export const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
+export const ADMIN_REVIEW_STORAGE_KEY = 'novora_admin_brief_review_state';
 
 export const statusOptions: BriefStatus[] = [
   'New',
@@ -34,6 +36,7 @@ export const mockBriefs: AdminBriefRecord[] = [
   {
     conceptBriefId: 'NOVORA-CB-MOCK-0001',
     submittedAt: '2026-05-10T10:30:00.000Z',
+    lastUpdatedAt: '2026-05-10T14:15:00.000Z',
     pieceType: 'pendant_necklace',
     branch: 'pendant_with_chain',
     structure: 'pendant_center_stone',
@@ -45,6 +48,38 @@ export const mockBriefs: AdminBriefRecord[] = [
     aiSketchInstruction:
       'Prepare a hand-drawn concept sketch direction only. Keep the pendant delicate, balanced, and clearly non-final.',
     status: 'Reviewing',
+    source: 'mock',
+  },
+  {
+    conceptBriefId: 'NOVORA-CB-MOCK-0002',
+    submittedAt: '2026-05-09T16:20:00.000Z',
+    lastUpdatedAt: '2026-05-11T09:05:00.000Z',
+    pieceType: 'ring',
+    branch: '',
+    structure: 'ring_multi_stone',
+    subStructure: '',
+    stoneLogic: 'multi_stone',
+    referenceImageCount: 1,
+    referenceImageNames: ['three-stone-ring-profile.jpg'],
+    referenceNotes: 'Mock metadata only. Use for planning how a future admin review queue might display context.',
+    aiSketchInstruction: 'Show broad three-stone proportion options. Do not imply CAD readiness or production approval.',
+    status: 'Need more info',
+    source: 'mock',
+  },
+  {
+    conceptBriefId: 'NOVORA-CB-MOCK-0003',
+    submittedAt: '2026-05-08T11:45:00.000Z',
+    lastUpdatedAt: '2026-05-08T12:10:00.000Z',
+    pieceType: 'bracelet_bangle',
+    branch: '',
+    structure: 'bracelet_bangle',
+    subStructure: 'bangle_metal_only',
+    stoneLogic: 'none',
+    referenceImageCount: 0,
+    referenceImageNames: [],
+    referenceNotes: 'No upload files are available in this mock admin page.',
+    aiSketchInstruction: 'Explore a clean metal-only bangle silhouette for discussion only.',
+    status: 'Ready for CAD discussion',
     source: 'mock',
   },
 ];
@@ -160,6 +195,7 @@ export function loadLocalSubmittedBrief(): AdminBriefRecord | null {
 
     return {
       ...parsed,
+      lastUpdatedAt: parsed.lastUpdatedAt || parsed.submittedAt,
       referenceImageCount: parsed.referenceImageCount || 0,
       referenceImageNames: parsed.referenceImageNames || [],
       referenceNotes: parsed.referenceNotes || '',
@@ -171,8 +207,60 @@ export function loadLocalSubmittedBrief(): AdminBriefRecord | null {
   }
 }
 
+export type AdminReviewState = {
+  status?: BriefStatus;
+  internalNotes?: string;
+  lastUpdatedAt?: string;
+};
+
+export type AdminReviewStateMap = Record<string, AdminReviewState>;
+
+function isBriefStatus(value: unknown): value is BriefStatus {
+  return typeof value === 'string' && statusOptions.includes(value as BriefStatus);
+}
+
+export function loadAdminReviewStateMap(): AdminReviewStateMap {
+  try {
+    const rawState = window.localStorage.getItem(ADMIN_REVIEW_STORAGE_KEY);
+
+    if (!rawState) {
+      return {};
+    }
+
+    return JSON.parse(rawState) as AdminReviewStateMap;
+  } catch {
+    return {};
+  }
+}
+
+export function loadAdminReviewState(conceptBriefId: string): AdminReviewState {
+  return loadAdminReviewStateMap()[conceptBriefId] || {};
+}
+
+export function saveAdminReviewState(conceptBriefId: string, state: AdminReviewState) {
+  const currentState = loadAdminReviewStateMap();
+
+  window.localStorage.setItem(
+    ADMIN_REVIEW_STORAGE_KEY,
+    JSON.stringify({
+      ...currentState,
+      [conceptBriefId]: state,
+    }),
+  );
+}
+
+function applyReviewState(brief: AdminBriefRecord, reviewState: AdminReviewState): AdminBriefRecord {
+  return {
+    ...brief,
+    lastUpdatedAt: reviewState.lastUpdatedAt || brief.lastUpdatedAt || brief.submittedAt,
+    status: isBriefStatus(reviewState.status) ? reviewState.status : brief.status,
+  };
+}
+
 export function loadAdminBriefRecords() {
   const localBrief = loadLocalSubmittedBrief();
+  const reviewState = loadAdminReviewStateMap();
+  const records = localBrief ? [localBrief, ...mockBriefs] : mockBriefs;
 
-  return localBrief ? [localBrief, ...mockBriefs] : mockBriefs;
+  return records.map((brief) => applyReviewState(brief, reviewState[brief.conceptBriefId] || {}));
 }
