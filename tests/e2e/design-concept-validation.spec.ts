@@ -414,9 +414,21 @@ test.describe('/admin/briefs mock review UI', () => {
     await page.goto('/admin/briefs');
 
     await expect(page.getByRole('heading', { name: 'NOVORA Brief Review' })).toBeVisible();
-    await expect(page.getByText('Internal mock admin view. Not connected to a real database.')).toBeVisible();
+    await expect(page.getByText('Mock admin view. Not connected to a real database.')).toBeVisible();
+    await expect(page.getByText('Front-end-only mock review dashboard for submitted concept briefs.')).toBeVisible();
+    await expect(page.getByText('No real customer data is stored on a server.')).toBeVisible();
+    await expect(page.getByText('Database and protected admin login will be added later.')).toBeVisible();
     await expect(page.getByText('NOVORA-CB-20260512-TEST')).toBeVisible();
     await expect(page.getByText('NOVORA-CB-MOCK-0001')).toBeVisible();
+
+    await page.getByLabel('Status').selectOption('Need more info');
+    await expect(page.getByText('NOVORA-CB-MOCK-0002')).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-20260512-TEST')).toHaveCount(0);
+
+    await page.getByLabel('Status').selectOption('All');
+    await page.getByLabel('Search by Concept Brief ID').fill('20260512-TEST');
+    await expect(page.getByText('NOVORA-CB-20260512-TEST')).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-MOCK-0001')).toHaveCount(0);
 
     await page
       .locator('tr')
@@ -427,9 +439,30 @@ test.describe('/admin/briefs mock review UI', () => {
     await expect(page).toHaveURL(/\/admin\/briefs\/NOVORA-CB-20260512-TEST$/);
     await expect(page.getByText('Concept Brief ID')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'NOVORA-CB-20260512-TEST' })).toBeVisible();
-    await expect(page.getByText('This is front-end-only.')).toBeVisible();
-    await expect(page.getByText('No real customer data is stored on a server')).toBeVisible();
-    await expect(page.getByText('No real upload files are available here')).toBeVisible();
+    await expect(page.getByText('This is front-end-only.').first()).toBeVisible();
+    await expect(page.getByText('No real customer data is stored on a server.').first()).toBeVisible();
+    await expect(page.getByText('No real upload files are available here.').first()).toBeVisible();
+    await expect(page.getByText('This is not a CAD-ready production order.').first()).toBeVisible();
+    await expect(page.getByText('Final CAD, pricing, sourcing, and production feasibility are confirmed later.').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Brief overview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Design direction' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Reference images metadata' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'AI sketch instruction' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Internal review' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Boundary notes' })).toBeVisible();
     await expect(page.getByLabel('Status')).toContainText('New');
+
+    await page.getByLabel('Status').selectOption('Reviewing');
+    await page.getByLabel('Internal notes').fill('Check stone scale before any CAD discussion.');
+
+    const adminReviewState = await page.evaluate(() => {
+      const rawState = window.localStorage.getItem('novora_admin_brief_review_state');
+      return rawState ? JSON.parse(rawState) : null;
+    });
+
+    expect(adminReviewState['NOVORA-CB-20260512-TEST']).toMatchObject({
+      status: 'Reviewing',
+      internalNotes: 'Check stone scale before any CAD discussion.',
+    });
   });
 });
