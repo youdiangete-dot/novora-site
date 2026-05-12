@@ -1,0 +1,178 @@
+'use client';
+
+export type BriefStatus = 'New' | 'Reviewing' | 'Need more info' | 'Ready for CAD discussion' | 'Closed';
+
+export type AdminBriefRecord = {
+  conceptBriefId: string;
+  submittedAt: string;
+  pieceType?: string;
+  branch?: string;
+  structure?: string;
+  subStructure?: string;
+  stoneLogic?: string;
+  referenceImageCount?: number;
+  referenceImageNames?: string[];
+  referenceNotes?: string;
+  aiSketchInstruction?: string;
+  status: BriefStatus;
+  source: 'localStorage' | 'mock';
+};
+
+type StoredSubmittedBrief = Omit<AdminBriefRecord, 'status' | 'source'>;
+
+export const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
+
+export const statusOptions: BriefStatus[] = [
+  'New',
+  'Reviewing',
+  'Need more info',
+  'Ready for CAD discussion',
+  'Closed',
+];
+
+export const mockBriefs: AdminBriefRecord[] = [
+  {
+    conceptBriefId: 'NOVORA-CB-MOCK-0001',
+    submittedAt: '2026-05-10T10:30:00.000Z',
+    pieceType: 'pendant_necklace',
+    branch: 'pendant_with_chain',
+    structure: 'pendant_center_stone',
+    subStructure: '',
+    stoneLogic: 'center_stone',
+    referenceImageCount: 2,
+    referenceImageNames: ['oval-pendant-front.png', 'chain-scale-note.jpg'],
+    referenceNotes: 'Warm minimal pendant direction with soft oval proportions. Reference files are mock filenames only.',
+    aiSketchInstruction:
+      'Prepare a hand-drawn concept sketch direction only. Keep the pendant delicate, balanced, and clearly non-final.',
+    status: 'Reviewing',
+    source: 'mock',
+  },
+];
+
+const labels: Record<string, Record<string, string>> = {
+  pieceType: {
+    bracelet_bangle: 'Bracelet / Bangle',
+    earrings: 'Earrings',
+    other_custom: 'Other / custom piece',
+    pendant_necklace: 'Pendant / Necklace',
+    ring: 'Ring',
+  },
+  branch: {
+    pendant_only: 'Pendant only',
+    pendant_with_chain: 'Pendant with matching chain',
+    necklace_chain_only: 'Necklace / chain only',
+    fully_custom_pendant_necklace: 'Fully custom pendant / necklace',
+    not_sure: 'Not sure yet',
+  },
+  structure: {
+    bracelet_bangle: 'Bangle',
+    bracelet_chain: 'Chain bracelet',
+    bracelet_charm: 'Charm bracelet',
+    bracelet_cuff: 'Cuff bracelet',
+    bracelet_custom: 'Custom bracelet direction',
+    bracelet_id_nameplate: 'ID / nameplate bracelet',
+    bracelet_tennis: 'Tennis bracelet',
+    custom_brooch_pin: 'Brooch / pin',
+    custom_cufflinks: 'Cufflinks',
+    custom_hair_jewelry: 'Hair jewelry',
+    custom_keychain_object: 'Keychain / object',
+    custom_pet_tag_keepsake: 'Pet tag / keepsake',
+    custom_symbolic_piece: 'Custom symbolic piece',
+    earrings_cuff_climber: 'Ear cuff / climber',
+    earrings_custom: 'Custom earrings direction',
+    earrings_drop: 'Drop / dangle earrings',
+    earrings_hoop: 'Hoop earrings',
+    earrings_huggie: 'Huggie earrings',
+    earrings_stud: 'Stud earrings',
+    necklace_custom_chain_only: 'Custom chain-only direction',
+    necklace_full_pave: 'Full pave necklace',
+    necklace_machine_woven_chain: 'Machine-woven chain',
+    necklace_station: 'Station necklace',
+    necklace_stone_set: 'Stone-set necklace',
+    necklace_tennis: 'Tennis necklace',
+    pendant_center_stone: 'Center-stone pendant',
+    pendant_charm_tag: 'Charm / tag / nameplate pendant',
+    pendant_custom: 'Custom pendant direction',
+    pendant_locket_medallion: 'Locket / medallion pendant',
+    pendant_metal_only: 'Metal-only pendant',
+    pendant_multi_stone: 'Multi-stone pendant',
+    pendant_pave_full: 'Pave / fully set pendant',
+    ring_center_stone: 'Center-stone ring',
+    ring_custom: 'Custom ring direction',
+    ring_eternity_band: 'Eternity / repeated-stone band',
+    ring_multi_stone: 'Multi-stone ring',
+    ring_pave_full: 'Pave / fully set ring',
+    ring_signet_nameplate: 'Signet / nameplate ring',
+    ring_simple_band: 'Simple band / wedding band',
+  },
+  subStructure: {
+    bangle_custom: 'Custom bangle direction',
+    bangle_local_stone: 'Single/local stone accent',
+    bangle_metal_only: 'Metal-only bangle',
+    bangle_multi_stone: 'Multi-stone bangle',
+    bangle_pave_full: 'Pave / fully set bangle',
+    not_sure: 'Not sure yet',
+  },
+  stoneLogic: {
+    center_stone: 'Center stone / focal stone',
+    manual_review: 'Manual review',
+    multi_stone: 'Multiple focal stones',
+    none: 'No required stones',
+    optional_stone: 'Optional stone decoration',
+    repeated_stone: 'Repeated stones / full setting',
+  },
+};
+
+export function displayValue(group: keyof typeof labels, value?: string) {
+  if (!value) {
+    return 'Not provided';
+  }
+
+  return labels[group][value] || value.replaceAll('_', ' ');
+}
+
+export function formatSubmittedTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value || 'Not provided';
+  }
+
+  return date.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+export function loadLocalSubmittedBrief(): AdminBriefRecord | null {
+  try {
+    const rawBrief = window.localStorage.getItem(SUBMITTED_BRIEF_STORAGE_KEY);
+
+    if (!rawBrief) {
+      return null;
+    }
+
+    const parsed = JSON.parse(rawBrief) as StoredSubmittedBrief;
+
+    if (!parsed.conceptBriefId) {
+      return null;
+    }
+
+    return {
+      ...parsed,
+      referenceImageCount: parsed.referenceImageCount || 0,
+      referenceImageNames: parsed.referenceImageNames || [],
+      referenceNotes: parsed.referenceNotes || '',
+      status: 'New',
+      source: 'localStorage',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function loadAdminBriefRecords() {
+  const localBrief = loadLocalSubmittedBrief();
+
+  return localBrief ? [localBrief, ...mockBriefs] : mockBriefs;
+}

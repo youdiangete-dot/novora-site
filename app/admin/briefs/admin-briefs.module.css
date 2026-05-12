@@ -1,0 +1,240 @@
+.page {
+  background: linear-gradient(180deg, #fdfbf7 0%, #f7f2ea 100%);
+  min-height: 100vh;
+}
+
+.shell {
+  display: grid;
+  gap: 1.25rem;
+  margin: 0 auto;
+  max-width: 1280px;
+  padding: 3.2rem clamp(1.25rem, 3vw, 3rem) 4.5rem;
+}
+
+.hero {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 860px;
+}
+
+.eyebrow {
+  color: var(--accent-green);
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  color: var(--text);
+  font-size: clamp(2.15rem, 5vw, 4.2rem);
+  line-height: 1;
+}
+
+.hero p,
+.notice p,
+.detailValue,
+.emptyText {
+  color: #4f4a41;
+  line-height: 1.65;
+}
+
+.notice {
+  background: rgba(255, 253, 249, 0.9);
+  border: 1px solid rgba(199, 181, 145, 0.68);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem 1.1rem;
+}
+
+.notice h2 {
+  color: #334b38;
+  font-size: 1rem;
+}
+
+.panel {
+  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(63, 46, 22, 0.08);
+  overflow: hidden;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.briefTable {
+  border-collapse: collapse;
+  min-width: 980px;
+  width: 100%;
+}
+
+.briefTable th,
+.briefTable td {
+  border-bottom: 1px solid rgba(232, 224, 211, 0.95);
+  padding: 0.95rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.briefTable th {
+  background: rgba(248, 243, 234, 0.86);
+  color: #334b38;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.briefTable td {
+  color: #2f2d27;
+  font-size: 0.94rem;
+}
+
+.briefId {
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.status {
+  background: rgba(65, 91, 69, 0.1);
+  border: 1px solid rgba(65, 91, 69, 0.18);
+  border-radius: 999px;
+  color: #334b38;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 750;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
+.button,
+.secondaryButton {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-weight: 750;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0.65rem 0.95rem;
+  text-align: center;
+}
+
+.button {
+  background: #405a45;
+  border: 1px solid #405a45;
+  color: #fff;
+}
+
+.secondaryButton {
+  background: rgba(255, 253, 249, 0.72);
+  border: 1px solid var(--border);
+  color: #334b38;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+}
+
+.detailPanel,
+.notesPanel {
+  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(63, 46, 22, 0.08);
+  padding: clamp(1.15rem, 2vw, 1.55rem);
+}
+
+.detailList {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.detailRow {
+  border-top: 1px solid rgba(232, 224, 211, 0.95);
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: minmax(170px, 0.28fr) minmax(0, 1fr);
+  padding: 0.9rem 0;
+}
+
+.detailRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.detailLabel {
+  color: #334b38;
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.detailValue {
+  font-size: 0.96rem;
+  margin: 0;
+}
+
+.fileList {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fileList li {
+  background: rgba(248, 243, 234, 0.76);
+  border: 1px solid rgba(232, 224, 211, 0.95);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+}
+
+.notesPanel {
+  align-self: start;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.fieldLabel {
+  color: #334b38;
+  display: grid;
+  font-size: 0.9rem;
+  font-weight: 750;
+  gap: 0.45rem;
+}
+
+.select,
+.textarea {
+  background: #fffdf9;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  padding: 0.75rem;
+  width: 100%;
+}
+
+.textarea {
+  min-height: 170px;
+  resize: vertical;
+}
+
+.emptyPanel {
+  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .detailGrid,
+  .detailRow {
+    grid-template-columns: 1fr;
+  }
+}
