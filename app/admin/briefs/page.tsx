@@ -30,7 +30,11 @@ export default function AdminBriefsPage() {
   const filteredBriefs = (isLoaded ? briefs : []).filter((brief) => {
     const matchesStatus = statusFilter === 'All' || brief.status === (statusFilter as BriefStatus);
     const matchesPieceType = pieceTypeFilter === 'All' || brief.pieceType === pieceTypeFilter;
-    const matchesSearch = brief.conceptBriefId.toLowerCase().includes(searchTerm.trim().toLowerCase());
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const matchesSearch =
+      brief.conceptBriefId.toLowerCase().includes(normalizedSearch) ||
+      (brief.customerName || '').toLowerCase().includes(normalizedSearch) ||
+      (brief.customerEmail || '').toLowerCase().includes(normalizedSearch);
 
     return matchesStatus && matchesPieceType && matchesSearch;
   });
@@ -111,6 +115,9 @@ export default function AdminBriefsPage() {
                   <tr>
                     <th>Concept Brief ID</th>
                     <th>Submitted time</th>
+                    <th>Customer</th>
+                    <th>Email</th>
+                    <th>Country / region</th>
                     <th>Piece type</th>
                     <th>Structure</th>
                     <th>Stone logic</th>
@@ -125,6 +132,9 @@ export default function AdminBriefsPage() {
                     <tr key={`${brief.source}-${brief.conceptBriefId}`}>
                       <td className={styles.briefId}>{brief.conceptBriefId}</td>
                       <td>{formatSubmittedTime(brief.submittedAt)}</td>
+                      <td>{brief.customerName || 'Not provided'}</td>
+                      <td>{brief.customerEmail || 'Not provided'}</td>
+                      <td>{brief.customerCountry || 'Not provided'}</td>
                       <td>{displayValue('pieceType', brief.pieceType)}</td>
                       <td>{displayValue('structure', brief.structure)}</td>
                       <td>{displayValue('stoneLogic', brief.stoneLogic)}</td>

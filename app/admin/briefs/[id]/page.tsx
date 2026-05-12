@@ -91,6 +91,14 @@ export default function AdminBriefDetailPage() {
         ],
       },
       {
+        title: 'Customer contact',
+        rows: [
+          { label: 'Customer name', value: brief.customerName || 'Not provided' },
+          { label: 'Customer email', value: brief.customerEmail || 'Not provided' },
+          { label: 'Country / region', value: brief.customerCountry || 'Not provided' },
+        ],
+      },
+      {
         title: 'Design direction',
         rows: [
           { label: 'Piece type', value: displayValue('pieceType', brief.pieceType) },
