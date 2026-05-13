@@ -42,6 +42,11 @@ export const mockBriefs: AdminBriefRecord[] = [
     conceptBriefId: 'NOVORA-CB-MOCK-0001',
     submittedAt: '2026-05-10T10:30:00.000Z',
     lastUpdatedAt: '2026-05-10T14:15:00.000Z',
+    customerName: 'Mock client A',
+    customerEmail: 'planning-a@example.invalid',
+    customerCountry: 'United States',
+    customerPhone: 'Mock phone not connected',
+    contactNote: 'Prefers email follow-up in a future real workflow. Mock metadata only.',
     pieceType: 'pendant_necklace',
     branch: 'pendant_with_chain',
     structure: 'pendant_center_stone',
@@ -59,6 +64,11 @@ export const mockBriefs: AdminBriefRecord[] = [
     conceptBriefId: 'NOVORA-CB-MOCK-0002',
     submittedAt: '2026-05-09T16:20:00.000Z',
     lastUpdatedAt: '2026-05-11T09:05:00.000Z',
+    customerName: 'Mock client B',
+    customerEmail: 'planning-b@example.invalid',
+    customerCountry: 'Canada',
+    customerPhone: '',
+    contactNote: 'Needs clearer stone size preference before CAD discussion. Mock metadata only.',
     pieceType: 'ring',
     branch: '',
     structure: 'ring_multi_stone',
@@ -75,6 +85,11 @@ export const mockBriefs: AdminBriefRecord[] = [
     conceptBriefId: 'NOVORA-CB-MOCK-0003',
     submittedAt: '2026-05-08T11:45:00.000Z',
     lastUpdatedAt: '2026-05-08T12:10:00.000Z',
+    customerName: '',
+    customerEmail: '',
+    customerCountry: '',
+    customerPhone: '',
+    contactNote: 'No contact fields provided in this mock seed record.',
     pieceType: 'bracelet_bangle',
     branch: '',
     structure: 'bracelet_bangle',
@@ -182,6 +197,41 @@ export function formatSubmittedTime(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+}
+
+export function getContactSummary(brief: AdminBriefRecord) {
+  const contactParts = [
+    brief.customerName || '',
+    brief.customerEmail || '',
+    brief.customerCountry || '',
+    brief.customerPhone || '',
+  ].filter(Boolean);
+
+  return contactParts.length ? contactParts.join(' / ') : 'No contact fields provided';
+}
+
+export function hasReferenceMetadata(brief: AdminBriefRecord) {
+  return Boolean(
+    (brief.referenceImageCount && brief.referenceImageCount > 0) ||
+      brief.referenceImageNames?.length ||
+      brief.referenceNotes?.trim(),
+  );
+}
+
+export function getCadReadiness(brief: AdminBriefRecord) {
+  if (brief.status === 'Ready for CAD discussion') {
+    return 'Ready for CAD discussion only';
+  }
+
+  if (brief.status === 'Need more info') {
+    return 'Needs clarification before CAD discussion';
+  }
+
+  if (brief.status === 'Closed') {
+    return 'Closed mock review';
+  }
+
+  return 'Not CAD-ready';
 }
 
 export function loadLocalSubmittedBrief(): AdminBriefRecord | null {

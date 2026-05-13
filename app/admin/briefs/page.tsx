@@ -7,6 +7,9 @@ import {
   type AdminBriefRecord,
   displayValue,
   formatSubmittedTime,
+  getCadReadiness,
+  getContactSummary,
+  hasReferenceMetadata,
   loadAdminBriefRecords,
   statusOptions,
 } from './briefReviewData';
@@ -45,18 +48,20 @@ export default function AdminBriefsPage() {
         <section className={styles.hero}>
           <p className={styles.eyebrow}>Internal planning draft</p>
           <h1>NOVORA Brief Review</h1>
-          <p>Front-end-only mock review dashboard for submitted concept briefs.</p>
+          <p>
+            Front-end-only mock review dashboard for concept briefs, local browser submissions, and planning-only
+            review state.
+          </p>
         </section>
 
         <section className={styles.notice} aria-label="Mock admin warning">
-          <h2>Mock admin view. Not connected to a real database.</h2>
+          <h2>Mock admin-only review surface</h2>
           <ul>
-            <li>This is front-end-only.</li>
-            <li>No real customer data is stored on a server.</li>
-            <li>No real upload files are available here.</li>
-            <li>Database and protected admin login will be added later.</li>
-            <li>This is not a CAD-ready production order.</li>
-            <li>Final CAD, pricing, sourcing, and production feasibility are confirmed later.</li>
+            <li>This is a front-end-only mock admin review UI.</li>
+            <li>It does not connect to a database or authenticate admins.</li>
+            <li>It does not display real server-side customer data.</li>
+            <li>It does not create CAD requests, quotes, production orders, emails, payments, or file storage.</li>
+            <li>Reference files and customer examples shown in mock records are planning metadata only.</li>
           </ul>
         </section>
 
@@ -64,7 +69,9 @@ export default function AdminBriefsPage() {
           <div className={styles.panelHeader}>
             <div>
               <h2>Brief queue</h2>
-              <p>Showing mock brief records and any locally submitted concept brief in this browser.</p>
+              <p>
+                Showing mock seed records and any locally submitted concept brief saved in this browser localStorage.
+              </p>
             </div>
             <span className={styles.countBadge}>{filteredBriefs.length} visible</span>
           </div>
@@ -97,12 +104,12 @@ export default function AdminBriefsPage() {
             </label>
 
             <label className={styles.compactField}>
-              Search by Concept Brief ID
+              Search by ID, name, or email
               <input
                 className={styles.input}
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="NOVORA-CB-..."
+                placeholder="ID, name, or email"
                 type="search"
               />
             </label>
@@ -113,36 +120,53 @@ export default function AdminBriefsPage() {
               <table className={styles.briefTable}>
                 <thead>
                   <tr>
-                    <th>Concept Brief ID</th>
-                    <th>Submitted time</th>
-                    <th>Customer</th>
-                    <th>Email</th>
-                    <th>Country / region</th>
+                    <th>Concept Brief ID / public reference</th>
+                    <th>Contact summary</th>
                     <th>Piece type</th>
-                    <th>Structure</th>
-                    <th>Stone logic</th>
-                    <th>Reference image count</th>
-                    <th>Status</th>
-                    <th>Last updated</th>
+                    <th>Submission / review status</th>
+                    <th>CAD readiness</th>
+                    <th>Reference metadata</th>
+                    <th>Submitted / updated</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBriefs.map((brief) => (
                     <tr key={`${brief.source}-${brief.conceptBriefId}`}>
-                      <td className={styles.briefId}>{brief.conceptBriefId}</td>
-                      <td>{formatSubmittedTime(brief.submittedAt)}</td>
-                      <td>{brief.customerName || 'Not provided'}</td>
-                      <td>{brief.customerEmail || 'Not provided'}</td>
-                      <td>{brief.customerCountry || 'Not provided'}</td>
-                      <td>{displayValue('pieceType', brief.pieceType)}</td>
-                      <td>{displayValue('structure', brief.structure)}</td>
-                      <td>{displayValue('stoneLogic', brief.stoneLogic)}</td>
-                      <td>{brief.referenceImageCount || 0}</td>
+                      <td>
+                        <div className={styles.primaryCell}>
+                          <span className={styles.briefId}>{brief.conceptBriefId}</span>
+                          <span>{brief.source === 'localStorage' ? 'Local browser submission' : 'Mock seed record'}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className={styles.primaryCell}>
+                          <span>{getContactSummary(brief)}</span>
+                          <span>{brief.contactNote || 'No contact note provided'}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className={styles.primaryCell}>
+                          <span>{displayValue('pieceType', brief.pieceType)}</span>
+                          <span>{displayValue('structure', brief.structure)}</span>
+                        </div>
+                      </td>
                       <td>
                         <span className={styles.status}>{brief.status}</span>
                       </td>
-                      <td>{formatSubmittedTime(brief.lastUpdatedAt || brief.submittedAt)}</td>
+                      <td>{getCadReadiness(brief)}</td>
+                      <td>
+                        <div className={styles.primaryCell}>
+                          <span>{hasReferenceMetadata(brief) ? 'Metadata present' : 'No reference metadata'}</span>
+                          <span>{brief.referenceImageCount || 0} reference image(s)</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className={styles.primaryCell}>
+                          <span>Submitted: {formatSubmittedTime(brief.submittedAt)}</span>
+                          <span>Updated: {formatSubmittedTime(brief.lastUpdatedAt || brief.submittedAt)}</span>
+                        </div>
+                      </td>
                       <td>
                         <Link className={styles.button} href={`/admin/briefs/${encodeURIComponent(brief.conceptBriefId)}`}>
                           View brief
