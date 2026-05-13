@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import submittedStyles from './submitted.module.css';
 import styles from '../brief/brief.module.css';
 
 type SubmittedConceptBrief = {
@@ -137,18 +138,68 @@ export default function DesignSubmittedPage() {
           <section className={styles.boundaryCard}>
             <h2>Important boundary</h2>
             <p>
+              This submission helps NOVORA understand your design direction, but it is not a final order, final pricing,
+              CAD approval, or production confirmation.
+            </p>
+            <p>
               This is not a CAD-ready production order. Final CAD, pricing, sourcing, and production feasibility are
               confirmed later.
             </p>
+            <ul className={submittedStyles.boundaryList}>
+              <li>Not a final order</li>
+              <li>Not final pricing</li>
+              <li>Not CAD approval</li>
+              <li>Not production confirmation</li>
+            </ul>
           </section>
 
-          <section className={styles.nextSteps}>
-            <h2>Next steps</h2>
-            <ul>
-              <li>NOVORA reviews the concept brief.</li>
-              <li>Reference images guide the AI sketch.</li>
-              <li>CAD and production details are confirmed separately.</li>
-            </ul>
+          <section className={submittedStyles.nextSteps}>
+            <div>
+              <p className={styles.eyebrow}>What happens next</p>
+              <h2>From concept brief to production review</h2>
+            </div>
+            <p className={submittedStyles.nextStepsIntro}>
+              NOVORA will review the submitted details and use them as a starting point for the next conversation.
+            </p>
+            <ol className={submittedStyles.nextStepList}>
+              <li>
+                <span className={submittedStyles.stepNumber}>1</span>
+                <div>
+                  <h3>Brief review</h3>
+                  <p>NOVORA reviews the concept brief, references, materials direction, and contact details.</p>
+                </div>
+              </li>
+              <li>
+                <span className={submittedStyles.stepNumber}>2</span>
+                <div>
+                  <h3>Concept direction</h3>
+                  <p>NOVORA may prepare an AI hand-drawn concept direction or sketch brief for review.</p>
+                </div>
+              </li>
+              <li>
+                <span className={submittedStyles.stepNumber}>3</span>
+                <div>
+                  <h3>CAD path confirmation</h3>
+                  <p>
+                    If you want production-level CAD, NOVORA will confirm details, CAD fee, and process separately.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className={submittedStyles.stepNumber}>4</span>
+                <div>
+                  <h3>Final production checks</h3>
+                  <p>
+                    Final quote, gemstone sourcing, production feasibility, QC, packaging, and logistics are confirmed
+                    later.
+                  </p>
+                </div>
+              </li>
+            </ol>
+            <p className={submittedStyles.contactExpectation}>
+              NOVORA will use the submitted email or contact information for follow-up. No real email is sent from this
+              front-end-only submission.
+            </p>
           </section>
 
           <div className={styles.actions}>
