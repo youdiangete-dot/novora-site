@@ -45,6 +45,15 @@
   justify-content: space-between;
 }
 
+.previewTags {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+  max-width: 320px;
+}
+
 .previewHeader h2,
 .directionCard h2,
 .boundaryCard h2 {
@@ -53,12 +62,11 @@
   line-height: 1.3;
 }
 
-.previewHeader span {
+.previewTags span {
   background: rgba(247, 242, 234, 0.9);
   border: 1px solid rgba(232, 224, 211, 0.9);
   border-radius: 999px;
   color: #635942;
-  flex: 0 0 auto;
   font-size: 0.78rem;
   font-weight: 750;
   padding: 0.42rem 0.62rem;
@@ -67,18 +75,22 @@
 .paperCard {
   aspect-ratio: 4 / 3;
   background:
-    linear-gradient(115deg, rgba(255, 255, 255, 0.52), rgba(244, 239, 229, 0.28)),
+    radial-gradient(circle at 22% 18%, rgba(255, 255, 255, 0.76), transparent 24%),
+    radial-gradient(circle at 78% 74%, rgba(231, 224, 210, 0.34), transparent 30%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.58), rgba(244, 239, 229, 0.3)),
     repeating-linear-gradient(
       0deg,
-      rgba(101, 91, 70, 0.05) 0,
-      rgba(101, 91, 70, 0.05) 1px,
+      rgba(101, 91, 70, 0.035) 0,
+      rgba(101, 91, 70, 0.035) 1px,
       transparent 1px,
       transparent 28px
     ),
     #fffdf8;
   border: 1px solid rgba(211, 201, 184, 0.92);
   border-radius: 8px;
-  box-shadow: inset 0 0 34px rgba(117, 101, 68, 0.09);
+  box-shadow:
+    inset 0 0 34px rgba(117, 101, 68, 0.08),
+    0 16px 30px rgba(63, 46, 22, 0.08);
   min-height: 300px;
   overflow: hidden;
   position: relative;
@@ -97,83 +109,232 @@
   top: 1rem;
 }
 
-.sketchOval,
-.sketchBand,
-.sketchStone,
-.sketchAccentOne,
-.sketchAccentTwo {
-  border-color: rgba(51, 75, 56, 0.54);
+.cardTitle {
+  color: rgba(79, 74, 65, 0.6);
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  position: absolute;
+  right: 1rem;
+  text-transform: uppercase;
+  top: 1.08rem;
+}
+
+.guideVertical,
+.guideHorizontal,
+.ringOuter,
+.ringInner,
+.ringShoulderLeft,
+.ringShoulderRight,
+.centerStone,
+.stoneFacetOne,
+.stoneFacetTwo,
+.sideProfile,
+.sideStone,
+.noteLineOne,
+.noteLineTwo,
+.noteLineThree,
+.swatchOne,
+.swatchTwo,
+.swatchThree {
   position: absolute;
 }
 
-.sketchOval {
-  border-style: solid;
-  border-width: 2px;
-  border-radius: 54% 46% 58% 42%;
-  height: 44%;
-  left: 27%;
-  top: 31%;
-  transform: rotate(-7deg);
-  width: 46%;
+.guideVertical,
+.guideHorizontal {
+  background: rgba(99, 89, 66, 0.12);
 }
 
-.sketchBand {
-  border-bottom: 3px solid rgba(51, 75, 56, 0.5);
-  border-radius: 50%;
-  height: 26%;
-  left: 22%;
-  top: 46%;
-  transform: rotate(-5deg);
-  width: 56%;
-}
-
-.sketchStone {
-  border-style: solid;
-  border-width: 2px;
-  border-radius: 45% 55% 48% 52%;
-  height: 16%;
+.guideVertical {
+  height: 56%;
   left: 43%;
-  top: 27%;
-  transform: rotate(12deg);
-  width: 15%;
+  top: 22%;
+  width: 1px;
 }
 
-.sketchAccentOne,
-.sketchAccentTwo {
-  border-top: 1px solid rgba(99, 89, 66, 0.46);
-  height: 10%;
-  width: 24%;
-}
-
-.sketchAccentOne {
+.guideHorizontal {
+  height: 1px;
   left: 18%;
-  top: 26%;
-  transform: rotate(18deg);
+  top: 55%;
+  width: 52%;
 }
 
-.sketchAccentTwo {
-  right: 16%;
-  top: 66%;
-  transform: rotate(-14deg);
+.ringOuter {
+  border: 2px solid rgba(51, 75, 56, 0.42);
+  border-radius: 52% 48% 49% 51%;
+  height: 34%;
+  left: 26%;
+  top: 38%;
+  transform: rotate(-6deg);
+  width: 32%;
 }
 
-.sketchNoteOne,
-.sketchNoteTwo {
+.ringInner {
+  border: 1px solid rgba(51, 75, 56, 0.22);
+  border-radius: 50%;
+  height: 22%;
+  left: 31%;
+  top: 44%;
+  transform: rotate(-6deg);
+  width: 22%;
+}
+
+.ringShoulderLeft,
+.ringShoulderRight {
+  border-top: 2px solid rgba(51, 75, 56, 0.34);
+  height: 12%;
+  top: 47%;
+  width: 18%;
+}
+
+.ringShoulderLeft {
+  left: 20%;
+  transform: rotate(-24deg);
+}
+
+.ringShoulderRight {
+  left: 49%;
+  transform: rotate(19deg);
+}
+
+.centerStone {
+  background: rgba(255, 253, 249, 0.56);
+  border: 2px solid rgba(51, 75, 56, 0.48);
+  border-radius: 46% 54% 48% 52%;
+  box-shadow: 0 0 0 8px rgba(64, 90, 69, 0.035);
+  height: 13%;
+  left: 38%;
+  top: 30%;
+  transform: rotate(12deg);
+  width: 12%;
+}
+
+.stoneFacetOne,
+.stoneFacetTwo {
+  background: rgba(51, 75, 56, 0.28);
+  height: 1px;
+  left: 40%;
+  top: 36%;
+  transform-origin: center;
+  width: 8%;
+}
+
+.stoneFacetOne {
+  transform: rotate(38deg);
+}
+
+.stoneFacetTwo {
+  transform: rotate(-31deg);
+}
+
+.sideProfile {
+  border-bottom: 2px solid rgba(51, 75, 56, 0.36);
+  border-radius: 50%;
+  height: 14%;
+  right: 14%;
+  top: 42%;
+  transform: rotate(-3deg);
+  width: 22%;
+}
+
+.sideStone {
+  border: 1px solid rgba(51, 75, 56, 0.35);
+  border-radius: 45% 55% 50% 50%;
+  height: 8%;
+  right: 23%;
+  top: 36%;
+  transform: rotate(10deg);
+  width: 7%;
+}
+
+.noteLineOne,
+.noteLineTwo,
+.noteLineThree {
+  background: rgba(99, 89, 66, 0.22);
+  height: 1px;
+  transform-origin: left center;
+}
+
+.noteLineOne {
+  left: 49%;
+  top: 34%;
+  transform: rotate(-13deg);
+  width: 16%;
+}
+
+.noteLineTwo {
+  right: 31%;
+  top: 51%;
+  transform: rotate(8deg);
+  width: 12%;
+}
+
+.noteLineThree {
+  left: 28%;
+  top: 73%;
+  transform: rotate(-6deg);
+  width: 18%;
+}
+
+.noteOne,
+.noteTwo,
+.noteThree {
   color: rgba(79, 74, 65, 0.72);
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(0.86rem, 1.8vw, 1.05rem);
+  font-size: clamp(0.78rem, 1.5vw, 0.96rem);
   font-style: italic;
   position: absolute;
 }
 
-.sketchNoteOne {
-  right: 13%;
-  top: 23%;
+.noteOne {
+  right: 18%;
+  top: 26%;
 }
 
-.sketchNoteTwo {
-  bottom: 15%;
-  left: 16%;
+.noteTwo {
+  right: 12%;
+  top: 54%;
+}
+
+.noteThree {
+  bottom: 14%;
+  left: 18%;
+}
+
+.swatchOne,
+.swatchTwo,
+.swatchThree {
+  border: 1px solid rgba(99, 89, 66, 0.18);
+  border-radius: 999px;
+  bottom: 1rem;
+  height: 1rem;
+  width: 1rem;
+}
+
+.swatchOne {
+  background: rgba(205, 189, 151, 0.34);
+  right: 4.2rem;
+}
+
+.swatchTwo {
+  background: rgba(229, 224, 213, 0.64);
+  right: 2.6rem;
+}
+
+.swatchThree {
+  background: rgba(64, 90, 69, 0.18);
+  right: 1rem;
+}
+
+.previewNote {
+  background: rgba(247, 242, 234, 0.72);
+  border: 1px solid rgba(232, 224, 211, 0.84);
+  border-radius: 8px;
+  color: #4f4a41;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0.72rem 0.78rem;
 }
 
 .instructionNote {
@@ -202,6 +363,10 @@
 @media (max-width: 720px) {
   .previewHeader {
     display: grid;
+  }
+
+  .previewTags {
+    justify-content: flex-start;
   }
 
   .boundaryCard ul {
