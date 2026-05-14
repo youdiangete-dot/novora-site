@@ -203,6 +203,9 @@ export default function DesignSubmittedPage() {
           </section>
 
           <div className={styles.actions}>
+            <Link className={styles.primaryButton} href="/design/sketch">
+              View AI Sketch Preview
+            </Link>
             <Link className={styles.primaryButton} href="/design/start">
               Back to design start
             </Link>

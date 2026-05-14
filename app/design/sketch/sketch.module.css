@@ -1,0 +1,214 @@
+.sketchShell {
+  min-height: 100vh;
+}
+
+.layout {
+  display: grid;
+  gap: 1rem;
+  margin: 0 auto;
+  max-width: 880px;
+  width: 100%;
+}
+
+.intro,
+.previewPanel,
+.directionCard,
+.boundaryCard {
+  background: rgba(255, 253, 249, 0.88);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(63, 46, 22, 0.08);
+  display: grid;
+  gap: 0.75rem;
+  padding: clamp(1.1rem, 2vw, 1.45rem);
+}
+
+.intro h1 {
+  color: var(--text);
+  font-size: clamp(2.1rem, 4.5vw, 4.15rem);
+  line-height: 1;
+}
+
+.intro p,
+.directionCard p,
+.boundaryCard p,
+.boundaryCard li {
+  color: #4f4a41;
+  font-size: 0.98rem;
+  line-height: 1.68;
+}
+
+.previewHeader {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.previewHeader h2,
+.directionCard h2,
+.boundaryCard h2 {
+  color: #334b38;
+  font-size: 1.08rem;
+  line-height: 1.3;
+}
+
+.previewHeader span {
+  background: rgba(247, 242, 234, 0.9);
+  border: 1px solid rgba(232, 224, 211, 0.9);
+  border-radius: 999px;
+  color: #635942;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 750;
+  padding: 0.42rem 0.62rem;
+}
+
+.paperCard {
+  aspect-ratio: 4 / 3;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.52), rgba(244, 239, 229, 0.28)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(101, 91, 70, 0.05) 0,
+      rgba(101, 91, 70, 0.05) 1px,
+      transparent 1px,
+      transparent 28px
+    ),
+    #fffdf8;
+  border: 1px solid rgba(211, 201, 184, 0.92);
+  border-radius: 8px;
+  box-shadow: inset 0 0 34px rgba(117, 101, 68, 0.09);
+  min-height: 300px;
+  overflow: hidden;
+  position: relative;
+}
+
+.mockLabel {
+  background: rgba(64, 90, 69, 0.1);
+  border: 1px solid rgba(64, 90, 69, 0.24);
+  border-radius: 999px;
+  color: #405a45;
+  font-size: 0.78rem;
+  font-weight: 750;
+  left: 1rem;
+  padding: 0.38rem 0.58rem;
+  position: absolute;
+  top: 1rem;
+}
+
+.sketchOval,
+.sketchBand,
+.sketchStone,
+.sketchAccentOne,
+.sketchAccentTwo {
+  border-color: rgba(51, 75, 56, 0.54);
+  position: absolute;
+}
+
+.sketchOval {
+  border-style: solid;
+  border-width: 2px;
+  border-radius: 54% 46% 58% 42%;
+  height: 44%;
+  left: 27%;
+  top: 31%;
+  transform: rotate(-7deg);
+  width: 46%;
+}
+
+.sketchBand {
+  border-bottom: 3px solid rgba(51, 75, 56, 0.5);
+  border-radius: 50%;
+  height: 26%;
+  left: 22%;
+  top: 46%;
+  transform: rotate(-5deg);
+  width: 56%;
+}
+
+.sketchStone {
+  border-style: solid;
+  border-width: 2px;
+  border-radius: 45% 55% 48% 52%;
+  height: 16%;
+  left: 43%;
+  top: 27%;
+  transform: rotate(12deg);
+  width: 15%;
+}
+
+.sketchAccentOne,
+.sketchAccentTwo {
+  border-top: 1px solid rgba(99, 89, 66, 0.46);
+  height: 10%;
+  width: 24%;
+}
+
+.sketchAccentOne {
+  left: 18%;
+  top: 26%;
+  transform: rotate(18deg);
+}
+
+.sketchAccentTwo {
+  right: 16%;
+  top: 66%;
+  transform: rotate(-14deg);
+}
+
+.sketchNoteOne,
+.sketchNoteTwo {
+  color: rgba(79, 74, 65, 0.72);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(0.86rem, 1.8vw, 1.05rem);
+  font-style: italic;
+  position: absolute;
+}
+
+.sketchNoteOne {
+  right: 13%;
+  top: 23%;
+}
+
+.sketchNoteTwo {
+  bottom: 15%;
+  left: 16%;
+}
+
+.instructionNote {
+  background: rgba(247, 242, 234, 0.82);
+  border: 1px solid rgba(232, 224, 211, 0.86);
+  border-radius: 8px;
+  padding: 0.78rem;
+}
+
+.boundaryCard ul {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.boundaryCard li {
+  background: rgba(248, 243, 234, 0.72);
+  border: 1px solid rgba(232, 224, 211, 0.86);
+  border-radius: 8px;
+  padding: 0.65rem 0.72rem;
+}
+
+@media (max-width: 720px) {
+  .previewHeader {
+    display: grid;
+  }
+
+  .boundaryCard ul {
+    grid-template-columns: 1fr;
+  }
+
+  .paperCard {
+    min-height: 240px;
+  }
+}
