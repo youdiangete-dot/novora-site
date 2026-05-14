@@ -4,15 +4,17 @@
 
 .layout {
   display: grid;
-  gap: 1rem;
+  gap: 1.1rem;
   margin: 0 auto;
-  max-width: 880px;
+  max-width: 960px;
   width: 100%;
 }
 
 .intro,
+.metadataCard,
 .previewPanel,
 .directionCard,
+.workflowCard,
 .boundaryCard {
   background: rgba(255, 253, 249, 0.88);
   border: 1px solid var(--border);
@@ -23,19 +25,65 @@
   padding: clamp(1.1rem, 2vw, 1.45rem);
 }
 
+.intro {
+  background: linear-gradient(135deg, rgba(255, 253, 249, 0.95), rgba(247, 242, 234, 0.82));
+}
+
+.introHeader {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
 .intro h1 {
   color: var(--text);
-  font-size: clamp(2.1rem, 4.5vw, 4.15rem);
-  line-height: 1;
+  font-size: clamp(2rem, 4vw, 3.65rem);
+  line-height: 1.02;
+  max-width: 760px;
 }
 
 .intro p,
+.notice,
+.metadataCard p,
 .directionCard p,
+.workflowCard li,
 .boundaryCard p,
 .boundaryCard li {
   color: #4f4a41;
   font-size: 0.98rem;
   line-height: 1.68;
+}
+
+.modeBadge {
+  background: rgba(64, 90, 69, 0.1);
+  border: 1px solid rgba(64, 90, 69, 0.24);
+  border-radius: 999px;
+  color: #334b38;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 750;
+  padding: 0.46rem 0.68rem;
+}
+
+.notice {
+  align-items: start;
+  background: rgba(255, 249, 238, 0.86);
+  border: 1px solid rgba(207, 181, 128, 0.5);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.notice strong {
+  color: #6f5522;
+  font-size: 0.86rem;
+}
+
+.sectionHeader {
+  display: grid;
+  gap: 0.25rem;
 }
 
 .previewHeader {
@@ -55,7 +103,9 @@
 }
 
 .previewHeader h2,
+.metadataCard h2,
 .directionCard h2,
+.workflowCard h2,
 .boundaryCard h2 {
   color: #334b38;
   font-size: 1.08rem;
@@ -96,6 +146,23 @@
   position: relative;
 }
 
+.paperCard::after {
+  border: 1px solid rgba(111, 85, 34, 0.2);
+  border-radius: 999px;
+  color: rgba(111, 85, 34, 0.58);
+  content: 'Placeholder visual only';
+  font-size: clamp(0.8rem, 1.7vw, 1rem);
+  font-weight: 750;
+  left: 50%;
+  padding: 0.48rem 0.76rem;
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-7deg);
+  white-space: nowrap;
+  z-index: 2;
+}
+
 .mockLabel {
   background: rgba(64, 90, 69, 0.1);
   border: 1px solid rgba(64, 90, 69, 0.24);
@@ -113,9 +180,10 @@
   color: rgba(79, 74, 65, 0.6);
   font-size: 0.76rem;
   font-weight: 750;
-  letter-spacing: 0.04em;
+  max-width: 46%;
   position: absolute;
   right: 1rem;
+  text-align: right;
   text-transform: uppercase;
   top: 1.08rem;
 }
@@ -344,6 +412,51 @@
   padding: 0.78rem;
 }
 
+.workflowCard ol {
+  counter-reset: workflow;
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.workflowCard li {
+  background: rgba(248, 243, 234, 0.72);
+  border: 1px solid rgba(232, 224, 211, 0.86);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.75rem 0.82rem 0.75rem 3rem;
+  position: relative;
+}
+
+.workflowCard li::before {
+  align-items: center;
+  background: #334b38;
+  border-radius: 999px;
+  color: #fffdf8;
+  content: counter(workflow);
+  counter-increment: workflow;
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 750;
+  height: 1.55rem;
+  justify-content: center;
+  left: 0.82rem;
+  position: absolute;
+  top: 0.88rem;
+  width: 1.55rem;
+}
+
+.workflowCard strong {
+  color: #334b38;
+}
+
+.workflowCard span {
+  color: #5e574c;
+}
+
 .boundaryCard ul {
   display: grid;
   gap: 0.45rem;
@@ -360,7 +473,31 @@
   padding: 0.65rem 0.72rem;
 }
 
+.nextActions {
+  align-items: center;
+}
+
+.disabledAction {
+  background: rgba(247, 242, 234, 0.68);
+  border: 1px solid rgba(232, 224, 211, 0.9);
+  border-radius: 999px;
+  color: #746b5e;
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.2;
+  padding: 0.85rem 1rem;
+}
+
 @media (max-width: 720px) {
+  .introHeader {
+    display: grid;
+  }
+
+  .modeBadge {
+    width: fit-content;
+  }
+
   .previewHeader {
     display: grid;
   }
@@ -375,5 +512,15 @@
 
   .paperCard {
     min-height: 240px;
+  }
+
+  .cardTitle {
+    font-size: 0.68rem;
+    max-width: 42%;
+  }
+
+  .paperCard::after {
+    white-space: normal;
+    width: min(72%, 240px);
   }
 }

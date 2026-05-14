@@ -52,12 +52,12 @@ function buildSketchDirection(brief: SubmittedConceptBrief) {
   return {
     headline: `${pieceType} concept direction`,
     lines: [
-      `A soft hand-drawn preview could explore a ${pieceType.toLowerCase()} with ${pickValue(
+      `A future AI sketch could explore a ${pieceType.toLowerCase()} with ${pickValue(
         structure,
         'a refined custom silhouette',
       ).toLowerCase()}.`,
-      `The mock direction keeps ${materialDirection.toLowerCase()} and ${stoneDirection.toLowerCase()} as early conversation inputs.`,
-      `NOVORA would use ${references} to guide proportion, motif, stone placement, and the first visual direction before any CAD path is confirmed.`,
+      `The submitted brief would guide ${materialDirection.toLowerCase()} and ${stoneDirection.toLowerCase()} as early visual conversation inputs.`,
+      `NOVORA would use ${references} to inform proportion, motif, stone placement, and review direction before any CAD path is confirmed.`,
     ],
   };
 }
@@ -120,28 +120,64 @@ export default function DesignSketchPage() {
         <div className={sketchStyles.layout}>
           <div className={sketchStyles.intro}>
             <p className={styles.eyebrow}>AI Sketch Preview</p>
-            <h1>Mock concept sketch direction</h1>
+            <div className={sketchStyles.introHeader}>
+              <h1>Preview mode for future AI sketch review</h1>
+              <span className={sketchStyles.modeBadge}>Demo placeholder</span>
+            </div>
             <p>
-              NOVORA may prepare an AI hand-drawn concept direction based on your submitted brief, giving you a
-              low-friction first visual conversation before any production-level CAD work begins.
+              This page shows the intended review experience for a future AI hand-drawn concept sketch. Real AI sketch
+              generation is not active yet, and the visual below is not your actual generated design.
             </p>
+            <div className={sketchStyles.notice} role="note">
+              <strong>Mock-only boundary</strong>
+              <span>
+                The current board is a CSS demo placeholder. It does not call GPT, OpenAI, or any external image
+                generation API.
+              </span>
+            </div>
           </div>
+
+          <section className={sketchStyles.metadataCard} aria-labelledby="submitted-brief-heading">
+            <div className={sketchStyles.sectionHeader}>
+              <p className={styles.eyebrow}>Submitted brief metadata</p>
+              <h2 id="submitted-brief-heading">Brief saved in this browser</h2>
+            </div>
+            <dl className={styles.submittedDetails} aria-label="Submitted concept brief metadata">
+              <div>
+                <dt>Concept Brief ID</dt>
+                <dd>{submittedBrief.conceptBriefId}</dd>
+              </div>
+              <div>
+                <dt>Submitted time</dt>
+                <dd>{formatSubmittedTime(submittedBrief.submittedAt)}</dd>
+              </div>
+              <div>
+                <dt>Customer name</dt>
+                <dd>{submittedBrief.customerName || 'Not provided'}</dd>
+              </div>
+              <div>
+                <dt>Customer email</dt>
+                <dd>{submittedBrief.customerEmail || 'Not provided'}</dd>
+              </div>
+            </dl>
+          </section>
 
           <section className={sketchStyles.previewPanel} aria-labelledby="mock-preview-heading">
             <div className={sketchStyles.previewHeader}>
               <div>
-                <p className={styles.eyebrow}>Mock preview</p>
-                <h2 id="mock-preview-heading">Hand-drawn concept placeholder</h2>
+                <p className={styles.eyebrow}>Mock sketch board</p>
+                <h2 id="mock-preview-heading">Demo placeholder, not your generated sketch</h2>
               </div>
               <div className={sketchStyles.previewTags} aria-label="Preview limitations">
+                <span>Preview mode</span>
                 <span>Front-end only</span>
-                <span>Not a real generated image</span>
+                <span>No AI image generated</span>
               </div>
             </div>
 
             <div className={sketchStyles.paperCard} aria-label="Mock hand-drawn jewelry sketch placeholder">
-              <span className={sketchStyles.mockLabel}>Mock preview</span>
-              <span className={sketchStyles.cardTitle}>Concept study board</span>
+              <span className={sketchStyles.mockLabel}>Demo placeholder</span>
+              <span className={sketchStyles.cardTitle}>Not an actual generated sketch</span>
               <span className={sketchStyles.guideVertical} />
               <span className={sketchStyles.guideHorizontal} />
               <span className={sketchStyles.ringOuter} />
@@ -164,32 +200,13 @@ export default function DesignSketchPage() {
               <span className={sketchStyles.swatchThree} />
             </div>
             <p className={sketchStyles.previewNote}>
-              This board is a placeholder preview of how the future AI sketch review page will work. A real AI
-              hand-drawn concept sketch is not generated by this PR.
+              This CSS board is only a premium visual stand-in for the future review page. A real customer-specific
+              hand-drawn sketch has not been generated from this brief.
             </p>
           </section>
 
-          <dl className={styles.submittedDetails} aria-label="Submitted concept brief metadata">
-            <div>
-              <dt>Concept Brief ID</dt>
-              <dd>{submittedBrief.conceptBriefId}</dd>
-            </div>
-            <div>
-              <dt>Submitted time</dt>
-              <dd>{formatSubmittedTime(submittedBrief.submittedAt)}</dd>
-            </div>
-            <div>
-              <dt>Customer name</dt>
-              <dd>{submittedBrief.customerName || 'Not provided'}</dd>
-            </div>
-            <div>
-              <dt>Customer email</dt>
-              <dd>{submittedBrief.customerEmail || 'Not provided'}</dd>
-            </div>
-          </dl>
-
           <section className={sketchStyles.directionCard}>
-            <p className={styles.eyebrow}>Generated-looking mock summary</p>
+            <p className={styles.eyebrow}>Future AI sketch explanation</p>
             <h2>{sketchDirection.headline}</h2>
             {sketchDirection.lines.map((line) => (
               <p key={line}>{line}</p>
@@ -201,11 +218,37 @@ export default function DesignSketchPage() {
             ) : null}
           </section>
 
+          <section className={sketchStyles.workflowCard} aria-labelledby="future-workflow-heading">
+            <div className={sketchStyles.sectionHeader}>
+              <p className={styles.eyebrow}>Future intended workflow</p>
+              <h2 id="future-workflow-heading">From brief to visual direction</h2>
+            </div>
+            <ol>
+              <li>
+                <strong>NOVORA reads the submitted concept brief.</strong>
+                <span>Piece type, structure, stone logic, references, and notes become the creative input.</span>
+              </li>
+              <li>
+                <strong>An AI hand-drawn concept sketch may be generated.</strong>
+                <span>The sketch would help explore proportion and visual direction before production decisions.</span>
+              </li>
+              <li>
+                <strong>NOVORA reviews the direction before CAD.</strong>
+                <span>A human review step keeps the sketch aligned with feasibility, taste, and customer intent.</span>
+              </li>
+              <li>
+                <strong>Professional CAD and production confirmation happen later.</strong>
+                <span>Pricing, sourcing, CAD, QC, and production approval remain separate professional steps.</span>
+              </li>
+            </ol>
+          </section>
+
           <section className={sketchStyles.boundaryCard}>
-            <h2>Preview boundary</h2>
+            <p className={styles.eyebrow}>Production boundary</p>
+            <h2>Not CAD, not pricing, not production approval</h2>
             <p>
-              This page is a customer-facing mock flow only. It explains how a future AI hand-drawn concept sketch step
-              could support the custom jewelry conversation, but the visual above is not your actual generated design.
+              This customer-facing mock flow explains how a future AI sketch step could support the custom jewelry
+              conversation. It does not replace NOVORA's later professional CAD, pricing, sourcing, or production review.
             </p>
             <ul>
               <li>Not production CAD</li>
@@ -221,13 +264,16 @@ export default function DesignSketchPage() {
             </p>
           </section>
 
-          <div className={styles.actions}>
+          <div className={`${styles.actions} ${sketchStyles.nextActions}`} aria-label="Next steps">
             <Link className={styles.primaryButton} href="/design/submitted">
               Back to submission
             </Link>
             <Link className={styles.secondaryButton} href="/design/start">
-              Back to design start
+              Start a new concept brief
             </Link>
+            <span className={sketchStyles.disabledAction} aria-disabled="true">
+              Professional CAD review later
+            </span>
           </div>
         </div>
       </section>
