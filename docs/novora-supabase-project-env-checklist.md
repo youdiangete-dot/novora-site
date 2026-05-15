@@ -62,6 +62,8 @@ Collect these values only when implementation is ready. Do not add real values i
 
 Implementation note: `lib/server/env.ts` now contains a server-only readiness skeleton for these future environment names. It returns presence/readiness metadata only, does not expose raw secrets, does not connect to Supabase or OpenAI, and does not require any variables to exist during normal builds.
 
+Implementation note: `lib/server/supabase.ts` now contains a server-only Supabase client skeleton. It returns null when required environment values are missing, performs no queries or storage operations, and is not wired into pages or routes.
+
 ## 5. Vercel environment variable checklist
 
 When implementation is ready, Supabase-related variables will eventually be added in Vercel:
