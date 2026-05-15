@@ -60,6 +60,8 @@ Collect these values only when implementation is ready. Do not add real values i
 
 `NEXT_PUBLIC` values are browser-visible. They must never contain service-role secrets, database passwords, private connection strings, provider tokens, or any value that can perform privileged operations.
 
+Implementation note: `lib/server/env.ts` now contains a server-only readiness skeleton for these future environment names. It returns presence/readiness metadata only, does not expose raw secrets, does not connect to Supabase or OpenAI, and does not require any variables to exist during normal builds.
+
 ## 5. Vercel environment variable checklist
 
 When implementation is ready, Supabase-related variables will eventually be added in Vercel:
