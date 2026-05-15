@@ -64,6 +64,8 @@ Implementation note: `lib/server/env.ts` now contains a server-only readiness sk
 
 Implementation note: `lib/server/supabase.ts` now contains a server-only Supabase client skeleton. It returns null when required environment values are missing, performs no queries or storage operations, and is not wired into pages or routes.
 
+Implementation note: `app/api/concept-briefs/route.ts` now contains a Concept Brief API route skeleton. It validates a JSON payload and returns a safe skeleton response, but it does not write to Supabase; a future PR must connect persistence only after env, schema, RLS, and data-handling rules are ready.
+
 ## 5. Vercel environment variable checklist
 
 When implementation is ready, Supabase-related variables will eventually be added in Vercel:
