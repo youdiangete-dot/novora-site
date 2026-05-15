@@ -22,6 +22,22 @@ type ContactFields = {
 
 type ContactErrors = Partial<Record<keyof Pick<ContactFields, 'customerName' | 'customerEmail'>, string>>;
 
+type ConceptBriefApiSubmissionMetadata = {
+  ok: boolean;
+  persisted: boolean;
+  mode?: string;
+  message: string;
+  publicReference?: string;
+};
+
+type ConceptBriefApiResponse = {
+  ok?: unknown;
+  persisted?: unknown;
+  mode?: unknown;
+  message?: unknown;
+  publicReference?: unknown;
+};
+
 type StoredConceptBrief = {
   pieceType?: string;
   branch?: string;
@@ -455,6 +471,49 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function readApiString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+async function postConceptBriefSkeleton(payload: Record<string, unknown>): Promise<ConceptBriefApiSubmissionMetadata> {
+  const fallbackMetadata: ConceptBriefApiSubmissionMetadata = {
+    ok: false,
+    persisted: false,
+    message: 'API skeleton unavailable; local submission flow continued.',
+  };
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 3500);
+
+  try {
+    const response = await fetch('/api/concept-briefs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const data = (await response.json().catch(() => null)) as ConceptBriefApiResponse | null;
+
+    if (!response.ok || !data?.ok) {
+      return fallbackMetadata;
+    }
+
+    return {
+      ok: true,
+      persisted: data.persisted === true,
+      mode: readApiString(data.mode),
+      message: readApiString(data.message) || 'Concept Brief API skeleton received the submission for review.',
+      publicReference: readApiString(data.publicReference),
+    };
+  } catch {
+    return fallbackMetadata;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export default function DesignBriefPage() {
   const router = useRouter();
   const [brief, setBrief] = useState<StoredConceptBrief | null>(null);
@@ -575,7 +634,7 @@ export default function DesignBriefPage() {
     }
   }
 
-  function submitConceptBrief() {
+  async function submitConceptBrief() {
     if (!brief) {
       return;
     }
@@ -584,14 +643,46 @@ export default function DesignBriefPage() {
       return;
     }
 
+    const customerName = contactFields.customerName.trim();
+    const customerEmail = contactFields.customerEmail.trim();
+    const customerPhone = contactFields.customerPhone.trim();
+    const customerCountry = contactFields.customerCountry.trim();
+    const contactNote = contactFields.contactNote.trim();
+    const apiPayload = {
+      customerName,
+      customerEmail,
+      customerPhone,
+      customerCountry,
+      contactNote,
+      phoneOrWhatsApp: customerPhone,
+      countryOrRegion: customerCountry,
+      contact: {
+        customerName,
+        customerEmail,
+        customerPhone,
+        customerCountry,
+        contactNote,
+      },
+      brief,
+      conceptBrief: brief,
+      summaryItems: displayItems,
+      pieceType: brief.pieceType || '',
+      branch: brief.branch || '',
+      structure: brief.structure || '',
+      subStructure: brief.subStructure || '',
+      aiSketchInstruction: brief.aiSketchInstruction || '',
+    };
+    const apiSubmission = await postConceptBriefSkeleton(apiPayload);
+
     const submittedBrief = {
       conceptBriefId: generateConceptBriefId(),
       submittedAt: new Date().toISOString(),
-      customerName: contactFields.customerName.trim(),
-      customerEmail: contactFields.customerEmail.trim(),
-      customerPhone: contactFields.customerPhone.trim(),
-      customerCountry: contactFields.customerCountry.trim(),
-      contactNote: contactFields.contactNote.trim(),
+      customerName,
+      customerEmail,
+      customerPhone,
+      customerCountry,
+      contactNote,
+      apiSubmission,
       pieceType: brief.pieceType || '',
       branch: brief.branch || '',
       structure: brief.structure || '',
