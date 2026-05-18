@@ -5,6 +5,8 @@ export type ConceptBriefSubmissionPayload = {
   customerEmail?: unknown;
   customerPhone?: unknown;
   customerCountry?: unknown;
+  phoneOrWhatsApp?: unknown;
+  countryOrRegion?: unknown;
   contactNote?: unknown;
   contact?: {
     customerName?: unknown;

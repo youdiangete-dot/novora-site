@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server";
 
+import { persistConceptBriefSubmission } from "../../../lib/server/concept-brief-persistence";
 import {
-  generateConceptBriefPublicReferencePreview,
+  type ConceptBriefSubmissionPayload,
   validateConceptBriefSubmission,
 } from "../../../lib/server/concept-brief-validation";
-import { getSupabaseServerReadiness } from "../../../lib/server/supabase";
 
-type ConceptBriefSkeletonResponse = {
+type ConceptBriefResponse = {
   ok: boolean;
-  mode: "skeleton";
-  persisted: false;
+  mode: "supabase";
+  persisted: boolean;
   message: string;
   publicReference?: string;
+  conceptBriefId?: string;
   errors?: string[];
 };
 
-function jsonResponse(body: ConceptBriefSkeletonResponse, status: number) {
+function jsonResponse(body: ConceptBriefResponse, status: number) {
   return NextResponse.json(body, { status });
 }
 
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     return jsonResponse(
       {
         ok: false,
-        mode: "skeleton",
+        mode: "supabase",
         persisted: false,
         message: "Invalid JSON body. No Concept Brief was saved.",
         errors: ["Request body must be valid JSON."],
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     return jsonResponse(
       {
         ok: false,
-        mode: "skeleton",
+        mode: "supabase",
         persisted: false,
         message: "Concept Brief submission is missing required fields. No Concept Brief was saved.",
         errors: validation.errors,
@@ -52,23 +53,30 @@ export async function POST(request: Request) {
     );
   }
 
-  const readiness = getSupabaseServerReadiness();
-  const persistenceMessage = readiness.readyForAdminClient
-    ? "Concept Brief API skeleton received a valid payload, but database writes are intentionally disabled until schema, RLS, and persistence rules are reviewed."
-    : "Concept Brief API skeleton received a valid payload, but persistence is not configured yet.";
+  const persistence = await persistConceptBriefSubmission(payload as ConceptBriefSubmissionPayload);
 
-  // Skeleton only: this route performs no Supabase queries, database writes, or
-  // storage operations. The public reference is a customer-safe preview only and
-  // is not persisted. Future implementation must validate auth, RLS, schema,
-  // retention, and product boundaries before enabling real persistence.
+  if (persistence.persisted === false) {
+    return jsonResponse(
+      {
+        ok: true,
+        mode: "supabase",
+        persisted: false,
+        message: persistence.message,
+      },
+      202,
+    );
+  }
+
   return jsonResponse(
     {
       ok: true,
-      mode: "skeleton",
-      persisted: false,
-      message: persistenceMessage,
-      publicReference: generateConceptBriefPublicReferencePreview(),
+      mode: "supabase",
+      persisted: true,
+      message:
+        "Concept Brief submitted for NOVORA review. This is not CAD approval, pricing approval, sourcing confirmation, or production confirmation.",
+      publicReference: persistence.publicReference,
+      conceptBriefId: persistence.conceptBriefId,
     },
-    202,
+    201,
   );
 }
