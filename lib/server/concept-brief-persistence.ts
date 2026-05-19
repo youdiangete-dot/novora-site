@@ -13,27 +13,29 @@ type ConceptBriefRow = {
 
 type ConceptBriefInsertPayload = {
   public_reference: string;
+  source: "api";
   status: "new";
   piece_type: string | null;
-  design_structure: string | null;
+  branch: string | null;
+  structure: string | null;
   sub_structure: string | null;
-  stone_direction: string | null;
-  metal_direction: string | null;
-  finish_direction: string | null;
-  size_or_measurement_notes: string | null;
-  emotional_intent: string | null;
-  customer_notes: string | null;
-  raw_brief_payload: ConceptBriefSubmissionPayload;
-  submitted_at: string;
+  design_objective: string | null;
+  ai_sketch_instruction: string | null;
+  brief_payload: ConceptBriefSubmissionPayload;
+  summary_items: unknown;
+  api_submission: {
+    submitted_at: string;
+    public_reference: string;
+    payload: ConceptBriefSubmissionPayload;
+  };
 };
 
 type ConceptBriefContactInsertPayload = {
   concept_brief_id: string;
   customer_name: string | null;
-  email: string | null;
-  phone_or_whatsapp: string | null;
-  country_or_region: string | null;
-  preferred_contact_method: null;
+  customer_email: string | null;
+  phone_whatsapp: string | null;
+  country_region: string | null;
   contact_note: string | null;
 };
 
@@ -87,31 +89,6 @@ function readBriefString(
   return readString(submission[field as keyof ConceptBriefSubmissionPayload] ?? brief[field]);
 }
 
-function buildCustomerNotes(submission: ConceptBriefSubmissionPayload, brief: Record<string, unknown>): string | null {
-  const notes = [
-    readString(brief.referenceDetails),
-    readString(brief.referenceNotes),
-    readString(brief.mustInclude),
-    readString(brief.mustAvoid),
-    readString(brief.productionConcernNote),
-    readString(brief.manualConfirmation),
-  ].filter(Boolean);
-
-  return notes.length ? notes.join("\n\n") : readString(submission.contactNote);
-}
-
-function readStoneDirection(
-  submission: ConceptBriefSubmissionPayload,
-  brief: Record<string, unknown>,
-): string | null {
-  return (
-    readBriefString(submission, brief, "stoneDirection") ??
-    readBriefString(submission, brief, "optionalStoneDirection") ??
-    readBriefString(submission, brief, "repeatedStoneFeeling") ??
-    readBriefString(submission, brief, "stoneLogic")
-  );
-}
-
 export async function persistConceptBriefSubmission(
   payload: ConceptBriefSubmissionPayload,
 ): Promise<ConceptBriefPersistenceResult> {
@@ -130,22 +107,24 @@ export async function persistConceptBriefSubmission(
 
   const conceptBriefInsert: ConceptBriefInsertPayload = {
     public_reference: publicReference,
+    source: "api",
     status: "new",
     piece_type: readBriefString(payload, brief, "pieceType"),
-    design_structure: readBriefString(payload, brief, "structure"),
+    branch: readBriefString(payload, brief, "branch"),
+    structure: readBriefString(payload, brief, "structure"),
     sub_structure: readBriefString(payload, brief, "subStructure"),
-    stone_direction: readStoneDirection(payload, brief),
-    metal_direction: readBriefString(payload, brief, "metalDirection"),
-    finish_direction: readBriefString(payload, brief, "finishDirection"),
-    size_or_measurement_notes:
-      readBriefString(payload, brief, "sizeDirection") ??
-      readBriefString(payload, brief, "customScale"),
-    emotional_intent:
+    design_objective:
+      readBriefString(payload, brief, "designObjective") ??
       readBriefString(payload, brief, "emotionalStory") ??
       readBriefString(payload, brief, "customSymbol"),
-    customer_notes: buildCustomerNotes(payload, brief),
-    raw_brief_payload: payload,
-    submitted_at: submittedAt,
+    ai_sketch_instruction: readBriefString(payload, brief, "aiSketchInstruction"),
+    brief_payload: payload,
+    summary_items: payload.summaryItems ?? brief.summaryItems ?? null,
+    api_submission: {
+      submitted_at: submittedAt,
+      public_reference: publicReference,
+      payload,
+    },
   };
 
   const { data: conceptBrief, error: conceptBriefError } = await supabase
@@ -169,12 +148,11 @@ export async function persistConceptBriefSubmission(
   const contactInsert: ConceptBriefContactInsertPayload = {
     concept_brief_id: conceptBrief.id,
     customer_name: readContactString(payload, "customerName"),
-    email: readContactString(payload, "customerEmail"),
-    phone_or_whatsapp:
+    customer_email: readContactString(payload, "customerEmail"),
+    phone_whatsapp:
       readString(payload.phoneOrWhatsApp) ?? readContactString(payload, "customerPhone"),
-    country_or_region:
+    country_region:
       readString(payload.countryOrRegion) ?? readContactString(payload, "customerCountry"),
-    preferred_contact_method: null,
     contact_note: readContactString(payload, "contactNote"),
   };
 
