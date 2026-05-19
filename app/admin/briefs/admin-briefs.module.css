@@ -63,6 +63,14 @@
   padding-left: 1.15rem;
 }
 
+.accessForm {
+  align-items: end;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: minmax(220px, 420px) max-content;
+  margin-top: 0.6rem;
+}
+
 .panel {
   background: rgba(255, 253, 249, 0.92);
   border: 1px solid var(--border);
@@ -321,6 +329,7 @@
 @media (max-width: 900px) {
   .detailGrid,
   .detailRow,
+  .accessForm,
   .filters {
     grid-template-columns: 1fr;
   }
