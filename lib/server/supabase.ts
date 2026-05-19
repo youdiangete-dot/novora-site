@@ -25,6 +25,31 @@ function getMissingEnvValues(names: string[]): string[] {
   return names.filter((name) => !getEnvValue(name));
 }
 
+function readSupabaseJwtRole(key: string): string | null {
+  const [, payload] = key.split(".");
+
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    const json = Buffer.from(payload, "base64url").toString("utf8");
+    const claims = JSON.parse(json) as { role?: unknown };
+
+    return typeof claims.role === "string" ? claims.role : null;
+  } catch {
+    return null;
+  }
+}
+
+function isSupabaseServiceRoleKey(key: string): boolean {
+  if (key.startsWith("sb_secret_")) {
+    return true;
+  }
+
+  return readSupabaseJwtRole(key) === "service_role";
+}
+
 export function getSupabaseServerReadiness(): SupabaseServerReadiness {
   const envStatus = getNovoraServerEnvStatus();
   const missingPublicServerClientVariables = getMissingEnvValues([
@@ -72,7 +97,11 @@ export function createSupabaseAdminClientOrNull(): SupabaseClient | null {
   const supabaseUrl = getEnvValue(SUPABASE_URL_ENV);
   const supabaseServiceRoleKey = getEnvValue(SUPABASE_SERVICE_ROLE_KEY_ENV);
 
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
+  if (
+    !supabaseUrl ||
+    !supabaseServiceRoleKey ||
+    !isSupabaseServiceRoleKey(supabaseServiceRoleKey)
+  ) {
     return null;
   }
 
@@ -80,6 +109,13 @@ export function createSupabaseAdminClientOrNull(): SupabaseClient | null {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${supabaseServiceRoleKey}`,
+        apikey: supabaseServiceRoleKey,
+      },
     },
   });
 }
