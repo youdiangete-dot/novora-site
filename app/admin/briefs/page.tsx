@@ -1,195 +1,147 @@
-'use client';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
 import {
-  type BriefStatus,
-  type AdminBriefRecord,
-  displayValue,
-  formatSubmittedTime,
-  getCadReadiness,
-  getContactSummary,
-  hasReferenceMetadata,
-  loadAdminBriefRecords,
-  statusOptions,
-} from './briefReviewData';
+  ADMIN_ACCESS_COOKIE_NAME,
+  createAdminAccessCookieValue,
+  isAdminAccessConfigured,
+  isValidAdminAccessCookie,
+} from '../../../lib/server/admin-access';
+import { loadAdminConceptBriefRecords } from '../../../lib/server/admin-concept-briefs';
 import styles from './admin-briefs.module.css';
+import AdminBriefsClient from './AdminBriefsClient';
 
-const allStatuses = ['All', ...statusOptions] as const;
+export const dynamic = 'force-dynamic';
 
-export default function AdminBriefsPage() {
-  const [briefs, setBriefs] = useState<AdminBriefRecord[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<(typeof allStatuses)[number]>('All');
-  const [pieceTypeFilter, setPieceTypeFilter] = useState('All');
-  const [searchTerm, setSearchTerm] = useState('');
+type AdminBriefsPageProps = {
+  searchParams?: Promise<{
+    access?: string;
+  }>;
+};
 
-  useEffect(() => {
-    setBriefs(loadAdminBriefRecords());
-    setIsLoaded(true);
-  }, []);
+async function submitAdminAccessKey(formData: FormData) {
+  'use server';
 
-  const pieceTypeOptions = Array.from(new Set(briefs.map((brief) => brief.pieceType).filter(Boolean) as string[]));
-  const filteredBriefs = (isLoaded ? briefs : []).filter((brief) => {
-    const matchesStatus = statusFilter === 'All' || brief.status === (statusFilter as BriefStatus);
-    const matchesPieceType = pieceTypeFilter === 'All' || brief.pieceType === pieceTypeFilter;
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    const matchesSearch =
-      brief.conceptBriefId.toLowerCase().includes(normalizedSearch) ||
-      (brief.customerName || '').toLowerCase().includes(normalizedSearch) ||
-      (brief.customerEmail || '').toLowerCase().includes(normalizedSearch);
+  const submittedAccessKey = String(formData.get('adminAccessKey') || '');
+  const cookieValue = createAdminAccessCookieValue(submittedAccessKey);
 
-    return matchesStatus && matchesPieceType && matchesSearch;
+  if (!cookieValue) {
+    redirect('/admin/briefs?access=denied');
+  }
+
+  const cookieStore = await cookies();
+
+  cookieStore.set(ADMIN_ACCESS_COOKIE_NAME, cookieValue, {
+    httpOnly: true,
+    maxAge: 60 * 60 * 8,
+    path: '/admin/briefs',
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
   });
+
+  redirect('/admin/briefs');
+}
+
+function AdminConfigurationMessage() {
+  return (
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <section className={styles.notice} aria-label="Admin configuration required">
+          <h1>Admin review is not configured</h1>
+          <p>
+            Set the server-only NOVORA_ADMIN_ACCESS_KEY environment variable before this page can display protected
+            concept brief data.
+          </p>
+          <p>No customer data is shown while the admin access key is missing.</p>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function AdminAccessForm({ wasDenied }: { wasDenied: boolean }) {
+  return (
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <section className={styles.hero}>
+          <p className={styles.eyebrow}>Protected internal MVP</p>
+          <h1>NOVORA Brief Review</h1>
+          <p>Enter the temporary admin access key to view real concept brief submissions.</p>
+        </section>
+
+        <section className={styles.notice} aria-label="Admin access required">
+          <h2>Admin access required</h2>
+          <p>This MVP gate checks a server-only access key before loading customer data.</p>
+          {wasDenied ? <p>The submitted access key was not accepted.</p> : null}
+          <form action={submitAdminAccessKey} className={styles.accessForm}>
+            <label className={styles.fieldLabel}>
+              Admin access key
+              <input
+                autoComplete="current-password"
+                className={styles.input}
+                name="adminAccessKey"
+                required
+                type="password"
+              />
+            </label>
+            <button className={styles.button} type="submit">
+              Continue
+            </button>
+          </form>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+export default async function AdminBriefsPage({ searchParams }: AdminBriefsPageProps) {
+  if (!isAdminAccessConfigured()) {
+    return <AdminConfigurationMessage />;
+  }
+
+  const cookieStore = await cookies();
+  const hasAdminAccess = isValidAdminAccessCookie(cookieStore.get(ADMIN_ACCESS_COOKIE_NAME)?.value);
+  const resolvedSearchParams = await searchParams;
+
+  if (!hasAdminAccess) {
+    return <AdminAccessForm wasDenied={resolvedSearchParams?.access === 'denied'} />;
+  }
+
+  const serverBriefs = await loadAdminConceptBriefRecords();
+  let initialServerBriefs = serverBriefs.records;
+  let serverDataMessage: string | undefined;
+
+  if ('message' in serverBriefs) {
+    initialServerBriefs = [];
+    serverDataMessage = serverBriefs.message;
+  }
 
   return (
     <main className={styles.page}>
       <div className={styles.shell}>
         <section className={styles.hero}>
-          <p className={styles.eyebrow}>Internal planning draft</p>
+          <p className={styles.eyebrow}>Protected internal MVP</p>
           <h1>NOVORA Brief Review</h1>
           <p>
-            Front-end-only mock review dashboard for concept briefs, local browser submissions, and planning-only
-            review state.
+            Protected review queue for real Supabase concept brief submissions. Status changes and notes remain local
+            browser-only planning state in this MVP.
           </p>
         </section>
 
-        <section className={styles.notice} aria-label="Mock admin warning">
-          <h2>Mock admin-only review surface</h2>
+        <section className={styles.notice} aria-label="Protected admin warning">
+          <h2>Temporary protected admin surface</h2>
           <ul>
-            <li>This is a front-end-only mock admin review UI.</li>
-            <li>It does not connect to a database or authenticate admins.</li>
-            <li>It does not display real server-side customer data.</li>
-            <li>It does not create CAD requests, quotes, production orders, emails, payments, or file storage.</li>
-            <li>Reference files and customer examples shown in mock records are planning metadata only.</li>
+            <li>Access is gated by the server-only NOVORA_ADMIN_ACCESS_KEY value.</li>
+            <li>Real list data is loaded on the server with the existing Supabase admin client.</li>
+            <li>The service role key is never sent to browser code.</li>
+            <li>No CAD requests, quotes, production orders, emails, payments, or file storage are created here.</li>
           </ul>
         </section>
 
-        <section className={styles.panel} aria-label="Brief review list">
-          <div className={styles.panelHeader}>
-            <div>
-              <h2>Brief queue</h2>
-              <p>
-                Showing mock seed records and any locally submitted concept brief saved in this browser localStorage.
-              </p>
-            </div>
-            <span className={styles.countBadge}>{filteredBriefs.length} visible</span>
-          </div>
-          <div className={styles.filters} aria-label="Brief filters">
-            <label className={styles.compactField}>
-              Status
-              <select
-                className={styles.select}
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-              >
-                {allStatuses.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.compactField}>
-              Piece type
-              <select className={styles.select} value={pieceTypeFilter} onChange={(event) => setPieceTypeFilter(event.target.value)}>
-                <option value="All">All</option>
-                {pieceTypeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {displayValue('pieceType', option)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.compactField}>
-              Search by ID, name, or email
-              <input
-                className={styles.input}
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="ID, name, or email"
-                type="search"
-              />
-            </label>
-          </div>
-
-          {filteredBriefs.length ? (
-            <div className={styles.tableWrap}>
-              <table className={styles.briefTable}>
-                <thead>
-                  <tr>
-                    <th>Concept Brief ID / public reference</th>
-                    <th>Contact summary</th>
-                    <th>Piece type</th>
-                    <th>Submission / review status</th>
-                    <th>CAD readiness</th>
-                    <th>Reference metadata</th>
-                    <th>Submitted / updated</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBriefs.map((brief) => (
-                    <tr key={`${brief.source}-${brief.conceptBriefId}`}>
-                      <td>
-                        <div className={styles.primaryCell}>
-                          <span className={styles.briefId}>{brief.conceptBriefId}</span>
-                          <span>{brief.source === 'localStorage' ? 'Local browser submission' : 'Mock seed record'}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className={styles.primaryCell}>
-                          <span>{getContactSummary(brief)}</span>
-                          <span>{brief.contactNote || 'No contact note provided'}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className={styles.primaryCell}>
-                          <span>{displayValue('pieceType', brief.pieceType)}</span>
-                          <span>{displayValue('structure', brief.structure)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className={styles.status}>{brief.status}</span>
-                      </td>
-                      <td>{getCadReadiness(brief)}</td>
-                      <td>
-                        <div className={styles.primaryCell}>
-                          <span>{hasReferenceMetadata(brief) ? 'Metadata present' : 'No reference metadata'}</span>
-                          <span>{brief.referenceImageCount || 0} reference image(s)</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className={styles.primaryCell}>
-                          <span>Submitted: {formatSubmittedTime(brief.submittedAt)}</span>
-                          <span>Updated: {formatSubmittedTime(brief.lastUpdatedAt || brief.submittedAt)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <Link className={styles.button} href={`/admin/briefs/${encodeURIComponent(brief.conceptBriefId)}`}>
-                          View brief
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className={styles.emptyPanel}>
-              <h2>No concept briefs to review</h2>
-              <p className={styles.emptyText}>
-                No mock or submitted brief matches the current view. Submit a front-end-only concept brief to seed this
-                local browser mock dashboard.
-              </p>
-              <Link className={styles.secondaryButton} href="/design/start">
-                Back to /design/start
-              </Link>
-            </div>
-          )}
-        </section>
+        <AdminBriefsClient
+          initialServerBriefs={initialServerBriefs}
+          serverDataMessage={serverDataMessage}
+        />
       </div>
     </main>
   );

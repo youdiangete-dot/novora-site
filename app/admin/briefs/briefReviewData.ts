@@ -21,7 +21,7 @@ export type AdminBriefRecord = {
   referenceNotes?: string;
   aiSketchInstruction?: string;
   status: BriefStatus;
-  source: 'localStorage' | 'mock';
+  source: 'localStorage' | 'mock' | 'supabase';
 };
 
 type StoredSubmittedBrief = Omit<AdminBriefRecord, 'status' | 'source'>;
@@ -317,10 +317,11 @@ function applyReviewState(brief: AdminBriefRecord, reviewState: AdminReviewState
   };
 }
 
-export function loadAdminBriefRecords() {
+export function loadAdminBriefRecords(serverBriefs: AdminBriefRecord[] = []) {
   const localBrief = loadLocalSubmittedBrief();
   const reviewState = loadAdminReviewStateMap();
-  const records = localBrief ? [localBrief, ...mockBriefs] : mockBriefs;
+  const fallbackRecords = serverBriefs.length ? serverBriefs : mockBriefs;
+  const records = localBrief ? [localBrief, ...fallbackRecords] : fallbackRecords;
 
   return records.map((brief) => applyReviewState(brief, reviewState[brief.conceptBriefId] || {}));
 }
