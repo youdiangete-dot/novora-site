@@ -7,6 +7,8 @@ import styles from '../brief/brief.module.css';
 
 type SubmittedConceptBrief = {
   conceptBriefId: string;
+  localConceptBriefId?: string;
+  publicReference?: string;
   submittedAt: string;
   customerName?: string;
   customerEmail?: string;
@@ -22,6 +24,10 @@ type SubmittedConceptBrief = {
   referenceImageNames?: string[];
   referenceNotes?: string;
   aiSketchInstruction?: string;
+  apiSubmission?: {
+    persisted?: boolean;
+    publicReference?: string;
+  };
 };
 
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
@@ -80,6 +86,11 @@ export default function DesignSubmittedPage() {
     );
   }
 
+  const displayedConceptBriefId =
+    submittedBrief.apiSubmission?.persisted && submittedBrief.apiSubmission.publicReference
+      ? submittedBrief.apiSubmission.publicReference
+      : submittedBrief.publicReference || submittedBrief.conceptBriefId;
+
   return (
     <main className={styles.pageBackground}>
       <section className={`${styles.shell} ${styles.submittedShell}`}>
@@ -93,7 +104,7 @@ export default function DesignSubmittedPage() {
           <dl className={styles.submittedDetails}>
             <div>
               <dt>Concept Brief ID</dt>
-              <dd>{submittedBrief.conceptBriefId}</dd>
+              <dd>{displayedConceptBriefId}</dd>
             </div>
             <div>
               <dt>Submitted time</dt>
