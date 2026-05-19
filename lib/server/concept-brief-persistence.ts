@@ -97,7 +97,7 @@ export async function persistConceptBriefSubmission(
   if (!supabase) {
     return {
       persisted: false,
-      message: "Concept Brief persistence is temporarily unavailable.",
+      message: "Concept Brief persistence is temporarily unavailable due to server configuration.",
     };
   }
 
