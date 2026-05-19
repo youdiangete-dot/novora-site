@@ -74,6 +74,18 @@ function buildCustomerNotes(submission: ConceptBriefSubmissionPayload, brief: Re
   return notes.length ? notes.join("\n\n") : readString(submission.contactNote);
 }
 
+function readStoneDirection(
+  submission: ConceptBriefSubmissionPayload,
+  brief: Record<string, unknown>,
+): string | null {
+  return (
+    readBriefString(submission, brief, "stoneDirection") ??
+    readBriefString(submission, brief, "optionalStoneDirection") ??
+    readBriefString(submission, brief, "repeatedStoneFeeling") ??
+    readBriefString(submission, brief, "stoneLogic")
+  );
+}
+
 export async function persistConceptBriefSubmission(
   payload: ConceptBriefSubmissionPayload,
 ): Promise<ConceptBriefPersistenceResult> {
@@ -96,12 +108,7 @@ export async function persistConceptBriefSubmission(
     piece_type: readBriefString(payload, brief, "pieceType"),
     design_structure: readBriefString(payload, brief, "structure"),
     sub_structure: readBriefString(payload, brief, "subStructure"),
-    stone_direction:
-      readBriefString(payload, brief, "stoneDirection") ??
-      readBriefString(payload, brief, "stoneLogic"),
-    accent_stone_direction:
-      readBriefString(payload, brief, "optionalStoneDirection") ??
-      readBriefString(payload, brief, "repeatedStoneFeeling"),
+    stone_direction: readStoneDirection(payload, brief),
     metal_direction: readBriefString(payload, brief, "metalDirection"),
     finish_direction: readBriefString(payload, brief, "finishDirection"),
     size_or_measurement_notes:
