@@ -673,9 +673,14 @@ export default function DesignBriefPage() {
       aiSketchInstruction: brief.aiSketchInstruction || '',
     };
     const apiSubmission = await postConceptBriefSkeleton(apiPayload);
+    const localConceptBriefId = generateConceptBriefId();
+    const persistedPublicReference =
+      apiSubmission.persisted && apiSubmission.publicReference ? apiSubmission.publicReference : undefined;
 
     const submittedBrief = {
-      conceptBriefId: generateConceptBriefId(),
+      conceptBriefId: persistedPublicReference || localConceptBriefId,
+      localConceptBriefId,
+      publicReference: persistedPublicReference,
       submittedAt: new Date().toISOString(),
       customerName,
       customerEmail,
