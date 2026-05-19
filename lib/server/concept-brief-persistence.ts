@@ -11,6 +11,32 @@ type ConceptBriefRow = {
   public_reference: string;
 };
 
+type ConceptBriefInsertPayload = {
+  public_reference: string;
+  status: "new";
+  piece_type: string | null;
+  design_structure: string | null;
+  sub_structure: string | null;
+  stone_direction: string | null;
+  metal_direction: string | null;
+  finish_direction: string | null;
+  size_or_measurement_notes: string | null;
+  emotional_intent: string | null;
+  customer_notes: string | null;
+  raw_brief_payload: ConceptBriefSubmissionPayload;
+  submitted_at: string;
+};
+
+type ConceptBriefContactInsertPayload = {
+  concept_brief_id: string;
+  customer_name: string | null;
+  email: string | null;
+  phone_or_whatsapp: string | null;
+  country_or_region: string | null;
+  preferred_contact_method: null;
+  contact_note: string | null;
+};
+
 type ConceptBriefPersistenceSuccess = {
   persisted: true;
   publicReference: string;
@@ -102,7 +128,7 @@ export async function persistConceptBriefSubmission(
   const publicReference = generateConceptBriefPublicReferencePreview();
   const submittedAt = new Date().toISOString();
 
-  const conceptBriefInsert = {
+  const conceptBriefInsert: ConceptBriefInsertPayload = {
     public_reference: publicReference,
     status: "new",
     piece_type: readBriefString(payload, brief, "pieceType"),
@@ -114,7 +140,6 @@ export async function persistConceptBriefSubmission(
     size_or_measurement_notes:
       readBriefString(payload, brief, "sizeDirection") ??
       readBriefString(payload, brief, "customScale"),
-    budget_direction: readBriefString(payload, brief, "budgetDirection"),
     emotional_intent:
       readBriefString(payload, brief, "emotionalStory") ??
       readBriefString(payload, brief, "customSymbol"),
@@ -141,7 +166,7 @@ export async function persistConceptBriefSubmission(
     };
   }
 
-  const contactInsert = {
+  const contactInsert: ConceptBriefContactInsertPayload = {
     concept_brief_id: conceptBrief.id,
     customer_name: readContactString(payload, "customerName"),
     email: readContactString(payload, "customerEmail"),
