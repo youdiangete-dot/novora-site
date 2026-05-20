@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 
 import {
   ADMIN_ACCESS_COOKIE_NAME,
+  ADMIN_ACCESS_COOKIE_PATH,
   createAdminAccessCookieValue,
   isAdminAccessConfigured,
   isValidAdminAccessCookie,
@@ -34,7 +35,7 @@ async function submitAdminAccessKey(formData: FormData) {
   cookieStore.set(ADMIN_ACCESS_COOKIE_NAME, cookieValue, {
     httpOnly: true,
     maxAge: 60 * 60 * 8,
-    path: '/admin/briefs',
+    path: ADMIN_ACCESS_COOKIE_PATH,
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
   });
