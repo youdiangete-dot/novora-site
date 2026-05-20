@@ -7,11 +7,16 @@ type ConceptBriefListRow = {
   id: string;
   public_reference: string | null;
   status: string | null;
+  source?: string | null;
   piece_type: string | null;
   branch: string | null;
   structure: string | null;
   sub_structure: string | null;
+  design_objective?: string | null;
   ai_sketch_instruction: string | null;
+  summary_items?: unknown;
+  brief_payload?: unknown;
+  api_submission?: unknown;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -36,6 +41,17 @@ export type AdminConceptBriefLoadResult =
       message: string;
     };
 
+export type AdminConceptBriefDetailLoadResult =
+  | {
+      ok: true;
+      record: AdminBriefRecord | null;
+    }
+  | {
+      ok: false;
+      record: null;
+      message: string;
+    };
+
 const statusMap: Record<string, BriefStatus> = {
   closed: "Closed",
   needs_more_info: "Need more info",
@@ -56,6 +72,42 @@ function readString(value: string | null): string {
   return value?.trim() || "";
 }
 
+function mapBriefRowToAdminRecord(
+  brief: ConceptBriefListRow,
+  contact?: ConceptBriefContactRow,
+): AdminBriefRecord {
+  const submittedAt = readString(brief.created_at) || new Date(0).toISOString();
+  const publicReference = readString(brief.public_reference) || brief.id;
+
+  return {
+    conceptBriefId: publicReference,
+    databaseId: brief.id,
+    publicReference,
+    submittedAt,
+    lastUpdatedAt: readString(brief.updated_at) || submittedAt,
+    customerName: readString(contact?.customer_name ?? null),
+    customerEmail: readString(contact?.customer_email ?? null),
+    customerCountry: readString(contact?.country_region ?? null),
+    customerPhone: readString(contact?.phone_whatsapp ?? null),
+    contactNote: readString(contact?.contact_note ?? null),
+    pieceType: readString(brief.piece_type),
+    branch: readString(brief.branch),
+    structure: readString(brief.structure),
+    subStructure: readString(brief.sub_structure),
+    designObjective: readString(brief.design_objective ?? null),
+    aiSketchInstruction: readString(brief.ai_sketch_instruction),
+    databaseStatus: readString(brief.status),
+    submissionSource: readString(brief.source ?? null),
+    summaryItems: brief.summary_items,
+    briefPayload: brief.brief_payload,
+    apiSubmission: brief.api_submission,
+    createdAt: readString(brief.created_at),
+    updatedAt: readString(brief.updated_at),
+    status: mapStatus(brief.status),
+    source: "supabase",
+  };
+}
+
 export async function loadAdminConceptBriefRecords(): Promise<AdminConceptBriefLoadResult> {
   const supabase = createSupabaseAdminClientOrNull();
 
@@ -69,7 +121,7 @@ export async function loadAdminConceptBriefRecords(): Promise<AdminConceptBriefL
 
   const { data: briefRows, error: briefError } = await supabase
     .from("concept_briefs")
-    .select("id, public_reference, status, piece_type, branch, structure, sub_structure, ai_sketch_instruction, created_at, updated_at")
+    .select("id, public_reference, status, source, piece_type, branch, structure, sub_structure, ai_sketch_instruction, created_at, updated_at")
     .order("created_at", { ascending: false })
     .limit(100)
     .returns<ConceptBriefListRow[]>();
@@ -107,27 +159,70 @@ export async function loadAdminConceptBriefRecords(): Promise<AdminConceptBriefL
 
   return {
     ok: true,
-    records: briefRows.map((brief): AdminBriefRecord => {
-      const contact = contactsByBriefId.get(brief.id);
-      const submittedAt = readString(brief.created_at) || new Date(0).toISOString();
+    records: briefRows.map((brief) => mapBriefRowToAdminRecord(brief, contactsByBriefId.get(brief.id))),
+  };
+}
 
-      return {
-        conceptBriefId: readString(brief.public_reference) || brief.id,
-        submittedAt,
-        lastUpdatedAt: readString(brief.updated_at) || submittedAt,
-        customerName: readString(contact?.customer_name ?? null),
-        customerEmail: readString(contact?.customer_email ?? null),
-        customerCountry: readString(contact?.country_region ?? null),
-        customerPhone: readString(contact?.phone_whatsapp ?? null),
-        contactNote: readString(contact?.contact_note ?? null),
-        pieceType: readString(brief.piece_type),
-        branch: readString(brief.branch),
-        structure: readString(brief.structure),
-        subStructure: readString(brief.sub_structure),
-        aiSketchInstruction: readString(brief.ai_sketch_instruction),
-        status: mapStatus(brief.status),
-        source: "supabase",
-      };
-    }),
+export async function loadAdminConceptBriefRecordByReference(
+  reference: string,
+): Promise<AdminConceptBriefDetailLoadResult> {
+  const supabase = createSupabaseAdminClientOrNull();
+  const normalizedReference = reference.trim();
+
+  if (!supabase) {
+    return {
+      ok: false,
+      record: null,
+      message: "Server Supabase admin access is not configured. Showing local fallback data only.",
+    };
+  }
+
+  if (!normalizedReference) {
+    return {
+      ok: true,
+      record: null,
+    };
+  }
+
+  const { data: brief, error: briefError } = await supabase
+    .from("concept_briefs")
+    .select(
+      "id, public_reference, status, source, piece_type, branch, structure, sub_structure, design_objective, ai_sketch_instruction, summary_items, brief_payload, api_submission, created_at, updated_at",
+    )
+    .eq("public_reference", normalizedReference)
+    .maybeSingle<ConceptBriefListRow>();
+
+  if (briefError) {
+    return {
+      ok: false,
+      record: null,
+      message: "Server concept brief detail is temporarily unavailable. Showing local fallback data only.",
+    };
+  }
+
+  if (!brief) {
+    return {
+      ok: true,
+      record: null,
+    };
+  }
+
+  const { data: contact, error: contactError } = await supabase
+    .from("concept_brief_contacts")
+    .select("concept_brief_id, customer_name, customer_email, phone_whatsapp, country_region, contact_note")
+    .eq("concept_brief_id", brief.id)
+    .maybeSingle<ConceptBriefContactRow>();
+
+  if (contactError) {
+    return {
+      ok: false,
+      record: null,
+      message: "Server concept brief contact detail is temporarily unavailable. Showing local fallback data only.",
+    };
+  }
+
+  return {
+    ok: true,
+    record: mapBriefRowToAdminRecord(brief, contact ?? undefined),
   };
 }

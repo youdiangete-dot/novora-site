@@ -443,8 +443,8 @@ test.describe('/design/brief submission', () => {
   });
 });
 
-test.describe('/admin/briefs mock review UI', () => {
-  test('loads the mock admin list and opens a submitted localStorage brief detail', async ({ page }) => {
+test.describe('/admin/briefs protected review UI', () => {
+  test('keeps admin data protected and opens a submitted localStorage fallback detail after access', async ({ page }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem(
         'novora_submitted_concept_brief',
@@ -469,14 +469,33 @@ test.describe('/admin/briefs mock review UI', () => {
 
     await page.goto('/admin/briefs');
 
+    if (await page.getByRole('heading', { name: 'Admin review is not configured' }).isVisible()) {
+      await expect(page.getByText('No customer data is shown while the admin access key is missing.')).toBeVisible();
+      await expect(page.getByText('Mina Chen')).toHaveCount(0);
+      return;
+    }
+
     await expect(page.getByRole('heading', { name: 'NOVORA Brief Review' })).toBeVisible();
-    await expect(page.getByText('Mock admin-only review surface')).toBeVisible();
-    await expect(page.getByText(/Front-end-only mock review dashboard for concept briefs/)).toBeVisible();
-    await expect(page.getByText('This is a front-end-only mock admin review UI.')).toBeVisible();
-    await expect(page.getByText('It does not connect to a database or authenticate admins.')).toBeVisible();
-    await expect(page.getByText('It does not display real server-side customer data.')).toBeVisible();
+    await expect(page.getByText('Admin access required')).toBeVisible();
+    await expect(page.getByText('This MVP gate checks a server-only access key before loading customer data.')).toBeVisible();
+    await expect(page.getByText('Mina Chen')).toHaveCount(0);
+
+    const adminAccessKey = process.env.NOVORA_ADMIN_ACCESS_KEY;
+
+    if (!adminAccessKey) {
+      test.skip(true, 'NOVORA_ADMIN_ACCESS_KEY is required to verify the protected admin review queue.');
+      return;
+    }
+
+    await page.getByLabel('Admin access key').fill(adminAccessKey);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await expect(page.getByRole('heading', { name: 'NOVORA Brief Review' })).toBeVisible();
+    await expect(page.getByText('Temporary protected admin surface')).toBeVisible();
+    await expect(page.getByText('Access is gated by the server-only NOVORA_ADMIN_ACCESS_KEY value.')).toBeVisible();
+    await expect(page.getByText('The service role key is never sent to browser code.')).toBeVisible();
     await expect(
-      page.getByText('It does not create CAD requests, quotes, production orders, emails, payments, or file storage.'),
+      page.getByText('No CAD requests, quotes, production orders, emails, payments, or file storage are created here.'),
     ).toBeVisible();
     await expect(page.getByText('NOVORA-CB-20260512-TEST')).toBeVisible();
     await expect(page.getByText('Mina Chen')).toBeVisible();
@@ -502,11 +521,11 @@ test.describe('/admin/briefs mock review UI', () => {
     await expect(page).toHaveURL(/\/admin\/briefs\/NOVORA-CB-20260512-TEST$/);
     await expect(page.getByText('Concept Brief ID / public reference')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'NOVORA-CB-20260512-TEST' })).toBeVisible();
-    await expect(page.getByText('This is a front-end-only mock admin review UI.').first()).toBeVisible();
-    await expect(page.getByText('It does not connect to a database or authenticate admins.').first()).toBeVisible();
-    await expect(page.getByText('It does not display real server-side customer data.').first()).toBeVisible();
+    await expect(page.getByText('Local fallback review detail')).toBeVisible();
+    await expect(page.getByText('This page is shown only after the server validates the admin access cookie.')).toBeVisible();
+    await expect(page.getByText('The service role key and admin access key are never sent to browser code.')).toBeVisible();
     await expect(
-      page.getByText('It does not create CAD requests, quotes, production orders, emails, payments, or file storage.').first(),
+      page.getByText('No CAD requests, quotes, final pricing, production orders, emails, payments, or file storage are created here.').first(),
     ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Concept Brief summary' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Contact summary' })).toBeVisible();
@@ -517,7 +536,8 @@ test.describe('/admin/briefs mock review UI', () => {
     await expect(page.getByRole('heading', { name: 'AI sketch instruction / concept direction' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin review status' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'CAD readiness' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Internal notes / mock review state' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Stored submission data' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Internal notes / local review state' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Boundary notes' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Status' })).toContainText('New');
 
