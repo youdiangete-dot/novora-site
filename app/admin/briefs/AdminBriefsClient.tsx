@@ -29,6 +29,18 @@ function getSourceLabel(source: AdminBriefRecord['source']) {
   return source === 'localStorage' ? 'Local browser submission' : 'Mock seed record';
 }
 
+function getReviewStateLabel(brief: AdminBriefRecord) {
+  if (brief.reviewStateSource === 'supabase') {
+    return 'Supabase-backed review state';
+  }
+
+  if (brief.reviewStateSource === 'localStorage') {
+    return 'Local-only review fallback';
+  }
+
+  return 'Submission status';
+}
+
 export default function AdminBriefsClient({ initialServerBriefs, serverDataMessage }: AdminBriefsClientProps) {
   const [briefs, setBriefs] = useState<AdminBriefRecord[]>(initialServerBriefs);
   const [isLoaded, setIsLoaded] = useState(initialServerBriefs.length > 0);
@@ -147,7 +159,10 @@ export default function AdminBriefsClient({ initialServerBriefs, serverDataMessa
                     </div>
                   </td>
                   <td>
-                    <span className={styles.status}>{brief.status}</span>
+                    <div className={styles.primaryCell}>
+                      <span className={styles.status}>{brief.status}</span>
+                      <span>{getReviewStateLabel(brief)}</span>
+                    </div>
                   </td>
                   <td>{getCadReadiness(brief)}</td>
                   <td>

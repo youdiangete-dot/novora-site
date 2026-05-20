@@ -31,6 +31,10 @@ export type AdminBriefRecord = {
   createdAt?: string;
   updatedAt?: string;
   status: BriefStatus;
+  internalNotes?: string;
+  reviewStateSource?: 'supabase' | 'localStorage';
+  reviewStatusSlug?: 'new' | 'reviewing' | 'needs-info' | 'ready-for-sketch' | 'closed';
+  reviewUpdatedAt?: string;
   source: 'localStorage' | 'mock' | 'supabase';
 };
 
@@ -289,6 +293,46 @@ function isBriefStatus(value: unknown): value is BriefStatus {
   return typeof value === 'string' && statusOptions.includes(value as BriefStatus);
 }
 
+export function statusToReviewStatusSlug(status: BriefStatus): NonNullable<AdminBriefRecord['reviewStatusSlug']> {
+  if (status === 'Reviewing') {
+    return 'reviewing';
+  }
+
+  if (status === 'Need more info') {
+    return 'needs-info';
+  }
+
+  if (status === 'Ready for CAD discussion') {
+    return 'ready-for-sketch';
+  }
+
+  if (status === 'Closed') {
+    return 'closed';
+  }
+
+  return 'new';
+}
+
+export function reviewStatusSlugToStatus(value?: string): BriefStatus {
+  if (value === 'reviewing') {
+    return 'Reviewing';
+  }
+
+  if (value === 'needs-info') {
+    return 'Need more info';
+  }
+
+  if (value === 'ready-for-sketch') {
+    return 'Ready for CAD discussion';
+  }
+
+  if (value === 'closed') {
+    return 'Closed';
+  }
+
+  return 'New';
+}
+
 export function loadAdminReviewStateMap(): AdminReviewStateMap {
   try {
     const rawState = window.localStorage.getItem(ADMIN_REVIEW_STORAGE_KEY);
@@ -320,10 +364,20 @@ export function saveAdminReviewState(conceptBriefId: string, state: AdminReviewS
 }
 
 function applyReviewState(brief: AdminBriefRecord, reviewState: AdminReviewState): AdminBriefRecord {
+  if (brief.reviewStateSource === 'supabase') {
+    return brief;
+  }
+
   return {
     ...brief,
     lastUpdatedAt: reviewState.lastUpdatedAt || brief.lastUpdatedAt || brief.submittedAt,
     status: isBriefStatus(reviewState.status) ? reviewState.status : brief.status,
+    internalNotes: reviewState.internalNotes || brief.internalNotes,
+    reviewStateSource: reviewState.status || reviewState.internalNotes ? 'localStorage' : brief.reviewStateSource,
+    reviewStatusSlug: isBriefStatus(reviewState.status)
+      ? statusToReviewStatusSlug(reviewState.status)
+      : brief.reviewStatusSlug,
+    reviewUpdatedAt: reviewState.lastUpdatedAt || brief.reviewUpdatedAt,
   };
 }
 

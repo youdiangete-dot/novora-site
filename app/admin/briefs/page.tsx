@@ -123,8 +123,8 @@ export default async function AdminBriefsPage({ searchParams }: AdminBriefsPageP
           <p className={styles.eyebrow}>Protected internal MVP</p>
           <h1>NOVORA Brief Review</h1>
           <p>
-            Protected review queue for real Supabase concept brief submissions. Status changes and notes remain local
-            browser-only planning state in this MVP.
+            Protected review queue for real Supabase concept brief submissions. Admin review status and internal notes
+            are loaded from Supabase when admin_notes persistence is available.
           </p>
         </section>
 
@@ -133,6 +133,7 @@ export default async function AdminBriefsPage({ searchParams }: AdminBriefsPageP
           <ul>
             <li>Access is gated by the server-only NOVORA_ADMIN_ACCESS_KEY value.</li>
             <li>Real list data is loaded on the server with the existing Supabase admin client.</li>
+            <li>Admin review status is internal concept direction state, not CAD approval or production confirmation.</li>
             <li>The service role key is never sent to browser code.</li>
             <li>No CAD requests, quotes, production orders, emails, payments, or file storage are created here.</li>
           </ul>

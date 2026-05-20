@@ -1,6 +1,10 @@
 import "server-only";
 
 import type { AdminBriefRecord, BriefStatus } from "../../app/admin/briefs/briefReviewData";
+import {
+  type PersistedAdminReviewState,
+  loadAdminReviewStatesByConceptBriefIds,
+} from "./admin-review-state";
 import { createSupabaseAdminClientOrNull } from "./supabase";
 
 type ConceptBriefListRow = {
@@ -34,6 +38,7 @@ export type AdminConceptBriefLoadResult =
   | {
       ok: true;
       records: AdminBriefRecord[];
+      message?: string;
     }
   | {
       ok: false;
@@ -45,6 +50,7 @@ export type AdminConceptBriefDetailLoadResult =
   | {
       ok: true;
       record: AdminBriefRecord | null;
+      message?: string;
     }
   | {
       ok: false;
@@ -68,6 +74,26 @@ function mapStatus(value: string | null): BriefStatus {
   return statusMap[value.trim().toLowerCase()] || "New";
 }
 
+function mapReviewStatusSlug(value: PersistedAdminReviewState["reviewStatus"]): BriefStatus {
+  if (value === "reviewing") {
+    return "Reviewing";
+  }
+
+  if (value === "needs-info") {
+    return "Need more info";
+  }
+
+  if (value === "ready-for-sketch") {
+    return "Ready for CAD discussion";
+  }
+
+  if (value === "closed") {
+    return "Closed";
+  }
+
+  return "New";
+}
+
 function readString(value: string | null): string {
   return value?.trim() || "";
 }
@@ -75,16 +101,19 @@ function readString(value: string | null): string {
 function mapBriefRowToAdminRecord(
   brief: ConceptBriefListRow,
   contact?: ConceptBriefContactRow,
+  reviewState?: PersistedAdminReviewState,
 ): AdminBriefRecord {
   const submittedAt = readString(brief.created_at) || new Date(0).toISOString();
   const publicReference = readString(brief.public_reference) || brief.id;
+  const reviewStatus = reviewState ? mapReviewStatusSlug(reviewState.reviewStatus) : mapStatus(brief.status);
+  const reviewUpdatedAt = reviewState?.createdAt || readString(brief.updated_at) || submittedAt;
 
   return {
     conceptBriefId: publicReference,
     databaseId: brief.id,
     publicReference,
     submittedAt,
-    lastUpdatedAt: readString(brief.updated_at) || submittedAt,
+    lastUpdatedAt: reviewUpdatedAt,
     customerName: readString(contact?.customer_name ?? null),
     customerEmail: readString(contact?.customer_email ?? null),
     customerCountry: readString(contact?.country_region ?? null),
@@ -103,7 +132,11 @@ function mapBriefRowToAdminRecord(
     apiSubmission: brief.api_submission,
     createdAt: readString(brief.created_at),
     updatedAt: readString(brief.updated_at),
-    status: mapStatus(brief.status),
+    status: reviewStatus,
+    internalNotes: reviewState?.internalNotes,
+    reviewStateSource: reviewState ? "supabase" : undefined,
+    reviewStatusSlug: reviewState?.reviewStatus,
+    reviewUpdatedAt: reviewState?.createdAt,
     source: "supabase",
   };
 }
@@ -157,9 +190,18 @@ export async function loadAdminConceptBriefRecords(): Promise<AdminConceptBriefL
     }
   }
 
+  const reviewStates = await loadAdminReviewStatesByConceptBriefIds(conceptBriefIds);
+
   return {
     ok: true,
-    records: briefRows.map((brief) => mapBriefRowToAdminRecord(brief, contactsByBriefId.get(brief.id))),
+    records: briefRows.map((brief) =>
+      mapBriefRowToAdminRecord(
+        brief,
+        contactsByBriefId.get(brief.id),
+        reviewStates.statesByConceptBriefId.get(brief.id),
+      ),
+    ),
+    message: reviewStates.ok ? undefined : reviewStates.message,
   };
 }
 
@@ -221,8 +263,15 @@ export async function loadAdminConceptBriefRecordByReference(
     };
   }
 
+  const reviewStates = await loadAdminReviewStatesByConceptBriefIds([brief.id]);
+
   return {
     ok: true,
-    record: mapBriefRowToAdminRecord(brief, contact ?? undefined),
+    record: mapBriefRowToAdminRecord(
+      brief,
+      contact ?? undefined,
+      reviewStates.statesByConceptBriefId.get(brief.id),
+    ),
+    message: reviewStates.ok ? undefined : reviewStates.message,
   };
 }
