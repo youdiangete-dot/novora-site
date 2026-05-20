@@ -157,13 +157,9 @@ export default function AdminBriefsClient({ initialServerBriefs, serverDataMessa
                     </div>
                   </td>
                   <td>
-                    {brief.source === 'supabase' ? (
-                      <span className={styles.helperText}>List view only</span>
-                    ) : (
-                      <Link className={styles.button} href={`/admin/briefs/${encodeURIComponent(brief.conceptBriefId)}`}>
-                        View brief
-                      </Link>
-                    )}
+                    <Link className={styles.button} href={`/admin/briefs/${encodeURIComponent(brief.conceptBriefId)}`}>
+                      View brief
+                    </Link>
                   </td>
                 </tr>
               ))}

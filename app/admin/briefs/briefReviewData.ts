@@ -4,6 +4,8 @@ export type BriefStatus = 'New' | 'Reviewing' | 'Need more info' | 'Ready for CA
 
 export type AdminBriefRecord = {
   conceptBriefId: string;
+  databaseId?: string;
+  publicReference?: string;
   submittedAt: string;
   lastUpdatedAt?: string;
   customerName?: string;
@@ -19,7 +21,15 @@ export type AdminBriefRecord = {
   referenceImageCount?: number;
   referenceImageNames?: string[];
   referenceNotes?: string;
+  designObjective?: string;
   aiSketchInstruction?: string;
+  databaseStatus?: string;
+  submissionSource?: string;
+  summaryItems?: unknown;
+  briefPayload?: unknown;
+  apiSubmission?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
   status: BriefStatus;
   source: 'localStorage' | 'mock' | 'supabase';
 };
@@ -321,7 +331,15 @@ export function loadAdminBriefRecords(serverBriefs: AdminBriefRecord[] = []) {
   const localBrief = loadLocalSubmittedBrief();
   const reviewState = loadAdminReviewStateMap();
   const fallbackRecords = serverBriefs.length ? serverBriefs : mockBriefs;
-  const records = localBrief ? [localBrief, ...fallbackRecords] : fallbackRecords;
+  const hasMatchingServerBrief = Boolean(
+    localBrief &&
+      serverBriefs.some(
+        (brief) =>
+          brief.source === 'supabase' &&
+          (brief.conceptBriefId === localBrief.conceptBriefId || brief.publicReference === localBrief.conceptBriefId),
+      ),
+  );
+  const records = localBrief && !hasMatchingServerBrief ? [localBrief, ...fallbackRecords] : fallbackRecords;
 
   return records.map((brief) => applyReviewState(brief, reviewState[brief.conceptBriefId] || {}));
 }

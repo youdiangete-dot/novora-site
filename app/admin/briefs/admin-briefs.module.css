@@ -286,6 +286,20 @@
   padding: 0.55rem 0.65rem;
 }
 
+.jsonBlock {
+  background: rgba(248, 243, 234, 0.76);
+  border: 1px solid rgba(232, 224, 211, 0.95);
+  border-radius: 8px;
+  color: #2f2d27;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+
 .notesPanel {
   align-self: start;
   display: grid;
