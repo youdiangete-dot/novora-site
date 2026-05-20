@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
 const wrongFocalFields = [
@@ -444,6 +446,61 @@ test.describe('/design/brief submission', () => {
 });
 
 test.describe('/admin/briefs protected review UI', () => {
+  test('refreshes legacy admin access cookie scope before review state API saves', async ({ baseURL, context, page }) => {
+    const adminAccessKey = process.env.NOVORA_ADMIN_ACCESS_KEY;
+
+    if (!adminAccessKey) {
+      test.skip(true, 'NOVORA_ADMIN_ACCESS_KEY is required to verify protected admin review state API access.');
+      return;
+    }
+
+    const appUrl = new URL(baseURL || 'http://127.0.0.1:3000');
+    const legacyCookieValue = createHmac('sha256', adminAccessKey)
+      .update('novora-admin-briefs-access')
+      .digest('hex');
+
+    await context.addCookies([
+      {
+        name: 'novora_admin_access',
+        value: legacyCookieValue,
+        domain: appUrl.hostname,
+        path: '/admin/briefs',
+        expires: Math.floor(Date.now() / 1000) + 60 * 60,
+        httpOnly: true,
+        sameSite: 'Strict',
+        secure: appUrl.protocol === 'https:',
+      },
+    ]);
+
+    await page.goto('/admin/briefs');
+
+    if (await page.getByRole('heading', { name: 'Admin review is not configured' }).isVisible()) {
+      await expect(page.getByText('No customer data is shown while the admin access key is missing.')).toBeVisible();
+      return;
+    }
+
+    await expect(page.getByText('Temporary protected admin surface')).toBeVisible();
+
+    const responseStatus = await page.evaluate(async () => {
+      const response = await fetch('/api/admin/brief-review-state', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conceptBriefId: 'not-a-real-uuid',
+          reviewStatus: 'unsupported-status',
+          internalNotes: '',
+        }),
+      });
+
+      return response.status;
+    });
+
+    expect(responseStatus).toBe(400);
+  });
+
   test('keeps admin data protected and opens a submitted localStorage fallback detail after access', async ({ page }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem(
