@@ -111,8 +111,10 @@ export default async function AdminBriefsPage({ searchParams }: AdminBriefsPageP
   let initialServerBriefs = serverBriefs.records;
   let serverDataMessage: string | undefined;
 
-  if ('message' in serverBriefs) {
+  if (serverBriefs.ok === false) {
     initialServerBriefs = [];
+    serverDataMessage = serverBriefs.message;
+  } else {
     serverDataMessage = serverBriefs.message;
   }
 
