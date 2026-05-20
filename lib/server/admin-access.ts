@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "crypto";
 
 export const ADMIN_ACCESS_COOKIE_NAME = "novora_admin_access";
+export const ADMIN_ACCESS_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 8;
 export const ADMIN_ACCESS_COOKIE_PATH = "/";
 
 const ADMIN_ACCESS_KEY_ENV = "NOVORA_ADMIN_ACCESS_KEY";
