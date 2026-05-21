@@ -22,15 +22,13 @@ type ConceptBriefLookupRow = {
 
 type ReferenceAssetInsertRow = {
   concept_brief_id: string;
-  asset_type: "reference_image";
+  asset_role: "reference_image";
   original_filename: string;
-  storage_bucket: string;
-  storage_key: string;
+  bucket_name: string;
+  object_path: string;
   mime_type: string;
-  file_size_bytes: number;
+  size_bytes: number;
   upload_status: "uploaded";
-  customer_visible: false;
-  admin_visible: true;
 };
 
 type ReferenceAssetRow = {
@@ -38,15 +36,14 @@ type ReferenceAssetRow = {
   concept_brief_id: string;
   original_filename: string | null;
   mime_type: string | null;
-  file_size_bytes: number | null;
+  size_bytes: number | null;
   upload_status: string | null;
-  admin_visible: boolean | null;
   created_at: string | null;
 };
 
 type ReferenceAssetStorageRow = ReferenceAssetRow & {
-  storage_bucket: string | null;
-  storage_key: string | null;
+  bucket_name: string | null;
+  object_path: string | null;
 };
 
 export type AdminReferenceAssetMetadata = {
@@ -111,7 +108,7 @@ function mapReferenceAssetRow(row: ReferenceAssetRow): AdminReferenceAssetMetada
     conceptBriefId: row.concept_brief_id,
     originalFilename: row.original_filename?.trim() || "reference-image",
     mimeType: row.mime_type?.trim() || "Not provided",
-    fileSizeBytes: Number(row.file_size_bytes || 0),
+    fileSizeBytes: Number(row.size_bytes || 0),
     uploadStatus: row.upload_status?.trim() || "uploaded",
     createdAt: row.created_at?.trim() || "",
   };
@@ -242,21 +239,19 @@ export async function uploadConceptBriefReferenceAssets(formData: FormData): Pro
 
     const insertRow: ReferenceAssetInsertRow = {
       concept_brief_id: conceptBrief.id,
-      asset_type: "reference_image",
+      asset_role: "reference_image",
       original_filename: originalFilename,
-      storage_bucket: storageBucket,
-      storage_key: storageKey,
+      bucket_name: storageBucket,
+      object_path: storageKey,
       mime_type: file.type,
-      file_size_bytes: file.size,
+      size_bytes: file.size,
       upload_status: "uploaded",
-      customer_visible: false,
-      admin_visible: true,
     };
 
     const { data: insertedAsset, error: insertError } = await supabase
       .from("concept_brief_reference_assets")
       .insert(insertRow)
-      .select("id, concept_brief_id, original_filename, mime_type, file_size_bytes, upload_status, admin_visible, created_at")
+      .select("id, concept_brief_id, original_filename, mime_type, size_bytes, upload_status, created_at")
       .single<ReferenceAssetRow>();
 
     if (insertError || !insertedAsset) {
@@ -292,9 +287,9 @@ export async function loadReferenceAssetsByConceptBriefIds(
 
   const { data, error } = await supabase
     .from("concept_brief_reference_assets")
-    .select("id, concept_brief_id, original_filename, mime_type, file_size_bytes, upload_status, admin_visible, created_at")
+    .select("id, concept_brief_id, original_filename, mime_type, size_bytes, upload_status, created_at")
     .in("concept_brief_id", conceptBriefIds)
-    .eq("admin_visible", true)
+    .eq("asset_role", "reference_image")
     .order("created_at", { ascending: true })
     .returns<ReferenceAssetRow[]>();
 
@@ -333,12 +328,12 @@ export async function createAdminReferenceAssetSignedUrl(
 
   const { data: asset, error } = await supabase
     .from("concept_brief_reference_assets")
-    .select("id, concept_brief_id, original_filename, mime_type, file_size_bytes, upload_status, admin_visible, created_at, storage_bucket, storage_key")
+    .select("id, concept_brief_id, original_filename, mime_type, size_bytes, upload_status, created_at, bucket_name, object_path")
     .eq("id", assetId)
-    .eq("admin_visible", true)
+    .eq("asset_role", "reference_image")
     .maybeSingle<ReferenceAssetStorageRow>();
 
-  if (error || !asset?.storage_bucket || !asset.storage_key) {
+  if (error || !asset?.bucket_name || !asset.object_path) {
     return {
       ok: false,
       status: 404,
@@ -347,8 +342,8 @@ export async function createAdminReferenceAssetSignedUrl(
   }
 
   const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-    .from(asset.storage_bucket)
-    .createSignedUrl(asset.storage_key, 60);
+    .from(asset.bucket_name)
+    .createSignedUrl(asset.object_path, 60);
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
     return {
