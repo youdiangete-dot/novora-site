@@ -446,7 +446,7 @@ test.describe('/design/brief submission', () => {
 });
 
 test.describe('/admin/briefs protected review UI', () => {
-  test('refreshes legacy admin access cookie scope before review state API saves', async ({ baseURL, context, page }) => {
+  test('uses legacy admin access cookie scope for admin-path review state saves', async ({ baseURL, context, page }) => {
     const adminAccessKey = process.env.NOVORA_ADMIN_ACCESS_KEY;
 
     if (!adminAccessKey) {
@@ -482,7 +482,7 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByText('Temporary protected admin surface')).toBeVisible();
 
     const responseStatus = await page.evaluate(async () => {
-      const response = await fetch('/api/admin/brief-review-state', {
+      const response = await fetch('/admin/briefs/review-state', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {

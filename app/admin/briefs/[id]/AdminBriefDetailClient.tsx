@@ -251,7 +251,7 @@ export default function AdminBriefDetailClient({
     }
 
     try {
-      const response = await fetch('/api/admin/brief-review-state', {
+      const response = await fetch('/admin/briefs/review-state', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
