@@ -1500,14 +1500,15 @@ function DesignConceptIntake() {
 
                 <section className={`${styles.repeatedStonePanel} ${styles.referencePanel}`}>
                   <div className={styles.sectionHeading}>
-                    <h2>Reference images</h2>
+                    <h2>Reference images (planning only)</h2>
                     <p>
-                      Upload sketches, inspiration photos, product photos, or finished-piece references for the AI
-                      concept sketch.
+                      Add sketches, inspiration photos, product photos, or finished-piece references to organize the
+                      concept preview. These planning files are not saved as final uploads; attach final reference
+                      images again on the brief submission page.
                     </p>
                   </div>
                   <label className={styles.referenceUpload}>
-                    <span>Choose image files</span>
+                    <span>Choose planning image files</span>
                     <input
                       accept="image/*"
                       multiple
@@ -1536,8 +1537,8 @@ function DesignConceptIntake() {
                     />
                   </label>
                   <p className={styles.helperNote}>
-                    Reference images are used to guide the AI concept sketch. Final CAD and production feasibility are
-                    confirmed later.
+                    Planning references here help shape the AI hand-drawn concept sketch direction only. Only files
+                    selected on the final brief page are saved for admin review.
                   </p>
                 </section>
               </section>
@@ -1736,14 +1737,15 @@ function DesignConceptIntake() {
         </div>
         <section className={`${styles.repeatedStonePanel} ${styles.referencePanel}`}>
           <div className={styles.sectionHeading}>
-            <h2>Reference images</h2>
+            <h2>Reference images (planning only)</h2>
             <p>
-              Upload sketches, inspiration photos, product photos, finished-piece references, logos, symbols, or
-              proportion references for this custom request.
+              Add sketches, inspiration photos, product photos, finished-piece references, logos, symbols, or proportion
+              references to organize this custom request. These planning files are not saved as final uploads; attach
+              final reference images again on the brief submission page.
             </p>
           </div>
           <label className={styles.referenceUpload}>
-            <span>Choose image files</span>
+            <span>Choose planning image files</span>
             <input
               accept="image/*"
               multiple
@@ -1772,7 +1774,8 @@ function DesignConceptIntake() {
             />
           </label>
           <p className={styles.helperNote}>
-            Reference images guide the AI concept sketch. CAD and production feasibility are confirmed later.
+            Planning references guide the AI hand-drawn concept sketch direction only. Only files selected on the final
+            brief page are saved for admin review; CAD and production feasibility are confirmed later.
           </p>
         </section>
       </section>

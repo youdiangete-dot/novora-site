@@ -1065,14 +1065,15 @@ export default function DesignBriefPage() {
               </label>
               <section className={styles.referenceUploadPanel} aria-label="Final reference image upload">
                 <div className={styles.contactHeading}>
-                  <h3>Reference images for concept review optional</h3>
+                  <h3>Final reference upload optional</h3>
                   <p>
-                    Attach final reference images here before submitting. Files selected on the earlier concept page are
-                    kept as planning metadata; actual upload happens from this final brief submission page.
+                    Attach the reference images you want saved for admin review here before submitting. Earlier
+                    concept-page image selections are planning references only and are not saved as final uploaded
+                    files.
                   </p>
                 </div>
                 <label className={styles.fieldLabel}>
-                  Upload JPG, PNG, or WebP images
+                  Upload final JPG, PNG, or WebP images
                   <input
                     accept="image/jpeg,image/png,image/webp"
                     className={styles.input}
@@ -1091,8 +1092,9 @@ export default function DesignBriefPage() {
                   </ul>
                 ) : null}
                 <p className={styles.placeholderMessage}>
-                  Uploaded references support manual concept review and AI hand-drawn sketch direction only. They do not
-                  confirm CAD, pricing, sourcing, final design approval, or production.
+                  Only files selected in this final upload area are saved for admin review. Uploaded references support
+                  manual concept review and AI hand-drawn sketch direction only; they do not confirm CAD, pricing,
+                  sourcing, final design approval, or production.
                 </p>
                 {referenceUploadMessage ? <p className={styles.readyMessage}>{referenceUploadMessage}</p> : null}
               </section>
