@@ -70,6 +70,47 @@ function getReferenceNames(brief: AdminBriefRecord) {
   );
 }
 
+function formatFileSize(bytes?: number) {
+  if (!bytes || bytes <= 0) {
+    return 'Not provided';
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getReferenceAssetList(brief: AdminBriefRecord) {
+  if (brief.referenceAssets?.length) {
+    return (
+      <ul className={styles.fileList}>
+        {brief.referenceAssets.map((asset) => (
+          <li key={asset.id}>
+            <div className={styles.primaryCell}>
+              <span>{asset.originalFilename}</span>
+              <span>
+                {asset.mimeType} / {formatFileSize(asset.fileSizeBytes)} / {asset.uploadStatus}
+              </span>
+              <a
+                className={styles.secondaryButton}
+                href={`/admin/briefs/reference-assets/${encodeURIComponent(asset.id)}`}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open reference
+              </a>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return getReferenceNames(brief);
+}
+
 function DetailSection({ title, rows }: { title: string; rows: DetailRow[] }) {
   return (
     <section className={styles.detailSection} aria-label={title}>
@@ -218,14 +259,25 @@ export default function AdminBriefDetailClient({
       },
     ];
 
-    if (!isServerBacked) {
+    if (!isServerBacked || brief.referenceAssets?.length) {
       sections.splice(2, 0, {
         title: 'Reference images metadata',
         rows: [
-          { label: 'Metadata exists', value: hasReferenceMetadata(brief) ? 'Yes, local/mock reference metadata is present' : 'No' },
+          {
+            label: 'Metadata exists',
+            value: brief.referenceAssets?.length
+              ? 'Yes, Supabase reference asset metadata is present'
+              : hasReferenceMetadata(brief)
+                ? 'Yes, local/mock reference metadata is present'
+                : 'No',
+          },
           { label: 'Reference image count', value: brief.referenceImageCount || 0 },
-          { label: 'Reference image names', value: getReferenceNames(brief) },
+          { label: 'Reference image files', value: getReferenceAssetList(brief) },
           { label: 'Reference notes', value: brief.referenceNotes || 'Not provided' },
+          {
+            label: 'Review boundary',
+            value: 'Uploaded references support concept review only. They are not CAD approval, final pricing, or production confirmation.',
+          },
         ],
       });
     }

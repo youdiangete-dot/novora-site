@@ -5,6 +5,10 @@ import {
   type PersistedAdminReviewState,
   loadAdminReviewStatesByConceptBriefIds,
 } from "./admin-review-state";
+import {
+  type AdminReferenceAssetMetadata,
+  loadReferenceAssetsByConceptBriefIds,
+} from "./concept-brief-reference-assets";
 import { createSupabaseAdminClientOrNull } from "./supabase";
 
 type ConceptBriefListRow = {
@@ -102,6 +106,7 @@ function mapBriefRowToAdminRecord(
   brief: ConceptBriefListRow,
   contact?: ConceptBriefContactRow,
   reviewState?: PersistedAdminReviewState,
+  referenceAssets: AdminReferenceAssetMetadata[] = [],
 ): AdminBriefRecord {
   const submittedAt = readString(brief.created_at) || new Date(0).toISOString();
   const publicReference = readString(brief.public_reference) || brief.id;
@@ -134,6 +139,9 @@ function mapBriefRowToAdminRecord(
     updatedAt: readString(brief.updated_at),
     status: reviewStatus,
     internalNotes: reviewState?.internalNotes,
+    referenceAssets,
+    referenceImageCount: referenceAssets.length,
+    referenceImageNames: referenceAssets.map((asset) => asset.originalFilename),
     reviewStateSource: reviewState ? "supabase" : undefined,
     reviewStatusSlug: reviewState?.reviewStatus,
     reviewUpdatedAt: reviewState?.createdAt,
@@ -191,6 +199,7 @@ export async function loadAdminConceptBriefRecords(): Promise<AdminConceptBriefL
   }
 
   const reviewStates = await loadAdminReviewStatesByConceptBriefIds(conceptBriefIds);
+  const referenceAssets = await loadReferenceAssetsByConceptBriefIds(conceptBriefIds);
 
   return {
     ok: true,
@@ -199,6 +208,7 @@ export async function loadAdminConceptBriefRecords(): Promise<AdminConceptBriefL
         brief,
         contactsByBriefId.get(brief.id),
         reviewStates.statesByConceptBriefId.get(brief.id),
+        referenceAssets.get(brief.id) || [],
       ),
     ),
     message: reviewStates.ok ? undefined : reviewStates.message,
@@ -264,6 +274,7 @@ export async function loadAdminConceptBriefRecordByReference(
   }
 
   const reviewStates = await loadAdminReviewStatesByConceptBriefIds([brief.id]);
+  const referenceAssets = await loadReferenceAssetsByConceptBriefIds([brief.id]);
 
   return {
     ok: true,
@@ -271,6 +282,7 @@ export async function loadAdminConceptBriefRecordByReference(
       brief,
       contact ?? undefined,
       reviewStates.statesByConceptBriefId.get(brief.id),
+      referenceAssets.get(brief.id) || [],
     ),
     message: reviewStates.ok ? undefined : reviewStates.message,
   };

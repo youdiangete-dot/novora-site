@@ -405,7 +405,7 @@ test.describe('/design/brief submission', () => {
     await expect(page.getByRole('heading', { name: 'Contact for concept review' })).toBeVisible();
     await expect(
       page.getByText(
-        'Your contact details are used only to follow up on this concept brief. This MVP currently stores the submitted preview locally in this browser until real backend storage is added.',
+        'Your contact details are used only to follow up on this concept brief. If backend persistence is temporarily unavailable, NOVORA keeps the local browser fallback so this review flow can still continue safely.',
       ),
     ).toBeVisible();
     await fillValidContactFields(page);
@@ -442,6 +442,81 @@ test.describe('/design/brief submission', () => {
     });
     expect(submittedBrief.conceptBriefId).toMatch(/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/);
     expect(submittedBrief.submittedAt).toEqual(expect.any(String));
+  });
+
+  test('uploads final reference images after a persisted concept brief is created', async ({ page }) => {
+    await page.route('/api/concept-briefs', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 201,
+        body: JSON.stringify({
+          ok: true,
+          mode: 'supabase',
+          persisted: true,
+          message: 'Concept Brief submitted for NOVORA review.',
+          publicReference: 'NOVORA-CB-20260521-UPLD',
+          conceptBriefId: '11111111-1111-4111-8111-111111111111',
+        }),
+      });
+    });
+
+    await page.route('/api/concept-brief-reference-assets', async (route) => {
+      const request = route.request();
+      const postData = request.postData() || '';
+
+      expect(postData).toContain('NOVORA-CB-20260521-UPLD');
+      expect(postData).toContain('brief-reference.png');
+
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          message: 'Reference images were attached for concept review.',
+          assets: [
+            {
+              id: '22222222-2222-4222-8222-222222222222',
+              originalFilename: 'brief-reference.png',
+            },
+          ],
+        }),
+      });
+    });
+
+    await openMetalOnlyBangleBrief(page);
+    await expect(page.getByRole('heading', { name: 'Reference images for concept review optional' })).toBeVisible();
+    await page.locator('input[type="file"][accept="image/jpeg,image/png,image/webp"]').setInputFiles({
+      name: 'brief-reference.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    });
+    await expect(page.getByText('brief-reference.png', { exact: false })).toBeVisible();
+    await fillValidContactFields(page);
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/submitted$/);
+    await expect(page.getByRole('heading', { name: 'Reference images' })).toBeVisible();
+    await expect(page.getByText('1 reference image(s) were attached for concept review.')).toBeVisible();
+
+    const submittedBrief = await page.evaluate(() => {
+      const rawBrief = window.localStorage.getItem('novora_submitted_concept_brief');
+      return rawBrief ? JSON.parse(rawBrief) : null;
+    });
+
+    expect(submittedBrief).toMatchObject({
+      conceptBriefId: 'NOVORA-CB-20260521-UPLD',
+      publicReference: 'NOVORA-CB-20260521-UPLD',
+      referenceImageCount: 1,
+      referenceImageNames: ['brief-reference.png'],
+      referenceUpload: {
+        uploaded: true,
+        uploadedCount: 1,
+        fileNames: ['brief-reference.png'],
+      },
+    });
   });
 });
 

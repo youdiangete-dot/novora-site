@@ -28,6 +28,7 @@ type ConceptBriefApiSubmissionMetadata = {
   mode?: string;
   message: string;
   publicReference?: string;
+  conceptBriefId?: string;
 };
 
 type ConceptBriefApiResponse = {
@@ -36,6 +37,15 @@ type ConceptBriefApiResponse = {
   mode?: unknown;
   message?: unknown;
   publicReference?: unknown;
+  conceptBriefId?: unknown;
+};
+
+type ReferenceAssetUploadMetadata = {
+  ok: boolean;
+  uploaded: boolean;
+  message: string;
+  uploadedCount: number;
+  fileNames: string[];
 };
 
 type StoredConceptBrief = {
@@ -506,6 +516,7 @@ async function postConceptBriefSkeleton(payload: Record<string, unknown>): Promi
       mode: readApiString(data.mode),
       message: readApiString(data.message) || 'Concept Brief API skeleton received the submission for review.',
       publicReference: readApiString(data.publicReference),
+      conceptBriefId: readApiString(data.conceptBriefId),
     };
   } catch {
     return fallbackMetadata;
@@ -519,6 +530,9 @@ export default function DesignBriefPage() {
   const [brief, setBrief] = useState<StoredConceptBrief | null>(null);
   const [contactFields, setContactFields] = useState<ContactFields>(initialContactFields);
   const [contactErrors, setContactErrors] = useState<ContactErrors>({});
+  const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const [referenceUploadMessage, setReferenceUploadMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -634,14 +648,103 @@ export default function DesignBriefPage() {
     }
   }
 
+  function updateReferenceFiles(files: FileList | null) {
+    const nextFiles = Array.from(files || []);
+
+    setReferenceFiles(nextFiles);
+    setReferenceUploadMessage(
+      nextFiles.length
+        ? `${nextFiles.length} reference image${nextFiles.length === 1 ? '' : 's'} ready to upload with this concept brief.`
+        : '',
+    );
+  }
+
+  async function uploadReferenceImages(
+    apiSubmission: ConceptBriefApiSubmissionMetadata,
+  ): Promise<ReferenceAssetUploadMetadata> {
+    if (!referenceFiles.length) {
+      return {
+        ok: true,
+        uploaded: false,
+        message: 'No final reference images were selected for upload.',
+        uploadedCount: 0,
+        fileNames: [],
+      };
+    }
+
+    if (!apiSubmission.persisted || !apiSubmission.conceptBriefId || !apiSubmission.publicReference) {
+      return {
+        ok: false,
+        uploaded: false,
+        message: 'Reference images could not be uploaded because the concept brief was saved locally only.',
+        uploadedCount: 0,
+        fileNames: referenceFiles.map((file) => file.name),
+      };
+    }
+
+    const formData = new FormData();
+
+    formData.append('conceptBriefId', apiSubmission.conceptBriefId);
+    formData.append('publicReference', apiSubmission.publicReference);
+    for (const file of referenceFiles) {
+      formData.append('referenceImages', file);
+    }
+
+    try {
+      const response = await fetch('/api/concept-brief-reference-assets', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        message?: string;
+        assets?: Array<{
+          originalFilename?: string;
+        }>;
+      } | null;
+
+      if (!response.ok || !result?.ok) {
+        return {
+          ok: false,
+          uploaded: false,
+          message: readApiString(result?.message) || 'Reference image upload is temporarily unavailable.',
+          uploadedCount: 0,
+          fileNames: referenceFiles.map((file) => file.name),
+        };
+      }
+
+      return {
+        ok: true,
+        uploaded: true,
+        message: readApiString(result.message) || 'Reference images were attached for concept review.',
+        uploadedCount: result.assets?.length || referenceFiles.length,
+        fileNames: result.assets?.map((asset) => asset.originalFilename || '').filter(Boolean) || referenceFiles.map((file) => file.name),
+      };
+    } catch {
+      return {
+        ok: false,
+        uploaded: false,
+        message: 'Reference image upload is temporarily unavailable.',
+        uploadedCount: 0,
+        fileNames: referenceFiles.map((file) => file.name),
+      };
+    }
+  }
+
   async function submitConceptBrief() {
     if (!brief) {
+      return;
+    }
+
+    if (isSubmitting) {
       return;
     }
 
     if (!validateContactFields()) {
       return;
     }
+
+    setIsSubmitting(true);
 
     const customerName = contactFields.customerName.trim();
     const customerEmail = contactFields.customerEmail.trim();
@@ -673,9 +776,16 @@ export default function DesignBriefPage() {
       aiSketchInstruction: brief.aiSketchInstruction || '',
     };
     const apiSubmission = await postConceptBriefSkeleton(apiPayload);
+    const referenceUpload = await uploadReferenceImages(apiSubmission);
     const localConceptBriefId = generateConceptBriefId();
     const persistedPublicReference =
       apiSubmission.persisted && apiSubmission.publicReference ? apiSubmission.publicReference : undefined;
+    const finalReferenceImageNames = referenceFiles.length
+      ? referenceUpload.fileNames
+      : brief.referenceImageNames || [];
+    const finalReferenceImageCount = referenceFiles.length
+      ? finalReferenceImageNames.length
+      : brief.referenceImageCount || 0;
 
     const submittedBrief = {
       conceptBriefId: persistedPublicReference || localConceptBriefId,
@@ -693,9 +803,10 @@ export default function DesignBriefPage() {
       structure: brief.structure || '',
       subStructure: brief.subStructure || '',
       stoneLogic: brief.stoneLogic || '',
-      referenceImageCount: brief.referenceImageCount || 0,
-      referenceImageNames: brief.referenceImageNames || [],
+      referenceImageCount: finalReferenceImageCount,
+      referenceImageNames: finalReferenceImageNames,
       referenceNotes: brief.referenceNotes || '',
+      referenceUpload,
       ...(brief.aiSketchInstruction ? { aiSketchInstruction: brief.aiSketchInstruction } : {}),
     };
 
@@ -889,8 +1000,9 @@ export default function DesignBriefPage() {
               <div className={styles.contactHeading}>
                 <h3>Contact for concept review</h3>
                 <p>
-                  Your contact details are used only to follow up on this concept brief. This MVP currently stores the
-                  submitted preview locally in this browser until real backend storage is added.
+                  Your contact details are used only to follow up on this concept brief. If backend persistence is
+                  temporarily unavailable, NOVORA keeps the local browser fallback so this review flow can still
+                  continue safely.
                 </p>
               </div>
               <label className={styles.fieldLabel}>
@@ -951,14 +1063,48 @@ export default function DesignBriefPage() {
                   value={contactFields.contactNote}
                 />
               </label>
+              <section className={styles.referenceUploadPanel} aria-label="Final reference image upload">
+                <div className={styles.contactHeading}>
+                  <h3>Reference images for concept review optional</h3>
+                  <p>
+                    Attach final reference images here before submitting. Files selected on the earlier concept page are
+                    kept as planning metadata; actual upload happens from this final brief submission page.
+                  </p>
+                </div>
+                <label className={styles.fieldLabel}>
+                  Upload JPG, PNG, or WebP images
+                  <input
+                    accept="image/jpeg,image/png,image/webp"
+                    className={styles.input}
+                    multiple
+                    onChange={(event) => updateReferenceFiles(event.target.files)}
+                    type="file"
+                  />
+                </label>
+                {referenceFiles.length ? (
+                  <ul className={styles.uploadFileList}>
+                    {referenceFiles.map((file) => (
+                      <li key={`${file.name}-${file.size}`}>
+                        {file.name} / {file.type || 'image'} / {Math.max(1, Math.round(file.size / 1024))} KB
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className={styles.placeholderMessage}>
+                  Uploaded references support manual concept review and AI hand-drawn sketch direction only. They do not
+                  confirm CAD, pricing, sourcing, final design approval, or production.
+                </p>
+                {referenceUploadMessage ? <p className={styles.readyMessage}>{referenceUploadMessage}</p> : null}
+              </section>
             </section>
             <div className={styles.actions}>
               <button
                 className={styles.primaryButton}
+                disabled={isSubmitting}
                 onClick={submitConceptBrief}
                 type="button"
               >
-                Submit concept brief
+                {isSubmitting ? 'Submitting concept brief' : 'Submit concept brief'}
               </button>
               <Link className={styles.secondaryButton} href="/design/pro-cad">
                 Continue to paid CAD process
@@ -968,8 +1114,9 @@ export default function DesignBriefPage() {
               </Link>
             </div>
             <p className={styles.readyMessage}>
-              This saves a front-end-only concept brief record for AI hand-drawn sketch review. It does not place an
-              order, upload files, or confirm CAD, pricing, payment, sourcing, or production.
+              This submits a concept brief for AI hand-drawn sketch review. Optional reference uploads are attached only
+              after the brief is saved. This does not place an order or confirm CAD, pricing, payment, sourcing, or
+              production.
             </p>
           </aside>
         </section>

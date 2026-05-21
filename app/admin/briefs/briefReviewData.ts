@@ -21,6 +21,14 @@ export type AdminBriefRecord = {
   referenceImageCount?: number;
   referenceImageNames?: string[];
   referenceNotes?: string;
+  referenceAssets?: Array<{
+    id: string;
+    originalFilename: string;
+    mimeType: string;
+    fileSizeBytes: number;
+    uploadStatus: string;
+    createdAt: string;
+  }>;
   designObjective?: string;
   aiSketchInstruction?: string;
   databaseStatus?: string;

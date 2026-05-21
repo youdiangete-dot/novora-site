@@ -23,6 +23,12 @@ type SubmittedConceptBrief = {
   referenceImageCount?: number;
   referenceImageNames?: string[];
   referenceNotes?: string;
+  referenceUpload?: {
+    uploaded?: boolean;
+    message?: string;
+    uploadedCount?: number;
+    fileNames?: string[];
+  };
   aiSketchInstruction?: string;
   apiSubmission?: {
     persisted?: boolean;
@@ -146,6 +152,21 @@ export default function DesignSubmittedPage() {
             </section>
           ) : null}
 
+          {submittedBrief.referenceUpload ? (
+            <section className={styles.boundaryCard}>
+              <h2>Reference images</h2>
+              <p>
+                {submittedBrief.referenceUpload.uploaded
+                  ? `${submittedBrief.referenceUpload.uploadedCount || 0} reference image(s) were attached for concept review.`
+                  : submittedBrief.referenceUpload.message || 'No final reference images were uploaded.'}
+              </p>
+              <p>
+                Reference images support concept review only. They are not CAD approval, final pricing, final design
+                approval, or production confirmation.
+              </p>
+            </section>
+          ) : null}
+
           <section className={styles.boundaryCard}>
             <h2>Important boundary</h2>
             <p>
@@ -208,8 +229,8 @@ export default function DesignSubmittedPage() {
               </li>
             </ol>
             <p className={submittedStyles.contactExpectation}>
-              NOVORA will use the submitted email or contact information for follow-up. No real email is sent from this
-              front-end-only submission.
+              NOVORA will use the submitted email or contact information for follow-up. No automated email is sent from
+              this MVP submission flow.
             </p>
           </section>
 
