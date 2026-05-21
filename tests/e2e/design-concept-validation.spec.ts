@@ -484,7 +484,10 @@ test.describe('/design/brief submission', () => {
     });
 
     await openMetalOnlyBangleBrief(page);
-    await expect(page.getByRole('heading', { name: 'Reference images for concept review optional' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Final reference upload optional' })).toBeVisible();
+    await expect(
+      page.getByText('Earlier concept-page image selections are planning references only and are not saved as final uploaded files.'),
+    ).toBeVisible();
     await page.locator('input[type="file"][accept="image/jpeg,image/png,image/webp"]').setInputFiles({
       name: 'brief-reference.png',
       mimeType: 'image/png',
