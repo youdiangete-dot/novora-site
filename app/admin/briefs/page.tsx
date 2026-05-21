@@ -102,22 +102,11 @@ export default async function AdminBriefsPage({ searchParams }: AdminBriefsPageP
   }
 
   const cookieStore = await cookies();
-  const adminAccessCookieValue = cookieStore.get(ADMIN_ACCESS_COOKIE_NAME)?.value;
-  const hasAdminAccess = isValidAdminAccessCookie(adminAccessCookieValue);
+  const hasAdminAccess = isValidAdminAccessCookie(cookieStore.get(ADMIN_ACCESS_COOKIE_NAME)?.value);
   const resolvedSearchParams = await searchParams;
 
   if (!hasAdminAccess) {
     return <AdminAccessForm wasDenied={resolvedSearchParams?.access === 'denied'} />;
-  }
-
-  if (adminAccessCookieValue) {
-    cookieStore.set(ADMIN_ACCESS_COOKIE_NAME, adminAccessCookieValue, {
-      httpOnly: true,
-      maxAge: ADMIN_ACCESS_COOKIE_MAX_AGE_SECONDS,
-      path: ADMIN_ACCESS_COOKIE_PATH,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-    });
   }
 
   const serverBriefs = await loadAdminConceptBriefRecords();
