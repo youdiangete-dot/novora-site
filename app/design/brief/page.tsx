@@ -485,6 +485,27 @@ function readApiString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+async function notifyAdminConceptBrief(apiSubmission: ConceptBriefApiSubmissionMetadata) {
+  if (!apiSubmission.persisted || !apiSubmission.conceptBriefId || !apiSubmission.publicReference) {
+    return;
+  }
+
+  try {
+    await fetch('/api/concept-brief-admin-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        conceptBriefId: apiSubmission.conceptBriefId,
+        publicReference: apiSubmission.publicReference,
+      }),
+    });
+  } catch {
+    // Admin notification is best-effort and must not block customer submission.
+  }
+}
+
 async function postConceptBriefSkeleton(payload: Record<string, unknown>): Promise<ConceptBriefApiSubmissionMetadata> {
   const fallbackMetadata: ConceptBriefApiSubmissionMetadata = {
     ok: false,
@@ -777,6 +798,7 @@ export default function DesignBriefPage() {
     };
     const apiSubmission = await postConceptBriefSkeleton(apiPayload);
     const referenceUpload = await uploadReferenceImages(apiSubmission);
+    await notifyAdminConceptBrief(apiSubmission);
     const localConceptBriefId = generateConceptBriefId();
     const persistedPublicReference =
       apiSubmission.persisted && apiSubmission.publicReference ? apiSubmission.publicReference : undefined;

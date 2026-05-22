@@ -17,6 +17,7 @@ type NovoraServerEnvStatus = {
   readyForAiSketchStorage: boolean;
   readyForOptionalFutureStorage: boolean;
   readyForOpenAiImageGeneration: boolean;
+  readyForAdminEmailNotifications: boolean;
   variables: EnvReadinessItem[];
 };
 
@@ -66,6 +67,26 @@ const ENV_DEFINITIONS: Array<Omit<EnvReadinessItem, "present">> = [
     exposure: "server-only",
     requiredFor: "Future server-side AI sketch generation.",
   },
+  {
+    name: "RESEND_API_KEY",
+    exposure: "server-only",
+    requiredFor: "Admin-only Concept Brief email notifications through Resend.",
+  },
+  {
+    name: "NOVORA_ADMIN_NOTIFICATION_EMAIL",
+    exposure: "server-only",
+    requiredFor: "Destination inbox for admin-only Concept Brief notifications.",
+  },
+  {
+    name: "NOVORA_EMAIL_FROM",
+    exposure: "server-only",
+    requiredFor: "Verified sender address for admin-only Concept Brief notifications.",
+  },
+  {
+    name: "NOVORA_EMAIL_REPLY_TO",
+    exposure: "server-only",
+    requiredFor: "Optional reply-to address for admin-only Concept Brief notifications.",
+  },
 ];
 
 function hasEnvValue(name: string): boolean {
@@ -99,6 +120,10 @@ export function getNovoraServerEnvStatus(): NovoraServerEnvStatus {
       present("SUPABASE_STORAGE_BUCKET_CAD_PREVIEWS") &&
       present("SUPABASE_STORAGE_BUCKET_ORDER_ATTACHMENTS"),
     readyForOpenAiImageGeneration: present("OPENAI_API_KEY"),
+    readyForAdminEmailNotifications:
+      present("RESEND_API_KEY") &&
+      present("NOVORA_ADMIN_NOTIFICATION_EMAIL") &&
+      present("NOVORA_EMAIL_FROM"),
     variables,
   };
 }
