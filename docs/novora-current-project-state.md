@@ -64,7 +64,13 @@ Agent 24B-3 PR #62 was merged and adds the app-side durable idempotency guard:
 - mark notification events as `sent` or `failed`
 - keep customer submission non-blocking
 
-Production idempotency verification after PR #62 is still pending unless a later repository ledger update records completion. The recommended verification is listed in section 10.
+Agent 24D completed controlled Production idempotency verification after PR #62:
+
+- one real test Concept Brief submission sent exactly one admin email
+- repeating the admin notification route for the same `conceptBriefId` and `publicReference` did not send a second email
+- the notification route returned the expected non-blocking duplicate/skipped result on repeat call
+- Supabase contained one notification event row for the Concept Brief, notification type, and normalized recipient
+- no new schema or SQL change was required during verification
 
 ## 6. Recent Agent History
 
@@ -76,6 +82,7 @@ Production idempotency verification after PR #62 is still pending unless a later
 - Agent 24B-1: PR #60 docs-only idempotency plan merged.
 - Agent 24B-2: PR #61 docs-only SQL packet merged; manual Supabase SQL was executed and verified later.
 - Agent 24B-3: PR #62 app idempotency guard merged.
+- Agent 24D: controlled Production idempotency verification completed and recorded in this ledger.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -112,13 +119,8 @@ Production idempotency verification after PR #62 is still pending unless a later
 
 ## 10. Recommended Next Step
 
-If PR #62 branch cleanup or local sync is not complete, do housekeeping first.
+Production idempotency verification for PR #62 is complete as of Agent 24D.
 
-Then perform controlled Production idempotency verification:
-
-- submit one real test Concept Brief
-- confirm exactly one admin email
-- call the notification route again with the same `conceptBriefId` and `publicReference` if feasible
-- confirm no second email and one notification event row
+Recommended next step: decide whether to add explicit admin retry/observability tooling for `reserved` or `failed` notification events. Keep this as a separate, reviewed feature because retry behavior can reintroduce duplicate-delivery risk.
 
 Do not run new SQL unless a new schema change is explicitly approved.
