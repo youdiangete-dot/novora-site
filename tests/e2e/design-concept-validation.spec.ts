@@ -445,6 +445,8 @@ test.describe('/design/brief submission', () => {
   });
 
   test('uploads final reference images after a persisted concept brief is created', async ({ page }) => {
+    const notifications: Array<Record<string, unknown>> = [];
+
     await page.route('/api/concept-briefs', async (route) => {
       await route.fulfill({
         contentType: 'application/json',
@@ -479,6 +481,21 @@ test.describe('/design/brief submission', () => {
               originalFilename: 'brief-reference.png',
             },
           ],
+        }),
+      });
+    });
+
+    await page.route('/api/concept-brief-admin-notification', async (route) => {
+      notifications.push((await route.request().postDataJSON()) as Record<string, unknown>);
+
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          notified: true,
+          skipped: false,
+          message: 'Admin notification accepted.',
         }),
       });
     });
@@ -519,6 +536,62 @@ test.describe('/design/brief submission', () => {
         uploadedCount: 1,
         fileNames: ['brief-reference.png'],
       },
+    });
+    expect(notifications).toEqual([
+      {
+        conceptBriefId: '11111111-1111-4111-8111-111111111111',
+        publicReference: 'NOVORA-CB-20260521-UPLD',
+      },
+    ]);
+  });
+
+  test('continues to submitted confirmation when admin notification fails', async ({ page }) => {
+    await page.route('/api/concept-briefs', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 201,
+        body: JSON.stringify({
+          ok: true,
+          mode: 'supabase',
+          persisted: true,
+          message: 'Concept Brief submitted for NOVORA review.',
+          publicReference: 'NOVORA-CB-20260522-MAIL',
+          conceptBriefId: '33333333-3333-4333-8333-333333333333',
+        }),
+      });
+    });
+
+    await page.route('/api/concept-brief-admin-notification', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 503,
+        body: JSON.stringify({
+          ok: false,
+          notified: false,
+          skipped: false,
+          message: 'Admin notification unavailable.',
+        }),
+      });
+    });
+
+    await openMetalOnlyBangleBrief(page);
+    await fillValidContactFields(page);
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/submitted$/);
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-20260522-MAIL')).toBeVisible();
+
+    const submittedBrief = await page.evaluate(() => {
+      const rawBrief = window.localStorage.getItem('novora_submitted_concept_brief');
+      return rawBrief ? JSON.parse(rawBrief) : null;
+    });
+
+    expect(submittedBrief).toMatchObject({
+      conceptBriefId: 'NOVORA-CB-20260522-MAIL',
+      publicReference: 'NOVORA-CB-20260522-MAIL',
+      customerName: 'Mina Chen',
+      customerEmail: 'mina@example.com',
     });
   });
 });
