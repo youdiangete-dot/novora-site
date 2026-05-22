@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   type BriefStatus,
   type AdminBriefRecord,
+  type AdminNotificationEventRecord,
   displayValue,
   formatSubmittedTime,
   getCadReadiness,
@@ -32,6 +33,8 @@ type DetailSectionData = {
 
 type AdminBriefDetailClientProps = {
   decodedId: string;
+  notificationEvent: AdminNotificationEventRecord | null;
+  notificationEventMessage?: string;
   serverBrief: AdminBriefRecord | null;
   serverDataMessage?: string;
 };
@@ -129,6 +132,8 @@ function DetailSection({ title, rows }: { title: string; rows: DetailRow[] }) {
 
 export default function AdminBriefDetailClient({
   decodedId,
+  notificationEvent,
+  notificationEventMessage,
   serverBrief,
   serverDataMessage,
 }: AdminBriefDetailClientProps) {
@@ -221,6 +226,38 @@ export default function AdminBriefDetailClient({
         ],
       },
       {
+        title: 'Admin notification status',
+        rows: notificationEvent
+          ? [
+              { label: 'notification_type', value: notificationEvent.notificationType || 'Not provided' },
+              { label: 'status', value: notificationEvent.status || 'Not provided' },
+              { label: 'recipient_email', value: notificationEvent.recipientEmail || 'Not provided' },
+              { label: 'reserved_at', value: formatSubmittedTime(notificationEvent.reservedAt) },
+              { label: 'sent_at', value: formatSubmittedTime(notificationEvent.sentAt) },
+              { label: 'failed_at', value: formatSubmittedTime(notificationEvent.failedAt) },
+              ...(notificationEvent.resendMessageId
+                ? [{ label: 'resend_message_id', value: notificationEvent.resendMessageId }]
+                : []),
+              ...(notificationEvent.errorMessage
+                ? [{ label: 'error_message', value: notificationEvent.errorMessage }]
+                : []),
+              { label: 'created_at', value: formatSubmittedTime(notificationEvent.createdAt) },
+              { label: 'updated_at', value: formatSubmittedTime(notificationEvent.updatedAt) },
+              {
+                label: 'Boundary',
+                value: 'Read-only admin notification status. This page does not retry, resend, or update notifications.',
+              },
+            ]
+          : [
+              {
+                label: 'Notification event',
+                value:
+                  notificationEventMessage ||
+                  'No admin notification event has been recorded for this Concept Brief.',
+              },
+            ],
+      },
+      {
         title: 'CAD readiness',
         rows: [
           { label: 'Current signal', value: getCadReadiness({ ...brief, status }) },
@@ -283,7 +320,16 @@ export default function AdminBriefDetailClient({
     }
 
     return sections;
-  }, [brief, internalNotes, isServerBacked, lastUpdatedAt, reviewStorageSource, status]);
+  }, [
+    brief,
+    internalNotes,
+    isServerBacked,
+    lastUpdatedAt,
+    notificationEvent,
+    notificationEventMessage,
+    reviewStorageSource,
+    status,
+  ]);
 
   async function persistReviewState(nextStatus: BriefStatus, nextInternalNotes: string) {
     const nextLastUpdatedAt = new Date().toISOString();
