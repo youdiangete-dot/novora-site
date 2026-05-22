@@ -7,6 +7,8 @@ const RESEND_API_KEY_ENV = "RESEND_API_KEY";
 const ADMIN_NOTIFICATION_EMAIL_ENV = "NOVORA_ADMIN_NOTIFICATION_EMAIL";
 const EMAIL_FROM_ENV = "NOVORA_EMAIL_FROM";
 const EMAIL_REPLY_TO_ENV = "NOVORA_EMAIL_REPLY_TO";
+const ADMIN_CONCEPT_BRIEF_SUBMITTED_NOTIFICATION = "admin_concept_brief_submitted";
+const UNIQUE_VIOLATION_CODE = "23505";
 
 type ConceptBriefNotificationBriefRow = {
   id: string;
@@ -17,6 +19,10 @@ type ConceptBriefNotificationBriefRow = {
 type ConceptBriefNotificationContactRow = {
   customer_name: string | null;
   customer_email: string | null;
+};
+
+type ConceptBriefNotificationEventRow = {
+  id: string;
 };
 
 type AdminEmailNotificationInput = {
@@ -51,6 +57,10 @@ function readEnvValue(name: string): string | null {
   const value = process.env[name]?.trim();
 
   return value || null;
+}
+
+function normalizeRecipientEmail(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function getAdminEmailNotificationConfig(): AdminEmailNotificationConfig | null {
@@ -89,6 +99,72 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function readResendMessageId(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const id = (value as { id?: unknown }).id;
+
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+function buildNotificationFailureMessage(reason: string): string {
+  return reason.slice(0, 240);
+}
+
+async function markNotificationEventSent(input: {
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClientOrNull>>;
+  eventId: string;
+  resendMessageId: string | null;
+  conceptBriefId: string;
+}) {
+  const sentAt = new Date().toISOString();
+  const { error } = await input.supabase
+    .from("concept_brief_notification_events")
+    .update({
+      status: "sent",
+      resend_message_id: input.resendMessageId,
+      sent_at: sentAt,
+      updated_at: sentAt,
+    })
+    .eq("id", input.eventId);
+
+  if (error) {
+    console.error("Admin email notification event sent update failed.", {
+      code: error.code,
+      conceptBriefId: input.conceptBriefId,
+      notificationEventId: input.eventId,
+    });
+  }
+}
+
+async function markNotificationEventFailed(input: {
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClientOrNull>>;
+  eventId: string;
+  conceptBriefId: string;
+  errorMessage: string;
+}) {
+  const failedAt = new Date().toISOString();
+  const { error } = await input.supabase
+    .from("concept_brief_notification_events")
+    .update({
+      status: "failed",
+      error_message: buildNotificationFailureMessage(input.errorMessage),
+      failed_at: failedAt,
+      updated_at: failedAt,
+    })
+    .eq("id", input.eventId);
+
+  if (error) {
+    console.error("Admin email notification event failed update failed.", {
+      code: error.code,
+      conceptBriefId: input.conceptBriefId,
+      notificationEventId: input.eventId,
+    });
+  }
 }
 
 function buildEmailText(input: {
@@ -196,6 +272,45 @@ export async function sendAdminConceptBriefNotification(
     };
   }
 
+  const recipientEmail = normalizeRecipientEmail(config.adminNotificationEmail);
+  const reservedAt = new Date().toISOString();
+  const { data: notificationEvent, error: reservationError } = await supabase
+    .from("concept_brief_notification_events")
+    .insert({
+      concept_brief_id: brief.id,
+      notification_type: ADMIN_CONCEPT_BRIEF_SUBMITTED_NOTIFICATION,
+      recipient_email: recipientEmail,
+      status: "reserved",
+      reserved_at: reservedAt,
+      updated_at: reservedAt,
+    })
+    .select("id")
+    .single<ConceptBriefNotificationEventRow>();
+
+  if (reservationError || !notificationEvent) {
+    if (reservationError?.code === UNIQUE_VIOLATION_CODE) {
+      return {
+        ok: true,
+        notified: false,
+        skipped: true,
+        message: "Admin email notification skipped because it was already reserved or sent.",
+      };
+    }
+
+    console.error("Admin email notification reservation failed.", {
+      code: reservationError?.code,
+      conceptBriefId: brief.id,
+      notificationType: ADMIN_CONCEPT_BRIEF_SUBMITTED_NOTIFICATION,
+    });
+
+    return {
+      ok: true,
+      notified: false,
+      skipped: true,
+      message: "Admin email notification skipped because idempotency reservation failed.",
+    };
+  }
+
   const { data: contact, error: contactError } = await supabase
     .from("concept_brief_contacts")
     .select("customer_name, customer_email")
@@ -203,6 +318,13 @@ export async function sendAdminConceptBriefNotification(
     .maybeSingle<ConceptBriefNotificationContactRow>();
 
   if (contactError) {
+    await markNotificationEventFailed({
+      supabase,
+      eventId: notificationEvent.id,
+      conceptBriefId: brief.id,
+      errorMessage: "Contact lookup failed.",
+    });
+
     console.error("Admin email notification skipped during contact lookup.", {
       code: contactError.code,
       conceptBriefId: brief.id,
@@ -240,7 +362,7 @@ export async function sendAdminConceptBriefNotification(
   };
   const resendPayload: Record<string, unknown> = {
     from: config.emailFrom,
-    to: [config.adminNotificationEmail],
+    to: [recipientEmail],
     subject: `New NOVORA Concept Brief: ${brief.public_reference}`,
     text: buildEmailText(emailInput),
     html: buildEmailHtml(emailInput),
@@ -261,6 +383,13 @@ export async function sendAdminConceptBriefNotification(
     });
 
     if (!response.ok) {
+      await markNotificationEventFailed({
+        supabase,
+        eventId: notificationEvent.id,
+        conceptBriefId: brief.id,
+        errorMessage: `Resend request failed with status ${response.status}.`,
+      });
+
       console.error("Admin email notification provider request failed.", {
         status: response.status,
         conceptBriefId: brief.id,
@@ -273,7 +402,22 @@ export async function sendAdminConceptBriefNotification(
         message: "Admin email notification could not be sent.",
       };
     }
+
+    const responseBody = (await response.json().catch(() => null)) as unknown;
+    await markNotificationEventSent({
+      supabase,
+      eventId: notificationEvent.id,
+      conceptBriefId: brief.id,
+      resendMessageId: readResendMessageId(responseBody),
+    });
   } catch {
+    await markNotificationEventFailed({
+      supabase,
+      eventId: notificationEvent.id,
+      conceptBriefId: brief.id,
+      errorMessage: "Resend request threw before completion.",
+    });
+
     console.error("Admin email notification provider request threw.", {
       conceptBriefId: brief.id,
     });

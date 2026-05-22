@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       skipped: result.skipped,
       message: result.notified
         ? "Admin notification accepted."
-        : "Admin notification was not sent, but the concept brief submission can continue.",
+        : result.message,
     },
     { status: result.notified ? 200 : 202 },
   );
