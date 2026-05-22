@@ -46,6 +46,21 @@ export type AdminBriefRecord = {
   source: 'localStorage' | 'mock' | 'supabase';
 };
 
+export type AdminNotificationEventRecord = {
+  id: string;
+  conceptBriefId: string;
+  notificationType: string;
+  status: string;
+  recipientEmail: string;
+  reservedAt: string;
+  sentAt: string;
+  failedAt: string;
+  resendMessageId: string;
+  errorMessage: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type StoredSubmittedBrief = Omit<AdminBriefRecord, 'status' | 'source'>;
 
 export const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';

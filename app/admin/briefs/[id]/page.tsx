@@ -10,6 +10,7 @@ import {
   isValidAdminAccessCookie,
 } from '../../../../lib/server/admin-access';
 import { loadAdminConceptBriefRecordByReference } from '../../../../lib/server/admin-concept-briefs';
+import { loadLatestAdminNotificationEventByConceptBriefId } from '../../../../lib/server/admin-notification-events';
 import styles from '../admin-briefs.module.css';
 import AdminBriefDetailClient from './AdminBriefDetailClient';
 
@@ -119,15 +120,26 @@ export default async function AdminBriefDetailPage({ params, searchParams }: Adm
   }
 
   const serverBrief = await loadAdminConceptBriefRecordByReference(decodedId);
+  const notificationEvent =
+    serverBrief.record?.databaseId
+      ? await loadLatestAdminNotificationEventByConceptBriefId(serverBrief.record.databaseId)
+      : { ok: true as const, event: null };
   let serverDataMessage: string | undefined;
+  let notificationEventMessage: string | undefined;
 
   if ('message' in serverBrief) {
     serverDataMessage = serverBrief.message;
   }
 
+  if ('message' in notificationEvent) {
+    notificationEventMessage = notificationEvent.message;
+  }
+
   return (
     <AdminBriefDetailClient
       decodedId={decodedId}
+      notificationEvent={notificationEvent.event}
+      notificationEventMessage={notificationEventMessage}
       serverBrief={serverBrief.record}
       serverDataMessage={serverDataMessage}
     />

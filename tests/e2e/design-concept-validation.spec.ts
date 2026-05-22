@@ -743,6 +743,10 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByRole('heading', { name: 'Reference images metadata' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI sketch instruction / concept direction' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin review status' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Admin notification status' })).toBeVisible();
+    await expect(
+      page.getByText('No admin notification event has been recorded for this Concept Brief.'),
+    ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'CAD readiness' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Stored submission data' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Internal notes / local review state' })).toBeVisible();
