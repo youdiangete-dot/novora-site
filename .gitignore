@@ -3,3 +3,37 @@ node_modules
 out
 .DS_Store
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local secret notes and provider exports
+/local-notes/
+/provider-dumps/
+/provider-dump*/
+/*[Ss]ecret*.txt
+/*[Pp]assword*.txt
+/*[Tt]oken*.txt
+/*[Kk]ey*.txt
+/*[Cc]redential*.txt
+/SUPABASE*.txt
+/Supabase*.txt
+/NOVORA-Supabase-env-*.txt
+/RESEND*.txt
+/Resend*.txt
+/CLOUDFLARE*.txt
+/Cloudflare*.txt
+/VERCEL*.txt
+/Vercel*.txt
+
+# Local screenshots and diagnostic dumps
+/screenshots/
+/screen-recordings/
+/logs/
+*.log
+*.trace
