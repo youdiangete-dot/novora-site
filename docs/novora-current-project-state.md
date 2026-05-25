@@ -89,6 +89,8 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 - Agent 24B-3: PR #62 app idempotency guard merged.
 - Agent 24D: controlled Production idempotency verification completed and recorded in this ledger.
 - Agent 25A: admin notification status display completed and merged in PR #65.
+- Agent 26H: production security and operations runbook added in
+  `docs/novora-production-security-runbook.md`.
 
 ## 7. Current Non-Goals And Boundaries
 
