@@ -16,11 +16,15 @@ Use this skill when changing copy on the customer design flow, submitted page, a
 3. Prefer phrases such as `concept direction`, `AI hand-drawn concept sketch`, `manual confirmation`, `design brief`, `review`, and `paid CAD later`.
 4. Avoid unsupported specifics around materials, stone sizes, chain specs, pricing, timelines, shipping, tax, sourcing, manufacturing, or final approval unless backed by data and validation.
 5. Keep jewelry studio tone warm, precise, professional, and trustworthy.
-6. Preserve realistic choices and constraints already present in the current model.
-7. For future markets, discuss localization as a future system that may affect language, currency, sizing, contact preferences, tax/shipping notes, trust copy, and support flow.
-8. If copy is asserted in Playwright tests, update tests intentionally.
-9. Review mobile readability when the copy appears in UI.
-10. Report any wording that intentionally narrows or clarifies the product promise.
+6. Keep admin copy framed as manual concept-brief review, not approval for CAD,
+   pricing, sourcing, production, fulfillment, or retry/resend guarantees.
+7. Preserve realistic choices and constraints already present in the current model.
+8. For future markets, discuss localization as a future system that may affect language, currency, sizing, contact preferences, tax/shipping notes, trust copy, and support flow.
+9. Keep AI sketch language separate from final reference uploads, paid CAD,
+   pricing, sourcing, and production approval.
+10. If copy is asserted in Playwright tests, update tests intentionally.
+11. Review mobile readability when the copy appears in UI.
+12. Report any wording that intentionally narrows or clarifies the product promise.
 
 ## Forbidden Actions
 
@@ -29,6 +33,8 @@ Use this skill when changing copy on the customer design flow, submitted page, a
 - Do not add unsupported materials, stone grades, stone sizes, chain specifications, prices, taxes, shipping claims, or market-specific legal claims.
 - Do not implement language selectors, multilingual routing, translation files, country routing, currency, accounts, quota systems, AI generation, or designer portal features unless explicitly requested.
 - Do not dilute required trust boundaries with vague luxury claims that overpromise the MVP.
+- Do not imply admin review sends, retries, or guarantees email delivery unless
+  the task explicitly covers notification behavior.
 
 ## Validation And Reporting Expectations
 

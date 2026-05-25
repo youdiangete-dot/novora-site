@@ -2,9 +2,14 @@
 
 ## 1. Purpose
 
-This document is the durable NOVORA project state ledger.
+This document is the durable NOVORA project state ledger and the first file to
+read before each new agent, stage, or implementation slice.
 
 It exists because ChatGPT memory can become full, incomplete, or unavailable across future work sessions. GitHub documentation on `main` should be treated as the source of truth over chat memory whenever there is a conflict.
+
+When chat memory, older local notes, detached worktree state, or assumptions
+from previous conversations conflict with this ledger and the current GitHub
+`main` branch, this ledger and current `main` win.
 
 ## 2. Current Production Baseline
 
@@ -83,6 +88,7 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 - Agent 24B-2: PR #61 docs-only SQL packet merged; manual Supabase SQL was executed and verified later.
 - Agent 24B-3: PR #62 app idempotency guard merged.
 - Agent 24D: controlled Production idempotency verification completed and recorded in this ledger.
+- Agent 25A: admin notification status display completed and merged in PR #65.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -116,6 +122,13 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 - For docs-only tasks, no build is required unless code changes.
 - For app-code tasks, run `npm run build` and focused tests.
 - In permission dialogs, the user can click Continue or Allow; do not say "reply to Codex" inside permission dialogs.
+- Read `docs/novora-codex-operating-mode.md` before changing workflow,
+  branching, PR, deployment, permission, or agent-handoff rules.
+- Do not run `git add .` without explicit approval for that exact command.
+- Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
+  secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
+  force push, PR merge, or Production deploy unless that specific action is
+  explicitly approved.
 
 ## 10. Recommended Next Step
 
