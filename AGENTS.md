@@ -19,6 +19,10 @@ swaths of code or making changes.
 ## Fast Orientation
 
 - Start with `package.json` for scripts.
+- Before starting a new agent, stage, or implementation slice, read
+  `docs/novora-current-project-state.md`.
+- Read `docs/novora-codex-operating-mode.md` before changing repository
+  workflow, branching, PR, deployment, permission, or agent-handoff rules.
 - Check `app/design/concept/page.tsx`, `app/design/brief/page.tsx`,
   `app/design/submitted/page.tsx`, and `app/api/concept-briefs/route.ts` for
   concept brief behavior.
@@ -59,6 +63,39 @@ swaths of code or making changes.
   already allows local front-end flow to continue without persistence.
 - Do not introduce auth, payments, real order creation, production workflows, file
   uploads, or AI image generation unless the task explicitly asks for that slice.
+- Treat `docs/novora-current-project-state.md` on GitHub `main` as the durable
+  project ledger. When chat memory, older notes, or assumptions conflict with
+  the ledger and current `main`, the ledger and current `main` win.
+
+## Codex Operating Mode
+
+- Use a new Codex task/thread when the work needs a new branch, a new PR, a
+  separate approval boundary, Production-affecting setup, SQL, environment
+  changes, provider configuration, or a materially different scope.
+- Continue the current thread when the work is the same scoped task, follow-up
+  validation, documentation cleanup, or review-response work on the same branch.
+- Start each implementation from latest `main` unless the user explicitly asks
+  to continue another branch.
+- Use one normal local branch per scoped task. Use the `codex/` prefix unless
+  the user asks for another branch name.
+- Worktrees are allowed only for isolated exploration or when the user explicitly
+  requests them. Do not commit from a detached-HEAD worktree. If worktree git
+  metadata permissions block branch creation or commits, re-apply the accepted
+  changes on a normal local branch from latest `main`.
+- Treat auto-review permissions as permission to perform the listed safe actions
+  only. If a requested action appears in a must-stop list, stop and ask even if
+  it looks adjacent to the current task.
+- Do not run `git add .` unless the user explicitly approves that exact action.
+  Prefer path-specific staging when staging is requested.
+
+## Must-Stop Actions
+
+Stop and ask before editing app code, executing SQL, changing Supabase schema,
+RLS, grants, policies, storage, or customer data; changing Vercel environment
+variables; changing Resend or Cloudflare; sending real email; touching secrets,
+API keys, service-role keys, or admin keys; changing retry/resend behavior;
+adding payment, auth, CAD, order, or AI generation behavior; running `git add .`;
+force pushing; merging a PR; or deploying Production.
 
 ## Product And UX Rules
 
@@ -126,3 +163,15 @@ swaths of code or making changes.
 - The repo may contain unrelated local untracked files. Do not delete, stage, or
   rewrite them unless the user explicitly asks.
 - Keep changes scoped to the requested task. Avoid opportunistic refactors.
+
+## NOVORA Task Report Format
+
+When reporting completed NOVORA work, include:
+
+- Current branch.
+- Changed files.
+- Validation run, including skipped checks and why.
+- Relevant behavior or documentation summary.
+- `git status --short`.
+- Confirmation that no forbidden app, SQL, Supabase, Vercel, email, deploy, or
+  staging/commit/push action was taken when those actions were out of scope.
