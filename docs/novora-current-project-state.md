@@ -91,6 +91,8 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 - Agent 25A: admin notification status display completed and merged in PR #65.
 - Agent 26H: production security and operations runbook added in
   `docs/novora-production-security-runbook.md`.
+- Agent 26E-1: docs-only public API rate limit and bot protection architecture
+  plan added in `docs/novora-public-api-rate-limit-bot-protection-plan.md`.
 
 ## 7. Current Non-Goals And Boundaries
 
