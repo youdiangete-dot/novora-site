@@ -23,6 +23,10 @@ type ConceptBriefResponse = {
 
 const CONCEPT_BRIEF_ROUTE_NAME = "/api/concept-briefs";
 
+// Redis/KV enforcement only activates after separately approved provider/env
+// setup and later Preview/Production verification. Missing provider env stays
+// disabled so current Concept Brief submissions continue to fail open.
+
 // MVP defaults: intentionally generous for first beta/manual testing. Revisit
 // after real traffic patterns and provider telemetry are available.
 const CONCEPT_BRIEF_IP_RATE_LIMIT: FixedWindowRateLimitPolicy = {
