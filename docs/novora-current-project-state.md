@@ -93,6 +93,9 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
   `docs/novora-production-security-runbook.md`.
 - Agent 26E-1: docs-only public API rate limit and bot protection architecture
   plan added in `docs/novora-public-api-rate-limit-bot-protection-plan.md`.
+- Agent 26E-2: docs-only API abuse-control provider and environment decision
+  packet added in
+  `docs/novora-api-abuse-control-provider-env-decision.md`.
 
 ## 7. Current Non-Goals And Boundaries
 
