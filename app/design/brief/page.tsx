@@ -115,6 +115,7 @@ type StoredConceptBrief = {
 
 const STORAGE_KEY = 'novora_concept_brief';
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
+const CONCEPT_BRIEF_SUBMISSION_TIMEOUT_MS = 15000;
 const initialContactFields: ContactFields = {
   customerName: '',
   customerEmail: '',
@@ -514,7 +515,9 @@ async function postConceptBriefSkeleton(payload: Record<string, unknown>): Promi
   };
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 3500);
+  // The persisted response carries the ids required to trigger admin notification,
+  // so keep this timeout generous and reserve fallback for real request failures.
+  const timeoutId = window.setTimeout(() => controller.abort(), CONCEPT_BRIEF_SUBMISSION_TIMEOUT_MS);
 
   try {
     const response = await fetch('/api/concept-briefs', {
