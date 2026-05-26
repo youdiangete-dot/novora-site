@@ -164,6 +164,12 @@ async function fillValidContactFields(page: Page) {
   await page.getByLabel('Additional contact note optional').fill('Please follow up in the afternoon.');
 }
 
+function delay(milliseconds: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
 test.describe('/design/concept ring logic', () => {
   test('Ring -> Center-stone ring uses focal fields only', async ({ page }) => {
     await openConcept(page, 'ring');
@@ -593,6 +599,70 @@ test.describe('/design/brief submission', () => {
       customerName: 'Mina Chen',
       customerEmail: 'mina@example.com',
     });
+  });
+
+  test('waits for delayed persisted concept brief response before notifying admin', async ({ page }) => {
+    const notifications: Array<Record<string, unknown>> = [];
+
+    await page.route('/api/concept-briefs', async (route) => {
+      await delay(4000);
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 201,
+        body: JSON.stringify({
+          ok: true,
+          mode: 'supabase',
+          persisted: true,
+          message: 'Concept Brief submitted for NOVORA review.',
+          publicReference: 'NOVORA-CB-20260523-SLOW',
+          conceptBriefId: '44444444-4444-4444-8444-444444444444',
+        }),
+      });
+    });
+
+    await page.route('/api/concept-brief-admin-notification', async (route) => {
+      notifications.push((await route.request().postDataJSON()) as Record<string, unknown>);
+
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          notified: true,
+          skipped: false,
+          message: 'Admin notification accepted.',
+        }),
+      });
+    });
+
+    await openMetalOnlyBangleBrief(page);
+    await fillValidContactFields(page);
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/submitted$/);
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-20260523-SLOW')).toBeVisible();
+
+    const submittedBrief = await page.evaluate(() => {
+      const rawBrief = window.localStorage.getItem('novora_submitted_concept_brief');
+      return rawBrief ? JSON.parse(rawBrief) : null;
+    });
+
+    expect(submittedBrief).toMatchObject({
+      conceptBriefId: 'NOVORA-CB-20260523-SLOW',
+      publicReference: 'NOVORA-CB-20260523-SLOW',
+      apiSubmission: {
+        persisted: true,
+        conceptBriefId: '44444444-4444-4444-8444-444444444444',
+        publicReference: 'NOVORA-CB-20260523-SLOW',
+      },
+    });
+    expect(notifications).toEqual([
+      {
+        conceptBriefId: '44444444-4444-4444-8444-444444444444',
+        publicReference: 'NOVORA-CB-20260523-SLOW',
+      },
+    ]);
   });
 });
 
