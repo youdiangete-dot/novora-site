@@ -93,6 +93,9 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
   `docs/novora-production-security-runbook.md`.
 - Agent 26E-1: docs-only public API rate limit and bot protection architecture
   plan added in `docs/novora-public-api-rate-limit-bot-protection-plan.md`.
+- Agent 26E-2: docs-only API abuse-control provider and environment decision
+  packet added in
+  `docs/novora-api-abuse-control-provider-env-decision.md`.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -136,8 +139,11 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 
 ## 10. Recommended Next Step
 
-Production idempotency verification for PR #62 is complete as of Agent 24D.
+Recommended next step: review and approve the public API abuse-control
+provider/env setup decision before implementation. Do not provision Vercel
+KV/Upstash, Turnstile, signing secrets, Vercel env values, or implement
+rate-limit/bot-protection code until a separate approved Agent/task.
 
-Recommended next step: decide whether to add explicit admin retry/observability tooling for `reserved` or `failed` notification events. Keep this as a separate, reviewed feature because retry behavior can reintroduce duplicate-delivery risk.
-
-Do not run new SQL unless a new schema change is explicitly approved.
+Do not run SQL, change Supabase, change Vercel env, provision providers, create
+secrets, or implement abuse-control code unless a separate reviewed Agent/task
+explicitly approves that exact action.
