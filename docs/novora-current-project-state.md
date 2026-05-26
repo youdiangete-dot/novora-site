@@ -77,6 +77,17 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 - Supabase contained one notification event row for the Concept Brief, notification type, and normalized recipient
 - no new schema or SQL change was required during verification
 
+PR #74 fixed an overly aggressive `/design/brief` client-side Concept Brief
+submit timeout that could abort before a successful persisted response reached
+the browser and thereby skip admin notification. Production smoke verification
+after merge passed for test submission `NOVORA-CB-20260526-NWD8` (`Agent 26E-3D
+Timeout Fix Smoke Test`): `/design/submitted` showed success, Gmail received the
+admin notification email, and Supabase read-only verification found a
+`concept_brief_notification_events` row with notification type
+`admin_concept_brief_submitted`, status `sent`, and a Resend message id present.
+This verification does not mean full public API abuse-control or rate-limit
+provider enforcement is active.
+
 ## 6. Recent Agent History
 
 - Agent 22: reference image upload completed.
@@ -96,6 +107,9 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 - Agent 26E-2: docs-only API abuse-control provider and environment decision
   packet added in
   `docs/novora-api-abuse-control-provider-env-decision.md`.
+- Agent 26E-3E: docs-only ledger update recorded PR #74 Production smoke
+  verification for `NOVORA-CB-20260526-NWD8`, including Gmail admin
+  notification receipt and Supabase notification event status `sent`.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -140,8 +154,10 @@ Agent 24D completed controlled Production idempotency verification after PR #62:
 ## 10. Recommended Next Step
 
 Recommended next step: review and approve the public API abuse-control
-provider/env setup decision before implementation. Do not provision Vercel
-KV/Upstash, Turnstile, signing secrets, Vercel env values, or implement
+provider/env setup decision before implementation. PR #74's timeout fix has
+passed Production smoke verification, but Redis/KV/Upstash/Turnstile/provider
+and environment setup remains a separate future approved task. Do not provision
+Vercel KV/Upstash, Turnstile, signing secrets, Vercel env values, or implement
 rate-limit/bot-protection code until a separate approved Agent/task.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
