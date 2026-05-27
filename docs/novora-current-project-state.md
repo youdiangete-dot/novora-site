@@ -88,6 +88,37 @@ admin notification email, and Supabase read-only verification found a
 This verification does not mean full public API abuse-control or rate-limit
 provider enforcement is active.
 
+PR #78 fixed Preview rate-limit enforcement and client-side 429 handling after
+the rate-limit helper could increment Redis and then fail while interpreting the
+Redis REST/EVAL response. Because the provider-error path failed open,
+`/api/concept-briefs` could continue to Supabase persistence and return `201`
+after the email counter exceeded the limit. The minimal patch made
+`lib/server/public-api-rate-limit.ts` return and parse deterministic scalar
+`count:ttl` output while keeping array compatibility, and updated
+`app/design/brief/page.tsx` so intentional `429` responses keep the customer on
+`/design/brief`, show a safe retry message, and do not fall through to local
+submitted success. The focused Playwright regression
+`keeps the customer on the brief page when the API returns rate limited`,
+`npm.cmd run build`, `git diff --check`, and GitHub PR checks all passed before
+merge.
+
+Manual Preview verification after PR #78 merged passed on a Vercel Preview URL
+under `project-dd34e-git-codex-preview-rate-limit-...vercel.app`, not
+Production `novora.design`. Repeated synthetic submissions used
+`preview-rate-limit-test@example.com`; the earlier Redis window had expired, the
+email counter restarted, Upstash Data Browser first showed the email key value
+`2` with active TTL, and additional same-email submissions succeeded until the
+limit was reached. The over-limit submission `Preview Rate Limit Fix Test 12`
+stayed on `/design/brief` instead of navigating to success, and the UI displayed
+`Too many Concept Brief submission attempts.` followed by
+`Please wait a few minutes before trying again.` Upstash then showed the email
+key value `8` with about `14m 30s` TTL remaining. This confirms Preview calls
+Upstash, the email counter exceeds the limit, intentional `429` handling is
+user-safe, and the previous false-success behavior is fixed. Production
+environment variables were not changed, Upstash settings were not changed,
+Supabase/SQL/Resend/Cloudflare were not changed, and no real email was sent
+during this verification.
+
 ## 6. Recent Agent History
 
 - Agent 22: reference image upload completed.
@@ -110,6 +141,8 @@ provider enforcement is active.
 - Agent 26E-3E: docs-only ledger update recorded PR #74 Production smoke
   verification for `NOVORA-CB-20260526-NWD8`, including Gmail admin
   notification receipt and Supabase notification event status `sent`.
+- Agent 26E-4D: docs-only ledger update recorded PR #78 merge and manual
+  Preview verification for rate-limit enforcement and safe `429` handling.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -153,11 +186,12 @@ provider enforcement is active.
 
 ## 10. Recommended Next Step
 
-Recommended next step: review and approve the public API abuse-control
-provider/env setup decision before implementation. PR #74's timeout fix has
-passed Production smoke verification, but Redis/KV/Upstash/Turnstile/provider
-and environment setup remains a separate future approved task. Do not provision
-Vercel KV/Upstash, Turnstile, signing secrets, Vercel env values, or implement
+Recommended next step: treat Production abuse-control enforcement as separate
+unless Preview provider setup is later intentionally promoted or configured for
+Production. PR #78 has passed manual Preview verification for Upstash-backed
+rate-limit enforcement and safe `429` handling, but Production environment
+configuration was not changed. Do not provision Vercel KV/Upstash, Turnstile,
+signing secrets, Vercel env values, or implement additional
 rate-limit/bot-protection code until a separate approved Agent/task.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
