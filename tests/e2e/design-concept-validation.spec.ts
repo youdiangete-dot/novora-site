@@ -450,6 +450,37 @@ test.describe('/design/brief submission', () => {
     expect(submittedBrief.submittedAt).toEqual(expect.any(String));
   });
 
+  test('keeps the customer on the brief page when the API returns rate limited', async ({ page }) => {
+    await page.route('/api/concept-briefs', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 429,
+        body: JSON.stringify({
+          ok: false,
+          mode: 'supabase',
+          persisted: false,
+          message: 'Too many Concept Brief submission attempts. Please wait a few minutes before trying again.',
+          errors: ['Too many submission attempts. Please wait before trying again.'],
+        }),
+      });
+    });
+
+    await openMetalOnlyBangleBrief(page);
+    await fillValidContactFields(page);
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/brief$/);
+    await expect(
+      page.getByText('Too many Concept Brief submission attempts. Please wait a few minutes before trying again.'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Submit concept brief' })).toBeEnabled();
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toHaveCount(0);
+
+    const submittedBrief = await page.evaluate(() => window.localStorage.getItem('novora_submitted_concept_brief'));
+
+    expect(submittedBrief).toBeNull();
+  });
+
   test('uploads final reference images after a persisted concept brief is created', async ({ page }) => {
     const notifications: Array<Record<string, unknown>> = [];
 
