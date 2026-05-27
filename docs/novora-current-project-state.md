@@ -143,6 +143,9 @@ during this verification.
   notification receipt and Supabase notification event status `sent`.
 - Agent 26E-4D: docs-only ledger update recorded PR #78 merge and manual
   Preview verification for rate-limit enforcement and safe `429` handling.
+- Agent 26E-5A: docs-only Production rate-limit enablement decision packet
+  prepared in
+  `docs/novora-production-rate-limit-enablement-decision.md`.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -186,13 +189,16 @@ during this verification.
 
 ## 10. Recommended Next Step
 
-Recommended next step: treat Production abuse-control enforcement as separate
-unless Preview provider setup is later intentionally promoted or configured for
-Production. PR #78 has passed manual Preview verification for Upstash-backed
-rate-limit enforcement and safe `429` handling, but Production environment
-configuration was not changed. Do not provision Vercel KV/Upstash, Turnstile,
-signing secrets, Vercel env values, or implement additional
-rate-limit/bot-protection code until a separate approved Agent/task.
+Recommended next step: review
+`docs/novora-production-rate-limit-enablement-decision.md` before any
+Production rate-limit environment/provider/deploy action. Treat Production
+abuse-control enforcement as separate unless Preview provider setup is later
+intentionally promoted or configured for Production. PR #78 has passed manual
+Preview verification for Upstash-backed rate-limit enforcement and safe `429`
+handling, but Production environment configuration was not changed. Do not
+provision Vercel KV/Upstash, Turnstile, signing secrets, Vercel env values, or
+implement additional rate-limit/bot-protection code until a separate approved
+Agent/task.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
 secrets, or implement abuse-control code unless a separate reviewed Agent/task
