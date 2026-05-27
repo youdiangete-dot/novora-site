@@ -45,7 +45,7 @@ if current == 1 then
   redis.call("EXPIRE", KEYS[1], ARGV[1])
 end
 local ttl = redis.call("TTL", KEYS[1])
-return { current, ttl }
+return tostring(current) .. ":" .. tostring(ttl)
 `;
 
 function warnOnce(key: string, message: string, metadata: Record<string, string>) {
@@ -165,12 +165,21 @@ function createHeaders(
 }
 
 function parseFixedWindowResult(result: unknown): { count: number; ttlSeconds: number } | null {
-  if (!Array.isArray(result) || result.length < 2) {
+  let values: [unknown, unknown] | null = null;
+
+  if (typeof result === "string") {
+    const [countValue, ttlValue] = result.split(":", 2);
+    values = [countValue, ttlValue];
+  } else if (Array.isArray(result) && result.length >= 2) {
+    values = [result[0], result[1]];
+  }
+
+  if (!values) {
     return null;
   }
 
-  const count = Number(result[0]);
-  const ttlSeconds = Number(result[1]);
+  const count = Number(values[0]);
+  const ttlSeconds = Number(values[1]);
 
   if (!Number.isFinite(count) || !Number.isFinite(ttlSeconds)) {
     return null;

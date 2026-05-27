@@ -29,6 +29,7 @@ type ConceptBriefApiSubmissionMetadata = {
   message: string;
   publicReference?: string;
   conceptBriefId?: string;
+  rateLimited?: boolean;
 };
 
 type ConceptBriefApiResponse = {
@@ -530,6 +531,17 @@ async function postConceptBriefSkeleton(payload: Record<string, unknown>): Promi
     });
     const data = (await response.json().catch(() => null)) as ConceptBriefApiResponse | null;
 
+    if (response.status === 429) {
+      return {
+        ok: false,
+        persisted: false,
+        message:
+          readApiString(data?.message) ||
+          'Too many Concept Brief submission attempts. Please wait a few minutes before trying again.',
+        rateLimited: true,
+      };
+    }
+
     if (!response.ok || !data?.ok) {
       return fallbackMetadata;
     }
@@ -556,6 +568,7 @@ export default function DesignBriefPage() {
   const [contactErrors, setContactErrors] = useState<ContactErrors>({});
   const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
   const [referenceUploadMessage, setReferenceUploadMessage] = useState('');
+  const [submissionError, setSubmissionError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -769,6 +782,7 @@ export default function DesignBriefPage() {
     }
 
     setIsSubmitting(true);
+    setSubmissionError('');
 
     const customerName = contactFields.customerName.trim();
     const customerEmail = contactFields.customerEmail.trim();
@@ -800,6 +814,13 @@ export default function DesignBriefPage() {
       aiSketchInstruction: brief.aiSketchInstruction || '',
     };
     const apiSubmission = await postConceptBriefSkeleton(apiPayload);
+
+    if (apiSubmission.rateLimited) {
+      setSubmissionError(apiSubmission.message);
+      setIsSubmitting(false);
+      return;
+    }
+
     const referenceUpload = await uploadReferenceImages(apiSubmission);
     await notifyAdminConceptBrief(apiSubmission);
     const localConceptBriefId = generateConceptBriefId();
@@ -1133,6 +1154,11 @@ export default function DesignBriefPage() {
               >
                 {isSubmitting ? 'Submitting concept brief' : 'Submit concept brief'}
               </button>
+              {submissionError ? (
+                <p className={styles.errorText} role="alert">
+                  {submissionError}
+                </p>
+              ) : null}
               <Link className={styles.secondaryButton} href="/design/pro-cad">
                 Continue to paid CAD process
               </Link>
