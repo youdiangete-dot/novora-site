@@ -170,6 +170,83 @@ function delay(milliseconds: number) {
   });
 }
 
+test.describe('/design/start conversion flow', () => {
+  test('carries design start selections into the concept brief submission', async ({ page }) => {
+    let receivedPayload: Record<string, unknown> | null = null;
+
+    await page.route('/api/concept-briefs', async (route) => {
+      receivedPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
+
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 201,
+        body: JSON.stringify({
+          ok: true,
+          mode: 'local-test',
+          persisted: false,
+          message: 'Concept Brief accepted for local test review.',
+        }),
+      });
+    });
+
+    await page.goto('/design/start');
+    await expect(page.getByText('Drag & drop images here / or click to browse')).toHaveCount(0);
+    await expect(page.getByText('References can be added later on the final brief page.')).toBeVisible();
+
+    await chooseButton(page, 'Partner');
+    await chooseButton(page, 'Earrings');
+    await chooseButton(page, 'Bold modern');
+    await chooseButton(page, 'USD 2500+');
+    await page.getByRole('link', { name: 'Continue to Concept' }).click();
+
+    await expect(page).toHaveURL(/\/design\/concept\?.*pieceType=earrings/);
+    await expect(page.locator('strong').filter({ hasText: 'Earrings' })).toBeVisible();
+
+    const conceptSummary = page.getByLabel('Brief summary');
+    await expectTextsVisible(conceptSummary, ['Recipient', 'Partner', 'Start style preference', 'Bold modern', 'Budget planning range', 'USD 2500+']);
+
+    await goToBriefResult(page);
+    await expectTextsVisible(page, ['Recipient', 'Partner', 'Start style preference', 'Bold modern', 'Budget planning range', 'USD 2500+']);
+    await expect(page.getByText('Continue to paid CAD process')).toHaveCount(0);
+
+    await fillValidContactFields(page);
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/submitted$/);
+    await expect(page.getByRole('heading', { name: 'Design start summary' })).toBeVisible();
+    await expectTextsVisible(page, ['Partner', 'Bold modern', 'USD 2500+']);
+
+    const submittedBrief = await page.evaluate(() => {
+      const rawBrief = window.localStorage.getItem('novora_submitted_concept_brief');
+      return rawBrief ? JSON.parse(rawBrief) : null;
+    });
+
+    expect(submittedBrief.startSelection).toMatchObject({
+      pieceType: 'earrings',
+      pieceTypeLabel: 'Earrings',
+      recipient: 'partner',
+      recipientLabel: 'Partner',
+      style: 'bold-modern',
+      styleLabel: 'Bold modern',
+      budget: 'USD 2500+',
+    });
+    expect(receivedPayload?.startSelection).toMatchObject({
+      recipient: 'partner',
+      recipientLabel: 'Partner',
+      style: 'bold-modern',
+      styleLabel: 'Bold modern',
+      budget: 'USD 2500+',
+    });
+    expect(receivedPayload?.summaryItems).toEqual(
+      expect.arrayContaining([
+        { label: 'Recipient', value: 'Partner' },
+        { label: 'Start style preference', value: 'Bold modern' },
+        { label: 'Budget planning range', value: 'USD 2500+' },
+      ]),
+    );
+  });
+});
+
 test.describe('/design/concept ring logic', () => {
   test('Ring -> Center-stone ring uses focal fields only', async ({ page }) => {
     await openConcept(page, 'ring');

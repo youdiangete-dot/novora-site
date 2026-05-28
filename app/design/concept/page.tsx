@@ -24,8 +24,19 @@ type ReferenceImage = {
   previewUrl: string;
 };
 
+type StartSelection = {
+  pieceType?: string;
+  pieceTypeLabel?: string;
+  recipient?: string;
+  recipientLabel?: string;
+  style?: string;
+  styleLabel?: string;
+  budget?: string;
+};
+
 type StoredConceptBrief = {
   pieceType: string;
+  startSelection?: StartSelection;
   branch: string;
   structure: string;
   subStructure: string;
@@ -473,6 +484,28 @@ const pieceTypeAliases: Record<string, string> = {
   not_sure: '',
 };
 
+const startRecipientLabels: Record<string, string> = {
+  myself: 'Myself',
+  partner: 'Partner',
+  'family-friend': 'Family/Friend',
+  commemorative: 'Commemorative',
+};
+
+const startStyleLabels: Record<string, string> = {
+  minimal: 'Minimal',
+  organic: 'Organic',
+  vintage: 'Vintage-inspired',
+  'bold-modern': 'Bold modern',
+  'your-style': 'Your Style',
+};
+
+const startStyleDirectionAliases: Record<string, string> = {
+  minimal: 'minimal',
+  organic: 'organic_floral',
+  vintage: 'vintage',
+  'bold-modern': 'bold',
+};
+
 function optionLabel(options: Option[], value: string) {
   return options.find((option) => option.value === value)?.label || '';
 }
@@ -558,6 +591,7 @@ function DesignConceptIntake() {
   const [referenceNotes, setReferenceNotes] = useState('');
   const [mustInclude, setMustInclude] = useState('');
   const [mustAvoid, setMustAvoid] = useState('');
+  const [startSelection, setStartSelection] = useState<StartSelection>({});
 
   const [customUse, setCustomUse] = useState('');
   const [customLook, setCustomLook] = useState('');
@@ -684,12 +718,25 @@ function DesignConceptIntake() {
 
   useEffect(() => {
     const rawPieceType = searchParams.get('pieceType');
+    const rawRecipient = searchParams.get('recipient') || '';
+    const rawStyle = searchParams.get('style') || '';
+    const rawBudget = searchParams.get('budget') || '';
 
-    if (!rawPieceType) {
+    if (!rawPieceType && !rawRecipient && !rawStyle && !rawBudget) {
       return;
     }
 
-    const mappedPieceType = pieceTypeAliases[rawPieceType] ?? rawPieceType;
+    const mappedPieceType = rawPieceType ? pieceTypeAliases[rawPieceType] ?? rawPieceType : '';
+
+    setStartSelection({
+      pieceType: mappedPieceType,
+      pieceTypeLabel: optionLabel(pieceTypes, mappedPieceType),
+      recipient: rawRecipient,
+      recipientLabel: startRecipientLabels[rawRecipient] || '',
+      style: rawStyle,
+      styleLabel: startStyleLabels[rawStyle] || '',
+      budget: rawBudget,
+    });
 
     if (mappedPieceType && pieceTypes.some((option) => option.value === mappedPieceType)) {
       handlePieceTypeChange(mappedPieceType);
@@ -698,6 +745,12 @@ function DesignConceptIntake() {
         setBranch('necklace_chain_only');
         setStructure('necklace_machine_woven_chain');
       }
+    }
+
+    const mappedStyleDirection = startStyleDirectionAliases[rawStyle];
+
+    if (mappedStyleDirection) {
+      setStyleDirection(mappedStyleDirection);
     }
   }, [searchParams]);
 
@@ -865,6 +918,9 @@ function DesignConceptIntake() {
     }
 
     addItem(items, 'Piece type', selectedPieceLabel);
+    addItem(items, 'Recipient', startSelection.recipientLabel);
+    addItem(items, 'Start style preference', startSelection.styleLabel);
+    addItem(items, 'Budget planning range', startSelection.budget);
 
     if (isPendantNecklace) {
       addItem(items, 'Branch', optionLabel(pendantBranches, branch));
@@ -1061,6 +1117,9 @@ function DesignConceptIntake() {
     stoneLogic,
     structure,
     styleDirection,
+    startSelection.budget,
+    startSelection.recipientLabel,
+    startSelection.styleLabel,
     subStructure,
     visualFocus,
     wearability,
@@ -1084,6 +1143,7 @@ function DesignConceptIntake() {
   function continueToBrief() {
     const conceptBrief: StoredConceptBrief = {
       pieceType,
+      startSelection,
       branch,
       structure,
       subStructure,
