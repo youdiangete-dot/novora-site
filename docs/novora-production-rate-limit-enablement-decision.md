@@ -126,6 +126,21 @@ descriptions, or tickets.
 - `UPSTASH_REDIS_REST_TOKEN`
 - `NOVORA_INTERNAL_SIGNING_SECRET`
 
+### Production Provider Env Preflight
+
+Before Production rollout, manually check the Production Vercel environment for
+both the intended Upstash variables and the alternate KV variable family that
+the current helper can also read:
+
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+- `KV_REST_API_URL`
+- `KV_REST_API_TOKEN`
+
+Do not expose or print any values. Confirm that the intended Production
+provider and environment variable family are the ones the runtime should use
+before enabling enforcement or redeploying Production.
+
 ## 7. Risk Analysis
 
 False positives:
@@ -175,6 +190,13 @@ Observability limits:
 
 Do not begin this rollout until there is explicit approval for Production
 environment/provider/deploy work.
+
+Production verification can create live side effects. If attempts 1 through 5
+are tested through the live browser flow, accepted submissions may create real
+Supabase Concept Brief rows and may trigger real admin notification emails. Use
+synthetic customer data only, confirm explicit approval before accepted live
+Production submissions, and decide whether an alternative approved verification
+design is needed before starting.
 
 1. Confirm the selected option: fail-open hold, existing Upstash reuse, or
    Production-dedicated Upstash.
