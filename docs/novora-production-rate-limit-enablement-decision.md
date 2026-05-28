@@ -117,6 +117,34 @@ Production.
 Option A is acceptable as a short hold if NOVORA wants to avoid any Production
 behavior change until provider ownership and rollout approval are fully settled.
 
+### MVP-Stage Deferral Decision
+
+Agent 26E-5C records the current MVP-stage business decision:
+
+- Do not add an Upstash payment method now.
+- Do not upgrade Upstash now.
+- Do not create a Production Redis resource now.
+- Do not reuse `novora-preview-rate-limit` for Production.
+- Keep Production rate-limit enforcement fail-open for now.
+- Revisit and execute Option C before formal commercial launch, paid traffic,
+  larger social traffic, or increased real customer submissions.
+
+Option C remains the preferred commercial-standard structure for NOVORA:
+Production should use a Production-dedicated Upstash Redis resource that is
+separate from Preview and does not share a Preview/Production keyspace.
+
+Revisit this decision when any of these trigger points appears:
+
+- TikTok/Instagram formal traffic push.
+- Paid ads.
+- Real customer submission volume increases.
+- Spam, fake, or repeated submissions appear.
+- Admin notification noise appears.
+- Before payment, order, or account Production workflows.
+
+This decision did not perform any payment method, environment, provider,
+deploy, or Production test action.
+
 ## 6. Required Vercel Production Environment Variables
 
 Names only. Do not record values in docs, chat, logs, screenshots, PR
@@ -234,6 +262,8 @@ This packet does not include:
 - Package changes.
 - Vercel environment changes.
 - Upstash setting changes.
+- Upstash payment method changes.
+- Upstash paid upgrade.
 - Provider provisioning.
 - Supabase SQL.
 - Supabase schema, RLS, grants, policies, storage, or customer data changes.
@@ -242,6 +272,7 @@ This packet does not include:
 - Real customer email or real customer test data.
 - Real email sending.
 - Deployment.
+- Production testing.
 - Merge.
 
 ## 11. Final Approval Checkpoint
