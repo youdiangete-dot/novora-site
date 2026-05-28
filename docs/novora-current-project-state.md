@@ -119,6 +119,24 @@ environment variables were not changed, Upstash settings were not changed,
 Supabase/SQL/Resend/Cloudflare were not changed, and no real email was sent
 during this verification.
 
+PR #80 added the Production rate-limit enablement decision packet. PR #81 added
+readiness notes that Production provider preflight must check both the Upstash
+and alternate KV variable families, and that accepted Production browser
+verification attempts can create real Supabase rows and admin notification
+emails. Agent 26E-5C recorded the MVP-stage business decision to defer the
+Upstash paid upgrade and Production Redis creation for now. Production remains
+fail-open for rate-limit enforcement. Do not reuse
+`novora-preview-rate-limit` for Production. Option C remains the
+commercial-standard target before formal commercial launch, paid traffic,
+larger social traffic, or increased real customer submissions: create a
+Production-dedicated Upstash Redis resource that is separate from Preview and
+does not share a Preview/Production keyspace. Revisit this before any
+TikTok/Instagram formal traffic push, paid ads, increased real customer
+submission volume, spam/fake/repeated submissions, admin notification noise, or
+payment/order/account Production workflow. No payment method, Vercel
+environment, Upstash/provider, deploy, or Production test action was performed
+for this decision.
+
 ## 6. Recent Agent History
 
 - Agent 22: reference image upload completed.
@@ -146,6 +164,11 @@ during this verification.
 - Agent 26E-5A: docs-only Production rate-limit enablement decision packet
   prepared in
   `docs/novora-production-rate-limit-enablement-decision.md`.
+- Agent 26E-5C: docs-only MVP-stage decision recorded to defer Upstash paid
+  upgrade and Production Redis creation, keep Production rate-limit fail-open
+  for now, avoid reusing `novora-preview-rate-limit` for Production, and revisit
+  Option C before formal commercial launch, paid traffic, larger social traffic,
+  or increased real customer submissions.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -189,16 +212,20 @@ during this verification.
 
 ## 10. Recommended Next Step
 
-Recommended next step: review
+Recommended next step: keep Production rate-limit enforcement fail-open during
+the current MVP stage and review
 `docs/novora-production-rate-limit-enablement-decision.md` before any
-Production rate-limit environment/provider/deploy action. Treat Production
-abuse-control enforcement as separate unless Preview provider setup is later
-intentionally promoted or configured for Production. PR #78 has passed manual
-Preview verification for Upstash-backed rate-limit enforcement and safe `429`
-handling, but Production environment configuration was not changed. Do not
-provision Vercel KV/Upstash, Turnstile, signing secrets, Vercel env values, or
-implement additional rate-limit/bot-protection code until a separate approved
-Agent/task.
+Production rate-limit environment/provider/deploy action. Option C remains the
+commercial-standard target: use a Production-dedicated Upstash Redis resource
+separate from Preview, with no shared Preview/Production keyspace. Do not reuse
+`novora-preview-rate-limit` for Production. Revisit and execute Option C before
+formal commercial launch, paid traffic, larger social traffic, increased real
+customer submissions, spam/fake/repeated submissions, admin notification noise,
+or payment/order/account Production workflows. PR #78 has passed manual Preview
+verification for Upstash-backed rate-limit enforcement and safe `429` handling,
+but Production environment configuration was not changed. Do not provision
+Vercel KV/Upstash, Turnstile, signing secrets, Vercel env values, or implement
+additional rate-limit/bot-protection code until a separate approved Agent/task.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
 secrets, or implement abuse-control code unless a separate reviewed Agent/task
