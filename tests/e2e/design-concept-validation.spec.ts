@@ -183,8 +183,23 @@ test.describe('/design/start conversion flow', () => {
         body: JSON.stringify({
           ok: true,
           mode: 'local-test',
-          persisted: false,
+          persisted: true,
           message: 'Concept Brief accepted for local test review.',
+          publicReference: 'NOVORA-CB-20260601-STRT',
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+        }),
+      });
+    });
+
+    await page.route('/api/concept-brief-admin-notification', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          notified: true,
+          skipped: false,
+          message: 'Admin notification accepted.',
         }),
       });
     });
@@ -482,13 +497,41 @@ test.describe('/design/brief submission', () => {
   });
 
   test('submits valid contact fields and opens the submitted confirmation page', async ({ page }) => {
+    await page.route('/api/concept-briefs', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 201,
+        body: JSON.stringify({
+          ok: true,
+          mode: 'supabase',
+          persisted: true,
+          message: 'Concept Brief submitted for NOVORA review.',
+          publicReference: 'NOVORA-CB-20260601-SUCC',
+          conceptBriefId: '66666666-6666-4666-8666-666666666666',
+        }),
+      });
+    });
+
+    await page.route('/api/concept-brief-admin-notification', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          notified: true,
+          skipped: false,
+          message: 'Admin notification accepted.',
+        }),
+      });
+    });
+
     await openMetalOnlyBangleBrief(page);
 
     await expect(page.getByText('Reference images').first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Contact for concept review' })).toBeVisible();
     await expect(
       page.getByText(
-        'Your contact details are used only to follow up on this concept brief. If backend persistence is temporarily unavailable, NOVORA keeps the local browser fallback so this review flow can still continue safely.',
+        'Your contact details are used only to follow up on this concept brief. If server receipt cannot be confirmed, your draft stays in this browser so you can retry without restarting.',
       ),
     ).toBeVisible();
     await fillValidContactFields(page);
@@ -523,8 +566,76 @@ test.describe('/design/brief submission', () => {
       referenceImageCount: 0,
       referenceImageNames: [],
     });
-    expect(submittedBrief.conceptBriefId).toMatch(/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/);
+    expect(submittedBrief.conceptBriefId).toBe('NOVORA-CB-20260601-SUCC');
+    expect(submittedBrief.apiSubmission).toMatchObject({
+      persisted: true,
+      publicReference: 'NOVORA-CB-20260601-SUCC',
+      conceptBriefId: '66666666-6666-4666-8666-666666666666',
+    });
     expect(submittedBrief.submittedAt).toEqual(expect.any(String));
+  });
+
+  test('keeps the customer on the brief page when server receipt is not persisted', async ({ page }) => {
+    await page.route('/api/concept-briefs', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 202,
+        body: JSON.stringify({
+          ok: true,
+          mode: 'supabase',
+          persisted: false,
+          message: 'Concept Brief persistence is temporarily unavailable.',
+        }),
+      });
+    });
+
+    await openMetalOnlyBangleBrief(page);
+    await fillValidContactFields(page);
+    await page.getByRole('button', { name: 'Submit concept brief' }).click();
+
+    await expect(page).toHaveURL(/\/design\/brief$/);
+    await expect(
+      page.getByText(
+        'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Submit concept brief' })).toBeEnabled();
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toHaveCount(0);
+    await expect(page.getByLabel('Customer name')).toHaveValue('Mina Chen');
+    await expect(page.getByLabel('Email address')).toHaveValue('mina@example.com');
+
+    const browserState = await page.evaluate(() => ({
+      draft: window.sessionStorage.getItem('novora_concept_brief'),
+      submitted: window.localStorage.getItem('novora_submitted_concept_brief'),
+    }));
+
+    expect(browserState.draft).not.toBeNull();
+    expect(browserState.submitted).toBeNull();
+  });
+
+  test('does not show a received confirmation for an unconfirmed legacy local record', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        'novora_submitted_concept_brief',
+        JSON.stringify({
+          conceptBriefId: 'NOVORA-CB-20260601-LOCL',
+          submittedAt: '2026-06-01T08:00:00.000Z',
+          apiSubmission: {
+            persisted: false,
+          },
+        }),
+      );
+    });
+
+    await page.goto('/design/submitted');
+
+    await expect(page.getByRole('heading', { name: 'Server receipt not confirmed' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toHaveCount(0);
   });
 
   test('keeps the customer on the brief page when the API returns rate limited', async ({ page }) => {
