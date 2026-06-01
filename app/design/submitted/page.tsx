@@ -5,6 +5,21 @@ import { useEffect, useState } from 'react';
 import submittedStyles from './submitted.module.css';
 import styles from '../brief/brief.module.css';
 
+type StartSelection = {
+  pieceType?: string;
+  pieceTypeLabel?: string;
+  recipient?: string;
+  recipientLabel?: string;
+  style?: string;
+  styleLabel?: string;
+  budget?: string;
+};
+
+type SummaryItem = {
+  label: string;
+  value: string;
+};
+
 type SubmittedConceptBrief = {
   conceptBriefId: string;
   localConceptBriefId?: string;
@@ -15,6 +30,8 @@ type SubmittedConceptBrief = {
   customerPhone?: string;
   customerCountry?: string;
   contactNote?: string;
+  startSelection?: StartSelection;
+  summaryItems?: SummaryItem[];
   pieceType?: string;
   branch?: string;
   structure?: string;
@@ -149,6 +166,36 @@ export default function DesignSubmittedPage() {
                   </div>
                 ) : null}
               </dl>
+            </section>
+          ) : null}
+
+          {submittedBrief.startSelection ? (
+            <section className={styles.boundaryCard}>
+              <h2>Design start summary</h2>
+              <dl className={styles.submittedDetails}>
+                {submittedBrief.startSelection.recipientLabel ? (
+                  <div>
+                    <dt>Recipient</dt>
+                    <dd>{submittedBrief.startSelection.recipientLabel}</dd>
+                  </div>
+                ) : null}
+                {submittedBrief.startSelection.styleLabel ? (
+                  <div>
+                    <dt>Start style preference</dt>
+                    <dd>{submittedBrief.startSelection.styleLabel}</dd>
+                  </div>
+                ) : null}
+                {submittedBrief.startSelection.budget ? (
+                  <div>
+                    <dt>Budget planning range</dt>
+                    <dd>{submittedBrief.startSelection.budget}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <p>
+                These selections guide the concept direction only. They are not final pricing, CAD approval, or
+                production confirmation.
+              </p>
             </section>
           ) : null}
 

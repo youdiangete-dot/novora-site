@@ -247,10 +247,10 @@
   font-weight: 700;
 }
 
-.uploadArea {
+.referenceArea {
   margin-top: 0.55rem;
   min-height: 124px;
-  border: 1px dashed #d4c5b3;
+  border: 1px solid #d8cbb9;
   border-radius: 16px;
   padding: 0.92rem 1rem;
   display: grid;
@@ -262,7 +262,7 @@
     linear-gradient(180deg, #fffefb 0%, #fbf6ee 100%);
 }
 
-.uploadIcon {
+.referenceIcon {
   width: 2.05rem;
   height: 2.05rem;
   border-radius: 999px;
@@ -275,13 +275,13 @@
   line-height: 1;
 }
 
-.uploadArea strong {
+.referenceArea strong {
   color: #342b23;
   font-size: 0.92rem;
   line-height: 1.24;
 }
 
-.uploadArea p {
+.referenceArea p {
   margin: 0;
   font-size: 0.88rem;
   color: #645143;

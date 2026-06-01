@@ -46,7 +46,13 @@ export default function DesignStartPage() {
   const recipientLabel = recipients.find((item) => item.value === selectedRecipient)?.label;
   const jewelryLabel = jewelryTypes.find((item) => item.value === selectedJewelryType)?.label;
   const styleLabel = styleOptions.find((item) => item.value === selectedStyle)?.label;
-  const conceptHref = `/design/concept?pieceType=${selectedJewelryType}`;
+  const conceptParams = new URLSearchParams({
+    pieceType: selectedJewelryType,
+    recipient: selectedRecipient,
+    style: selectedStyle,
+    budget: selectedBudget,
+  });
+  const conceptHref = `/design/concept?${conceptParams.toString()}`;
 
   return (
     <main className={styles.page}>
@@ -106,13 +112,16 @@ export default function DesignStartPage() {
 
           <article className={styles.cardCompact}>
             <div className={styles.cardHead}>
-              <h2>Upload references</h2>
-              <span>Optional for the first concept sketch</span>
+              <h2>Reference images</h2>
+              <span>Optional at final brief submission</span>
             </div>
-            <div className={styles.uploadArea}>
-              <span className={styles.uploadIcon} aria-hidden="true">-&gt;</span>
-              <strong>Drag & drop images here / or click to browse</strong>
-              <p>Drop inspiration photos, sketches, or meaningful symbols.</p>
+            <div className={styles.referenceArea}>
+              <span className={styles.referenceIcon} aria-hidden="true">-&gt;</span>
+              <strong>References can be added later on the final brief page.</strong>
+              <p>
+                Start with the direction here. The saved upload step happens before you submit the Concept Brief for
+                AI hand-drawn sketch review.
+              </p>
             </div>
           </article>
         </div>

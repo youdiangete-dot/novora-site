@@ -49,8 +49,19 @@ type ReferenceAssetUploadMetadata = {
   fileNames: string[];
 };
 
+type StartSelection = {
+  pieceType?: string;
+  pieceTypeLabel?: string;
+  recipient?: string;
+  recipientLabel?: string;
+  style?: string;
+  styleLabel?: string;
+  budget?: string;
+};
+
 type StoredConceptBrief = {
   pieceType?: string;
+  startSelection?: StartSelection;
   branch?: string;
   structure?: string;
   subStructure?: string;
@@ -596,6 +607,9 @@ export default function DesignBriefPage() {
     }
 
     const items: SummaryItem[] = [];
+    addBriefItem(items, 'Recipient', brief.startSelection?.recipientLabel);
+    addBriefItem(items, 'Start style preference', brief.startSelection?.styleLabel);
+    addBriefItem(items, 'Budget planning range', brief.startSelection?.budget);
     addBriefItem(items, 'Piece type', label('pieceType', brief.pieceType));
     addBriefItem(items, 'Branch', label('branch', brief.branch));
     addBriefItem(items, 'Structure', label('structure', brief.structure));
@@ -806,7 +820,11 @@ export default function DesignBriefPage() {
       },
       brief,
       conceptBrief: brief,
+      startSelection: brief.startSelection,
       summaryItems: displayItems,
+      recipient: brief.startSelection?.recipient || '',
+      stylePreference: brief.startSelection?.style || '',
+      budgetPlanningRange: brief.startSelection?.budget || '',
       pieceType: brief.pieceType || '',
       branch: brief.branch || '',
       structure: brief.structure || '',
@@ -844,6 +862,8 @@ export default function DesignBriefPage() {
       customerCountry,
       contactNote,
       apiSubmission,
+      startSelection: brief.startSelection,
+      summaryItems: displayItems,
       pieceType: brief.pieceType || '',
       branch: brief.branch || '',
       structure: brief.structure || '',
@@ -867,6 +887,9 @@ export default function DesignBriefPage() {
 
     const items: SummaryItem[] = [];
     addBriefItem(items, 'Design objective', 'Prepare a clear AI hand-drawn jewelry concept sketch from the applicable customer direction only.');
+    addBriefItem(items, 'Recipient', brief.startSelection?.recipientLabel);
+    addBriefItem(items, 'Start style preference', brief.startSelection?.styleLabel);
+    addBriefItem(items, 'Budget planning range', brief.startSelection?.budget);
     addBriefItem(items, 'Piece type', label('pieceType', brief.pieceType));
     addBriefItem(items, 'Branch', label('branch', brief.branch));
     addBriefItem(items, 'Structure', label('structure', brief.structure));
@@ -1159,9 +1182,6 @@ export default function DesignBriefPage() {
                   {submissionError}
                 </p>
               ) : null}
-              <Link className={styles.secondaryButton} href="/design/pro-cad">
-                Continue to paid CAD process
-              </Link>
               <Link className={styles.tertiaryButton} href="/design/concept">
                 Edit my concept direction
               </Link>
@@ -1169,7 +1189,8 @@ export default function DesignBriefPage() {
             <p className={styles.readyMessage}>
               This submits a concept brief for AI hand-drawn sketch review. Optional reference uploads are attached only
               after the brief is saved. This does not place an order or confirm CAD, pricing, payment, sourcing, or
-              production.
+              production. Paid professional CAD can be discussed later after NOVORA reviews the submitted concept
+              direction.
             </p>
           </aside>
         </section>
