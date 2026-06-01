@@ -50,10 +50,31 @@ type SubmittedConceptBrief = {
   apiSubmission?: {
     persisted?: boolean;
     publicReference?: string;
+    conceptBriefId?: string;
   };
 };
 
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
+const SERVER_RECEIPT_WARNING =
+  'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
+
+type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
+  apiSubmission: {
+    persisted: true;
+    publicReference: string;
+    conceptBriefId: string;
+  };
+};
+
+function hasConfirmedServerReceipt(submittedBrief: SubmittedConceptBrief): submittedBrief is ConfirmedSubmittedConceptBrief {
+  return (
+    submittedBrief.apiSubmission?.persisted === true &&
+    /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(submittedBrief.apiSubmission.publicReference || '') &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      submittedBrief.apiSubmission.conceptBriefId || '',
+    )
+  );
+}
 
 function formatSubmittedTime(value: string) {
   const date = new Date(value);
@@ -109,10 +130,24 @@ export default function DesignSubmittedPage() {
     );
   }
 
-  const displayedConceptBriefId =
-    submittedBrief.apiSubmission?.persisted && submittedBrief.apiSubmission.publicReference
-      ? submittedBrief.apiSubmission.publicReference
-      : submittedBrief.publicReference || submittedBrief.conceptBriefId;
+  if (!hasConfirmedServerReceipt(submittedBrief)) {
+    return (
+      <main className={styles.pageBackground}>
+        <section className={`${styles.shell} ${styles.emptyShell}`}>
+          <div className={styles.emptyPanel}>
+            <p className={styles.eyebrow}>Concept brief</p>
+            <h1>Server receipt not confirmed</h1>
+            <p>{SERVER_RECEIPT_WARNING}</p>
+            <Link className={styles.primaryButton} href="/design/brief">
+              Back to concept brief
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const displayedConceptBriefId = submittedBrief.apiSubmission.publicReference;
 
   return (
     <main className={styles.pageBackground}>

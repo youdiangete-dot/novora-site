@@ -32,6 +32,12 @@ type ConceptBriefApiSubmissionMetadata = {
   rateLimited?: boolean;
 };
 
+type ConfirmedConceptBriefApiSubmissionMetadata = ConceptBriefApiSubmissionMetadata & {
+  persisted: true;
+  publicReference: string;
+  conceptBriefId: string;
+};
+
 type ConceptBriefApiResponse = {
   ok?: unknown;
   persisted?: unknown;
@@ -128,6 +134,8 @@ type StoredConceptBrief = {
 const STORAGE_KEY = 'novora_concept_brief';
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 const CONCEPT_BRIEF_SUBMISSION_TIMEOUT_MS = 15000;
+const SERVER_RECEIPT_WARNING =
+  'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
 const initialContactFields: ContactFields = {
   customerName: '',
   customerEmail: '',
@@ -478,18 +486,6 @@ function addChainBriefItems(items: SummaryItem[], brief: StoredConceptBrief) {
   addBriefItem(items, 'Chain note', brief.chainNote?.trim() || 'Not sure yet');
 }
 
-function generateConceptBriefId() {
-  const now = new Date();
-  const date = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('');
-  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, '0');
-
-  return `NOVORA-CB-${date}-${suffix}`;
-}
-
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
@@ -498,8 +494,18 @@ function readApiString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function hasConfirmedServerReceipt(
+  apiSubmission: ConceptBriefApiSubmissionMetadata,
+): apiSubmission is ConfirmedConceptBriefApiSubmissionMetadata {
+  return (
+    apiSubmission.persisted &&
+    /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(apiSubmission.publicReference || '') &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(apiSubmission.conceptBriefId || '')
+  );
+}
+
 async function notifyAdminConceptBrief(apiSubmission: ConceptBriefApiSubmissionMetadata) {
-  if (!apiSubmission.persisted || !apiSubmission.conceptBriefId || !apiSubmission.publicReference) {
+  if (!hasConfirmedServerReceipt(apiSubmission)) {
     return;
   }
 
@@ -523,7 +529,7 @@ async function postConceptBriefSkeleton(payload: Record<string, unknown>): Promi
   const fallbackMetadata: ConceptBriefApiSubmissionMetadata = {
     ok: false,
     persisted: false,
-    message: 'API skeleton unavailable; local submission flow continued.',
+    message: SERVER_RECEIPT_WARNING,
   };
 
   const controller = new AbortController();
@@ -723,7 +729,7 @@ export default function DesignBriefPage() {
       };
     }
 
-    if (!apiSubmission.persisted || !apiSubmission.conceptBriefId || !apiSubmission.publicReference) {
+    if (!hasConfirmedServerReceipt(apiSubmission)) {
       return {
         ok: false,
         uploaded: false,
@@ -839,11 +845,14 @@ export default function DesignBriefPage() {
       return;
     }
 
+    if (!hasConfirmedServerReceipt(apiSubmission)) {
+      setSubmissionError(SERVER_RECEIPT_WARNING);
+      setIsSubmitting(false);
+      return;
+    }
+
     const referenceUpload = await uploadReferenceImages(apiSubmission);
     await notifyAdminConceptBrief(apiSubmission);
-    const localConceptBriefId = generateConceptBriefId();
-    const persistedPublicReference =
-      apiSubmission.persisted && apiSubmission.publicReference ? apiSubmission.publicReference : undefined;
     const finalReferenceImageNames = referenceFiles.length
       ? referenceUpload.fileNames
       : brief.referenceImageNames || [];
@@ -852,9 +861,8 @@ export default function DesignBriefPage() {
       : brief.referenceImageCount || 0;
 
     const submittedBrief = {
-      conceptBriefId: persistedPublicReference || localConceptBriefId,
-      localConceptBriefId,
-      publicReference: persistedPublicReference,
+      conceptBriefId: apiSubmission.publicReference,
+      publicReference: apiSubmission.publicReference,
       submittedAt: new Date().toISOString(),
       customerName,
       customerEmail,
@@ -1069,9 +1077,8 @@ export default function DesignBriefPage() {
               <div className={styles.contactHeading}>
                 <h3>Contact for concept review</h3>
                 <p>
-                  Your contact details are used only to follow up on this concept brief. If backend persistence is
-                  temporarily unavailable, NOVORA keeps the local browser fallback so this review flow can still
-                  continue safely.
+                  Your contact details are used only to follow up on this concept brief. If server receipt cannot be
+                  confirmed, your draft stays in this browser so you can retry without restarting.
                 </p>
               </div>
               <label className={styles.fieldLabel}>
