@@ -235,6 +235,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   verification for `NOVORA-CB-20260602-CLJR`; confirmed protected list/detail
   visibility and visible Supabase-backed detail without changing admin status,
   notes, customer data, or notification state.
+- Agent 29A: added `docs/novora-mvp-launch-readiness-checklist.md`, a docs-only
+  objective checklist for quiet owner-controlled MVP testing, broader-traffic
+  blockers, explicit deferrals, risk review, owner decisions, and recommended
+  next Agents. This does not approve launch or commercial readiness. Production
+  rate-limit provider enforcement remains deferred.
 
 ## 7. Current Non-Goals And Boundaries
 
