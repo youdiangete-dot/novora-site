@@ -61,6 +61,9 @@ swaths of code or making changes.
   local-only and ignore them during feature work.
 - When adding Supabase behavior, keep graceful fallback behavior where the MVP
   already allows local front-end flow to continue without persistence.
+- Customer-facing submitted or received confirmation must not be shown unless
+  server persistence, a valid `publicReference`, and a valid Concept Brief UUID
+  are confirmed. Local fallback may preserve draft or summary state only.
 - Do not introduce auth, payments, real order creation, production workflows, file
   uploads, or AI image generation unless the task explicitly asks for that slice.
 - Treat `docs/novora-current-project-state.md` on GitHub `main` as the durable
@@ -85,6 +88,9 @@ swaths of code or making changes.
 - Treat auto-review permissions as permission to perform the listed safe actions
   only. If a requested action appears in a must-stop list, stop and ask even if
   it looks adjacent to the current task.
+- When a task reveals a reusable safety, quality, or workflow rule, propose a
+  durable repo-local update. Keep `AGENTS.md` concise and put detailed
+  procedures in repo-local skills.
 - Do not run `git add .` unless the user explicitly approves that exact action.
   Prefer path-specific staging when staging is requested.
 
