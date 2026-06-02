@@ -165,6 +165,31 @@ Agent 28B made no SQL, environment-variable, provider, secret, deployment,
 payment, authentication, CAD, order, or AI-generation change. Production
 rate-limit provider enforcement remains deferred unless separately approved.
 
+Agent 28C completed controlled authenticated read-only Production admin
+verification for the existing smoke brief `NOVORA-CB-20260602-CLJR`. The user
+manually entered the admin access key in the browser UI only. The key was not
+recorded, echoed, inferred, stored, exposed, committed, or included in docs.
+
+- Protected `/admin/briefs` list visibility was confirmed. The row was labeled
+  as a Supabase submission and showed customer `Agent 28B Production Smoke
+  Test`, email `agent28b-production-smoke@example.com`, and piece type `Ring`.
+- Protected `/admin/briefs/NOVORA-CB-20260602-CLJR` detail visibility was
+  confirmed. The public reference matched and the Supabase-backed detail showed
+  source `api`.
+- The visible contact summary matched the Agent 28B synthetic smoke data:
+  customer `Agent 28B Production Smoke Test`, email
+  `agent28b-production-smoke@example.com`. A reference-image count was not
+  reported as visible during this verification.
+- The read-only admin notification status was visible as
+  `admin_concept_brief_submitted` / `sent` to the configured admin inbox. The
+  page stated that it does not retry, resend, or update notifications. No resend
+  or manual notification trigger was used.
+- No admin review status, internal note, customer data, app code, test, package,
+  SQL, environment variable, provider, secret, deployment, payment,
+  authentication, CAD, order, or AI-generation change was made. No new
+  Production submission was performed. Production rate-limit provider
+  enforcement remains deferred unless separately approved.
+
 ## 6. Recent Agent History
 
 - Agent 22: reference image upload completed.
@@ -206,6 +231,10 @@ rate-limit provider enforcement remains deferred unless separately approved.
   submission for `NOVORA-CB-20260602-CLJR`; confirmed persisted customer receipt
   and passive admin email delivery, while protected admin list/detail visibility
   remained unconfirmed because no admin access key was touched or supplied.
+- Agent 28C: completed controlled authenticated read-only Production admin
+  verification for `NOVORA-CB-20260602-CLJR`; confirmed protected list/detail
+  visibility and visible Supabase-backed detail without changing admin status,
+  notes, customer data, or notification state.
 
 ## 7. Current Non-Goals And Boundaries
 
