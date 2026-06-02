@@ -143,9 +143,27 @@ customer-visible `publicReference`, and a valid Concept Brief UUID.
 `persisted: false`, unconfirmed server responses, and legacy local-only records
 must not imply that NOVORA received a brief. Intentional `429` responses still
 keep the customer on `/design/brief` with safe retry messaging. No new
-Production smoke verification was performed for this ledger note. The next
-project-quality direction is to preserve these receipt-integrity lessons and a
-reusable Codex learning loop in repo-local skills.
+Production smoke verification was performed for that PR #84 ledger note.
+
+PR #85 merged the repo-local customer submission integrity and Codex learning-loop
+skills into `main`. Agent 28B then completed exactly one synthetic no-image
+Production smoke submission after PR #84 and PR #85:
+
+- Submission `NOVORA-CB-20260602-CLJR` returned `201`, `persisted: true`, a
+  valid customer-visible public reference, and a valid Concept Brief UUID.
+- The customer reached `/design/submitted`, which displayed `Concept brief
+  received` only after the confirmed persisted response.
+- The normal admin notification email was passively confirmed in Gmail for
+  `NOVORA-CB-20260602-CLJR`; no resend or manual notification trigger was used.
+- Protected `/admin/briefs` list visibility and
+  `/admin/briefs/NOVORA-CB-20260602-CLJR` detail visibility were not confirmed
+  in this run because the isolated verification browser reached the admin
+  access-key gate and no admin key was touched or supplied. No review status or
+  internal note was changed.
+
+Agent 28B made no SQL, environment-variable, provider, secret, deployment,
+payment, authentication, CAD, order, or AI-generation change. Production
+rate-limit provider enforcement remains deferred unless separately approved.
 
 ## 6. Recent Agent History
 
@@ -182,8 +200,12 @@ reusable Codex learning loop in repo-local skills.
 - Agent 27C: PR #84 tightened customer submission success so only confirmed
   persisted briefs with a valid public reference and Concept Brief UUID show
   received/submitted confirmation, while safe `429` handling remains unchanged.
-- Agent 28A: docs-only project-quality foundation adds reusable customer
-  submission integrity and Codex learning-loop skills.
+- Agent 28A: PR #85 merged the docs-only project-quality foundation with
+  reusable customer submission integrity and Codex learning-loop skills.
+- Agent 28B: completed one controlled synthetic no-image Production smoke
+  submission for `NOVORA-CB-20260602-CLJR`; confirmed persisted customer receipt
+  and passive admin email delivery, while protected admin list/detail visibility
+  remained unconfirmed because no admin access key was touched or supplied.
 
 ## 7. Current Non-Goals And Boundaries
 
