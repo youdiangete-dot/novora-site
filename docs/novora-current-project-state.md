@@ -240,6 +240,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   blockers, explicit deferrals, risk review, owner decisions, and recommended
   next Agents. This does not approve launch or commercial readiness. Production
   rate-limit provider enforcement remains deferred.
+- Agent 29B: added `docs/novora-public-launch-copy-boundary-audit.md`, a
+  docs-only source-copy audit for public launch wording around mock-only AI
+  sketch preview, CAD, pricing, manual follow-up, Concept Brief receipt,
+  reference uploads, production, payment, and order tracking. No app copy was
+  changed. This does not approve launch, commercial readiness, or any
+  Production operation.
 
 ## 7. Current Non-Goals And Boundaries
 
