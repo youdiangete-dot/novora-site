@@ -80,7 +80,7 @@ export default function HomeCarousel() {
         ))}
 
         <div className={styles.caption}>
-          <span>AI concept sketch</span>
+          <span>Illustrative concept preview</span>
           <strong>{slides[activeIndex].title}</strong>
         </div>
 

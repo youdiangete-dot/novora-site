@@ -894,7 +894,7 @@ export default function DesignBriefPage() {
     }
 
     const items: SummaryItem[] = [];
-    addBriefItem(items, 'Design objective', 'Prepare a clear AI hand-drawn jewelry concept sketch from the applicable customer direction only.');
+    addBriefItem(items, 'Design objective', 'Organize a clear jewelry concept direction from the applicable customer direction only.');
     addBriefItem(items, 'Recipient', brief.startSelection?.recipientLabel);
     addBriefItem(items, 'Start style preference', brief.startSelection?.styleLabel);
     addBriefItem(items, 'Budget planning range', brief.startSelection?.budget);
@@ -1003,7 +1003,7 @@ export default function DesignBriefPage() {
 
     addBriefItem(
       items,
-      'AI sketch instruction',
+      'Concept direction instruction',
       brief.aiSketchInstruction ||
         'This is a hand-drawn concept sketch brief only and should not be treated as CAD-ready production confirmation.',
     );
@@ -1023,7 +1023,7 @@ export default function DesignBriefPage() {
             <p className={styles.eyebrow}>Concept brief</p>
             <h1>No concept direction found</h1>
             <p>
-              Start the concept intake first so NOVORA can organize your choices into an AI hand-drawn sketch brief.
+              Start the concept intake first so NOVORA can organize your choices into a concept-direction brief.
             </p>
             <Link className={styles.primaryButton} href="/design/concept">
               Start concept intake
@@ -1040,10 +1040,9 @@ export default function DesignBriefPage() {
         <section className={styles.hero}>
           <p className={styles.eyebrow}>NOVORA Concept Brief</p>
           <h1>Your concept direction is ready</h1>
-          <p>NOVORA has organized your design choices into an AI hand-drawn sketch brief.</p>
+          <p>NOVORA has organized your design choices into a concept-direction brief.</p>
           <p className={styles.completionNote}>
-            This is not a final order or CAD file yet. It is the design direction NOVORA will use to prepare your first
-            AI hand-drawn concept sketch.
+            This is not a final order or CAD file. It is the design direction NOVORA will review for personal follow-up.
           </p>
         </section>
 
@@ -1066,12 +1065,12 @@ export default function DesignBriefPage() {
           <aside className={`${styles.panel} ${styles.nextPanel}`}>
             <div className={styles.sectionHeading}>
               <p className={styles.eyebrow}>What happens next</p>
-              <h2>Sketch first, CAD later</h2>
+              <h2>Concept direction first, paid CAD later</h2>
             </div>
             <p>
-              Your next step is the AI hand-drawn concept sketch. CAD is a separate paid step after NOVORA confirms the
-              design direction, stone size, material, setting details, feasibility, and early quote direction. Pricing
-              and production details are not finalized at this stage.
+              Your next step is NOVORA studio review and personal follow-up. CAD is a separate paid step discussed after
+              NOVORA confirms the design direction, stone size, material, setting details, feasibility, and early quote
+              direction. Pricing and production details are not finalized at this stage.
             </p>
             <section className={styles.contactSection} aria-label="Contact for concept review">
               <div className={styles.contactHeading}>
@@ -1169,7 +1168,7 @@ export default function DesignBriefPage() {
                 ) : null}
                 <p className={styles.placeholderMessage}>
                   Only files selected in this final upload area are saved for admin review. Uploaded references support
-                  manual concept review and AI hand-drawn sketch direction only; they do not confirm CAD, pricing,
+                  manual concept-direction review only; they do not confirm CAD, pricing,
                   sourcing, final design approval, or production.
                 </p>
                 {referenceUploadMessage ? <p className={styles.readyMessage}>{referenceUploadMessage}</p> : null}
@@ -1194,18 +1193,18 @@ export default function DesignBriefPage() {
               </Link>
             </div>
             <p className={styles.readyMessage}>
-              This submits a concept brief for AI hand-drawn sketch review. Optional reference uploads are attached only
-              after the brief is saved. This does not place an order or confirm CAD, pricing, payment, sourcing, or
-              production. Paid professional CAD can be discussed later after NOVORA reviews the submitted concept
-              direction.
+              This submits a Concept Brief for NOVORA studio review and follow-up. Optional reference uploads are
+              attached only after the brief is saved. This does not place an order or confirm CAD, pricing, payment,
+              sourcing, or production. Paid professional CAD can be discussed later after NOVORA reviews the submitted
+              concept direction.
             </p>
           </aside>
         </section>
 
         <section className={`${styles.panel} ${styles.aiPanel}`}>
           <div className={styles.sectionHeading}>
-            <p className={styles.eyebrow}>AI Sketch Brief</p>
-            <h2>NOVORA AI Sketch Brief</h2>
+            <p className={styles.eyebrow}>Concept Direction Brief</p>
+            <h2>NOVORA Concept Direction Brief</h2>
           </div>
           <dl className={styles.briefList}>
             {aiBrief.map((item) => (
@@ -1222,8 +1221,8 @@ export default function DesignBriefPage() {
           <p>
             Stone availability, exact color matching, chain availability, strength, size, and setting feasibility will be
             confirmed before any paid CAD or production step. This brief does not include final pricing. Final quotation
-            depends on confirmed stone size, metal, CAD structure, labor, and production details. This AI sketch brief is
-            not a production-ready CAD file.
+            depends on confirmed stone size, metal, CAD structure, labor, and production details. This concept-direction
+            brief is not a production-ready CAD file.
           </p>
         </section>
       </div>

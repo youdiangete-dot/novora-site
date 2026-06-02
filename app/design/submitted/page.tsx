@@ -119,7 +119,7 @@ export default function DesignSubmittedPage() {
             <p className={styles.eyebrow}>Concept brief submitted</p>
             <h1>No submitted concept brief found</h1>
             <p>
-              Start a new concept intake so NOVORA can organize your design direction for AI hand-drawn sketch review.
+              Start a new concept intake so NOVORA can organize your design direction for studio review and follow-up.
             </p>
             <Link className={styles.primaryButton} href="/design/start">
               Back to design start
@@ -156,7 +156,7 @@ export default function DesignSubmittedPage() {
           <p className={styles.eyebrow}>Concept brief submitted</p>
           <h1>Concept brief received</h1>
           <p className={styles.successLead}>
-            NOVORA received your concept brief for AI hand-drawn sketch review.
+            NOVORA received your Concept Brief for studio review and follow-up.
           </p>
 
           <dl className={styles.submittedDetails}>
@@ -287,7 +287,7 @@ export default function DesignSubmittedPage() {
                 <span className={submittedStyles.stepNumber}>2</span>
                 <div>
                   <h3>Concept direction</h3>
-                  <p>NOVORA may prepare an AI hand-drawn concept direction or sketch brief for review.</p>
+                  <p>NOVORA reviews the concept direction and follows up to discuss possible next steps.</p>
                 </div>
               </li>
               <li>
@@ -318,7 +318,7 @@ export default function DesignSubmittedPage() {
 
           <div className={styles.actions}>
             <Link className={styles.primaryButton} href="/design/sketch">
-              View AI Sketch Preview
+              View Mock Sketch Preview
             </Link>
             <Link className={styles.primaryButton} href="/design/start">
               Back to design start

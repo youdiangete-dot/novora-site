@@ -5,7 +5,6 @@ const navItems = [
   { label: 'How It Works', href: '/#how-it-works' },
   { label: 'Concept Sketch', href: '/#concept-vs-cad' },
   { label: 'CAD Process', href: '/design/pro-cad' },
-  { label: 'Order Tracking', href: '/account/orders/demo' },
 ];
 
 export default function SiteHeader() {

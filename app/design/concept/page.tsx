@@ -472,7 +472,7 @@ const stationSettings: Option[] = [
 const conceptSteps = [
   { label: 'Piece direction', backgroundSrc: '/assets/design/concept/backgrounds/gemstone-color-sketch-bg.png', visualClass: 'visualBasics' },
   { label: 'Stone logic', backgroundSrc: '/assets/design/concept/backgrounds/stone-cut-sketch-bg.png', visualClass: 'visualShape' },
-  { label: 'AI sketch details', backgroundSrc: '/assets/design/concept/backgrounds/accent-stones-sketch-bg.png', visualClass: 'visualAccent' },
+  { label: 'Concept direction details', backgroundSrc: '/assets/design/concept/backgrounds/accent-stones-sketch-bg.png', visualClass: 'visualAccent' },
   { label: 'Metal & wearability', backgroundSrc: '/assets/design/concept/backgrounds/metal-finish-sketch-bg.png', visualClass: 'visualMetal' },
   { label: 'Review brief', backgroundSrc: '/assets/design/concept/backgrounds/concept-board-sketch-bg.png', visualClass: 'visualReview' },
 ];
@@ -1217,9 +1217,9 @@ function DesignConceptIntake() {
       <div className={styles.pageShell}>
         <header className={styles.intro}>
           <p className={styles.step}>Design concept intake</p>
-          <h1>Build the AI sketch brief</h1>
+          <h1>Build the concept direction brief</h1>
           <p>
-            This intake collects visual design direction for an AI hand-drawn concept sketch. It is not a CAD order,
+            This intake collects visual design direction for NOVORA studio review and follow-up. It is not a CAD order,
             pricing form, or production confirmation.
           </p>
         </header>
@@ -1533,8 +1533,8 @@ function DesignConceptIntake() {
             {activeStep === 2 ? (
               <section className={styles.selectorGroup}>
                 <div className={styles.sectionHeading}>
-                  <h2>AI sketch fields</h2>
-                  <p>These fields guide the hand-drawn concept sketch, not CAD or production pricing.</p>
+                  <h2>Concept direction fields</h2>
+                  <p>These fields guide the early visual direction, not CAD or production pricing.</p>
                 </div>
                 <div
                   className={`${styles.stepVisual} ${styles[conceptSteps[2].visualClass]}`}
@@ -1597,7 +1597,7 @@ function DesignConceptIntake() {
                     />
                   </label>
                   <p className={styles.helperNote}>
-                    Planning references here help shape the AI hand-drawn concept sketch direction only. Only files
+                    Planning references here help shape the concept direction only. Only files
                     selected on the final brief page are saved for admin review.
                   </p>
                 </section>
@@ -1623,7 +1623,7 @@ function DesignConceptIntake() {
                   <section className={styles.repeatedStonePanel}>
                     <div className={styles.sectionHeading}>
                       <h2>Simple band structure</h2>
-                      <p>Capture the band shape for the AI hand-drawn sketch without adding a stone module.</p>
+                      <p>Capture the band shape for the early concept direction without adding a stone module.</p>
                     </div>
                     <div className={styles.compactGrid}>
                       <OptionField
@@ -1704,15 +1704,15 @@ function DesignConceptIntake() {
               <section className={`${styles.selectorGroup} ${styles.reviewIntro}`}>
                 <div className={styles.sectionHeading}>
                   <h2>Review brief</h2>
-                  <p>Confirm the applicable concept direction before continuing to the AI sketch brief.</p>
+                  <p>Confirm the applicable concept direction before continuing to the concept-direction brief.</p>
                 </div>
                 <div
                   className={`${styles.stepVisual} ${styles[conceptSteps[4].visualClass]}`}
                   aria-hidden="true"
                 />
                 <p className={styles.helperNote}>
-                  This brief prepares your AI hand-drawn concept sketch direction. Professional CAD is a separate paid
-                  step, and final production feasibility, material cost, stone availability, and setting details are
+                  This brief prepares your concept direction for NOVORA review. Professional CAD is a separate paid step,
+                  and final production feasibility, material cost, stone availability, and setting details are
                   confirmed later.
                 </p>
               </section>
@@ -1751,8 +1751,8 @@ function DesignConceptIntake() {
               ))}
             </dl>
             <p className={styles.requiredNote}>
-              This step prepares your AI hand-drawn concept sketch brief. Professional CAD is a separate paid step after
-              the design direction is confirmed.
+              This step prepares your concept-direction brief for NOVORA review. Professional CAD is a separate paid
+              step after the design direction is confirmed.
             </p>
             {activeStep === 4 ? (
               <div className={styles.actions}>
@@ -1834,7 +1834,7 @@ function DesignConceptIntake() {
             />
           </label>
           <p className={styles.helperNote}>
-            Planning references guide the AI hand-drawn concept sketch direction only. Only files selected on the final
+            Planning references guide the concept direction only. Only files selected on the final
             brief page are saved for admin review; CAD and production feasibility are confirmed later.
           </p>
         </section>

@@ -330,6 +330,12 @@ Several deeper customer-flow pages already preserve important boundaries well:
 
 **P0 count: 5**
 
+Agent 29C addressed these five P0 copy items in a scoped app-copy implementation.
+This status note does not approve launch or commercial readiness, and it does
+not claim that AI generation, CAD automation, payment, customer accounts, order
+tracking, production workflows, or Production rate-limit provider enforcement
+exist.
+
 ### P1 Before Broader MVP Launch
 
 1. Reframe `/design/pro-cad` as a separately discussed manual paid-CAD service,

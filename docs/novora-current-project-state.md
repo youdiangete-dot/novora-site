@@ -246,6 +246,15 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   reference uploads, production, payment, and order tracking. No app copy was
   changed. This does not approve launch, commercial readiness, or any
   Production operation.
+- Agent 29C: implemented the five P0 public-copy boundary fixes from the Agent
+  29B audit across the homepage, carousel, global navigation, design-start
+  entry, core Concept Brief flow, submitted-page preview action, and public
+  future-workflow demo. The copy now frames the current online experience as
+  guided Concept Brief intake, studio review, personal follow-up, illustrative
+  previews, and separately discussed offline CAD and quotation review. This
+  does not approve launch or commercial readiness, and it does not add AI
+  generation, CAD automation, payment, customer accounts, order tracking,
+  production workflows, or Production rate-limit provider enforcement.
 
 ## 7. Current Non-Goals And Boundaries
 

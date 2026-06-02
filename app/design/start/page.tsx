@@ -35,7 +35,7 @@ const styleOptions: Option[] = [
 ];
 
 const budgets = ['Under USD 500', 'USD 500-1200', 'USD 1200-2500', 'USD 2500+'];
-const checklist = ['AI concept sketch first', 'Paid CAD after approval', 'Order center for production updates'];
+const checklist = ['Create your guided Concept Brief', 'NOVORA studio review and follow-up', 'Offline CAD and quotation discussion later'];
 
 export default function DesignStartPage() {
   const [selectedRecipient, setSelectedRecipient] = useState(recipients[0].value);
@@ -120,7 +120,7 @@ export default function DesignStartPage() {
               <strong>References can be added later on the final brief page.</strong>
               <p>
                 Start with the direction here. The saved upload step happens before you submit the Concept Brief for
-                AI hand-drawn sketch review.
+                studio review and concept-direction follow-up.
               </p>
             </div>
           </article>
@@ -131,9 +131,9 @@ export default function DesignStartPage() {
             <article className={styles.panelCardHero}>
               <div>
                 <h3>Preview lane</h3>
-                <p>We start with an AI concept sketch based on your selected direction.</p>
+                <p>Illustrative previews help you shape the concept direction for your brief.</p>
               </div>
-              <img src="/assets/novora_ai_sketch_pendant.png" alt="AI pendant sketch preview" />
+              <img src="/assets/novora_ai_sketch_pendant.png" alt="Illustrative pendant concept preview" />
             </article>
 
             <article className={styles.panelCard}>
@@ -149,7 +149,8 @@ export default function DesignStartPage() {
                 {checklist.map((item) => <li key={item}>{item}</li>)}
               </ul>
               <p className={styles.note}>
-                You will receive an AI concept sketch first. Professional CAD is a separate paid step.
+                Your Concept Brief goes to NOVORA for studio review. Professional CAD is a separate paid step discussed
+                later.
               </p>
               <Link href={conceptHref} className={styles.cta}>Continue to Concept</Link>
             </article>
