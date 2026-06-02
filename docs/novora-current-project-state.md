@@ -137,6 +137,16 @@ payment/order/account Production workflow. No payment method, Vercel
 environment, Upstash/provider, deploy, or Production test action was performed
 for this decision.
 
+PR #84 tightened the customer-facing submission success gate. Received or
+submitted confirmation now requires confirmed server persistence, a valid
+customer-visible `publicReference`, and a valid Concept Brief UUID.
+`persisted: false`, unconfirmed server responses, and legacy local-only records
+must not imply that NOVORA received a brief. Intentional `429` responses still
+keep the customer on `/design/brief` with safe retry messaging. No new
+Production smoke verification was performed for this ledger note. The next
+project-quality direction is to preserve these receipt-integrity lessons and a
+reusable Codex learning loop in repo-local skills.
+
 ## 6. Recent Agent History
 
 - Agent 22: reference image upload completed.
@@ -169,6 +179,11 @@ for this decision.
   for now, avoid reusing `novora-preview-rate-limit` for Production, and revisit
   Option C before formal commercial launch, paid traffic, larger social traffic,
   or increased real customer submissions.
+- Agent 27C: PR #84 tightened customer submission success so only confirmed
+  persisted briefs with a valid public reference and Concept Brief UUID show
+  received/submitted confirmation, while safe `429` handling remains unchanged.
+- Agent 28A: docs-only project-quality foundation adds reusable customer
+  submission integrity and Codex learning-loop skills.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -201,6 +216,13 @@ for this decision.
 - Do not do SQL, schema, grant, Supabase, Vercel, Resend, Cloudflare, or environment-variable work without explicit approval for that specific task.
 - For docs-only tasks, no build is required unless code changes.
 - For app-code tasks, run `npm run build` and focused tests.
+- Do not show customer-facing received or submitted confirmation unless server
+  persistence, a valid `publicReference`, and a valid Concept Brief UUID are
+  confirmed. Local fallback may preserve draft or summary state only.
+- When a task reveals a reusable project rule, record it in the appropriate
+  durable location: concise repository rules in `AGENTS.md`, detailed
+  procedures in repo-local skills, verified state in this ledger, or regression
+  behavior in tests.
 - In permission dialogs, the user can click Continue or Allow; do not say "reply to Codex" inside permission dialogs.
 - Read `docs/novora-codex-operating-mode.md` before changing workflow,
   branching, PR, deployment, permission, or agent-handoff rules.
