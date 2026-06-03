@@ -370,10 +370,17 @@ behavior changes.
    - Final retention periods, deletion/export/correction execution, final
      Privacy/Terms publication, and owner/legal approval remain future work.
 
-4. **Agent 29H: future AI-data-use disclosure plan**
+4. **Agent 29H: owner privacy/retention decision packet**
+   - Added `docs/novora-owner-privacy-retention-decision-packet.md` to convert
+     the privacy, Terms, retention, launch, sharing, request-handling, minors,
+     and future AI-use planning into owner choices.
+   - Owner/legal review, final policy publication, final legal pages, footer
+     links, and any checkbox/form behavior remain future work.
+
+5. **Later separate task: future AI-data-use disclosure plan**
    - Prepare separate disclosure and consent planning before any real AI sketch
      generation uses customer text, reference images, or design preferences.
 
-5. **Later separate task: final owner/legal approval and publication**
+6. **Later separate task: final owner/legal approval and publication**
    - Only after the owner/legal review checklist is complete should NOVORA add
      final Privacy / Terms pages, footer links, or consent/banner behavior.
