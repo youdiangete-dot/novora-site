@@ -77,6 +77,7 @@ export default function HomePage() {
       </section>
 
       <section id="how-it-works" className={styles.stepsSection}>
+        <span id="concept-vs-cad" className={styles.anchorTarget} aria-hidden="true" />
         {steps.map((step) => (
           <article key={step.title} className={styles.stepCard}>
             <h2>{step.title}</h2>

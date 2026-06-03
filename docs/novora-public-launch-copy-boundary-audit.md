@@ -350,6 +350,10 @@ exist.
 
 **P1 count: 4**
 
+Agent 29C follow-up addressed P1 items 1, 2, and 4 as part of the same public
+copy-boundary PR. P1 item 3 remains a future cleanup item unless separately
+approved.
+
 ### P2 Acceptable After Quiet Owner-Controlled Testing
 
 1. Repair or retarget the missing `/#concept-vs-cad` header anchor as part of a
@@ -359,6 +363,9 @@ exist.
    for active automated progression.
 
 **P2 count: 2**
+
+Agent 29C follow-up addressed P2 item 1 by adding a safe homepage anchor target.
+P2 item 2 remains a future cleanup item unless separately approved.
 
 ## F. Suggested Implementation Sequence
 

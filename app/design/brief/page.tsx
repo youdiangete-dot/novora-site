@@ -1142,7 +1142,7 @@ export default function DesignBriefPage() {
                 <div className={styles.contactHeading}>
                   <h3>Final reference upload optional</h3>
                   <p>
-                    Attach the reference images you want saved for admin review here before submitting. Earlier
+                    Attach the reference images you want saved for studio review here before submitting. Earlier
                     concept-page image selections are planning references only and are not saved as final uploaded
                     files.
                   </p>
@@ -1167,7 +1167,7 @@ export default function DesignBriefPage() {
                   </ul>
                 ) : null}
                 <p className={styles.placeholderMessage}>
-                  Only files selected in this final upload area are saved for admin review. Uploaded references support
+                  Only files selected in this final upload area are saved for studio review. Uploaded references support
                   manual concept-direction review only; they do not confirm CAD, pricing,
                   sourcing, final design approval, or production.
                 </p>

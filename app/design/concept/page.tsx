@@ -1598,7 +1598,7 @@ function DesignConceptIntake() {
                   </label>
                   <p className={styles.helperNote}>
                     Planning references here help shape the concept direction only. Only files
-                    selected on the final brief page are saved for admin review.
+                    selected on the final brief page are saved for studio review.
                   </p>
                 </section>
               </section>
@@ -1835,7 +1835,7 @@ function DesignConceptIntake() {
           </label>
           <p className={styles.helperNote}>
             Planning references guide the concept direction only. Only files selected on the final
-            brief page are saved for admin review; CAD and production feasibility are confirmed later.
+            brief page are saved for studio review; CAD and production feasibility are confirmed later.
           </p>
         </section>
       </section>

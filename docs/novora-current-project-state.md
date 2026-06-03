@@ -255,6 +255,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   does not approve launch or commercial readiness, and it does not add AI
   generation, CAD automation, payment, customer accounts, order tracking,
   production workflows, or Production rate-limit provider enforcement.
+  Agent 29C follow-up also reframed the public CAD page as a later manual studio
+  process, replaced customer-facing `admin review` upload wording, softened the
+  submitted-page next-step heading, and repaired the public header anchor. This
+  follow-up still does not add AI, CAD, payment, account, order, tracking, or
+  production behavior.
 
 ## 7. Current Non-Goals And Boundaries
 

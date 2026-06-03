@@ -270,7 +270,7 @@ export default function DesignSubmittedPage() {
           <section className={submittedStyles.nextSteps}>
             <div>
               <p className={styles.eyebrow}>What happens next</p>
-              <h2>From concept brief to production review</h2>
+              <h2>What NOVORA reviews next</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
               NOVORA will review the submitted details and use them as a starting point for the next conversation.
@@ -302,10 +302,10 @@ export default function DesignSubmittedPage() {
               <li>
                 <span className={submittedStyles.stepNumber}>4</span>
                 <div>
-                  <h3>Final production checks</h3>
+                  <h3>Later feasibility checks</h3>
                   <p>
-                    Final quote, gemstone sourcing, production feasibility, QC, packaging, and logistics are confirmed
-                    later.
+                    Final quote, gemstone sourcing, CAD feasibility, and any production-related decisions are confirmed
+                    later through manual follow-up.
                   </p>
                 </div>
               </li>
