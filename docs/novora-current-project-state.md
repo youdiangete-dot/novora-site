@@ -277,6 +277,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   studio review and contact follow-up. This does not create final Privacy or
   Terms pages, does not add legal compliance claims, and does not approve launch
   or commercial readiness.
+- Agent 29F: added draft review-only pages at `/legal/privacy-draft` and
+  `/legal/terms-draft` for owner/legal review. These pages are visibly labeled
+  as draft, not final legal text, and not legal advice. No final Privacy or Terms
+  pages were published, no footer/header legal links or legal acceptance
+  checkboxes were added, and no legal compliance, launch approval, or commercial
+  readiness is claimed. No Production, protected admin, SQL, Supabase, Vercel
+  environment, provider, secret, email, deploy, backend, payment, auth, CAD,
+  order, or AI-generation action occurred.
 
 ## 7. Current Non-Goals And Boundaries
 

@@ -354,9 +354,12 @@ behavior changes.
      claims were added.
 
 2. **Agent 29F: draft Privacy Policy and Terms pages for owner/legal review**
-   - Create draft pages or markdown content explicitly marked as draft for
-     owner/legal review.
-   - Do not claim compliance or publish final binding text without approval.
+   - Added draft review-only pages at `/legal/privacy-draft` and
+     `/legal/terms-draft`, explicitly marked as draft for owner/legal review,
+     not final legal text, and not legal advice.
+   - Final Privacy/Terms publication, owner/legal approval, footer/header legal
+     links, acceptance language, compliance claims, and launch approval remain
+     future work.
 
 3. **Agent 29G: retention/admin SOP planning**
    - Define manual queue checks, failed notification review, privacy request
