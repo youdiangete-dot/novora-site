@@ -330,6 +330,12 @@ Several deeper customer-flow pages already preserve important boundaries well:
 
 **P0 count: 5**
 
+Agent 29C addressed these five P0 copy items in a scoped app-copy implementation.
+This status note does not approve launch or commercial readiness, and it does
+not claim that AI generation, CAD automation, payment, customer accounts, order
+tracking, production workflows, or Production rate-limit provider enforcement
+exist.
+
 ### P1 Before Broader MVP Launch
 
 1. Reframe `/design/pro-cad` as a separately discussed manual paid-CAD service,
@@ -344,6 +350,10 @@ Several deeper customer-flow pages already preserve important boundaries well:
 
 **P1 count: 4**
 
+Agent 29C follow-up addressed P1 items 1, 2, and 4 as part of the same public
+copy-boundary PR. P1 item 3 remains a future cleanup item unless separately
+approved.
+
 ### P2 Acceptable After Quiet Owner-Controlled Testing
 
 1. Repair or retarget the missing `/#concept-vs-cad` header anchor as part of a
@@ -353,6 +363,9 @@ Several deeper customer-flow pages already preserve important boundaries well:
    for active automated progression.
 
 **P2 count: 2**
+
+Agent 29C follow-up addressed P2 item 1 by adding a safe homepage anchor target.
+P2 item 2 remains a future cleanup item unless separately approved.
 
 ## F. Suggested Implementation Sequence
 

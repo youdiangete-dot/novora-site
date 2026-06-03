@@ -119,7 +119,7 @@ export default function DesignSubmittedPage() {
             <p className={styles.eyebrow}>Concept brief submitted</p>
             <h1>No submitted concept brief found</h1>
             <p>
-              Start a new concept intake so NOVORA can organize your design direction for AI hand-drawn sketch review.
+              Start a new concept intake so NOVORA can organize your design direction for studio review and follow-up.
             </p>
             <Link className={styles.primaryButton} href="/design/start">
               Back to design start
@@ -156,7 +156,7 @@ export default function DesignSubmittedPage() {
           <p className={styles.eyebrow}>Concept brief submitted</p>
           <h1>Concept brief received</h1>
           <p className={styles.successLead}>
-            NOVORA received your concept brief for AI hand-drawn sketch review.
+            NOVORA received your Concept Brief for studio review and follow-up.
           </p>
 
           <dl className={styles.submittedDetails}>
@@ -270,7 +270,7 @@ export default function DesignSubmittedPage() {
           <section className={submittedStyles.nextSteps}>
             <div>
               <p className={styles.eyebrow}>What happens next</p>
-              <h2>From concept brief to production review</h2>
+              <h2>What NOVORA reviews next</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
               NOVORA will review the submitted details and use them as a starting point for the next conversation.
@@ -287,7 +287,7 @@ export default function DesignSubmittedPage() {
                 <span className={submittedStyles.stepNumber}>2</span>
                 <div>
                   <h3>Concept direction</h3>
-                  <p>NOVORA may prepare an AI hand-drawn concept direction or sketch brief for review.</p>
+                  <p>NOVORA reviews the concept direction and follows up to discuss possible next steps.</p>
                 </div>
               </li>
               <li>
@@ -302,10 +302,10 @@ export default function DesignSubmittedPage() {
               <li>
                 <span className={submittedStyles.stepNumber}>4</span>
                 <div>
-                  <h3>Final production checks</h3>
+                  <h3>Later feasibility checks</h3>
                   <p>
-                    Final quote, gemstone sourcing, production feasibility, QC, packaging, and logistics are confirmed
-                    later.
+                    Final quote, gemstone sourcing, CAD feasibility, and any production-related decisions are confirmed
+                    later through manual follow-up.
                   </p>
                 </div>
               </li>
@@ -318,7 +318,7 @@ export default function DesignSubmittedPage() {
 
           <div className={styles.actions}>
             <Link className={styles.primaryButton} href="/design/sketch">
-              View AI Sketch Preview
+              View Mock Sketch Preview
             </Link>
             <Link className={styles.primaryButton} href="/design/start">
               Back to design start

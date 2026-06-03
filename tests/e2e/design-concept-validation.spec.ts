@@ -207,6 +207,8 @@ test.describe('/design/start conversion flow', () => {
     await page.goto('/design/start');
     await expect(page.getByText('Drag & drop images here / or click to browse')).toHaveCount(0);
     await expect(page.getByText('References can be added later on the final brief page.')).toBeVisible();
+    await expect(page.getByText('NOVORA studio review and follow-up')).toBeVisible();
+    await expect(page.getByText('Order center for production updates')).toHaveCount(0);
 
     await chooseButton(page, 'Partner');
     await chooseButton(page, 'Earrings');
@@ -216,6 +218,8 @@ test.describe('/design/start conversion flow', () => {
 
     await expect(page).toHaveURL(/\/design\/concept\?.*pieceType=earrings/);
     await expect(page.locator('strong').filter({ hasText: 'Earrings' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Build the concept direction brief' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Build the AI sketch brief' })).toHaveCount(0);
 
     const conceptSummary = page.getByLabel('Brief summary');
     await expectTextsVisible(conceptSummary, ['Recipient', 'Partner', 'Start style preference', 'Bold modern', 'Budget planning range', 'USD 2500+']);
@@ -223,6 +227,9 @@ test.describe('/design/start conversion flow', () => {
     await goToBriefResult(page);
     await expectTextsVisible(page, ['Recipient', 'Partner', 'Start style preference', 'Bold modern', 'Budget planning range', 'USD 2500+']);
     await expect(page.getByText('Continue to paid CAD process')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Concept direction first, paid CAD later' })).toBeVisible();
+    await expect(page.getByText('Your next step is the AI hand-drawn concept sketch.')).toHaveCount(0);
+    await expect(page.getByText('admin review')).toHaveCount(0);
 
     await fillValidContactFields(page);
     await page.getByRole('button', { name: 'Submit concept brief' }).click();
@@ -230,6 +237,10 @@ test.describe('/design/start conversion flow', () => {
     await expect(page).toHaveURL(/\/design\/submitted$/);
     await expect(page.getByRole('heading', { name: 'Design start summary' })).toBeVisible();
     await expectTextsVisible(page, ['Partner', 'Bold modern', 'USD 2500+']);
+    await expect(page.getByRole('link', { name: 'View Mock Sketch Preview' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'View AI Sketch Preview' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'What NOVORA reviews next' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'From concept brief to production review' })).toHaveCount(0);
 
     const submittedBrief = await page.evaluate(() => {
       const rawBrief = window.localStorage.getItem('novora_submitted_concept_brief');
@@ -259,6 +270,40 @@ test.describe('/design/start conversion flow', () => {
         { label: 'Budget planning range', value: 'USD 2500+' },
       ]),
     );
+  });
+});
+
+test.describe('P0 public copy boundaries', () => {
+  test('frames the homepage as guided intake without live AI delivery or order tracking claims', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByText('Illustrative concept preview')).toBeVisible();
+    await expect(page.getByText('Guided Concept Brief', { exact: true })).toBeVisible();
+    await expect(page.getByText('Rapid concept direction in minutes.')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Order Tracking' })).toHaveCount(0);
+    await expect(page.locator('#concept-vs-cad')).toHaveCount(1);
+  });
+
+  test('labels the public order workflow demo as non-functional', async ({ page }) => {
+    await page.goto('/account/orders/demo');
+
+    await expect(page.getByText('Future Workflow Demo - Non-functional')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Preview a possible future order workflow' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'This illustration is not a live order center. NOVORA does not currently provide customer accounts, order tracking, or live production milestones.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Track your custom jewelry order' })).toHaveCount(0);
+  });
+
+  test('frames the CAD page as a later manual studio process', async ({ page }) => {
+    await page.goto('/design/pro-cad');
+
+    await expect(page.getByRole('heading', { name: 'How NOVORA approaches paid CAD later' })).toBeVisible();
+    await expect(page.getByText('The website does not automatically generate CAD files, start production, or open an online order workflow.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open order center demo' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Start a Concept Brief' })).toBeVisible();
   });
 });
 

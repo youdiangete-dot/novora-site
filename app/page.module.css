@@ -162,10 +162,20 @@
 }
 
 .stepsSection {
+  position: relative;
   margin-top: 0.9rem;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.72rem;
+}
+
+.anchorTarget {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  scroll-margin-top: 96px;
 }
 
 .stepCard {
