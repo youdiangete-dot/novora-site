@@ -3,7 +3,7 @@ import styles from './SiteHeader.module.css';
 
 const navItems = [
   { label: 'How It Works', href: '/#how-it-works' },
-  { label: 'Concept Sketch', href: '/#concept-vs-cad' },
+  { label: 'Concept vs CAD', href: '/#concept-vs-cad' },
   { label: 'CAD Process', href: '/design/pro-cad' },
 ];
 
