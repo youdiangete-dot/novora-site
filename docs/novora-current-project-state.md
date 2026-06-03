@@ -285,6 +285,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   readiness is claimed. No Production, protected admin, SQL, Supabase, Vercel
   environment, provider, secret, email, deploy, backend, payment, auth, CAD,
   order, or AI-generation action occurred.
+- Agent 29G: added `docs/novora-retention-admin-privacy-sop-plan.md`, a
+  docs-only draft operating direction and manual SOP proposal for data
+  retention planning, privacy requests, admin handling, reference image
+  handling, internal notes, admin notification privacy, incident planning,
+  future partner sharing, risks, and owner decisions. This is not legal advice,
+  does not implement deletion/export/correction workflows, does not publish
+  final Privacy or Terms pages, does not claim legal compliance, launch
+  approval, or commercial readiness, and did not involve Production, protected
+  admin access, SQL, Supabase, Vercel environment, provider, secret, email,
+  deploy, app, test, package, backend, payment, auth, CAD, order,
+  AI-generation, or real customer-data action.
 
 ## 7. Current Non-Goals And Boundaries
 

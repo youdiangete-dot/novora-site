@@ -362,9 +362,13 @@ behavior changes.
      future work.
 
 3. **Agent 29G: retention/admin SOP planning**
-   - Define manual queue checks, failed notification review, privacy request
-     handling, deletion/export/correction workflow, admin note standards, and
-     synthetic test-data handling.
+   - Added `docs/novora-retention-admin-privacy-sop-plan.md` as a docs-only
+     draft operating direction and manual SOP proposal for retention questions,
+     privacy requests, admin handling, reference images, internal notes,
+     notification privacy, incident planning, partner sharing, risks, and owner
+     decisions.
+   - Final retention periods, deletion/export/correction execution, final
+     Privacy/Terms publication, and owner/legal approval remain future work.
 
 4. **Agent 29H: future AI-data-use disclosure plan**
    - Prepare separate disclosure and consent planning before any real AI sketch
