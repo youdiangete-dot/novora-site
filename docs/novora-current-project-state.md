@@ -260,6 +260,16 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   submitted-page next-step heading, and repaired the public header anchor. This
   follow-up still does not add AI, CAD, payment, account, order, tracking, or
   production behavior.
+- Agent 29D: added `docs/novora-privacy-terms-data-handling-copy-plan.md`, a
+  docs-only Privacy / Terms / Data Handling copy plan for owner/legal review
+  before broader public traffic. It inventories current Concept Brief contact
+  data, design preferences, final reference uploads, upload metadata, admin
+  review state, notification event metadata, and browser storage; recommends
+  planning-only Privacy/Terms sections, short future notice snippets, risk
+  topics, owner decisions, and next Agents. This is not legal advice, does not
+  create final legal text, does not publish Privacy or Terms pages, does not
+  approve launch or commercial readiness, and does not claim payment, auth,
+  CAD, order, or real AI-generation behavior exists.
 
 ## 7. Current Non-Goals And Boundaries
 
