@@ -1204,7 +1204,7 @@ function DesignConceptIntake() {
       productionConcernNote,
       manualConfirmation: needsManualReview || isOtherCustom || manualChainConfirmationRequired ? manualReviewText : '',
       aiSketchInstruction:
-        'This is a hand-drawn concept sketch brief only and should not be treated as CAD-ready production confirmation.',
+        'Concept review brief for NOVORA studio follow-up; not a generated sketch, CAD, quote, order, or production approval.',
       summaryItems,
     };
 
@@ -1246,7 +1246,7 @@ function DesignConceptIntake() {
               <section className={`${styles.panel} ${styles.stepPanel}`}>
                 <div className={styles.sectionHeading}>
                   <h2>{pieceType ? 'Piece direction' : 'Piece type'}</h2>
-                  <p>Choose one logical layer at a time so NOVORA can prepare a clean concept sketch brief.</p>
+                  <p>Choose one logical layer at a time so NOVORA can prepare a clean concept direction brief.</p>
                 </div>
                 <div
                   className={`${styles.stepVisual} ${styles[conceptSteps[0].visualClass]}`}

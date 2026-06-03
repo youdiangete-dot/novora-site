@@ -77,13 +77,24 @@ export default function HomePage() {
       </section>
 
       <section id="how-it-works" className={styles.stepsSection}>
-        <span id="concept-vs-cad" className={styles.anchorTarget} aria-hidden="true" />
         {steps.map((step) => (
           <article key={step.title} className={styles.stepCard}>
             <h2>{step.title}</h2>
             <p>{step.copy}</p>
           </article>
         ))}
+      </section>
+
+      <section id="concept-vs-cad" className={styles.boundarySection} aria-labelledby="concept-vs-cad-heading">
+        <div>
+          <p className={styles.boundaryEyebrow}>Concept vs CAD</p>
+          <h2 id="concept-vs-cad-heading">A Concept Brief starts the review, not production.</h2>
+        </div>
+        <p>
+          The Concept Brief captures early design direction for NOVORA studio review and personal follow-up. CAD,
+          quotation, order decisions, and production are separate later manual steps; this section does not generate
+          production CAD or start an online order.
+        </p>
       </section>
     </main>
   );

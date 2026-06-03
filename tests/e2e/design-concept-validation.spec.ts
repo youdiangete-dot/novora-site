@@ -263,6 +263,10 @@ test.describe('/design/start conversion flow', () => {
       styleLabel: 'Bold modern',
       budget: 'USD 2500+',
     });
+    expect(receivedPayload?.aiSketchInstruction).toBe(
+      'Concept review brief for NOVORA studio follow-up; not a generated sketch, CAD, quote, order, or production approval.',
+    );
+    expect(receivedPayload?.aiSketchInstruction).not.toContain('hand-drawn concept sketch brief');
     expect(receivedPayload?.summaryItems).toEqual(
       expect.arrayContaining([
         { label: 'Recipient', value: 'Partner' },
@@ -281,7 +285,15 @@ test.describe('P0 public copy boundaries', () => {
     await expect(page.getByText('Guided Concept Brief', { exact: true })).toBeVisible();
     await expect(page.getByText('Rapid concept direction in minutes.')).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Order Tracking' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Concept vs CAD' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Concept Sketch' })).toHaveCount(0);
     await expect(page.locator('#concept-vs-cad')).toHaveCount(1);
+    await expect(page.getByRole('heading', { name: 'A Concept Brief starts the review, not production.' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'CAD, quotation, order decisions, and production are separate later manual steps; this section does not generate production CAD or start an online order.',
+      ),
+    ).toBeVisible();
   });
 
   test('labels the public order workflow demo as non-functional', async ({ page }) => {

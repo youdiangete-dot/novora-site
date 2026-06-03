@@ -157,43 +157,42 @@ should be revisited after traffic, provider, or workflow changes.
 ## 6. Recommended Next Agent Sequence
 
 Each item below should remain a separate scoped task with its own approval
-boundary. Do not combine planning approval with Production execution.
+boundary. Do not combine planning approval with Production execution, and do
+not treat any item here as launch approval or commercial readiness.
 
-1. **Agent 29B: Public-facing launch copy and boundary-copy audit**
-   - Review customer-facing pages and owner follow-up language.
-   - Identify wording that could imply AI generation, CAD readiness, quote,
-     payment, sourcing, order creation, or production approval.
-   - Propose docs and copy changes only within a separately approved scope.
+Completed recent sequence items:
 
-2. **Agent 29C: Privacy, terms, contact, and data-handling page planning**
-   - Define the minimum privacy, upload-use, contact, retention, deletion, and
-     custom-order boundary statements needed before broader traffic.
-   - Produce a page plan and owner legal-review checklist.
+- **Agent 29B public-copy boundary audit is complete.** It documented public
+  wording risks without changing app behavior.
+- **Agent 29C public-copy boundary fixes are complete.** The current public copy
+  is framed around Concept Brief intake, studio review, and later separate CAD,
+  quotation, order, and production decisions.
+- **Agent 29D Privacy / Terms / Data Handling planning is complete.** It created
+  a planning packet for owner/legal review; it did not publish final Privacy or
+  Terms pages and does not claim legal compliance.
 
-3. **Agent 29D: Production abuse-control implementation plan and provider setup decision**
-   - Reconfirm Option C for a Production-dedicated Redis resource separate from
-     Preview.
-   - Plan Production rate-limit rollout, Turnstile verification, public
-     admin-notification hardening, safe verification, rollback, and monitoring.
-   - Keep provider provisioning, env changes, secrets, deploy, and Production
-     verification behind explicit later approvals.
+Recommended next scoped work:
 
-4. **Agent 29E: Reference upload abuse-limits review**
-   - Review upload token binding, per-IP and per-brief durable caps, file-count
-     and total-size limits, MIME signature checks, dimensions, cleanup,
-     retention, and storage monitoring.
-   - Produce an implementation packet only.
+1. **Agent 29E: Minimal privacy, contact, and upload notices**
+   - Add short, non-legal customer-facing notices where the current intake and
+     final reference upload flows need clearer expectations.
+   - Do not create final Privacy or Terms pages, legal acceptance checkboxes, or
+     new backend behavior in this notice task.
 
-5. **Agent 29F: Admin operational SOP**
-   - Define queue-check cadence, email-failure handling, notification-event
-     review, response ownership, manual customer follow-up, incident escalation,
-     and synthetic Production test-data handling.
-   - Do not add retry/resend behavior during the SOP task.
+2. **Agent 29F: Privacy and Terms page drafting for owner/legal review**
+   - Draft review-ready Privacy and Terms page copy based on the Agent 29D
+     planning packet.
+   - Keep the draft clearly separated from legal approval and commercial launch
+     readiness.
 
-6. **Agent 29G: Minimal monitoring, backup, export, and retention decision packet**
-   - Define owner-visible signals, alert thresholds, provider review cadence,
-     storage-growth review, backup/export responsibility, deletion handling, and
-     retention periods.
+3. **Agent 29G: Retention, admin SOP, or abuse-control work**
+   - Define retention/deletion/export ownership, admin queue-check cadence,
+     failed/reserved notification review, synthetic Production test-data
+     handling, or public abuse-control implementation planning as separately
+     approved slices.
+   - Keep SQL, Supabase, provider, environment, email, deploy, Production
+     verification, retry/resend, payment, auth, CAD, order, and AI-generation
+     changes behind explicit later approvals.
 
 ## 7. Owner Decision Checklist
 
