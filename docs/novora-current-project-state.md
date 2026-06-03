@@ -296,6 +296,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   admin access, SQL, Supabase, Vercel environment, provider, secret, email,
   deploy, app, test, package, backend, payment, auth, CAD, order,
   AI-generation, or real customer-data action.
+- Agent 29H: added `docs/novora-owner-privacy-retention-decision-packet.md`, a
+  docs-only owner decision packet that turns the Agent 29D, 29F, and 29G
+  privacy/retention/legal planning into owner choices, recommended cautious MVP
+  defaults, a fill-in decision form, launch implications, risk register, and
+  future Agent sequence. This does not make owner decisions, does not implement
+  retention/deletion/export/correction workflows, does not publish final Privacy
+  or Terms pages, does not add footer/header legal links or checkbox behavior,
+  does not claim legal compliance, launch approval, or commercial readiness, and
+  did not involve Production, protected admin access, SQL, Supabase, Vercel
+  environment, provider, secret, email, deploy, app, test, package, backend,
+  payment, auth, CAD, order, AI-generation, or real customer-data action.
 
 ## 7. Current Non-Goals And Boundaries
 

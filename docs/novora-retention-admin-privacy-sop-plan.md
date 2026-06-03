@@ -219,16 +219,18 @@ Draft direction:
 Keep each item in its own scoped branch and approval boundary.
 
 1. **Agent 29H: owner decision packet**
-   - Choose privacy contact email, initial launch regions, retention windows,
-     identity verification method, reference image removal position, minors
-     position, and future AI data-use direction.
-   - No SQL, Production data access, app behavior, or final policy publication.
+   - Added `docs/novora-owner-privacy-retention-decision-packet.md` to turn the
+     retention/admin SOP planning into owner choices, recommended cautious MVP
+     defaults, a fill-in decision form, launch implications, and risk register.
+   - It does not choose final retention periods, implement deletion/export/
+     correction workflows, access Production data, change app behavior, or
+     publish final policy.
 
-2. **Agent 29I: minimal admin SOP checklist in docs**
-   - Convert this plan into a concise daily/weekly owner checklist for queue
-     review, notification status review, privacy request tracking, admin notes,
-     reference handling, and escalation.
-   - No protected admin access or customer-data operations.
+2. **Agent 29I: owner-filled decision packet integration**
+   - Incorporate owner answers into the decision packet or a follow-up decision
+     record after owner/legal review.
+   - No protected admin access, customer-data operations, app behavior, or final
+     policy publication.
 
 3. **Agent 29J: final Privacy/Terms revision after owner/legal review**
    - Update draft legal text only after owner/legal decisions are complete.
@@ -240,7 +242,13 @@ Keep each item in its own scoped branch and approval boundary.
      copy only after final owner/legal approval.
    - Treat checkbox/form behavior as a separate explicit approval item.
 
-5. **Agent 30A or later: technical deletion/export workflow planning**
+5. **Agent 29L: admin privacy SOP checklist and manual request log template**
+   - Convert the SOP direction into a concise owner checklist and request log
+     template for queue review, privacy requests, admin notes, reference-image
+     handling, notification review, and escalation.
+   - No protected admin access or customer-data operations.
+
+6. **Agent 30A or later: technical deletion/export workflow planning**
    - Plan technical deletion, export, correction, retention automation, audit
      logging, or customer/admin tooling only after accounts/admin tooling and
      legal decisions mature.
