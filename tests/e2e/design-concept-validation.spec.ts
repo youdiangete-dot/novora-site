@@ -319,6 +319,41 @@ test.describe('P0 public copy boundaries', () => {
   });
 });
 
+test.describe('draft legal review pages', () => {
+  test('renders the draft privacy page with legal review boundaries', async ({ page }) => {
+    await page.goto('/legal/privacy-draft');
+
+    await expect(page.getByRole('heading', { name: 'Draft Privacy Policy' })).toBeVisible();
+    await expect(page.getByText('Draft for owner/legal review').first()).toBeVisible();
+    await expect(page.getByText('Not final legal text')).toBeVisible();
+    await expect(page.getByText('Not legal advice')).toBeVisible();
+    await expect(
+      page.getByText('Do not rely on this as a published Privacy Policy / Terms until reviewed and approved.'),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What NOVORA Collects' })).toBeVisible();
+    await expect(page.getByText('Real AI generation is not currently implemented in the Concept Brief flow.')).toBeVisible();
+  });
+
+  test('renders the draft terms page with service-boundary language', async ({ page }) => {
+    await page.goto('/legal/terms-draft');
+
+    await expect(page.getByRole('heading', { name: 'Draft Terms / Service Boundary' })).toBeVisible();
+    await expect(page.getByText('Draft for owner/legal review').first()).toBeVisible();
+    await expect(page.getByText('Not final legal text')).toBeVisible();
+    await expect(page.getByText('Not legal advice')).toBeVisible();
+    await expect(
+      page.getByText('Do not rely on this as a published Privacy Policy / Terms until reviewed and approved.'),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Concept Brief Is Not An Order' })).toBeVisible();
+    await expect(page.getByText('A Concept Brief is not an order.')).toBeVisible();
+    await expect(
+      page.getByText(
+        'It does not create a payment, binding quote, CAD approval, production start, order tracking, confirmed project acceptance, or final custom jewelry order.',
+      ),
+    ).toBeVisible();
+  });
+});
+
 test.describe('/design/concept ring logic', () => {
   test('Ring -> Center-stone ring uses focal fields only', async ({ page }) => {
     await openConcept(page, 'ring');
