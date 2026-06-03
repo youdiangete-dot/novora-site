@@ -348,9 +348,10 @@ combine legal/page planning with Production access, provider changes, or app
 behavior changes.
 
 1. **Agent 29E: implement minimal privacy/contact/upload notices in app copy**
-   - Add short helper/acknowledgement copy in `/design/brief` and
-     `/design/submitted` only after owner approves the wording direction.
-   - No final legal pages.
+   - Implemented minimal helper/acknowledgement copy in `/design/brief` and
+     `/design/submitted`.
+   - No final legal pages, footer links, consent behavior, or legal compliance
+     claims were added.
 
 2. **Agent 29F: draft Privacy Policy and Terms pages for owner/legal review**
    - Create draft pages or markdown content explicitly marked as draft for

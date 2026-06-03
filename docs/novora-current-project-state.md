@@ -270,6 +270,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   create final legal text, does not publish Privacy or Terms pages, does not
   approve launch or commercial readiness, and does not claim payment, auth,
   CAD, order, or real AI-generation behavior exists.
+- Agent 29E: added minimal customer-facing privacy/contact/upload notice copy in
+  the existing Concept Brief flow. `/design/brief` now gives concise contact
+  use, sensitive-note, final-reference upload, upload-rights, and submit
+  acknowledgement guidance; `/design/submitted` now aligns the receipt note with
+  studio review and contact follow-up. This does not create final Privacy or
+  Terms pages, does not add legal compliance claims, and does not approve launch
+  or commercial readiness.
 
 ## 7. Current Non-Goals And Boundaries
 
