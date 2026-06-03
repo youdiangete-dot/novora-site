@@ -156,7 +156,8 @@ export default function DesignSubmittedPage() {
           <p className={styles.eyebrow}>Concept brief submitted</p>
           <h1>Concept brief received</h1>
           <p className={styles.successLead}>
-            NOVORA received your Concept Brief for studio review and follow-up.
+            NOVORA received your Concept Brief for studio review and may follow up using the contact details you
+            provided.
           </p>
 
           <dl className={styles.submittedDetails}>
@@ -311,8 +312,9 @@ export default function DesignSubmittedPage() {
               </li>
             </ol>
             <p className={submittedStyles.contactExpectation}>
-              NOVORA will use the submitted email or contact information for follow-up. No automated email is sent from
-              this MVP submission flow.
+              NOVORA will use the submitted email or contact information for follow-up about this Concept Brief. This
+              receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is
+              sent from this submission flow.
             </p>
           </section>
 

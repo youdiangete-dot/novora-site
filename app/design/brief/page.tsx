@@ -1076,8 +1076,9 @@ export default function DesignBriefPage() {
               <div className={styles.contactHeading}>
                 <h3>Contact for concept review</h3>
                 <p>
-                  Your contact details are used only to follow up on this concept brief. If server receipt cannot be
-                  confirmed, your draft stays in this browser so you can retry without restarting.
+                  NOVORA uses these contact details for studio review and manual follow-up about this Concept Brief.
+                  Submitting the brief is not an order, payment, quote, CAD approval, or production confirmation. Please
+                  avoid highly sensitive personal information in the optional note.
                 </p>
               </div>
               <label className={styles.fieldLabel}>
@@ -1142,9 +1143,8 @@ export default function DesignBriefPage() {
                 <div className={styles.contactHeading}>
                   <h3>Final reference upload optional</h3>
                   <p>
-                    Attach the reference images you want saved for studio review here before submitting. Earlier
-                    concept-page image selections are planning references only and are not saved as final uploaded
-                    files.
+                    Attach the final reference images you want saved with this Concept Brief for studio review. Earlier
+                    concept-page image selections are planning references only and are not saved as final uploaded files.
                   </p>
                 </div>
                 <label className={styles.fieldLabel}>
@@ -1167,9 +1167,9 @@ export default function DesignBriefPage() {
                   </ul>
                 ) : null}
                 <p className={styles.placeholderMessage}>
-                  Only files selected in this final upload area are saved for studio review. Uploaded references support
-                  manual concept-direction review only; they do not confirm CAD, pricing,
-                  sourcing, final design approval, or production.
+                  Only files selected in this final upload area are saved with the Concept Brief for studio review.
+                  Upload only files you have the right to share. References support manual concept-direction review only;
+                  they do not confirm CAD, pricing, final design approval, or production.
                 </p>
                 {referenceUploadMessage ? <p className={styles.readyMessage}>{referenceUploadMessage}</p> : null}
               </section>
@@ -1193,10 +1193,10 @@ export default function DesignBriefPage() {
               </Link>
             </div>
             <p className={styles.readyMessage}>
-              This submits a Concept Brief for NOVORA studio review and follow-up. Optional reference uploads are
-              attached only after the brief is saved. This does not place an order or confirm CAD, pricing, payment,
-              sourcing, or production. Paid professional CAD can be discussed later after NOVORA reviews the submitted
-              concept direction.
+              By submitting, you ask NOVORA to use this Concept Brief, your contact details, and any final uploaded
+              reference images for studio review and follow-up. This does not create an order, payment, final quote, CAD
+              approval, or production start. Paid professional CAD can be discussed later after NOVORA reviews the
+              submitted concept direction.
             </p>
           </aside>
         </section>

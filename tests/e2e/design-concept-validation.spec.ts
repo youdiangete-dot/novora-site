@@ -588,7 +588,12 @@ test.describe('/design/brief submission', () => {
     await expect(page.getByRole('heading', { name: 'Contact for concept review' })).toBeVisible();
     await expect(
       page.getByText(
-        'Your contact details are used only to follow up on this concept brief. If server receipt cannot be confirmed, your draft stays in this browser so you can retry without restarting.',
+        'NOVORA uses these contact details for studio review and manual follow-up about this Concept Brief. Submitting the brief is not an order, payment, quote, CAD approval, or production confirmation. Please avoid highly sensitive personal information in the optional note.',
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        'By submitting, you ask NOVORA to use this Concept Brief, your contact details, and any final uploaded reference images for studio review and follow-up.',
       ),
     ).toBeVisible();
     await fillValidContactFields(page);
@@ -596,6 +601,11 @@ test.describe('/design/brief submission', () => {
 
     await expect(page).toHaveURL(/\/design\/submitted$/);
     await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'NOVORA received your Concept Brief for studio review and may follow up using the contact details you provided.',
+      ),
+    ).toBeVisible();
     await expect(page.getByText(/NOVORA-CB-\d{8}-[A-Z0-9]{4}/)).toBeVisible();
     await expect(page.getByText('Mina Chen')).toBeVisible();
     await expect(page.getByText('mina@example.com')).toBeVisible();
@@ -785,8 +795,9 @@ test.describe('/design/brief submission', () => {
     await openMetalOnlyBangleBrief(page);
     await expect(page.getByRole('heading', { name: 'Final reference upload optional' })).toBeVisible();
     await expect(
-      page.getByText('Earlier concept-page image selections are planning references only and are not saved as final uploaded files.'),
+      page.getByText('Attach the final reference images you want saved with this Concept Brief for studio review.'),
     ).toBeVisible();
+    await expect(page.getByText('Upload only files you have the right to share.')).toBeVisible();
     await page.locator('input[type="file"][accept="image/jpeg,image/png,image/webp"]').setInputFiles({
       name: 'brief-reference.png',
       mimeType: 'image/png',
