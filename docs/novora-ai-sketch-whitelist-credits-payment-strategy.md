@@ -229,6 +229,13 @@ planning list only and does not include SQL:
 The eventual schema should be reviewed in a separate approved Agent before any
 SQL, Supabase schema, RLS, grants, policies, or storage changes.
 
+Agent 31C adds the companion schema and permission planning packet in
+`docs/novora-auth-whitelist-credits-payment-schema-plan.md`. That document maps
+future auth, whitelist, trial usage, credits, payments, final sketch package,
+AI sketch ownership, customer event, admin operation, and RLS/security planning
+areas. It is also planning-only and does not implement SQL, auth, payment,
+provider, app, or Supabase behavior.
+
 ## 11. Operational Guardrails
 
 Required guardrails:

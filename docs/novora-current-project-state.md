@@ -358,6 +358,16 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   provider, API key, Vercel environment, SQL, Supabase schema/RLS/grant/policy
   or storage, Production, protected admin, customer submission, email, deploy,
   CAD, order, or customer-data action occurred.
+- Agent 31C: added
+  `docs/novora-auth-whitelist-credits-payment-schema-plan.md`, a docs-only
+  schema and permission planning packet for future customer accounts, whitelist
+  access, trial quotas, credit balances, credit ledger, payment records, paid
+  final sketch packages, AI sketch ownership, customer selection/refinement
+  events, RLS/security boundaries, admin operations, and future implementation
+  sequencing. This was planning only. No SQL, auth, payment, app code, API
+  provider, API key, Vercel environment, Supabase schema/RLS/grant/policy or
+  storage, Production, protected admin, customer submission, email, deploy, CAD,
+  order, AI-generation, or customer-data action occurred.
 
 ## 7. Current Non-Goals And Boundaries
 
