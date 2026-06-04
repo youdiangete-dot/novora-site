@@ -54,8 +54,7 @@
   flex-wrap: wrap;
 }
 
-.primaryCta,
-.secondaryCta {
+.primaryCta {
   border-radius: 999px;
   padding: 0.82rem 1.18rem;
   font-weight: 700;
@@ -68,14 +67,7 @@
   box-shadow: 0 12px 26px rgba(83, 112, 86, 0.18);
 }
 
-.secondaryCta {
-  color: #2f2a24;
-  border: 1px solid #c8b9a7;
-  background: #fff;
-}
-
-.primaryCta:hover,
-.secondaryCta:hover {
+.primaryCta:hover {
   transform: translateY(-1px);
 }
 
