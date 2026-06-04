@@ -79,6 +79,13 @@ manual oversight:
 - Manual offline follow-up for sketch direction, CAD discussion, pricing,
   sourcing, and production decisions.
 
+For trusted industry partner review, use
+`docs/novora-partner-preview-quiet-mvp-testing-checklist.md` as the owner-facing
+checklist for scope, synthetic test data, tester rules, feedback collection, and
+preview boundaries. This cross-reference does not approve public launch,
+commercial readiness, Production testing, admin access, or real customer-data
+review.
+
 ### Acceptable MVP Deferral
 
 These are acceptable deferrals only while traffic is quiet and owner-controlled:
