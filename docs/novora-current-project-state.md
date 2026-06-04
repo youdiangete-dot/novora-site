@@ -336,6 +336,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   not involve Production, protected admin access, customer-data inspection, SQL,
   Supabase, Vercel environment, provider, secret, email, deploy, app, test,
   package, backend, payment, auth, CAD, order, or AI-generation changes.
+- Agent 31A: added
+  `docs/novora-ai-sketch-generation-mvp-implementation-plan.md`, a docs-only
+  implementation packet for the first real AI sketch generation MVP. The
+  recommended direction is admin-triggered generation first, using persisted
+  Concept Brief data and optional final reference images, storing output in
+  private Supabase Storage, and showing `/design/sketch` real output only after
+  approved customer-visible output exists. This was planning only. No real AI
+  generation was implemented, and no API key, environment variable, provider,
+  SQL, Supabase schema/RLS/grant/policy/storage, Production, protected admin,
+  email, deploy, app, test, package, payment, auth, CAD, order, or customer-data
+  action occurred.
 
 ## 7. Current Non-Goals And Boundaries
 
