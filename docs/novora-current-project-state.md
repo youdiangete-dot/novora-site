@@ -347,6 +347,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   SQL, Supabase schema/RLS/grant/policy/storage, Production, protected admin,
   email, deploy, app, test, package, payment, auth, CAD, order, or customer-data
   action occurred.
+- Agent 31B: added
+  `docs/novora-ai-sketch-whitelist-credits-payment-strategy.md`, a docs-only
+  owner strategy packet for AI sketch whitelist testing, staged customer
+  direction/refinement flow, prepaid credits, manual-to-formal payment strategy,
+  future account requirements, guardrails, risks, and owner decisions. Agent 31B
+  also cross-referenced this strategy from the Agent 31A AI sketch generation
+  implementation plan. This was planning only. No real AI generation or real
+  payment happened, and no app code, test, package, authentication, payment,
+  provider, API key, Vercel environment, SQL, Supabase schema/RLS/grant/policy
+  or storage, Production, protected admin, customer submission, email, deploy,
+  CAD, order, or customer-data action occurred.
 
 ## 7. Current Non-Goals And Boundaries
 
