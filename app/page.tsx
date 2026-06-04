@@ -34,9 +34,6 @@ export default function HomePage() {
             <Link href="/design/start" className={styles.primaryCta}>
               Start your design
             </Link>
-            <a href="#how-it-works" className={styles.secondaryCta}>
-              See how it works
-            </a>
           </div>
           <div className={styles.proofStrip}>
             {proofPoints.map((point) => (
