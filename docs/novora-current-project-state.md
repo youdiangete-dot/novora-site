@@ -324,6 +324,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   not involve Production, protected admin access, customer-data inspection, SQL,
   Supabase, Vercel environment, provider, secret, email, deploy, app, test,
   package, backend, payment, auth, CAD, order, or AI-generation changes.
+- Agent 30A: added
+  `docs/novora-partner-preview-quiet-mvp-testing-checklist.md`, a docs-only
+  checklist for owner-controlled partner preview testing with trusted industry
+  reviewers. It covers partner scope, synthetic-data tester rules, current
+  public flow review, unavailable/manual capabilities, owner pre-test checks, a
+  suggested testing script, a feedback template, invitation draft, test-data
+  handling notes, launch-readiness implications, risks, and next Agents. This
+  does not claim partner preview has happened, does not approve public launch or
+  commercial readiness, does not publish final Privacy or Terms pages, and did
+  not involve Production, protected admin access, customer-data inspection, SQL,
+  Supabase, Vercel environment, provider, secret, email, deploy, app, test,
+  package, backend, payment, auth, CAD, order, or AI-generation changes.
 
 ## 7. Current Non-Goals And Boundaries
 
