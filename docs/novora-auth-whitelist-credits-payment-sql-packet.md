@@ -47,6 +47,15 @@ Whitelist testing maps to account, invite, and quota records:
   for cost analytics, not as a promise that every generation creates exactly 5
   customer-approved images.
 
+Free test cost planning remains approximate and provider-dependent:
+
+- One complete free experience is estimated at about USD 3.
+- A tester who uses all 5 complete experiences per day for 3 days may cost about
+  USD 45.
+- 10 testers at that maximum may cost about USD 450.
+- The recommended controlled whitelist budget cap remains about USD 500 to 700
+  to allow limited retry, quality, and buffer risk.
+
 Prepaid points map to credit accounts and an append-only ledger:
 
 | Purchase | Points |
@@ -106,6 +115,12 @@ The SQL below is draft text for review only.
 - Customer, payment, generated-output, and audit data are private by default.
 - Browser clients must never write credit balances, payment confirmations,
   ownership grants, admin audits, or generation cost records directly.
+- `customer_auth_links`, `invite_codes`, `ai_sketch_customer_events`, and
+  `ai_sketch_generation_limits` remain optional future tables from the Agent 31C
+  plan. This packet keeps the first SQL draft focused on customer profiles,
+  whitelist quotas, credit accounting, payments, package orders, ownership, and
+  audit events until the auth provider, invite model, event stream, and flexible
+  limit model are approved.
 
 ## E. Proposed Table Set
 
@@ -921,7 +936,8 @@ Uncertainty to resolve before SQL execution:
 The free test should be represented as a controlled eligibility and quota
 system:
 
-1. The owner creates exactly 10 approved `customer_profiles` and
+1. In a future approved implementation, the owner creates exactly 10 approved
+   `customer_profiles` and
    `whitelist_test_users` rows.
 2. Each tester has a 3-day trial window.
 3. Each tester receives 5 complete experiences per quota date.
@@ -1213,6 +1229,8 @@ Rollback planning before execution:
 | Free quota cost overrun | Provider spend exceeds the USD 500 to 700 controlled test cap. | Whitelist trial, AI generation budget, owner operations. | 10 users can consume 15 complete experiences each, retries and failures can add cost. | Medium likelihood, high severity for MVP budget. | Fixed whitelist, 3-day window, 5/day cap, project budget cap, admin pause, no public free generation. |
 | Anonymous generation abuse | Public users generate expensive outputs without identity or limits. | AI generation, storage, provider cost, privacy. | High-quality generation is valuable and costly if exposed without login. | High likelihood if public, high severity. | Require authenticated/invited profile, no anonymous high-quality generation, no public open free generation. |
 | Double deduction | Customer loses points twice or NOVORA grants twice. | Credit ledger, balances, support, trust. | Browser retries, route timeouts, webhook retries, repeated clicks, race conditions. | Medium likelihood, high severity. | Ledger idempotency keys, transactional balance update, disable duplicate actions, reconciliation reports. |
+| Failed generation after deduction | Points are spent but no usable output is delivered. | Credits, generation jobs, package fulfillment, customer support. | Provider calls, storage writes, moderation, or admin review can fail after a debit is reserved or posted. | Medium likelihood, high severity. | Define request-time versus success-time deduction, record `failed_generation_reversal` rows, and keep failed outputs private. |
+| Retry and idempotency gaps | Retried requests create duplicate jobs, duplicate provider calls, duplicate ledger entries, or inconsistent quota counters. | Quotas, credit ledger, payment webhooks, AI generation, final package delivery. | Network retries, webhook retries, refreshes, and manual admin retries can repeat the same business action. | Medium likelihood, high severity. | Use idempotency keys for ledger/payment events, atomic quota reservation, one active generation per request, and explicit retry reason/audit rows. |
 | Payment mismatch | Paid user does not receive credits or unpaid user receives entitlement. | Payment records, credit grants, final packages. | Manual confirmation errors, provider webhook ordering, duplicate provider events, partial failures. | Medium likelihood, high severity. | Provider-neutral records, idempotent webhook handling, manual reconciliation, status lifecycle, audit events. |
 | Refund or chargeback handling gap | Customer keeps spent credits/final outputs after reversal or loses access unfairly. | Payments, credits, ownership, support. | Refund and chargeback rules are not yet defined. | Medium likelihood after payments, high severity. | Define policy before provider integration, use reversal ledger rows, audit ownership revocation, owner review. |
 | Unauthorized access to customer images or outputs | Private references or generated sketches are exposed. | Storage, ownership, customer trust, privacy. | RLS/storage policy mistakes or public URLs can reveal assets. | Medium likelihood, high severity. | Private buckets, ownership records, server-mediated access, customer-visible approval gate, storage policy review. |
