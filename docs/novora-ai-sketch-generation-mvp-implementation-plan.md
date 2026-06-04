@@ -25,6 +25,13 @@ Current `main` state as of Agent 31A:
 - Real AI sketch generation, CAD automation, payment, orders, customer accounts,
   and production workflow are not implemented.
 
+Agent 31B later added
+`docs/novora-ai-sketch-whitelist-credits-payment-strategy.md` as a docs-only
+owner strategy packet for whitelist testing, staged direction/refinement UX,
+prepaid credits, manual-to-formal payment strategy, future account requirements,
+and budget guardrails. Treat that document as the business strategy companion
+to this technical implementation packet.
+
 Older planning docs may still describe backend or admin behavior as future-only.
 For implementation work, `docs/novora-current-project-state.md` and current
 `main` are the source of truth.
@@ -333,7 +340,8 @@ before Production use.
 
 Local mock mode:
 
-- Agent 31B should add a mock provider path with deterministic fake output state
+- A later code foundation Agent should add a mock provider path with
+  deterministic fake output state
   and no real API key.
 - Test protected admin trigger gating, no duplicate job creation, failure state,
   retry limit, and customer display hiding unapproved output.
@@ -366,18 +374,15 @@ Docs-only validation for Agent 31A:
 
 ## Q. Suggested Follow-Up Agents
 
-- Agent 31B: code foundation with mock provider and no real API key. Add server
-  helper boundaries, prompt builder, route/action skeleton, mock job/output
-  state, and tests without calling a real provider.
-- Agent 31C: real provider env checklist and manual setup. Decide provider,
-  model, data-use terms, Vercel env names, Preview/Production separation, and
-  smoke-test approvals without writing keys into the repo.
-- Agent 31D: admin-triggered real generation implementation. Add real provider
-  adapter behind explicit env readiness and admin gating, store output in
-  Supabase Storage, and preserve retry/cost limits.
-- Agent 31E: `/design/sketch` real output display and smoke test. Show approved
-  outputs only, hide unapproved/internal outputs, and run approved synthetic
-  Preview or Production verification.
+- Agent 31C: auth/whitelist/credits schema planning packet or implementation
+  skeleton.
+- Agent 31D: sketch job/status code foundation with mock/manual provider and no
+  real API key.
+- Agent 31E: customer `/design/sketch` staged direction selection UI.
+- Agent 31F: payment manual-entitlement MVP.
+- Agent 31G: real image provider environment/setup and limited smoke plan.
+- Agent 31H: real auto-generation with quota and budget caps.
+- Agent 31I: payment webhook / automatic credit grant.
 
 ## Risk Register
 
