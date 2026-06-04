@@ -37,12 +37,41 @@ payment, auth, CAD, order, or AI-generation work.
   remain offline/manual and require separate owner confirmation if a project
   proceeds.
 
-## C. Owner Decision Table
+## C. Owner-Selected MVP Defaults As Of 2026-06-03
+
+These are owner-selected MVP defaults for planning and later owner/legal review.
+They are not legal advice, do not claim legal compliance, do not publish final
+Privacy Policy or Terms text, and do not implement backend deletion, export,
+correction, retention, or AI behavior.
+
+- Privacy contact email: `privacy@novora.design`.
+- Cloudflare Email Routing is enabled and tested successfully:
+  `privacy@novora.design` forwards to `youdiangete@gmail.com`.
+- This routing is receive-only forwarding for the MVP. It is not a NOVORA
+  website login, is not a full mailbox login, and does not currently mean
+  outgoing mail is sent from `privacy@novora.design`.
+- Unresponsive submitted Concept Brief retention: 180 days, then manual review
+  for archive/delete decision.
+- Privacy request identity verification: original submitted email plus Concept
+  Brief public reference.
+- Reference image removal: customers may request reference image removal. If
+  the project has already entered CAD, quotation, or production review, handle
+  by manual review rather than automatic deletion.
+- Future AI use: customer brief and reference images may be used only to support
+  that customer's current project AI sketch/concept review when that feature
+  exists or is approved. Do not use customer materials for AI model training,
+  public datasets, or general model improvement unless separately approved and
+  disclosed.
+
+All other choices in the owner decision table remain unresolved unless filled
+below.
+
+## D. Owner Decision Table
 
 | Decision area | Why it matters | Recommended default | Alternative options | Risk if undecided | Owner choice placeholder | Legal review needed? |
 | --- | --- | --- | --- | --- | --- | --- |
-| Public privacy contact email | Customers need a clear channel for privacy questions and requests. | Create a dedicated privacy/contact address before broader launch. | Use existing owner inbox temporarily; publish only a general contact address. | Requests may be missed or routed inconsistently. | Owner answer: ____ | Yes |
-| Data retention for unresponsive submitted briefs | Submitted but inactive briefs contain PII, design notes, and possible reference context. | Pick a manual review window before broader traffic; do not publish until operationally workable. | Review at 90, 180, or 365 days; retain until owner closes the lead. | Data may be kept too long or deleted too early. | Owner answer: ____ | Yes |
+| Public privacy contact email | Customers need a clear channel for privacy questions and requests. | Create a dedicated privacy/contact address before broader launch. | Use existing owner inbox temporarily; publish only a general contact address. | Requests may be missed or routed inconsistently. | Owner answer: `privacy@novora.design`; Cloudflare Email Routing enabled and tested to `youdiangete@gmail.com` as receive-only MVP forwarding. | Yes |
+| Data retention for unresponsive submitted briefs | Submitted but inactive briefs contain PII, design notes, and possible reference context. | Pick a manual review window before broader traffic; do not publish until operationally workable. | Review at 90, 180, or 365 days; retain until owner closes the lead. | Data may be kept too long or deleted too early. | Owner answer: 180 days, then manual review for archive/delete decision. | Yes |
 | Data retention for declined briefs | Declined briefs may no longer need full contact, notes, or images. | Choose a shorter review/removal window than active briefs. | Delete/anonymize after 30, 90, or 180 days; keep minimal closure record. | Unneeded PII and reference images may linger. | Owner answer: ____ | Yes |
 | Data retention for completed offline projects | Website intake may overlap with offline business records. | Separate website intake retention from offline legal/accounting/project records. | Retain intake record for a fixed period; move project history into offline system. | Policy may conflict with business or legal record needs. | Owner answer: ____ | Yes |
 | Data retention for final reference images | Images carry privacy, copyright, and design-rights risk. | Retain only while needed for review or active project discussion. | Remove after verified request; review after 90/180 days; archive only with approval. | Image disputes or over-retention may be harder to resolve. | Owner answer: ____ | Yes |
@@ -51,18 +80,18 @@ payment, auth, CAD, order, or AI-generation work.
 | Manual deletion request handling | No self-service customer account exists. | Handle manually through owner-approved request channel; no backend automation yet. | Defer deletion until tooling exists; use external tracker; create future admin tool. | Owner may be unable to respond consistently. | Owner answer: ____ | Yes |
 | Manual correction request handling | Customers may need contact or brief details corrected. | Verify requester, record requested field, and process only in a separately approved customer-data task. | Accept only minor contact corrections; decline changes after project closure. | Incorrect records or unauthorized changes may occur. | Owner answer: ____ | Yes |
 | Manual export/access request handling | Customers may ask what NOVORA stores about them. | Prepare owner-reviewed manual summaries; do not export raw database dumps or admin notes by default. | Provide only submitted brief copy; include metadata summary; require legal review per request. | Over-disclosure or under-disclosure risk. | Owner answer: ____ | Yes |
-| Identity verification method for privacy requests | Wrong-person access/deletion could expose or remove customer data. | Email-based verification using submitted email plus public reference initially. | Require additional proof; use manual owner call-back; defer high-risk requests to legal. | Weak verification may expose or delete the wrong record. | Owner answer: ____ | Yes |
-| Reference image removal request handling | Images may include personal, third-party, or copyrighted material. | Verify requester and escalate to owner/legal before any storage or metadata action. | Remove image object only; remove object plus metadata; retain minimal tombstone. | Rights disputes and inconsistent deletion handling. | Owner answer: ____ | Yes |
+| Identity verification method for privacy requests | Wrong-person access/deletion could expose or remove customer data. | Email-based verification using submitted email plus public reference initially. | Require additional proof; use manual owner call-back; defer high-risk requests to legal. | Weak verification may expose or delete the wrong record. | Owner answer: original submitted email plus Concept Brief public reference. | Yes |
+| Reference image removal request handling | Images may include personal, third-party, or copyrighted material. | Verify requester and escalate to owner/legal before any storage or metadata action. | Remove image object only; remove object plus metadata; retain minimal tombstone. | Rights disputes and inconsistent deletion handling. | Owner answer: customers may request removal; CAD/quotation/production review cases require manual review rather than automatic deletion. | Yes |
 | Designer/factory sharing of contact details vs minimized specs | Offline partners may not need customer PII. | Share minimized design specs only unless customer contact is necessary and approved. | Share contact details only for active projects; prohibit direct partner contact. | Over-sharing PII with offline partners. | Owner answer: ____ | Yes |
 | Designer/factory sharing of reference images | Partners may need visuals, but images carry rights and privacy risk. | Share only when needed for approved project stage and customer notice/consent position is clear. | Do not share images externally; share watermarked/minimized references; require per-project approval. | Unauthorized redistribution or copying disputes. | Owner answer: ____ | Yes |
 | Launch regions for early testing | Privacy, consumer, language, and cross-border expectations depend on region. | Keep early testing owner-led and controlled in chosen regions. | US-only; US plus selected Asia markets; invite-only international testing. | Final policy may not fit actual traffic. | Owner answer: ____ | Yes |
 | Minors policy | A minor could submit personal data without a clear rule. | Exclude minors and state NOVORA is not directed to children/minors after legal review. | Add age gate later; handle suspected minor submissions case by case. | Higher privacy/legal sensitivity. | Owner answer: ____ | Yes |
-| Future AI use of customer brief/images | Future AI generation or training needs separate disclosure and approval. | Do not use customer data/images for AI training; do not add AI use without separate approved disclosure. | Use brief text only for customer-requested AI generation; prohibit image AI input; allow opt-in only. | AI data-use ambiguity could undermine trust and legal review. | Owner answer: ____ | Yes |
+| Future AI use of customer brief/images | Future AI generation or training needs separate disclosure and approval. | Do not use customer data/images for AI training; do not add AI use without separate approved disclosure. | Use brief text only for customer-requested AI generation; prohibit image AI input; allow opt-in only. | AI data-use ambiguity could undermine trust and legal review. | Owner answer: current customer project AI sketch/concept review only when the feature exists or is approved; no AI model training, public datasets, or general model improvement unless separately approved and disclosed. | Yes |
 | Whether draft legal pages can later become public final pages | Draft pages are not approved final policy. | Convert only after owner/legal review and final copy approval. | Replace with new final pages; keep drafts internal/review-only. | Draft text may be mistaken for final legal policy. | Owner answer: ____ | Yes |
 | Whether footer/header legal links should be added later | Public links imply reviewed public legal pages exist. | Add only after final Privacy/Terms pages are approved. | Footer only; footer plus header; include contact link later. | Links may expose stale draft pages too early. | Owner answer: ____ | Yes |
 | Whether a legal acceptance checkbox is needed later | Checkbox behavior can create legal/UX commitments. | Do not add until legal review explicitly approves wording and behavior. | Passive notice near submit; required checkbox; separate terms acknowledgement. | Checkbox may overpromise, conflict with policy, or create unwanted friction. | Owner answer: ____ | Yes |
 
-## D. Recommended Defaults For A Cautious MVP
+## E. Recommended Defaults For A Cautious MVP
 
 These are non-binding recommended defaults for owner/legal review. They are not
 implemented rules and should not be published as final policy until NOVORA can
@@ -87,13 +116,16 @@ operate them consistently.
 - Add final legal pages, footer/header legal links, and any legal acceptance
   checkbox only after owner/legal review.
 
-## E. Owner Decision Form
+## F. Owner Decision Form
 
 Copy this checklist into the owner review workspace and fill in the blanks.
 Items marked `legal review` should not become public policy until reviewed.
 
-- [ ] Privacy contact email: ____ `legal review`
-- [ ] Unresponsive submitted briefs: choose 90 / 180 / 365 days / manual review only. Owner answer: ____ `legal review`
+- [x] Privacy contact email: `privacy@novora.design`; Cloudflare Email Routing
+      enabled and tested to `youdiangete@gmail.com` as receive-only MVP
+      forwarding. `legal review`
+- [x] Unresponsive submitted briefs: 180 days, then manual review for
+      archive/delete decision. `legal review`
 - [ ] Declined briefs: choose 30 / 90 / 180 days / minimal closure record. Owner answer: ____ `legal review`
 - [ ] Completed offline projects: website intake retention separate from offline records? Yes / No. Owner answer: ____ `legal review`
 - [ ] Final reference images: delete on verified request? Yes / No / case by case. Owner answer: ____ `legal review`
@@ -102,18 +134,24 @@ Items marked `legal review` should not become public policy until reviewed.
 - [ ] Deletion requests: manual only for MVP? Yes / No. Owner answer: ____ `legal review`
 - [ ] Correction requests: manual owner-approved changes only? Yes / No. Owner answer: ____ `legal review`
 - [ ] Export/access requests: manual owner-reviewed summary only? Yes / No. Owner answer: ____ `legal review`
-- [ ] Identity verification: submitted email plus public reference? Yes / No / stronger method. Owner answer: ____ `legal review`
-- [ ] Reference image removal: owner/legal escalation before action? Yes / No. Owner answer: ____ `legal review`
+- [x] Identity verification: original submitted email plus Concept Brief public
+      reference. `legal review`
+- [x] Reference image removal: customers may request removal; CAD/quotation/
+      production review cases require manual review rather than automatic
+      deletion. `legal review`
 - [ ] Designers/factories receive customer contact details? No / only when necessary / yes for active projects. Owner answer: ____ `legal review`
 - [ ] Designers/factories receive reference images? No / only when needed / per-project approval. Owner answer: ____ `legal review`
 - [ ] Early launch regions: ____ `legal review`
 - [ ] Minors excluded? Yes / No / legal to decide. Owner answer: ____ `legal review`
-- [ ] Future AI use of customer brief/images: never without opt-in / customer-requested generation only / undecided. Owner answer: ____ `legal review`
+- [x] Future AI use of customer brief/images: current customer project AI
+      sketch/concept review only when the feature exists or is approved; no AI
+      model training, public datasets, or general model improvement unless
+      separately approved and disclosed. `legal review`
 - [ ] Draft legal pages may become final after review? Yes / replace with new pages / undecided. Owner answer: ____ `legal review`
 - [ ] Footer/header legal links later? Footer only / footer plus header / undecided. Owner answer: ____ `legal review`
 - [ ] Legal acceptance checkbox later? No / passive notice / required checkbox / legal to decide. Owner answer: ____ `legal review`
 
-## F. Launch Readiness Implications
+## G. Launch Readiness Implications
 
 Unresolved owner decisions block different launch steps:
 
@@ -133,7 +171,7 @@ Unresolved owner decisions block different launch steps:
   brief text or images may be used for AI input, generation, training, or provider
   processing.
 
-## G. Future Implementation Sequence
+## H. Future Implementation Sequence
 
 Keep each item in a separate scoped branch and approval boundary.
 
@@ -157,7 +195,7 @@ Keep each item in a separate scoped branch and approval boundary.
    - SQL, Supabase, real customer data, backend behavior, auth, Production, and
      provider changes require separate explicit approval.
 
-## H. Risk Register
+## I. Risk Register
 
 | Risk | What may happen | Affected area | Likelihood | Severity | Mitigation | Owner decision needed |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -175,7 +213,7 @@ Keep each item in a separate scoped branch and approval boundary.
 | Adding footer legal links too early | Links may point to draft or incomplete pages. | Navigation, public trust | Medium | Medium | Add links only after final pages. | Link timing |
 | Adding checkbox without legal review | Checkbox may create unsupported commitments or friction. | Brief form, legal UX | Medium | High | Keep no checkbox until approved. | Acceptance behavior |
 
-## I. Clear Non-Goals
+## J. Clear Non-Goals
 
 - No real data deletion, export, correction, or inspection.
 - No SQL execution.

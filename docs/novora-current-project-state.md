@@ -307,6 +307,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   did not involve Production, protected admin access, SQL, Supabase, Vercel
   environment, provider, secret, email, deploy, app, test, package, backend,
   payment, auth, CAD, order, AI-generation, or real customer-data action.
+- Agent 29I: recorded owner-selected MVP privacy/retention defaults in
+  `docs/novora-owner-privacy-retention-decision-packet.md`. The owner selected
+  `privacy@novora.design` as the public privacy contact email and recorded that
+  Cloudflare Email Routing is enabled and tested to `youdiangete@gmail.com` as
+  receive-only MVP forwarding, not a website login, full mailbox login, or
+  outgoing mail setup. Agent 29I also recorded the 180-day manual review window
+  for unresponsive submitted briefs, original submitted email plus public
+  reference as privacy request verification, reference image removal with manual
+  review for CAD/quotation/production-stage cases, and future AI use limited to
+  the customer's current project AI sketch/concept review when that feature
+  exists or is approved, with no model training, public datasets, or general
+  model improvement unless separately approved and disclosed. This does not
+  publish final Privacy or Terms pages, does not claim legal compliance, does
+  not implement backend retention/deletion/export/correction workflow, and did
+  not involve Production, protected admin access, customer-data inspection, SQL,
+  Supabase, Vercel environment, provider, secret, email, deploy, app, test,
+  package, backend, payment, auth, CAD, order, or AI-generation changes.
 
 ## 7. Current Non-Goals And Boundaries
 
