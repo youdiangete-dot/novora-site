@@ -227,10 +227,15 @@ Keep each item in its own scoped branch and approval boundary.
      publish final policy.
 
 2. **Agent 29I: owner-filled decision packet integration**
-   - Incorporate owner answers into the decision packet or a follow-up decision
-     record after owner/legal review.
-   - No protected admin access, customer-data operations, app behavior, or final
-     policy publication.
+   - Recorded owner-selected MVP defaults in
+     `docs/novora-owner-privacy-retention-decision-packet.md`, including
+     `privacy@novora.design`, tested receive-only Cloudflare Email Routing,
+     180-day unresponsive-brief manual review, verification by submitted email
+     plus public reference, reference-image removal review rules, and
+     current-project-only future AI-use limits.
+   - Final Privacy/Terms publication, legal review, protected admin access,
+     customer-data operations, app behavior, and backend retention/deletion/
+     export/correction workflow remain future work.
 
 3. **Agent 29J: final Privacy/Terms revision after owner/legal review**
    - Update draft legal text only after owner/legal decisions are complete.

@@ -377,10 +377,18 @@ behavior changes.
    - Owner/legal review, final policy publication, final legal pages, footer
      links, and any checkbox/form behavior remain future work.
 
-5. **Later separate task: future AI-data-use disclosure plan**
+5. **Agent 29I: owner-filled privacy/retention defaults**
+   - Recorded owner-selected MVP defaults in the owner decision packet,
+     including `privacy@novora.design`, tested receive-only Cloudflare Email
+     Routing, 180-day unresponsive-brief manual review, verification by
+     submitted email plus public reference, reference-image removal review
+     rules, and current-project-only future AI-use limits.
+   - Final Privacy/Terms publication and legal review remain future work.
+
+6. **Later separate task: future AI-data-use disclosure plan**
    - Prepare separate disclosure and consent planning before any real AI sketch
      generation uses customer text, reference images, or design preferences.
 
-6. **Later separate task: final owner/legal approval and publication**
+7. **Later separate task: final owner/legal approval and publication**
    - Only after the owner/legal review checklist is complete should NOVORA add
      final Privacy / Terms pages, footer links, or consent/banner behavior.
