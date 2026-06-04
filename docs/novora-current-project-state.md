@@ -368,6 +368,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   provider, API key, Vercel environment, Supabase schema/RLS/grant/policy or
   storage, Production, protected admin, customer submission, email, deploy, CAD,
   order, AI-generation, or customer-data action occurred.
+- Agent 31D: added
+  `docs/novora-auth-whitelist-credits-payment-sql-packet.md`, a docs-only
+  review packet with draft SQL text for future customer profiles, whitelist test
+  users, trial quotas, credit accounts, credit ledger entries, provider-neutral
+  payment records, paid final sketch package orders, AI sketch ownership
+  records, admin audit events, RLS/grant planning, migration sequencing, and
+  risk review. No SQL was executed. No Supabase, RLS, grants, policies, storage,
+  auth/login, payment provider, app code, test, package, environment variable,
+  secret, Production, deploy, email, AI generation, CAD/order, protected admin,
+  real submission, or customer-data operation was performed. Recommended next
+  step after review: approve or revise the SQL packet, then open a separate
+  future task for auth-model selection and live-schema verification before any
+  migration or implementation work.
+- Agent 31D Review Pass: PR #102 is still draft and unmerged at the time of
+  this review pass. The pass kept the work docs-only and tightened the SQL
+  packet around free-test cost estimates, optional table assumptions, retry and
+  failed-generation risk, and the future-only implementation boundary. No SQL
+  was executed. No Supabase, RLS, grants, policies, storage, auth/login, payment
+  provider, app code, test, package, environment variable, secret, Production,
+  deploy, email, AI generation, CAD/order, protected admin, real submission, or
+  customer-data operation was performed. Recommended next step remains review of
+  PR #102, not implementation.
 
 ## 7. Current Non-Goals And Boundaries
 
