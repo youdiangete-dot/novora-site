@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import HomeCarousel from '../components/HomeCarousel';
+import SketchGallery from '../components/SketchGallery';
 import styles from './page.module.css';
 
 const steps = [
@@ -72,6 +73,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <SketchGallery />
 
       <section id="how-it-works" className={styles.stepsSection}>
         {steps.map((step) => (
