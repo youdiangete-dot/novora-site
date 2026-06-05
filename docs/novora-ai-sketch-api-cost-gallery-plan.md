@@ -130,7 +130,7 @@ credits.
 | --- | --- | --- | --- | --- | --- | --- |
 | `free_whitelist_direction` | Lower-cost draft or medium-quality direction tier, such as a mini model or medium quality profile if provider-supported. | No. | May consume whitelist free quota; should record promotional cost. | Required before customer/gallery display if quality or privacy is uncertain. | Only after separate approval and permission. | Capped to invited testers; no anonymous access. |
 | `paid_refinement` | Stronger refinement of the selected direction. | No. | Planned 8 points per high-quality refinement. | Recommended, especially during beta. | Possible only after approval and permission. | Must link to selected parent direction and prevent duplicate deductions. |
-| `single_final_image` | Production-quality AI concept sketch package. | No. | Planned 19 points or paid equivalent. | Required before delivery in early phases. | Possible only after approval and permission. | Must preserve concept-only boundary despite higher quality. |
+| `single_final_image` | High-quality AI concept sketch package. | No. | Planned 19 points or paid equivalent. | Required before delivery in early phases. | Possible only after approval and permission. | Must preserve concept-only boundary despite higher quality. |
 | `proposal_final_package` | Main paid final sketch package with stronger presentation value. | No. | Planned 29 points or paid equivalent. | Required. | Possible only after approval and permission. | Recommended main customer package, not CAD or quote. |
 | `commercial_presentation_package` | High-quality image tier plus human selection/retry if needed for presentation or print-ready style use. | No. | Planned 49 points or paid equivalent. | Required. | Possible only after approval, permission, and extra privacy review. | Do not imply manufacturing rights, CAD, exclusivity, trademark clearance, or production feasibility. |
 
@@ -153,7 +153,7 @@ Required future implementation gate before enabling real API generation:
 - Update point deduction rules.
 - Update free whitelist budget caps.
 - Update paid package prices.
-- Update retry, failed-output, and refund assumptions.
+- Update retry, failed-output, and refund policy assumptions.
 - Update admin dashboard cost display.
 - Update ledger/payment docs if needed.
 - Record the pricing assumption version in generation records.
