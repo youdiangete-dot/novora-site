@@ -408,6 +408,21 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   CAD/order/production, or customer-data operation was performed. Recommended
   next step after review: choose a separate docs/mock-gallery/API-design slice
   without starting implementation from this entry alone.
+- Agent 35A: recorded the newer task context that PR #105 and PR #106 have been
+  merged. PR #105 made the curated mock sketch gallery UI live and the
+  Production public-page smoke check passed. PR #106 added the admin-only AI
+  Sketch Review Workflow skeleton to the protected admin brief detail page.
+  Agent 35A added
+  `docs/novora-admin-ai-sketch-review-workflow-state-plan.md`, a docs-only plan
+  for future persistence and state management of that admin workflow. The plan
+  defines the future workflow statuses, safe transition rules, customer
+  visibility gates, customer-preview versus public-gallery separation, audit
+  expectations, future data-model planning fields, tests, stop gates, and risk
+  review. No SQL, Supabase, RLS, storage, app code, API route, OpenAI API, image
+  generation, customer-facing sketch display, auth, payment, environment,
+  secret, Production/admin access, submission, email, deploy, CAD, order,
+  production, or customer-data operation was performed. Recommended next step is
+  review of the plan, not implementation.
 
 ## 7. Current Non-Goals And Boundaries
 
