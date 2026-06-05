@@ -390,6 +390,24 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   deploy, email, AI generation, CAD/order, protected admin, real submission, or
   customer-data operation was performed. Recommended next step remains review of
   PR #102, not implementation.
+- Agent 33A: recorded the newer task context that PR #102 has since been merged
+  and cleaned up, and that PR #103 has been merged and cleaned up. PR #103
+  removed the homepage Hero "See how it works" secondary CTA, leaving only
+  "Start your design"; the post-PR #103 Production smoke check passed:
+  `https://novora.design` redirected to `https://www.novora.design/`, "Start
+  your design" was visible and linked to `/design/start`, "See how it works"
+  was absent, and no obvious desktop Hero layout issue was seen. Agent 33A added
+  `docs/novora-ai-sketch-api-cost-gallery-plan.md`, a docs-only plan for future
+  AI sketch API parameter locking, cost-control, pricing-change safety, points
+  relationship, whitelist caps, admin-reviewed gallery approval, and the planned
+  public gallery API shape. Agent 33A Review Pass verified PR #104 was still
+  draft, open, and unmerged at the time of review. No OpenAI API was called. No
+  real image generation happened. No SQL, Supabase, storage, RLS, auth/login,
+  payment/provider logic, points deduction, app code, tests, package files,
+  Vercel env, secrets, Production/admin access, submissions, email, deploy,
+  CAD/order/production, or customer-data operation was performed. Recommended
+  next step after review: choose a separate docs/mock-gallery/API-design slice
+  without starting implementation from this entry alone.
 
 ## 7. Current Non-Goals And Boundaries
 
