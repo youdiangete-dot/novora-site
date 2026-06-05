@@ -78,6 +78,13 @@ async function goToMetalAndWearability(page: Page) {
   await expectForbiddenOptionsAbsent(page);
 }
 
+async function expectInternalAiSketchReviewWorkflowAbsent(page: Page) {
+  await expect(page.getByRole('heading', { name: 'AI Sketch Review Workflow' })).toHaveCount(0);
+  await expect(page.getByText('No internal sketch drafts yet.')).toHaveCount(0);
+  await expect(page.getByText('Draft generated')).toHaveCount(0);
+  await expect(page.getByText('Needs revision')).toHaveCount(0);
+}
+
 async function goToReviewBrief(page: Page) {
   await page.getByRole('button').filter({ hasText: 'Review brief' }).click();
   await expect(page.locator('form').getByRole('heading', { name: 'Review brief' })).toBeVisible();
@@ -278,6 +285,15 @@ test.describe('/design/start conversion flow', () => {
 });
 
 test.describe('P0 public copy boundaries', () => {
+  test('keeps internal AI sketch review workflow copy off customer-facing pages', async ({ page }) => {
+    const customerRoutes = ['/', '/design/start', '/design/concept?pieceType=ring', '/design/submitted', '/design/sketch'];
+
+    for (const route of customerRoutes) {
+      await page.goto(route);
+      await expectInternalAiSketchReviewWorkflowAbsent(page);
+    }
+  });
+
   test('frames the homepage as guided intake without live AI delivery or order tracking claims', async ({ page }) => {
     await page.goto('/');
 
@@ -1134,6 +1150,18 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByText('United States', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Reference images metadata' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI sketch instruction / concept direction' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'AI Sketch Review Workflow' })).toBeVisible();
+    await expect(page.getByText('Internal draft not generated')).toBeVisible();
+    await expect(page.getByText('No internal sketch drafts yet.')).toBeVisible();
+    await expect(page.getByText('Draft generated')).toBeVisible();
+    await expect(page.getByText('Needs revision')).toBeVisible();
+    await expect(page.getByText('Approved for customer')).toBeVisible();
+    await expect(
+      page.getByText(
+        'AI sketches are internal drafts until reviewed and approved. Customers must only see sketches approved by the NOVORA design team.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByText('This does not generate, store, or deliver sketches yet.')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin review status' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin notification status' })).toBeVisible();
     await expect(

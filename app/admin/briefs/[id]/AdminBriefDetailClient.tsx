@@ -39,6 +39,28 @@ type AdminBriefDetailClientProps = {
   serverDataMessage?: string;
 };
 
+const aiSketchReviewStatuses = [
+  {
+    label: 'Internal draft not generated',
+    meaning: 'No internal sketch draft has been generated yet.',
+  },
+  {
+    label: 'Draft generated — internal only',
+    meaning:
+      'GPT/AI has generated an internal draft, but it is only for admin/design-team review.',
+  },
+  {
+    label: 'Needs revision',
+    meaning:
+      'Human review found structure, style, or brief-alignment issues and the sketch needs revision.',
+  },
+  {
+    label: 'Approved for customer',
+    meaning:
+      'NOVORA human review has approved the sketch for customer-facing concept presentation.',
+  },
+];
+
 function getSourceLabel(brief: AdminBriefRecord) {
   if (brief.source === 'supabase') {
     return 'Supabase concept brief submission';
@@ -112,6 +134,33 @@ function getReferenceAssetList(brief: AdminBriefRecord) {
   }
 
   return getReferenceNames(brief);
+}
+
+function AiSketchReviewStatusList() {
+  return (
+    <ul className={styles.fileList}>
+      {aiSketchReviewStatuses.map((status) => (
+        <li key={status.label}>
+          <div className={styles.primaryCell}>
+            <span>{status.label}</span>
+            <span>{status.meaning}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function AiSketchReviewGuidance() {
+  return (
+    <ul className={styles.fileList}>
+      <li>AI/GPT sketch drafts are internal review material.</li>
+      <li>Human review must check structure, style, and brief fit.</li>
+      <li>Drafts needing revision should not be shown to customers.</li>
+      <li>Only approved sketches can later become customer-facing concept previews.</li>
+      <li>This does not generate, store, or deliver sketches yet.</li>
+    </ul>
+  );
 }
 
 function DetailSection({ title, rows }: { title: string; rows: DetailRow[] }) {
@@ -223,6 +272,20 @@ export default function AdminBriefDetailClient({
                 ? 'Status and notes are loaded from Supabase admin_notes.'
                 : 'Supabase admin review persistence is unavailable for this record, so state is local-only fallback data.',
           },
+        ],
+      },
+      {
+        title: 'AI Sketch Review Workflow',
+        rows: [
+          { label: 'Default workflow status', value: 'Internal draft not generated' },
+          { label: 'Empty state', value: 'No internal sketch drafts yet.' },
+          {
+            label: 'Customer visibility boundary',
+            value:
+              'AI sketches are internal drafts until reviewed and approved. Customers must only see sketches approved by the NOVORA design team.',
+          },
+          { label: 'Workflow statuses', value: <AiSketchReviewStatusList /> },
+          { label: 'Manual review guidance', value: <AiSketchReviewGuidance /> },
         ],
       },
       {
