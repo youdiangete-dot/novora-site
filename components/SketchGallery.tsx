@@ -90,11 +90,11 @@ export default function SketchGallery() {
   return (
     <section className={styles.gallerySection} aria-labelledby="sketch-gallery-heading">
       <div className={styles.sectionHeader}>
-        <p className={styles.eyebrow}>Curated concept sketch preview</p>
+        <p className={styles.eyebrow}>Curated mock concept sketch preview</p>
         <h2 id="sketch-gallery-heading">From idea notes to refined sketch direction.</h2>
         <p>
-          A glimpse of the kind of concept-only visual language NOVORA can shape before any later CAD, quotation, or
-          production discussion.
+          Mock previews of the kind of concept-only visual language NOVORA can shape before any later CAD, quotation,
+          order, or production approval discussion.
         </p>
       </div>
 
