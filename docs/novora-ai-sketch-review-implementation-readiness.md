@@ -179,6 +179,10 @@ A sketch can only become customer-visible if all of the following are true:
 preview. It does not approve CAD, quote, order, sourcing, payment, production,
 manufacturing, public gallery use, or public publishing.
 
+Private customer preview, public gallery approval, and commercial package
+delivery remain separate future stages. Each needs its own approved route,
+access rules, tests, and explicit implementation task.
+
 ## J. Test Readiness
 
 Future implementation should include focused tests for:
@@ -226,7 +230,7 @@ Future implementation must plan for:
 
 Conservative next steps:
 
-1. Merge this readiness review PR after review.
+1. Review this readiness review PR; merge only after normal review if accepted.
 2. Perform final review of the SQL packet.
 3. Obtain explicit user approval for SQL execution only.
 4. Execute minimal SQL/schema only if approved.
