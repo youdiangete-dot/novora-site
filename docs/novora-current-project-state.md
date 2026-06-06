@@ -16,7 +16,7 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD recorded after PR #108:
+- Current `main` HEAD / PR #108 merge commit:
   `0b4cc8053279a4254bf0ee4a5e49767646acc8da`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
@@ -410,30 +410,44 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   CAD/order/production, or customer-data operation was performed. Recommended
   next step after review: choose a separate docs/mock-gallery/API-design slice
   without starting implementation from this entry alone.
-- Agent 35A: recorded that PR #105 and PR #106 were merged. PR #105 made the
-  curated mock sketch gallery UI live and the Production public-page smoke check
-  passed. The homepage Hero still showed `Start your design` linking to
-  `/design/start`, `See how it works` remained absent, and the curated gallery
-  was visible after the Hero. Public/customer route checks for `/design/start`,
-  `/design/concept`, `/design/brief`, `/design/submitted`, and
-  `/design/sketch` did not expose internal AI sketch review workflow text. The
-  gallery copy framed previews as mock/concept-only and separate from CAD,
-  quotation, order, or production approval. PR #106 added the static,
-  admin-only AI Sketch Review Workflow skeleton to the protected admin brief
-  detail page with default status `Internal draft not generated`, empty state
-  `No internal sketch drafts yet.`, and internal-only guidance that AI sketches
-  are internal drafts until reviewed and approved. PR #106 cleanup was completed
-  as far as safety rules allowed: `main` was clean, the remote branch was
-  deleted, worktree registration was removed after targeted cleanup, filesystem
-  residue remained at `2aaf`, and a prior local feature branch deletion attempt
-  hit permission denied. Agent 35A then added
+- Agent 35A: recorded that PR #105 and PR #106 were merged. PR #105 merge
+  commit `6602ccd8cf1fd6650ff6672c88ef58867d727415` made the curated mock
+  sketch gallery UI live, post-merge cleanup completed, and the Production
+  public-page smoke check passed. The homepage Hero still showed
+  `Start your design` linking to `/design/start`, `See how it works` remained
+  absent, and the curated gallery was visible after the Hero. Public/customer
+  route checks for `/design/start`, `/design/concept`, `/design/brief`,
+  `/design/submitted`, and `/design/sketch` did not expose internal AI sketch
+  review workflow text. The gallery copy framed previews as mock/concept-only
+  and separate from CAD, quotation, order, or production approval. `/admin` was
+  not accessed, no forms were submitted, and no high-risk action was performed
+  during that public smoke check. PR #106 merge commit
+  `87e02d574ca30c98f6285261fa9f8bccf1e50e16` added the static, skeleton-only,
+  admin-only AI Sketch Review Workflow module to the protected admin brief
+  detail page. The module has default status `Internal draft not generated`,
+  empty state `No internal sketch drafts yet.`, and admin status labels
+  `Internal draft not generated`, `Draft generated - internal only`,
+  `Needs revision`, and `Approved for customer`. Its internal-only guidance
+  states that AI sketches are internal drafts until reviewed and approved, and
+  that customers must only see sketches approved by the NOVORA design team. PR
+  #106 did not implement OpenAI API calls, image generation or storage,
+  Supabase persistence, or customer-facing sketch display. PR #106 cleanup was
+  completed as far as safety rules allowed: `main` was clean, the remote branch
+  was deleted, worktree registration was removed after targeted cleanup,
+  filesystem residue remained at `2aaf`, and a prior local feature branch
+  deletion attempt hit permission denied. Agent 35A then added
   `docs/novora-admin-ai-sketch-review-workflow-state-plan.md`, a docs-only plan
-  for future persistence and state management of the admin workflow. PR #107 has
-  since been merged and cleaned up. No SQL, Supabase, RLS, storage, app code,
-  API route, OpenAI API, image generation, customer-facing sketch display, auth,
-  payment, environment, secret, Production/admin access, submission, email,
-  deploy, CAD, order, production, or customer-data operation was performed for
-  the docs-only PR #107 planning work.
+  for future persistence and state management of the admin workflow. PR #107
+  merge commit `23515e45e6a37db75d8af71550bceb395d489387` has since been
+  merged and cleaned up. The PR #107 plan records that unreviewed GPT/AI drafts
+  must never be shown directly to customers, `approved_for_customer` does not
+  equal `approved_for_gallery`, AI generation success alone must not approve a
+  sketch, and customer visibility must be gated by human/admin approval plus
+  delivery rules. No SQL, Supabase, RLS, storage, app code, API route, OpenAI
+  API, image generation, customer-facing sketch display, auth, payment,
+  environment, secret, Production/admin access, submission, email, deploy, CAD,
+  order, production, or customer-data operation was performed for the docs-only
+  PR #107 planning work.
 - Agent 36A: after PR #107 merged and cleaned up, updated
   `docs/novora-auth-whitelist-credits-payment-sql-packet.md` with a docs-only
   future SQL packet section for admin AI Sketch Review Workflow persistence,
@@ -444,16 +458,22 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   current admin status label, internal-draft/customer-display boundary, and
   review-only persistence wording. PR #108 has since been merged and cleaned up;
   the merge commit is `0b4cc8053279a4254bf0ee4a5e49767646acc8da`. Cleanup
-  deleted the remote branch and local feature branch, removed worktree
-  registration, and left filesystem residue at `0663`. No SQL was executed. No
-  Supabase, RLS, storage, app code, API route, OpenAI API, image generation,
+  deleted the remote branch and local feature branch, removed the Agent 36A
+  worktree registration, and left local Windows/Codex filesystem residue at
+  `C:\Users\Administrator.DESKTOP-QI6183Q\.codex\worktrees\0663\novora-site`.
+  PR #108 changed only `docs/novora-auth-whitelist-credits-payment-sql-packet.md`
+  and `docs/novora-current-project-state.md`. No SQL was executed. No Supabase,
+  RLS, storage, app code, API route, OpenAI API, image generation,
   customer-facing sketch display, auth, payment, environment, secret,
   Production/admin access, submission, email, deploy, CAD, order, production,
   or customer-data operation was performed. The planning boundary remains:
-  unreviewed GPT/AI drafts must never be shown directly to customers,
-  `approved_for_customer` does not equal `approved_for_gallery`, AI generation
-  success alone must not approve a sketch, and customer visibility must be gated
-  by human/admin approval plus separate delivery rules.
+  NOVORA AI sketch output is a concept sketch only, not CAD, not a quote, not an
+  order, and not production approval; AI sketches are internal drafts until
+  reviewed and approved; customers must only see sketches approved by the NOVORA
+  design team; unreviewed GPT/AI drafts must never be shown directly to
+  customers; `approved_for_customer` does not equal `approved_for_gallery`; AI
+  generation success alone must not approve a sketch; and customer visibility
+  must be gated by human/admin approval plus separate delivery rules.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -474,6 +494,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - Special or custom chain requirements should route to manual confirmation.
 - Reference images selected on `/design/concept` are planning-only.
 - Final real upload happens on `/design/brief`.
+- Demand-side market direction remains North America first, with Europe, Japan,
+  and Taiwan as secondary future markets. China should be treated as NOVORA's
+  supply-chain, gemstone processing, jewelry manufacturing, production-cost,
+  and factory-support base unless a future task explicitly approves separate
+  demand-side China-market analysis.
 - Traditional Chinese and Taiwan should be included as future localization and market direction.
 
 ## 9. Operating Rules For Future Codex Work
