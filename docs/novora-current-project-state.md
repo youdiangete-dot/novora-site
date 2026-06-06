@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #109 merge commit:
-  `81db167448d6effdc7c528627430ed1e307598c6`
+- Current `main` HEAD / PR #110 merge commit:
+  `1609bb5b4d8039d24cc7f7c4d96e431b122ab80a`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -500,6 +500,19 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   points, environment variable, secret, Production/admin access, submission,
   email, deploy, CAD, order, production, or customer-data operation was
   performed during the review pass.
+- Agent 39A: recorded that PR #110 has since been merged and cleaned up, then
+  added
+  `docs/novora-ai-sketch-review-minimal-sql-execution-approval-packet.md`, a
+  docs-only approval packet for a future minimal SQL execution decision for
+  internal admin AI Sketch Review Workflow persistence. The packet states that
+  merging the document does not approve SQL execution and that a separate
+  explicit user message is required before any concrete SQL execution step. No
+  SQL was executed. No Supabase, RLS, grants, policies, storage, app code, API
+  route, OpenAI API, image generation, image upload/storage, customer-facing
+  sketch display, public gallery automation, auth, payment, points, environment
+  variable, secret, Production/admin access, submission, email, deploy, CAD,
+  order, production, or customer-data operation was performed. The next step is
+  review of the approval packet, not SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 
