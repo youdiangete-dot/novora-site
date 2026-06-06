@@ -14,7 +14,8 @@ AI sketches are internal drafts until reviewed and approved. Customers must
 only see sketches approved by the NOVORA design team. An AI sketch is an AI
 hand-drawn concept sketch for early design direction only. It is not CAD, not a
 quote, not an order, not final pricing, not sourcing confirmation, and not
-production approval.
+production approval. Unreviewed GPT/AI drafts must never be shown directly to
+customers.
 
 This plan is intended to give a future implementation agent a safe state model
 for the admin AI Sketch Review Workflow added in PR #106. It must be reviewed
