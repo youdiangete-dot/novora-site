@@ -1129,6 +1129,12 @@ This update prepares a future persistence model for the admin AI Sketch Review
 Workflow added in PR #106 and planned in
 `docs/novora-admin-ai-sketch-review-workflow-state-plan.md`.
 
+AI sketches remain concept sketches only. They are not CAD, not quotes, not
+orders, and not production approval. AI sketches are internal drafts until
+reviewed and approved by the NOVORA design team. Unreviewed GPT/AI drafts must
+never be shown directly to customers. `approved_for_customer` does not equal
+`approved_for_gallery`.
+
 ### Current baseline
 
 The current implemented baseline is static and admin-only:
@@ -1139,7 +1145,7 @@ The current implemented baseline is static and admin-only:
 - Empty state: `No internal sketch drafts yet.`.
 - Current admin statuses:
   - `Internal draft not generated`
-  - `Draft generated - internal only`
+  - `Draft generated — internal only`
   - `Needs revision`
   - `Approved for customer`
 - No persistence exists yet for the AI Sketch Review Workflow.
@@ -1154,7 +1160,7 @@ remain separate unless a later approved task intentionally links them.
 | Database value | Label | Meaning | Customer visibility | Allowed next statuses | Disallowed transitions | Customer-facing access allowed |
 | --- | --- | --- | --- | --- | --- | --- |
 | `internal_draft_not_generated` | Internal draft not generated | No internal AI sketch draft exists for the Concept Brief. | None. | `draft_generated_internal_only` | Direct approval or revision without an output. | No. |
-| `draft_generated_internal_only` | Draft generated - internal only | A successful AI/internal draft exists for admin/design-team review only. | None. | `needs_revision`, `approved_for_customer` | Customer delivery, gallery approval, or reset without void/replacement handling. | No. |
+| `draft_generated_internal_only` | Draft generated — internal only | A successful AI/internal draft exists for admin/design-team review only. | None. | `needs_revision`, `approved_for_customer` | Customer delivery, gallery approval, or reset without void/replacement handling. | No. |
 | `needs_revision` | Needs revision | Human review found quality, privacy, structure, style, or brief-fit issues. | None; any existing preview must be blocked or revoked. | `draft_generated_internal_only`, `approved_for_customer` after human review | Customer delivery, public gallery approval, or automatic approval after regeneration. | No. |
 | `approved_for_customer` | Approved for customer | Human/admin review approved a specific output for private customer-facing concept presentation. | Eligible only after separate delivery gates pass. | `needs_revision` or a future revoked state; new outputs start internal-only. | Automatic public gallery approval, CAD/quote/order/production approval, or approval without a reviewer. | Conditional only. |
 

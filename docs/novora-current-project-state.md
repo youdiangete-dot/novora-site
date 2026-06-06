@@ -436,6 +436,15 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   secret, Production/admin access, submission, email, deploy, CAD, order,
   production, or customer-data operation was performed. Recommended next step is
   review of the SQL packet update, not implementation.
+- Agent 36A Review Pass: PR #108 is open, draft, and unmerged at the time of
+  this review pass. The pass kept the work docs-only and tightened the SQL
+  packet around the current admin status label, internal-draft/customer-display
+  boundary, and review-only persistence wording. No SQL was executed. No
+  Supabase, RLS, storage, app code, API route, OpenAI API, image generation,
+  customer-facing sketch display, auth, payment, environment, secret,
+  Production/admin access, submission, email, deploy, CAD, order, production,
+  or customer-data operation was performed. Recommended next step remains
+  review of PR #108, not implementation.
 
 ## 7. Current Non-Goals And Boundaries
 
