@@ -1116,7 +1116,305 @@ Privacy considerations:
 - Provider retention/training terms must be reviewed before sending real
   customer data to any image provider.
 
-## L. RLS And Grants Plan
+## L. Admin AI Sketch Review Workflow Persistence Packet
+
+This section is a review/planning SQL packet update only. No SQL has been
+executed from this section. No Supabase schema, RLS, grants, policies, storage,
+app code, API route, OpenAI API integration, image generation, image upload,
+customer-facing sketch display, auth, payment, environment variable, secret,
+Production, protected admin, email, CAD, order, production, or customer-data
+change has been made.
+
+This update prepares a future persistence model for the admin AI Sketch Review
+Workflow added in PR #106 and planned in
+`docs/novora-admin-ai-sketch-review-workflow-state-plan.md`.
+
+AI sketches remain concept sketches only. They are not CAD, not quotes, not
+orders, and not production approval. AI sketches are internal drafts until
+reviewed and approved by the NOVORA design team. Unreviewed GPT/AI drafts must
+never be shown directly to customers. `approved_for_customer` does not equal
+`approved_for_gallery`.
+
+### Current baseline
+
+The current implemented baseline is static and admin-only:
+
+- The protected admin brief detail page has a skeleton-only AI Sketch Review
+  Workflow module.
+- Default workflow status: `Internal draft not generated`.
+- Empty state: `No internal sketch drafts yet.`.
+- Current admin statuses:
+  - `Internal draft not generated`
+  - `Draft generated — internal only`
+  - `Needs revision`
+  - `Approved for customer`
+- No persistence exists yet for the AI Sketch Review Workflow.
+- Customer-facing pages are tested not to expose internal workflow copy.
+
+Existing `admin_notes` review status and local fallback review state are not the
+same as AI sketch review persistence. Future AI sketch review records should
+remain separate unless a later approved task intentionally links them.
+
+### Proposed future status values
+
+| Database value | Label | Meaning | Customer visibility | Allowed next statuses | Disallowed transitions | Customer-facing access allowed |
+| --- | --- | --- | --- | --- | --- | --- |
+| `internal_draft_not_generated` | Internal draft not generated | No internal AI sketch draft exists for the Concept Brief. | None. | `draft_generated_internal_only` | Direct approval or revision without an output. | No. |
+| `draft_generated_internal_only` | Draft generated — internal only | A successful AI/internal draft exists for admin/design-team review only. | None. | `needs_revision`, `approved_for_customer` | Customer delivery, gallery approval, or reset without void/replacement handling. | No. |
+| `needs_revision` | Needs revision | Human review found quality, privacy, structure, style, or brief-fit issues. | None; any existing preview must be blocked or revoked. | `draft_generated_internal_only`, `approved_for_customer` after human review | Customer delivery, public gallery approval, or automatic approval after regeneration. | No. |
+| `approved_for_customer` | Approved for customer | Human/admin review approved a specific output for private customer-facing concept presentation. | Eligible only after separate delivery gates pass. | `needs_revision` or a future revoked state; new outputs start internal-only. | Automatic public gallery approval, CAD/quote/order/production approval, or approval without a reviewer. | Conditional only. |
+
+`approved_for_customer` is a human review status for a specific output. It does
+not mean `approved_for_gallery`, does not create a final package, and does not
+approve CAD, quote, order, sourcing, production, or manufacturing.
+
+### Proposed future records and fields
+
+The following schema sketches are planning-only. They must be reviewed against
+the live Supabase schema before SQL execution, migration files, policies, or app
+wiring are created.
+
+`ai_sketch_reviews` should store the latest and historical human review decision
+for a specific AI sketch output:
+
+```sql
+-- Draft only. Do not execute.
+create table public.ai_sketch_reviews (
+  id uuid primary key default gen_random_uuid(),
+  concept_brief_id uuid not null,
+  ai_sketch_job_id uuid,
+  ai_sketch_output_id uuid not null,
+  review_status text not null
+    check (review_status in (
+      'internal_draft_not_generated',
+      'draft_generated_internal_only',
+      'needs_revision',
+      'approved_for_customer'
+    )),
+  previous_status text,
+  next_status text,
+  reviewer_admin_id uuid,
+  reviewer_label text,
+  review_note_internal text,
+  revision_instruction text,
+  approved_for_customer_at timestamptz,
+  approved_by text,
+  approval_revoked_at timestamptz,
+  revoked_by text,
+  customer_visible_asset_id uuid,
+  is_customer_visible boolean not null default false,
+  visibility_enabled_at timestamptz,
+  prompt_version text,
+  model text,
+  quality text,
+  size text,
+  cost_estimate_usd numeric(10, 4),
+  generation_type text,
+  parent_generation_id uuid,
+  audit_event_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+`ai_sketch_review_events` may be a dedicated event table, or the same event
+types may extend `admin_operation_audit_events` if a future review decides one
+admin audit stream is simpler:
+
+```sql
+-- Draft only. Do not execute.
+create table public.ai_sketch_review_events (
+  id uuid primary key default gen_random_uuid(),
+  concept_brief_id uuid not null,
+  ai_sketch_output_id uuid,
+  event_type text not null,
+  actor_type text not null default 'admin',
+  actor_id uuid,
+  actor_label text,
+  previous_status text,
+  next_status text,
+  reason_note text,
+  customer_visibility_changed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+```
+
+`ai_sketch_customer_visibility` may be useful if customer preview eligibility
+needs a separate delivery record instead of a boolean on output/review rows:
+
+```sql
+-- Draft only. Do not execute.
+create table public.ai_sketch_customer_visibility (
+  id uuid primary key default gen_random_uuid(),
+  concept_brief_id uuid not null,
+  ai_sketch_review_id uuid not null,
+  ai_sketch_output_id uuid not null,
+  customer_visible_asset_id uuid not null,
+  is_customer_visible boolean not null default false,
+  visibility_enabled_at timestamptz,
+  visibility_disabled_at timestamptz,
+  enabled_by text,
+  disabled_by text,
+  safe_customer_title text,
+  safe_customer_copy text,
+  audit_event_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+Relationship notes to review before execution:
+
+- `concept_brief_id` should reference existing `concept_briefs`.
+- `concept_brief_reference_assets` should remain private reference metadata; do
+  not expose raw reference images through review or gallery rows.
+- `ai_sketch_job_id` and `ai_sketch_output_id` should reference future verified
+  `ai_sketch_jobs` and `ai_sketch_outputs` tables.
+- `credit_ledger_entries` should link only when future paid generation,
+  reservation, deduction, or reversal is involved.
+- `final_sketch_package_orders` should link only when a future paid final
+  package delivery workflow exists.
+- `admin_operation_audit_events` may be the canonical audit destination if a
+  separate review-events table is rejected.
+
+### Constraints and transition safety
+
+Future SQL and server code should enforce these rules:
+
+- `review_status` must be one of the four allowed values.
+- Customer-visible records require `approved_for_customer`.
+- Internal notes, reviewer notes, raw prompts, provider payloads, private
+  storage paths, and internal failure reasons must not be customer-visible.
+- `approved_for_gallery` must be separate from `approved_for_customer`.
+- Successful AI generation must not automatically set `approved_for_customer`.
+- `needs_revision` must block customer visibility and should disable any active
+  private preview.
+- Review rows must belong to the same Concept Brief, job, output, visibility
+  record, and customer-visible asset relationship.
+- Approval and revocation should require an actor and an audit event.
+
+### RLS, grants, and role boundary planning
+
+This is not active RLS. Policies, grants, and storage rules must be reviewed
+line by line before execution.
+
+Intended future posture:
+
+- `anon`: no access to internal review records, events, notes, prompts, private
+  output metadata, or visibility rows.
+- `authenticated customer`: no direct access to internal review records. A
+  future customer preview route may return only safe approved asset data for the
+  correct brief/customer scope.
+- `service_role`: server-only access for controlled generation, review,
+  visibility, delivery, and audit operations.
+- Future admin role/admin access model: can view and update review status only
+  through protected server routes that validate admin authority and write audit
+  events.
+
+The current admin access-key model is not the same as a future database admin
+role. Do not write database admin-role policies until the future auth/admin
+claims model is approved.
+
+### Customer visibility gate
+
+A sketch can become customer-visible only if all of the following are true:
+
+- It belongs to the correct Concept Brief.
+- It has a successful AI sketch output.
+- It has human review status `approved_for_customer`.
+- It passes privacy and reference-image checks.
+- Internal notes are excluded.
+- Customer-facing title/copy is safe and repeats the concept-sketch boundary.
+- The delivery route is separately approved and access-controlled.
+
+SQL constraints can block obvious unsafe states, but app-level delivery checks
+must still verify ownership/access, route scope, redaction, signed/public-safe
+asset handling, and customer-facing copy.
+
+### Customer preview versus public gallery
+
+`approved_for_customer` does not automatically mean `approved_for_gallery`.
+
+Private customer preview should remain brief/customer-scoped and should use a
+server-mediated or signed delivery path. Public gallery publication requires
+separate consent or sample authorization, separate admin approval, public-safe
+asset preparation, and revocation handling.
+
+Gallery records must never expose customer private information, raw reference
+images, internal notes, private storage paths, protected signed URLs, raw
+sensitive prompts, provider payloads, payment IDs, or customer IDs.
+
+### Audit event planning
+
+Future audit event types should include:
+
+- `status_changed`
+- `revision_requested`
+- `draft_generated_internal_only`
+- `draft_approved_for_customer`
+- `approval_revoked`
+- `customer_visibility_enabled`
+- `customer_visibility_disabled`
+- `customer_preview_created`
+- `gallery_approval_requested`
+- `gallery_approved`
+- `gallery_rejected`
+
+Each audit event should capture actor, timestamp, `concept_brief_id`,
+`ai_sketch_output_id` when relevant, previous status, next status, reason/note,
+and whether customer visibility changed. Audit notes are private operational
+records and should not be returned by customer routes.
+
+### Future migration and execution order
+
+Recommended future sequence:
+
+1. Review this SQL packet update.
+2. Finalize storage model and status values.
+3. Prepare migration SQL.
+4. Review RLS, grants, and policies.
+5. Execute SQL in Supabase only after explicit approval.
+6. Add a server-only admin persistence endpoint.
+7. Update the admin UI to read/write persisted status.
+8. Add admin and customer visibility tests.
+9. Later integrate with AI sketch jobs.
+10. Later add private customer preview.
+11. Later add gallery approval workflow.
+
+Required stop gates before future work:
+
+- SQL execution.
+- Supabase schema changes.
+- RLS, grants, or policies.
+- Storage policy changes.
+- OpenAI API integration.
+- Image upload or storage.
+- Server route implementation.
+- Customer-facing sketch display.
+- Public gallery automation.
+- Payment or points deduction integration.
+- Production rollout.
+
+### Admin review workflow risk review
+
+| Risk | Consequence | Affected scope | Why the risk exists | Likelihood / severity | Mitigation |
+| --- | --- | --- | --- | --- | --- |
+| Unreviewed AI draft shown to customer | Customer sees low-quality, unsafe, private, or misleading output. | Customer preview, privacy, support. | Generation success can be confused with human approval. | Medium / critical. | Default outputs internal-only; require human `approved_for_customer` plus delivery checks. |
+| `needs_revision` draft exposed | A known-problem draft reaches the customer. | Customer preview, brand quality. | Stored output assets may still exist while review status is blocked. | Medium / high. | Block and revoke visibility when status is `needs_revision`. |
+| `approved_for_customer` confused with `approved_for_gallery` | Private customer work is published publicly. | Public gallery, privacy, trust. | Both are approval concepts with different audiences. | Medium / critical. | Separate customer approval, gallery authorization, gallery approval, and public-safe records. |
+| Internal admin notes leaked | Reviewer notes appear in customer routes or APIs. | Customer display, privacy. | Review rows may contain internal-only fields. | Medium / critical. | Use redacted DTOs and never return internal notes to customer surfaces. |
+| Raw prompt or reference image leaked | Private customer story, inspiration, or third-party image becomes public. | Storage, preview, gallery. | Output metadata can link to prompts and reference assets. | Medium / critical. | Keep raw references private; expose only reviewed generated assets and safe copy. |
+| Wrong brief/customer association | A customer sees another customer's sketch. | Customer preview, ownership, privacy. | Brief, auth, signed route, or visibility linkage can be miswired. | Medium / critical. | Verify concept brief, output, visibility record, and customer/brief access on every request. |
+| AI generation success auto-approves output | Every successful provider result becomes displayable. | AI jobs, review workflow, preview. | Job status and review status may be conflated. | Medium / critical. | Keep generation status separate from review status; require explicit human approval. |
+| Status transition mistake | Output skips review or remains visible after revision/revocation. | Admin workflow, preview, gallery. | Manual state machines can be under-specified or misclicked. | Medium / high. | Define allowed transitions, confirmations, and audit events. |
+| Missing audit trail | NOVORA cannot explain who approved, changed, or exposed an output. | Admin accountability, incident review. | Current skeleton has no persistence. | Medium / high. | Add audit rows before enabling mutation or visibility. |
+| Accidental admin approval | Wrong output or brief is approved. | Customer preview, brand trust. | Admin UI may lack context or confirmation. | Medium / high. | Show brief reference, output preview, metadata, privacy flags, and confirmation before approval. |
+| RLS or policy mistake | Anonymous or wrong users read private review/output records. | Supabase tables, storage, customer data. | RLS depends on exact auth/admin claims. | Medium / critical. | Deny by default, review policies separately, test anon/customer/admin/service paths. |
+| Customer misunderstands sketch as CAD, quote, order, or production approval | Customer expects manufacturable jewelry, pricing, or order fulfillment. | Product trust, support, legal/commercial expectations. | High-quality sketches can feel final. | Medium / high. | Repeat concept-sketch-only copy near previews, packages, and gallery. |
+| Rollback or revocation not handled | Previously approved output remains visible after a problem is found. | Preview, gallery, support. | Approval can outlive review corrections without explicit revocation. | Medium / high. | Add approval revocation and visibility-disable events before delivery. |
+| Future migration complexity | Early records lack review, cost, ownership, or visibility metadata. | Data model, analytics, support. | Shipping generation before stable metadata creates legacy gaps. | Medium / medium. | Require core metadata from first real generation and document nullable legacy handling. |
+
+## M. RLS And Grants Plan
 
 This is an intended policy shape only. Do not execute these statements until a
 future task reviews exact auth claims, admin role model, grants, and policies.
@@ -1186,7 +1484,7 @@ Manual review required before execution:
 - Whether customer self-service updates are allowed.
 - Redacted views for payment/ledger history.
 
-## M. Migration Execution Order
+## N. Migration Execution Order
 
 Recommended future sequence:
 
@@ -1222,7 +1520,7 @@ Rollback planning before execution:
 - Do not drop payment, credit, ownership, or audit records casually after real
   customer activity begins.
 
-## N. Risk Review
+## O. Risk Review
 
 | Risk | Consequence | Affected scope | Why the risk exists | Likelihood / severity | Mitigation |
 | --- | --- | --- | --- | --- | --- |
@@ -1241,7 +1539,7 @@ Rollback planning before execution:
 | Provider or payment secret leakage | Keys appear in browser, logs, docs, or PR text. | Security, provider accounts, customer data. | Future auth/payment/AI work introduces sensitive keys. | Low to medium likelihood, critical severity. | Server-only env, no secrets in docs, no raw provider payloads, rotate exposed keys, follow production runbook. |
 | Concept sketch boundary confusion | Customers treat final sketch package as CAD, quote, or production approval. | Product trust, support, legal/commercial expectations. | Paid final images can feel high value and near-final. | Medium likelihood, high severity. | Repeat boundary copy in package records, UX, terms, and delivery: concept sketch only, paid CAD later. |
 
-## O. Stop Gates Before Future Work
+## P. Stop Gates Before Future Work
 
 Do not proceed past these gates without a separate approved task:
 
@@ -1256,7 +1554,7 @@ Do not proceed past these gates without a separate approved task:
 - Production verification.
 - Merge or deploy.
 
-## P. Documentation-Only Validation For Agent 31D
+## Q. Documentation-Only Validation For Agent 31D And Agent 36A
 
 Expected validation for this packet:
 
