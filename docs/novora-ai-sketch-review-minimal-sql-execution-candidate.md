@@ -17,6 +17,14 @@ Merging this document does not approve SQL execution. SQL execution still
 requires a separate explicit user message that approves the concrete SQL,
 target Supabase project, verification plan, and rollback posture.
 
+Product boundary: a NOVORA AI sketch is an internal AI hand-drawn concept
+sketch for early design direction only. It is not CAD, not a quote, not an
+order, not final pricing, not sourcing confirmation, and not production
+approval. AI sketches remain internal drafts until reviewed and approved by the
+NOVORA design team. Customers must only see sketches approved by the NOVORA
+design team through a later separately approved delivery path. Unreviewed
+GPT/AI drafts must never be shown directly to customers.
+
 ## B. Existing-Schema Uncertainty Check
 
 Repo review found three different schema contexts:
@@ -58,7 +66,8 @@ payment/points, auth/login, or app route implementation.
 The block below is a conservative ALTER-only candidate. It is included as a
 review target, not as an executable migration. It intentionally does not create
 `ai_sketch_reviews`, because repo docs already contain older draft CREATE
-planning and the live schema is not known.
+planning and the live schema is not known. The block must not be copied into
+Supabase or converted into a migration file from this document alone.
 
 If live inspection shows `ai_sketch_reviews` does not exist, do not run this
 ALTER-only candidate. Prepare a separate reviewed CREATE path or defer SQL.
@@ -132,6 +141,8 @@ commit;
 Candidate limitations:
 
 - This block is not final SQL.
+- It is not approval to execute SQL and it is not evidence that SQL has already
+  been executed.
 - Constraint names must be checked against live schema before execution.
 - Existing rows, if any, must be inspected before adding or validating
   constraints.
@@ -140,6 +151,9 @@ Candidate limitations:
 - No audit event table is created here. A dedicated `ai_sketch_review_events`
   table or shared `admin_operation_audit_events` path should be reviewed
   separately after live schema inspection.
+- No customer route, customer preview, public gallery, OpenAI generation,
+  generated-image storage, auth/payment/points logic, or app route is created
+  or approved by this candidate.
 
 ## E. Status Values
 
@@ -156,6 +170,7 @@ Required rules:
 - `needs_revision` blocks customer visibility.
 - `approved_for_customer` requires human/admin action.
 - `approved_for_customer` does not equal `approved_for_gallery`.
+- No customer visibility is enabled by SQL alone.
 - A new generated output must start internal-only even if another output for
   the same Concept Brief was approved.
 

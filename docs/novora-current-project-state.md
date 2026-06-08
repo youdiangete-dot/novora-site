@@ -537,6 +537,21 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   secret, Production/admin access, submission, email, deploy, CAD, order,
   production, or customer-data operation was performed. The next step is review
   of the SQL candidate packet, not SQL execution.
+- Agent 40A Review Pass: PR #112 is still draft, open, and unmerged at the
+  time of this review pass. The review remained docs-only and tightened
+  `docs/novora-ai-sketch-review-minimal-sql-execution-candidate.md` so the
+  candidate SQL is clearly a review target only, not final SQL, not a migration
+  file, not SQL approval, and not evidence of SQL execution. The packet now
+  repeats the concept-only AI sketch boundary, the internal-draft/customer
+  display boundary, the `approved_for_customer` versus `approved_for_gallery`
+  separation, and the rule that generation success alone must not approve a
+  sketch. No SQL was executed. No Supabase connection was made. No live
+  Supabase schema was inspected. No Supabase, RLS, grants, policies, storage,
+  app code, API route, OpenAI API, image generation, image upload/storage,
+  customer-facing sketch display, public gallery automation, auth, payment,
+  points, environment variable, secret, Production/admin access, submission,
+  email, deploy, CAD, order, production, or customer-data operation was
+  performed. The next step remains review of PR #112, not SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 
