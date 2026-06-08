@@ -24,6 +24,8 @@ sketch drafts only. They are not CAD, quotes, orders, production approval,
 pricing, sourcing confirmation, or public gallery approval. Customers must only
 see sketches approved by the NOVORA design team through a separately approved
 delivery path. Unreviewed AI drafts must never be shown directly to customers.
+`approved_for_customer` does not equal `approved_for_gallery`, and AI
+generation success alone must not approve a sketch.
 
 ## B. Connection / Target Confirmation
 
