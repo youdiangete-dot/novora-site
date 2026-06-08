@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #111 merge commit:
-  `17a5920a1d5505687823841c26d64e045f43c385`
+- Current `main` HEAD / PR #112 merge commit:
+  `95a43e0d4f1e752027e326ef0ce4fcd2ef517e50`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -552,6 +552,42 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   points, environment variable, secret, Production/admin access, submission,
   email, deploy, CAD, order, production, or customer-data operation was
   performed. The next step remains review of PR #112, not SQL execution.
+- Agent 41A: recorded that PR #112 has since been merged and cleaned up, then
+  added
+  `docs/novora-ai-sketch-review-live-schema-verification.md`, a docs-only
+  read-only live Supabase schema verification report for future admin AI Sketch
+  Review Workflow persistence. Agent 41A attempted the approved local
+  connection preflight, but live Supabase was not connected because this
+  worktree had no existing safe Supabase/database environment variables, no
+  local env file, no installed dependency tree, no `psql`, no Supabase CLI, and
+  no available Node/Python Postgres metadata-query driver. The report therefore
+  records live verification as blocked rather than inventing schema findings.
+  No SQL changes were executed. No customer row data, private content, storage
+  object paths, or row counts were inspected. No Supabase/RLS/storage/app/API/
+  OpenAI/image generation/customer display/auth/payment/env/secrets/Production/
+  admin/submission/email/deploy/CAD/order/customer-data operations were
+  performed. The next step is review and completion of read-only live schema
+  verification with an approved secure connection path, not SQL execution.
+- Agent 41A follow-up: PR #113 remains draft, open, and unmerged. After the
+  initial Codex tooling blocker, the user manually completed read-only metadata
+  verification in the Supabase SQL Editor for target project
+  `novora-production` and provided the results for documentation. The manual
+  metadata showed `public.ai_sketch_jobs`, `public.ai_sketch_outputs`, and
+  `public.ai_sketch_reviews` exist; RLS is enabled for all three with forced
+  RLS false; no explicit policies were visible in the returned `pg_policies`
+  metadata; and visible grant metadata did not show `anon` or `authenticated`
+  DML grants for those tables. `public.ai_sketch_reviews` already exists with
+  `review_status` default `'pending'::text`, visible foreign keys to
+  `public.ai_sketch_outputs(id)` and `public.concept_briefs(id)`, and no
+  visible `review_status` CHECK constraint in the returned metadata. Agent 40A
+  candidate SQL must be revised into exact ALTER-only SQL before any execution;
+  future SQL must not `CREATE TABLE ai_sketch_reviews`. Codex did not connect
+  to Supabase, execute SQL, inspect live schema directly, inspect customer row
+  data, or perform Supabase writes. No Supabase schema/RLS/storage/grants/
+  policies, app/API, OpenAI/image generation, customer display, auth/payment,
+  env/secrets, Production/admin, submission, email, deploy, CAD/order, or
+  customer-data operation was performed. The next step is review/update, not
+  SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 
