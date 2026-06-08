@@ -2,12 +2,22 @@
 
 ## A. Purpose And Boundary
 
-This document records Agent 41A's read-only live schema verification attempt
-for future admin AI Sketch Review Workflow persistence.
+This document records Agent 41A's read-only live schema verification result for
+future admin AI Sketch Review Workflow persistence.
 
-This task was limited to read-only schema metadata verification. It did not
-execute SQL changes, did not modify Supabase, did not inspect customer content,
-did not export customer data, and does not approve SQL execution.
+The first Agent 41A pass was blocked in Codex because this worktree had no
+approved local database connection path or metadata-query client. After that
+blocker, the user manually completed metadata verification in the Supabase SQL
+Editor for the target project.
+
+This document is based only on the user-provided manual metadata results. Codex
+did not connect to Supabase, did not execute SQL, did not inspect live schema
+directly, did not read customer rows, and did not inspect customer or business
+content.
+
+This task did not execute SQL changes, did not modify Supabase, did not change
+schema, RLS, storage, grants, or policies, did not export customer data, and
+does not approve SQL execution.
 
 The NOVORA product boundary remains unchanged. AI sketches are internal concept
 sketch drafts only. They are not CAD, quotes, orders, production approval,
@@ -17,183 +27,222 @@ delivery path. Unreviewed AI drafts must never be shown directly to customers.
 
 ## B. Connection / Target Confirmation
 
-The durable project ledger identifies the Supabase project as
-`novora-production`, and the branch started from the expected current `main`
-HEAD `95a43e0d4f1e752027e326ef0ce4fcd2ef517e50`.
+The user confirmed the target project in the Supabase UI as
+`novora-production`.
 
-Live Supabase connection was not completed in this worktree. The existing local
-environment did not expose a safe database connection path:
-
-- No `SUPABASE_DATABASE_URL` or other Supabase/database environment variable
-  names were present in the process environment.
-- No `.env.local` or `.env` file was present in the worktree.
-- No `node_modules` directory was present.
-- `psql` was not available on PATH.
-- Supabase CLI was not available on PATH.
-- Node packages `pg`, `postgres`, and `@supabase/supabase-js` were not
-  resolvable.
-- Python packages `psycopg`, `psycopg2`, and `asyncpg` were not available.
-
-Because the plan required using only existing secure local env/tooling and not
-installing or fetching temporary database tooling, the live target project could
-not be confirmed from connection metadata. This report therefore records a
-blocked verification result rather than live schema findings.
+Metadata queries were run manually by the user in the Supabase SQL Editor.
+Codex did not connect to Supabase and did not run the metadata queries itself.
 
 No secrets, API keys, service-role keys, database URLs, passwords, tokens, or
-private connection strings were printed or recorded.
+private connection strings were provided to Codex, printed, or recorded in this
+document.
 
 ## C. Read-Only Method
 
-The allowed method, if a safe connection had been available, was metadata-only
-`SELECT` inspection against:
+The user reported running metadata queries manually in Supabase SQL Editor. The
+results supplied to Codex cover table existence, visible columns, visible
+constraints, RLS status, policies, grants, and triggers for the AI sketch review
+related tables.
 
-- `information_schema.tables`
-- `information_schema.columns`
-- `information_schema.table_constraints`
-- `information_schema.constraint_column_usage`
-- `information_schema.key_column_usage`
-- `pg_catalog` metadata for indexes, constraints, RLS, and attributes
-- `pg_policies`
-- role/grant metadata exposed through read-only views
+The user reported that no customer or business rows were intentionally inspected
+as part of the metadata packet. Codex did not query application rows, row
+counts, storage objects, file paths, customer records, private content, or admin
+pages.
 
-No application table rows were selected. No row counts were queried. No customer
-or business content was inspected.
-
-The actual completed work was local preflight only: repo context review,
-connection-tooling availability checks, and this documentation update. No live
-metadata query reached Supabase.
+This report records only the metadata results supplied by the user and should
+not be read as an independent security audit by Codex.
 
 ## D. Relevant Table Inventory
 
-Because the live connection could not be completed, the table inventory below is
-not a live schema result. It records the verification status for each requested
-table.
+Manual metadata verification found these AI sketch related public tables:
 
-| Table | Live existence result | Metadata summary | RLS / policy / grant summary |
+| Table | Manual metadata result | RLS status | Policy / grant / trigger summary |
 | --- | --- | --- | --- |
-| `concept_briefs` | Not verified live | Repo ledger says this table exists, but live metadata was not queried in Agent 41A. | Not verified live. |
-| `concept_brief_contacts` | Not verified live | Repo ledger says this table exists, but live metadata was not queried in Agent 41A. | Not verified live. |
-| `concept_brief_reference_assets` | Not verified live | Repo ledger says this table exists, but live metadata was not queried in Agent 41A. | Not verified live. |
-| `ai_sketch_jobs` | Not verified live | Older docs describe this as future/planned; Agent 41A could not verify live presence. | Not verified live. |
-| `ai_sketch_outputs` | Not verified live | Older docs describe this as future/planned; Agent 41A could not verify live presence. | Not verified live. |
-| `ai_sketch_reviews` | Not verified live | This was the special-focus table, but live presence and shape could not be verified. | Not verified live. |
-| `ai_sketch_review_events` | Not verified live | Optional/future table; live presence could not be verified. | Not verified live. |
-| `admin_operation_audit_events` | Not verified live | Optional/future shared audit table; live presence could not be verified. | Not verified live. |
-| `admin_notes` | Not verified live | Repo ledger says this table exists, but live metadata was not queried in Agent 41A. | Not verified live. |
-| `concept_brief_notification_events` | Not verified live | Repo ledger says this table exists, but live metadata was not queried in Agent 41A. | Not verified live. |
+| `public.ai_sketch_jobs` | Exists. | RLS enabled `true`; forced RLS `false`. | `pg_policies` returned no rows for this table. Visible grant metadata did not show `anon` or `authenticated` DML grants. Trigger `set_ai_sketch_jobs_updated_at` exists before update and executes `set_updated_at()`. |
+| `public.ai_sketch_outputs` | Exists. | RLS enabled `true`; forced RLS `false`. | `pg_policies` returned no rows for this table. Visible grant metadata did not show `anon` or `authenticated` DML grants. No visible trigger rows were returned in the screenshot. |
+| `public.ai_sketch_reviews` | Exists. | RLS enabled `true`; forced RLS `false`. | `pg_policies` returned no rows for this table. Visible grant metadata did not show `anon` or `authenticated` DML grants. No visible trigger rows were returned in the screenshot. |
+
+Other relevant tables from the original verification scope, including
+`concept_briefs`, `concept_brief_contacts`,
+`concept_brief_reference_assets`, `admin_notes`, and
+`concept_brief_notification_events`, were not separately described in the
+user-provided manual metadata update except where referenced by visible foreign
+keys.
+
+Grant interpretation is intentionally conservative. The screenshots showed
+`postgres` with full DML privileges. The screenshots did not show
+`anon`/`authenticated` `SELECT`, `INSERT`, `UPDATE`, or `DELETE` privileges for
+`ai_sketch_jobs`, `ai_sketch_outputs`, or `ai_sketch_reviews`. Visible
+`anon`/`authenticated`/`service_role` rows were limited to non-DML privileges
+such as `REFERENCES`, `TRIGGER`, or `TRUNCATE` in the screenshot. This report
+records that visible metadata did not show `anon`/`authenticated` DML grants;
+it does not claim a complete independent grant audit.
+
+Policy interpretation is also conservative. RLS is enabled for the three AI
+sketch tables, and `pg_policies` returned no rows for them in the supplied
+metadata. Treat this as RLS enabled with no explicit policies visible for those
+tables.
 
 ## E. `ai_sketch_reviews` Finding
 
-`ai_sketch_reviews` existence remains unknown from live schema inspection.
+`public.ai_sketch_reviews` exists. Future SQL must not create a duplicate
+`ai_sketch_reviews` table.
 
-Agent 41A could not verify whether the table exists, whether it has the expected
-columns, whether `review_status` has a constraint, whether RLS is enabled, or
-whether policies/grants expose anything to `anon` or customer roles.
+The user-provided metadata showed these visible columns:
 
-The following special-focus fields were not verified live:
+| Column | Type | Nullability | Default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | `not null` | `gen_random_uuid()` |
+| `ai_sketch_output_id` | `uuid` | `not null` | none reported |
+| `concept_brief_id` | `uuid` | `not null` | none reported |
+| `review_status` | `text` | `not null` | `'pending'::text` |
+| `reviewer_note` | `text` | nullable | none reported |
+| `customer_safe_note` | `text` | nullable | none reported |
+| `reviewed_at` | `timestamp with time zone` | nullable | none reported |
+| `created_at` | `timestamp with time zone` | `not null` | `now()` |
 
-- `concept_brief_id`
-- `ai_sketch_job_id`
-- `ai_sketch_output_id`
-- `review_status`
-- `reviewer_label` or `reviewer_admin_id`
-- `review_note_internal`
+The following later-planned columns were missing from the visible
+`ai_sketch_reviews` metadata:
+
 - `revision_instruction`
 - `approved_for_customer_at`
 - `approved_by`
 - `approval_revoked_at`
 - `revoked_by`
-- `created_at`
 - `updated_at`
 
-Because live schema was not inspected, Agent 41A cannot say whether
-`ai_sketch_reviews` can support the Agent 40A minimum persistence direction.
-Duplicate `CREATE TABLE` risk remains unresolved and must be verified before
-any SQL execution.
+Visible constraints for `public.ai_sketch_reviews`:
+
+- Primary key on `id`.
+- Foreign key `ai_sketch_output_id` references `public.ai_sketch_outputs(id)`.
+- Foreign key `concept_brief_id` references `public.concept_briefs(id)`.
+- No visible `review_status` CHECK constraint was found in the returned
+  metadata.
+
+Visible trigger posture:
+
+- No visible trigger rows were returned for `ai_sketch_reviews`.
+- `ai_sketch_reviews` has no visible `updated_at` column and no visible
+  `updated_at` trigger in the supplied metadata.
+
+Current compatibility with later planning is partial. The table exists and has
+the key Concept Brief/output relationship, but it does not yet match the later
+Agent 40A planning fields or status constraint posture.
 
 ## F. Agent 40A Candidate Compatibility
 
-The Agent 40A candidate SQL remains unverified and is not safe to execute as-is.
+The Agent 40A candidate SQL must be revised before execution.
 
-Current compatibility assessment:
+Compatibility conclusions:
 
-- `CREATE TABLE ai_sketch_reviews` cannot be recommended because live existence
-  is unknown and duplicate table risk remains.
-- The ALTER-only direction remains a conservative conditional direction only if
-  a future live schema check confirms `public.ai_sketch_reviews` exists with
-  compatible identifiers.
-- Existing columns, types, constraint names, status values, indexes, RLS,
-  policies, and grants were not verified.
-- Required status values were not verified live.
-- RLS/policy posture for AI sketch review related tables was not verified.
-- The candidate must be revised or re-reviewed after successful live schema
-  metadata inspection.
+- `CREATE TABLE ai_sketch_reviews` is not needed and must be avoided because
+  `public.ai_sketch_reviews` already exists.
+- The next SQL direction should be an ALTER existing table / verify path, not a
+  duplicate CREATE path.
+- The candidate's default status
+  `internal_draft_not_generated` conflicts with the current visible default
+  `'pending'::text` and must be reviewed before any SQL execution.
+- The candidate's planned fields are not all present. Any future SQL must be
+  exact ALTER-only SQL that accounts for existing columns, names, defaults,
+  constraints, and missing columns.
+- No visible `review_status` CHECK constraint was found, so allowed status
+  values remain a required pre-execution design and migration decision.
+- RLS is enabled for the AI sketch tables, but no explicit policies were
+  visible in the supplied `pg_policies` results. Any future SQL must still
+  include RLS/grant/policy review and post-execution verification.
+- The current visible grant metadata did not show `anon` or `authenticated`
+  DML grants, but this is not a full independent security audit.
 
-Live schema verification did not change the recommendation because it could not
-be completed. The recommendation remains: do not execute SQL until live schema,
-target project, exact final SQL, RLS/grants/policies, rollback posture, and
-post-execution verification are reviewed and explicitly approved.
+The user-provided manual metadata results change the recommendation from
+blocked to conditional ALTER-only planning. The candidate SQL is still not ready
+to run. It must be converted into exact SQL for the existing table and reviewed
+again before execution.
 
 ## G. Recommended Next SQL Direction
 
-Recommended next SQL direction: **blocked / cannot recommend until more
-verification**.
+Recommended next SQL direction: **ALTER existing table only / verify path**.
 
-Do not choose no-op, ALTER, or CREATE from the current evidence. The next safe
-step is to complete read-only live schema metadata verification with an
-approved, secure, existing connection path or a separately approved tooling and
-credential setup.
+Do not create `public.ai_sketch_reviews`.
+
+Before any execution, prepare exact ALTER-only SQL for review that accounts for:
+
+- Existing table and foreign keys.
+- Existing `review_status` default `'pending'::text`.
+- Missing later-planned approval, revocation, revision, and `updated_at` fields.
+- Absence of a visible `review_status` CHECK constraint.
+- RLS enabled with no explicit policies visible.
+- Visible grants that did not show `anon`/`authenticated` DML access, while
+  still requiring full grant review.
+- Whether `reviewer_note` and `customer_safe_note` should remain, be mapped to
+  later-planned note fields, or be left unchanged for compatibility.
+- Whether `ai_sketch_reviews` needs an `updated_at` column and trigger aligned
+  with the existing `set_updated_at()` pattern visible on `ai_sketch_jobs`.
+
+SQL execution is not approved by this report.
 
 ## H. Pre-Execution Requirements Still Remaining
 
 Before any SQL execution:
 
-- Confirm the live target project is `novora-production`.
-- Confirm backup/export or rollback posture.
-- Produce final exact SQL after live schema inspection.
+- Produce final exact ALTER-only SQL for the existing
+  `public.ai_sketch_reviews` table.
+- Review the current `pending` status default and decide the safe transition to
+  the planned internal review statuses.
+- Review whether to add, backfill, or leave missing later-planned columns.
 - Review RLS, grants, and policies line by line.
-- Verify whether `ai_sketch_reviews` exists and whether a duplicate create must
-  be avoided.
-- Verify any existing columns, constraints, indexes, and status values.
-- Verify `anon` and customer-role exposure posture.
-- Prepare post-execution verification steps.
+- Verify whether no explicit policies is the intended deny-by-default posture
+  for the current admin access model.
+- Confirm backup/export or rollback posture.
+- Prepare post-execution metadata verification steps.
+- Confirm no customer route will read internal review records.
 - Receive separate explicit user approval for SQL execution.
 
 Merging this report or its PR does not approve SQL execution.
 
 ## I. Risks Discovered
 
-Duplicate table risk remains unresolved because `ai_sketch_reviews` live
-existence was not verified.
+Duplicate table risk is now concrete and must be avoided: `ai_sketch_reviews`
+already exists, so any future CREATE path would be wrong.
 
-Incompatible column risk remains unresolved because live column names, types,
-nullability, defaults, constraints, and indexes were not verified.
+Incompatible column risk remains because the existing table shape differs from
+later planning. Existing columns include `reviewer_note`, `customer_safe_note`,
+and `reviewed_at`; later planning expects fields such as
+`revision_instruction`, `approved_for_customer_at`, `approved_by`,
+`approval_revoked_at`, `revoked_by`, and `updated_at`.
 
-RLS/policy exposure risk remains unresolved because live RLS flags, policies,
-and grants were not verified. Internal review records, internal notes, revision
-instructions, and draft visibility must not be readable by anonymous or
-customer roles.
+Status compatibility risk remains because the existing `review_status` default
+is `'pending'::text`, while later planning uses explicit internal review
+statuses. No visible `review_status` CHECK constraint was found in the returned
+metadata.
 
-Wrong project risk remains unresolved because `novora-production` was confirmed
-only from the repo ledger, not from a live connection target.
+RLS/policy exposure risk remains a required review area. RLS is enabled, but no
+explicit policies were visible for the AI sketch tables in the supplied
+metadata. Visible grant metadata did not show `anon` or `authenticated` DML
+grants, but this does not replace a full independent security review before
+execution.
 
-Customer data exposure risk was avoided during this task because no application
-table rows, row counts, storage objects, file paths, customer records, private
-content, or admin pages were queried.
+Wrong project risk was reduced by the user's Supabase UI confirmation of
+`novora-production`, but future SQL execution must still explicitly name and
+confirm the target project.
 
-Accidental execution risk was avoided during this task because no SQL client was
-available through the approved local path and no DDL/DML was run.
+Customer data exposure risk was avoided during this update because Codex did
+not connect to Supabase, and the user reported that no customer/business rows
+were intentionally inspected as part of the metadata packet.
+
+Accidental execution risk was avoided during this update because Codex did not
+run SQL and no Supabase writes were performed.
 
 ## J. Final Conclusion
 
-SQL is not ready to execute now.
+Manual metadata verification was completed by the user through Supabase SQL
+Editor for `novora-production`. Codex did not connect to Supabase and did not
+run SQL.
 
-Agent 41A could not complete live Supabase schema verification because the
-current worktree did not provide an approved existing secure connection path or
-metadata-query client. No SQL changes were executed, no customer data was
-inspected, and no live Supabase metadata was retrieved.
+`public.ai_sketch_reviews` exists. Future SQL must not create a duplicate table.
+The Agent 40A candidate SQL must be revised into exact ALTER-only SQL for the
+existing schema before any execution.
 
-Before any SQL execution, NOVORA must complete read-only live schema metadata
-verification for `novora-production`, revise or confirm the exact SQL against
-that live schema, review RLS/grants/policies and rollback posture, and receive
-separate explicit user approval for SQL execution.
+SQL is not ready to execute now. Before any SQL execution, NOVORA must review
+the exact ALTER-only SQL, RLS/grants/policies, backup/export or rollback
+posture, and post-execution verification plan, then receive separate explicit
+user approval for SQL execution.

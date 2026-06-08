@@ -568,6 +568,26 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   admin/submission/email/deploy/CAD/order/customer-data operations were
   performed. The next step is review and completion of read-only live schema
   verification with an approved secure connection path, not SQL execution.
+- Agent 41A follow-up: PR #113 remains draft, open, and unmerged. After the
+  initial Codex tooling blocker, the user manually completed read-only metadata
+  verification in the Supabase SQL Editor for target project
+  `novora-production` and provided the results for documentation. The manual
+  metadata showed `public.ai_sketch_jobs`, `public.ai_sketch_outputs`, and
+  `public.ai_sketch_reviews` exist; RLS is enabled for all three with forced
+  RLS false; no explicit policies were visible in the returned `pg_policies`
+  metadata; and visible grant metadata did not show `anon` or `authenticated`
+  DML grants for those tables. `public.ai_sketch_reviews` already exists with
+  `review_status` default `'pending'::text`, visible foreign keys to
+  `public.ai_sketch_outputs(id)` and `public.concept_briefs(id)`, and no
+  visible `review_status` CHECK constraint in the returned metadata. Agent 40A
+  candidate SQL must be revised into exact ALTER-only SQL before any execution;
+  future SQL must not `CREATE TABLE ai_sketch_reviews`. Codex did not connect
+  to Supabase, execute SQL, inspect live schema directly, inspect customer row
+  data, or perform Supabase writes. No Supabase schema/RLS/storage/grants/
+  policies, app/API, OpenAI/image generation, customer display, auth/payment,
+  env/secrets, Production/admin, submission, email, deploy, CAD/order, or
+  customer-data operation was performed. The next step is review/update, not
+  SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 
