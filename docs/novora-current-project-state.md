@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #113 merge commit:
-  `40aefeff764abd18b5f116d88e9a3a9da0f4bf85`
+- Current `main` HEAD / PR #114 merge commit:
+  `f4a22b63fe4b9bf81a6da6a0e54a687137f8458d`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -605,8 +605,7 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   API/OpenAI/image generation/customer display/auth/payment/env/secrets/
   Production/admin/submission/email/deploy/CAD/order/customer-data operation was
   performed. The next step is review of the revised package, not SQL execution.
-- Agent 42A Review Pass: PR #114 is draft, open, and unmerged at the time of
-  this review pass. The PR changed only
+- Agent 42A Review Pass: PR #114 has since been merged. The PR changed only
   `docs/novora-ai-sketch-review-revised-alter-only-sql-package.md` and
   `docs/novora-current-project-state.md`. The review pass kept the work
   docs-only and tightened boundary wording so the revised package is not
@@ -622,6 +621,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   API/OpenAI/image generation/customer display/auth/payment/env/secrets/
   Production/admin/submission/email/deploy/CAD/order/customer-data operation was
   performed. The next step remains review of PR #114, not SQL execution.
+- Agent 43A: added
+  `docs/novora-ai-sketch-review-status-row-value-precheck.md`, a docs-only
+  row-value metadata precheck packet for
+  `public.ai_sketch_reviews.review_status`. The packet prepares a manual
+  aggregate-only Supabase SQL Editor check for grouped status counts, total
+  rows, legacy `pending` rows, and unexpected status rows before final
+  ALTER-only SQL is prepared. It instructs that no IDs, notes, brief content,
+  contact content, reference assets, storage paths, protected admin content, or
+  customer data should be pasted back. No SQL was executed. Codex did not
+  connect to Supabase, inspect live schema, query customer rows, inspect notes
+  or IDs, change Supabase schema/RLS/storage/grants/policies, edit app code,
+  deploy, merge, or perform any customer-data operation. Merging the packet does
+  not approve SQL execution; final exact SQL and separate explicit user
+  approval remain required.
 
 ## 7. Current Non-Goals And Boundaries
 
