@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #112 merge commit:
-  `95a43e0d4f1e752027e326ef0ce4fcd2ef517e50`
+- Current `main` HEAD / PR #113 merge commit:
+  `40aefeff764abd18b5f116d88e9a3a9da0f4bf85`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -588,6 +588,40 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   env/secrets, Production/admin, submission, email, deploy, CAD/order, or
   customer-data operation was performed. The next step is review/update, not
   SQL execution.
+- Agent 42A: recorded that PR #113 has since been merged and cleanup was mostly
+  completed: `main` was clean, the remote branch was deleted, worktree
+  registration was removed, the local feature branch may remain because of
+  Windows/Git ref lock permissions, and filesystem residue remains at `504b`.
+  Agent 42A added
+  `docs/novora-ai-sketch-review-revised-alter-only-sql-package.md`, a
+  docs-only revised ALTER-only SQL package based on the user-provided manual
+  SQL Editor metadata from PR #113. The package records that
+  `public.ai_sketch_reviews` already exists and must not be recreated, that the
+  next SQL direction is ALTER existing `public.ai_sketch_reviews` only, and
+  that execution remains blocked pending review, current `review_status` row
+  value confirmation, final exact SQL, and separate explicit user approval. No
+  SQL was executed. Codex did not connect to Supabase. Codex did not inspect
+  live schema. No customer row data was inspected. No Supabase/RLS/storage/app/
+  API/OpenAI/image generation/customer display/auth/payment/env/secrets/
+  Production/admin/submission/email/deploy/CAD/order/customer-data operation was
+  performed. The next step is review of the revised package, not SQL execution.
+- Agent 42A Review Pass: PR #114 is draft, open, and unmerged at the time of
+  this review pass. The PR changed only
+  `docs/novora-ai-sketch-review-revised-alter-only-sql-package.md` and
+  `docs/novora-current-project-state.md`. The review pass kept the work
+  docs-only and tightened boundary wording so the revised package is not
+  mistaken for SQL approval, SQL execution, Codex Supabase connection, live
+  schema inspection, implemented persistence, app/API routing, OpenAI/image
+  generation, image storage, customer-facing sketch display, gallery, auth,
+  payment, points, environment, Production/admin, submission, email, deploy,
+  CAD, order, production, or customer-data work. Candidate SQL remains
+  ALTER-only and blocked pending current `review_status` row-value review,
+  final exact SQL, and separate explicit user approval. No SQL was executed.
+  Codex did not connect to Supabase. Codex did not inspect live schema. No
+  customer row data was inspected. No Supabase/RLS/storage/grants/policies/app/
+  API/OpenAI/image generation/customer display/auth/payment/env/secrets/
+  Production/admin/submission/email/deploy/CAD/order/customer-data operation was
+  performed. The next step remains review of PR #114, not SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 
