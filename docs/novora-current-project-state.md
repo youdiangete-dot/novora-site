@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #110 merge commit:
-  `1609bb5b4d8039d24cc7f7c4d96e431b122ab80a`
+- Current `main` HEAD / PR #111 merge commit:
+  `17a5920a1d5505687823841c26d64e045f43c385`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -522,6 +522,21 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Production/admin access, submission, email, deploy, CAD, order, production, or
   customer-data operation was performed. The next step remains review of the
   approval packet, not SQL execution.
+- Agent 40A: recorded that PR #111 has since been merged and cleaned up, then
+  added
+  `docs/novora-ai-sketch-review-minimal-sql-execution-candidate.md`, a
+  docs-only Minimal SQL Execution Candidate / Final SQL Preflight packet for
+  future internal admin AI Sketch Review Workflow persistence. The packet
+  confirms that no SQL was executed, no Supabase connection was made, live
+  schema was not inspected, and merging the document does not approve SQL
+  execution. It recommends live schema verification first, then an ALTER /
+  verify path if `ai_sketch_reviews` already exists rather than blindly creating
+  a duplicate table. No SQL, Supabase, RLS, storage, app code, API route, OpenAI
+  API, image generation, image upload/storage, customer-facing sketch display,
+  public gallery automation, auth, payment, points, environment variable,
+  secret, Production/admin access, submission, email, deploy, CAD, order,
+  production, or customer-data operation was performed. The next step is review
+  of the SQL candidate packet, not SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 
