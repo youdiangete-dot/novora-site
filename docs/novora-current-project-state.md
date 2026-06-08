@@ -605,6 +605,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   API/OpenAI/image generation/customer display/auth/payment/env/secrets/
   Production/admin/submission/email/deploy/CAD/order/customer-data operation was
   performed. The next step is review of the revised package, not SQL execution.
+- Agent 42A Review Pass: PR #114 is draft, open, and unmerged at the time of
+  this review pass. The PR changed only
+  `docs/novora-ai-sketch-review-revised-alter-only-sql-package.md` and
+  `docs/novora-current-project-state.md`. The review pass kept the work
+  docs-only and tightened boundary wording so the revised package is not
+  mistaken for SQL approval, SQL execution, Codex Supabase connection, live
+  schema inspection, implemented persistence, app/API routing, OpenAI/image
+  generation, image storage, customer-facing sketch display, gallery, auth,
+  payment, points, environment, Production/admin, submission, email, deploy,
+  CAD, order, production, or customer-data work. Candidate SQL remains
+  ALTER-only and blocked pending current `review_status` row-value review,
+  final exact SQL, and separate explicit user approval. No SQL was executed.
+  Codex did not connect to Supabase. Codex did not inspect live schema. No
+  customer row data was inspected. No Supabase/RLS/storage/grants/policies/app/
+  API/OpenAI/image generation/customer display/auth/payment/env/secrets/
+  Production/admin/submission/email/deploy/CAD/order/customer-data operation was
+  performed. The next step remains review of PR #114, not SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 

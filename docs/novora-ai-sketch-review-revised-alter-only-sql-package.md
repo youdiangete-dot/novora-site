@@ -7,7 +7,14 @@ Sketch Review Workflow persistence.
 
 No SQL was executed for this document. Codex did not connect to Supabase. Codex
 did not inspect live schema. Codex did not inspect customer rows, row counts,
-storage objects, private content, protected admin pages, or customer data.
+storage objects, private content, protected admin pages, or customer data. No
+Supabase schema, RLS, storage, grants, or policies were changed.
+
+This document does not implement status persistence, app routes, API routes,
+OpenAI API calls, image generation, image upload/storage, customer-facing sketch
+display, public gallery automation, auth, payment, points, environment
+variables, secrets, Production/admin behavior, submissions, email, deploy, CAD,
+order, production, or customer-data operations.
 
 This package is based on user-provided manual Supabase SQL Editor metadata
 results from PR #113 for target project `novora-production`. The manual metadata
@@ -130,9 +137,11 @@ approves the exact SQL.
 
 ## E. Candidate ALTER-Only SQL — DO NOT EXECUTE WITHOUT SEPARATE USER APPROVAL
 
-The block below is a review candidate only. It must not be copied into Supabase,
-run through a CLI, converted into a migration file, or treated as execution
-approval from this document alone.
+The block below is a review candidate only, not final executable SQL. It remains
+blocked pending current row-value review, final exact SQL, and separate explicit
+user approval. It must not be copied into Supabase, run through a CLI, converted
+into a migration file, or treated as execution approval from this document
+alone.
 
 It intentionally does not create `public.ai_sketch_reviews`. It avoids
 destructive changes, does not drop columns, does not loosen RLS, does not add
