@@ -52,6 +52,8 @@ Supabase SQL Editor reported success / no rows returned.
 
 Codex did not execute SQL.
 
+No repeat execution should be performed from this record.
+
 ## 5. Post-Execution Verification
 
 The user provided these post-execution verification results.
@@ -103,6 +105,8 @@ No insert test was run.
 - `pending` is excluded from the final CHECK constraint.
 - `updated_at` exists with default `now()`, but no trigger was created or
   modified, so automatic refresh is not confirmed or implemented by this SQL.
+  Any automatic `updated_at` refresh behavior should be handled only in a
+  separate future review and approval.
 - `public.ai_sketch_reviews` remains empty with `total_rows = 0`.
 
 ## 7. Product And Security Boundaries
@@ -117,6 +121,8 @@ No insert test was run.
 - No OpenAI image API integration is implemented here.
 - No image storage changes are implemented here.
 - No public gallery automation is implemented here.
+- No RLS opening was made.
+- No grants, storage, or policy changes were made.
 - No customer visibility changes were made.
 - No customer data was inspected.
 - No IDs or notes were inspected.
