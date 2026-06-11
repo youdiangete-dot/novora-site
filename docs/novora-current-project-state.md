@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #115 merge commit:
-  `6f82834f6766a4a7bf5b32874f49d07d50fee730`
+- Current `main` HEAD / PR #116 merge commit:
+  `10e3770032d5bb32f0ef7d00e2e2c23a8ff140d4`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -664,11 +664,42 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   grants, policies, app code, API route, OpenAI, image generation,
   customer-facing sketch display, auth, payment, environment, secrets,
   Production/admin, submission, email, deploy, CAD, order, customer-data, or
-  other high-risk action was performed. Agent 44A Review Pass confirmed PR
-  #116 is draft, open, and unmerged, and tightened the packet to clarify that
-  `updated_at` is added as a column only, with no trigger creation or automatic
-  refresh behavior implemented. The next step after Agent 44A is Final PR
-  Check, not SQL execution.
+  other high-risk action was performed. Agent 44A Review Pass tightened the
+  packet to clarify that `updated_at` is added as a column only, with no
+  trigger creation or automatic refresh behavior implemented. PR #116 has since
+  been merged into `main` with merge commit
+  `10e3770032d5bb32f0ef7d00e2e2c23a8ff140d4`.
+- Agent 45A: added
+  `docs/novora-ai-sketch-review-agent-44-sql-execution-result.md`, a docs-only
+  historical execution record for the user-manual Agent 44 final ALTER-only SQL
+  execution against existing `public.ai_sketch_reviews` in Supabase project
+  `novora-production`. The corrected user approval wording recorded for this
+  execution is: “批准执行 Agent 44 final ALTER-only SQL，目标 Supabase 项目
+  novora-production，范围仅限 existing public.ai_sketch_reviews internal admin
+  review persistence schema；确认刚刚重新运行 aggregate precheck 后 table
+  仍为空；不包含 customer visibility / OpenAI / image storage / app route /
+  public gallery / payment / points / RLS opening。” The user reported that
+  execution succeeded with success / no rows returned. Post-execution
+  verification confirmed the review workflow columns/defaults, the
+  `ai_sketch_reviews_review_status_check` constraint, and final
+  `public.ai_sketch_reviews` row count. The table remains `0` rows.
+  `pending` is excluded from the final CHECK constraint. No insert test was
+  run. No RLS, grants, storage, policy, customer visibility, OpenAI, image, app
+  route, public gallery, payment, points, or auth changes were made. No SQL was
+  executed by Codex. Codex did not connect to Supabase. Codex did not inspect
+  live schema. Codex did not inspect customer rows, IDs, notes, or customer
+  data. The next step is app compatibility planning, not more SQL execution.
+- Agent 45A Review Pass: PR #117 is draft, open, and unmerged at the time of
+  this review pass. The review kept the work docs-only and tightened the
+  execution record and ledger around PR #116 merge status, no repeat SQL
+  execution, `updated_at` trigger follow-up approval, and explicit RLS, grants,
+  storage, and policy boundaries. No SQL was executed by Codex. Codex did not
+  connect to Supabase. Codex did not inspect live schema, rows, IDs, notes, or
+  customer data. No app/API/package/env, Supabase/RLS/storage/grants/policies,
+  OpenAI/image generation, customer visibility, public gallery, payment,
+  points, auth, email, deploy, PR-ready transition, merge, or other high-risk
+  action was performed. The next step is Final PR Check, not more SQL
+  execution.
 
 ## 7. Current Non-Goals And Boundaries
 
