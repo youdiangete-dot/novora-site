@@ -711,9 +711,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Codex did not inspect rows, customer data, IDs, `reviewer_note`, or
   `customer_safe_note`. No app/API/package/env, Supabase/RLS/storage/grants/
   policies, OpenAI/image generation, customer display, public gallery, auth,
-  payment, points, deploy, or other high-risk action was performed. The Agent
-  45B PR should remain draft, open, and unmerged until reviewed. The next step
-  after review is Agent 45C planning/implementation decision, not SQL
+  payment, points, deploy, or other high-risk action was performed. PR #118 is
+  draft, open, and unmerged at the time of the Agent 45B Review Pass. The next
+  step after review is Agent 45C planning/implementation decision, not SQL
   execution.
 
 ## 7. Current Non-Goals And Boundaries

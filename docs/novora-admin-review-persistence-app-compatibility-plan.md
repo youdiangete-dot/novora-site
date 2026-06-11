@@ -182,6 +182,9 @@ Future implementation must preserve these boundaries:
   empty-table ALTER.
 - Mixing public customer visibility with internal admin review persistence could
   expose unreviewed drafts or private work.
+- Confusing Concept Brief admin status with AI sketch review status could wire
+  the wrong status model to `ai_sketch_reviews` or make admins think existing
+  `admin_notes` persistence is the new review workflow.
 
 ## 8. Recommended Next Step
 
