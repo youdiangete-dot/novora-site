@@ -82,13 +82,19 @@ select
   ) as target_status_rows,
   count(*) filter (where review_status = 'pending') as legacy_pending_rows,
   count(*) filter (
-    where review_status not in (
-      'internal_draft_not_generated',
-      'draft_generated_internal_only',
-      'needs_revision',
-      'approved_for_customer',
-      'pending'
-    )
+    where review_status is null
+      or btrim(review_status) = ''
+  ) as null_or_blank_status_rows,
+  count(*) filter (
+    where review_status is not null
+      and btrim(review_status) <> ''
+      and review_status not in (
+        'internal_draft_not_generated',
+        'draft_generated_internal_only',
+        'needs_revision',
+        'approved_for_customer',
+        'pending'
+      )
   ) as unexpected_status_rows
 from public.ai_sketch_reviews;
 ```
@@ -97,6 +103,13 @@ The query returns aggregate-only status counts. It must not return IDs,
 Concept Brief IDs, AI sketch output IDs, reviewer notes, customer-safe notes,
 brief content, contact content, reference asset details, storage paths,
 customer data, or private business content.
+
+The query block must not be replaced with row-level detail. It intentionally
+does not include `id`, `ai_sketch_output_id`, `concept_brief_id`,
+`reviewer_note`, `customer_safe_note`, `reviewed_at`, `created_at`, `select *`,
+joins, Concept Brief tables, contact tables, reference asset tables, customer
+content, or any `UPDATE`, `ALTER`, `CREATE`, `DROP`, `DELETE`, `INSERT`,
+`GRANT`, `REVOKE`, `CREATE POLICY`, or `ALTER POLICY` statement.
 
 ## D. Manual Result Template
 
@@ -109,6 +122,7 @@ aggregate metadata:
 - `total_review_rows`:
 - `target_status_rows`:
 - `legacy_pending_rows`:
+- `null_or_blank_status_rows`:
 - `unexpected_status_rows`:
 
 Do not paste IDs, `reviewer_note`, `customer_safe_note`, brief content, contact
@@ -121,6 +135,16 @@ If `total_review_rows` is `0`, existing row-value conflict risk is low, but SQL
 still needs final exact review and separate explicit approval before any ALTER
 execution.
 
+If all existing rows are `pending`, a candidate mapping may be
+`pending` to `internal_draft_not_generated`. That mapping still requires final
+exact SQL and separate explicit approval before any `UPDATE`, default change,
+or CHECK constraint is executed.
+
+If existing rows include both `pending` and one or more target statuses, stop
+before final SQL and review mixed-value compatibility. Final SQL must account
+for the current mixed values before any default, CHECK, or migration statement
+is approved.
+
 If all existing rows use only the four target statuses, future CHECK/default SQL
 can be reviewed against known compatible values. This still does not approve
 SQL execution.
@@ -128,6 +152,10 @@ SQL execution.
 If `legacy_pending_rows` is greater than `0`, stop before any default change,
 CHECK constraint, or status migration. NOVORA must decide whether and how
 legacy `pending` rows map to `internal_draft_not_generated` before final SQL.
+
+If `null_or_blank_status_rows` is greater than `0`, stop before any CHECK
+constraint or status migration. NOVORA must prepare a cleanup or migration
+strategy for null or blank status values before final SQL.
 
 If `unexpected_status_rows` is greater than `0`, stop before final SQL. NOVORA
 must prepare an explicit mapping, compatibility exception, or no-go decision
@@ -144,6 +172,43 @@ The recommended next step is manual aggregate-only review of
 `review_status` values by the user in Supabase SQL Editor. After the aggregate
 results are known, prepare final exact ALTER-only SQL for review.
 
+If the manual aggregate results show zero rows or only safe known values, the
+next planning step may be a revised final ALTER-only SQL package. If the manual
+aggregate results show unknown, null, or blank values, the next planning step is
+cleanup or migration planning, not execution.
+
 SQL execution remains blocked until the final exact SQL and status-row
 interpretation are reviewed and the user separately gives explicit approval for
 SQL execution.
+
+Agent 43A does not execute SQL.
+
+Future approval wording should be explicit, similar to:
+
+> 批准执行 Agent 43/44 final ALTER-only SQL，目标 Supabase 项目 novora-production，范围仅限 existing public.ai_sketch_reviews internal admin review persistence schema，不包含 customer visibility / OpenAI / image storage / app route / public gallery / payment points。
+
+Merging this PR is not that approval.
+
+## G. Risk Review
+
+| Risk | Consequence | Mitigation |
+| --- | --- | --- |
+| Aggregate query accidentally replaced by row-detail query | IDs, notes, customer content, or private operational data could be exposed. | Keep the manual packet aggregate-only and status-only; do not add row-level columns, joins, or customer tables. |
+| Unknown statuses found | A future CHECK constraint or default change could fail or misclassify existing rows. | Stop before ALTER SQL and prepare an explicit mapping, compatibility exception, or no-go decision. |
+| `pending` mapped incorrectly | Legacy rows could be treated as the wrong internal review state. | Treat `pending` to `internal_draft_not_generated` as only a candidate mapping requiring final exact SQL and explicit approval. |
+| CHECK constraint conflicts with existing values | SQL execution could fail or block future writes. | Review aggregate results before final SQL; use cleanup or staged migration planning if values are not compatible. |
+| Customer data accidentally inspected | Customer privacy and project boundaries could be violated. | Return only aggregate status counts; do not query IDs, notes, Concept Briefs, contacts, reference assets, images, or customer data. |
+| Aggregate precheck misunderstood as SQL approval | Reviewers may think Supabase can be altered after this PR merges. | Repeat that merge is documentation only and execution requires final exact SQL plus separate explicit approval. |
+| ALTER executed before interpreting results | Existing data could be migrated or constrained unsafely. | Keep execution no-go until the user runs the aggregate query, shares aggregate results, and approves final exact SQL. |
+
+## H. Go / No-Go Recommendation
+
+Agent 43A may prepare the aggregate-only manual query packet.
+
+SQL execution remains no-go until:
+
+- the user manually runs the aggregate-only SQL Editor query;
+- the user shares only aggregate results;
+- the status-row interpretation is reviewed;
+- final exact ALTER-only SQL is prepared and reviewed;
+- the user separately approves SQL execution.

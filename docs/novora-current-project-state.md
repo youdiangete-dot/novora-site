@@ -635,6 +635,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   deploy, merge, or perform any customer-data operation. Merging the packet does
   not approve SQL execution; final exact SQL and separate explicit user
   approval remain required.
+- Agent 43A Review Pass: PR #115 is draft, open, and unmerged at the time of
+  this review pass. The review pass kept the work docs-only and tightened the
+  row-value precheck packet around aggregate-only SQL Editor queries,
+  null/blank status counts, explicit interpretation cases, future approval
+  wording, conservative go/no-go guidance, and risk review. No SQL was
+  executed. Codex did not connect to Supabase, inspect live schema, query
+  customer rows, inspect IDs or notes, change Supabase schema/RLS/storage/
+  grants/policies, edit app/API code, call OpenAI, generate/upload/store
+  images, implement persistence, implement customer-facing sketch display,
+  implement public gallery automation, change auth/payment/points/env/secrets,
+  access Production/admin pages, create submissions, send email, deploy, touch
+  CAD/order/production behavior, or perform any customer-data operation. The
+  next step is review, then user manual aggregate query results, not ALTER
+  execution.
 
 ## 7. Current Non-Goals And Boundaries
 
