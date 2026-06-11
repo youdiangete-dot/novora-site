@@ -664,8 +664,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   grants, policies, app code, API route, OpenAI, image generation,
   customer-facing sketch display, auth, payment, environment, secrets,
   Production/admin, submission, email, deploy, CAD, order, customer-data, or
-  other high-risk action was performed. PR should remain draft, open, and
-  unmerged. The next step after Agent 44A is Review Pass, not SQL execution.
+  other high-risk action was performed. Agent 44A Review Pass confirmed PR
+  #116 is draft, open, and unmerged, and tightened the packet to clarify that
+  `updated_at` is added as a column only, with no trigger creation or automatic
+  refresh behavior implemented. The next step after Agent 44A is Final PR
+  Check, not SQL execution.
 
 ## 7. Current Non-Goals And Boundaries
 

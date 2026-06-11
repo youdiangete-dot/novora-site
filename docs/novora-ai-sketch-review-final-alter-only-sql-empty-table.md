@@ -81,6 +81,12 @@ alter table public.ai_sketch_reviews
 commit;
 ```
 
+This packet adds the `updated_at` column only. It does not create or modify
+triggers, and it does not claim that `updated_at` will automatically refresh on
+later row changes. A future app/schema follow-up may be required if automatic
+`updated_at` refresh behavior is needed, and that follow-up would require
+separate review and approval.
+
 The final CHECK constraint intentionally excludes `pending` because the
 aggregate precheck showed the table is empty and no legacy rows need to be
 preserved or migrated.
