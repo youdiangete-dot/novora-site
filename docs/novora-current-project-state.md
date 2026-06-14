@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #116 merge commit:
-  `10e3770032d5bb32f0ef7d00e2e2c23a8ff140d4`
+- Current `main` HEAD / PR #117 merge commit:
+  `f35ad7619489064187f5757a3b1cc6720e596a23`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -699,6 +699,22 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   OpenAI/image generation, customer visibility, public gallery, payment,
   points, auth, email, deploy, PR-ready transition, merge, or other high-risk
   action was performed. The next step is Final PR Check, not more SQL
+  execution.
+- Agent 45B: created
+  `docs/novora-admin-review-persistence-app-compatibility-plan.md`, a docs-only
+  app compatibility planning packet after the Agent 44 SQL execution record and
+  PR #117 merge. The packet records the now-applied
+  `public.ai_sketch_reviews` schema baseline, local admin UI compatibility
+  findings, required app implementation decisions, a phased Agent 45C-45G
+  sequence, product/security boundaries, and risks. No SQL was executed by
+  Codex. Codex did not connect to Supabase. Codex did not inspect live schema.
+  Codex did not inspect rows, customer data, IDs, `reviewer_note`, or
+  `customer_safe_note`. No app/API/package/env, Supabase/RLS/storage/grants/
+  policies, OpenAI/image generation, customer display, public gallery, auth,
+  payment, points, deploy, or other high-risk action was performed. Agent 45B
+  Review Pass commit `a1ad4566fbdaa93e0783a152d68f44f2029ce4e7` kept PR #118
+  planning-only and confirmed PR #118 is draft, open, and unmerged at the time
+  of the review pass. The next step is Final PR Check / Ready decision, not SQL
   execution.
 
 ## 7. Current Non-Goals And Boundaries
