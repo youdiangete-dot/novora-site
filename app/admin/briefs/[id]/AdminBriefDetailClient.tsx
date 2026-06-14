@@ -4,6 +4,12 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AI_SKETCH_REVIEW_INITIAL_STATUS,
+  AI_SKETCH_REVIEW_STATUSES,
+  AI_SKETCH_REVIEW_STATUS_HELP_TEXT,
+  AI_SKETCH_REVIEW_STATUS_LABELS,
+} from '../../../../lib/ai-sketch-review-status';
+import {
   type BriefStatus,
   type AdminBriefRecord,
   type AdminNotificationEventRecord,
@@ -38,28 +44,6 @@ type AdminBriefDetailClientProps = {
   serverBrief: AdminBriefRecord | null;
   serverDataMessage?: string;
 };
-
-const aiSketchReviewStatuses = [
-  {
-    label: 'Internal draft not generated',
-    meaning: 'No internal sketch draft has been generated yet.',
-  },
-  {
-    label: 'Draft generated — internal only',
-    meaning:
-      'GPT/AI has generated an internal draft, but it is only for admin/design-team review.',
-  },
-  {
-    label: 'Needs revision',
-    meaning:
-      'Human review found structure, style, or brief-alignment issues and the sketch needs revision.',
-  },
-  {
-    label: 'Approved for customer',
-    meaning:
-      'NOVORA human review has approved the sketch for customer-facing concept presentation.',
-  },
-];
 
 function getSourceLabel(brief: AdminBriefRecord) {
   if (brief.source === 'supabase') {
@@ -139,11 +123,11 @@ function getReferenceAssetList(brief: AdminBriefRecord) {
 function AiSketchReviewStatusList() {
   return (
     <ul className={styles.fileList}>
-      {aiSketchReviewStatuses.map((status) => (
-        <li key={status.label}>
+      {AI_SKETCH_REVIEW_STATUSES.map((status) => (
+        <li key={status}>
           <div className={styles.primaryCell}>
-            <span>{status.label}</span>
-            <span>{status.meaning}</span>
+            <span>{AI_SKETCH_REVIEW_STATUS_LABELS[status]}</span>
+            <span>{AI_SKETCH_REVIEW_STATUS_HELP_TEXT[status]}</span>
           </div>
         </li>
       ))}
@@ -155,9 +139,12 @@ function AiSketchReviewGuidance() {
   return (
     <ul className={styles.fileList}>
       <li>AI/GPT sketch drafts are internal review material.</li>
+      <li>Unreviewed AI drafts must never be shown directly to customers.</li>
       <li>Human review must check structure, style, and brief fit.</li>
       <li>Drafts needing revision should not be shown to customers.</li>
-      <li>Only approved sketches can later become customer-facing concept previews.</li>
+      <li>AI generation success alone does not approve a sketch.</li>
+      <li>Approved for customer is separate from public gallery approval.</li>
+      <li>Customer-facing sketch delivery remains email-only after human review, optimization, and approval.</li>
       <li>This does not generate, store, or deliver sketches yet.</li>
     </ul>
   );
@@ -277,12 +264,20 @@ export default function AdminBriefDetailClient({
       {
         title: 'AI Sketch Review Workflow',
         rows: [
-          { label: 'Default workflow status', value: 'Internal draft not generated' },
+          {
+            label: 'Default workflow status',
+            value: AI_SKETCH_REVIEW_STATUS_LABELS[AI_SKETCH_REVIEW_INITIAL_STATUS],
+          },
           { label: 'Empty state', value: 'No internal sketch drafts yet.' },
           {
             label: 'Customer visibility boundary',
             value:
               'AI sketches are internal drafts until reviewed and approved. Customers must only see sketches approved by the NOVORA design team.',
+          },
+          {
+            label: 'Status separation',
+            value:
+              'Concept Brief admin review status stays separate from future AI sketch review persistence.',
           },
           { label: 'Workflow statuses', value: <AiSketchReviewStatusList /> },
           { label: 'Manual review guidance', value: <AiSketchReviewGuidance /> },

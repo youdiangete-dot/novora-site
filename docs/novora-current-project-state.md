@@ -716,6 +716,27 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   planning-only and confirmed PR #118 is draft, open, and unmerged at the time
   of the review pass. The next step is Final PR Check / Ready decision, not SQL
   execution.
+- Agent 45C: PR #119 on branch
+  `codex/agent-45c-ai-sketch-review-status-constants-copy` created the smallest
+  app-code preparation for AI sketch review status constants/types and admin
+  copy alignment. Initial commit:
+  `dded274d4f88ec1418ebfeea92ad2e6cabdc4266`. Review-pass commit:
+  `97cd623fd9dd3e954776713f0cf428708d880e4d`. Shared app constants now use the
+  final database CHECK values:
+  `internal_draft_not_generated`, `draft_generated_internal_only`,
+  `needs_revision`, and `approved_for_customer`; `pending` is not an allowed AI
+  sketch review status. The existing protected admin Concept Brief detail AI
+  Sketch Review Workflow skeleton now reads those labels/help strings from the
+  shared constants and clarifies that Concept Brief admin review status remains
+  separate from future AI sketch review persistence. No Supabase read path,
+  Supabase write path, persistence, server action, API route, customer-facing AI
+  sketch visibility, OpenAI/image generation, image storage, public gallery,
+  payment, points, auth, deploy, or Production action was implemented. No SQL
+  was executed by Codex. Codex did not connect to Supabase, inspect live schema,
+  inspect rows, inspect customer data, inspect IDs, inspect `reviewer_note`, or
+  inspect `customer_safe_note`. PR #119 should remain draft, open, and unmerged
+  pending review. The next step is: Ready/Merge decision after Final PR Check,
+  then Agent 45D decision, not SQL.
 
 ## 7. Current Non-Goals And Boundaries
 
