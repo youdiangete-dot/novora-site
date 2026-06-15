@@ -255,6 +255,9 @@ the future implementation should insert or upsert a row keyed by internal
 `concept_brief_id`, but only after confirming local schema expectations and
 duplicate-row protection.
 
+This PR does not implement insert, update, delete, or upsert behavior. The
+policy below is for a separately approved future implementation only.
+
 Required policy:
 
 - `conceptBriefId` must be the internal Concept Brief id, not the public
