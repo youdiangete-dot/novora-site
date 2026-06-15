@@ -8,6 +8,7 @@ import {
   AI_SKETCH_REVIEW_STATUSES,
   AI_SKETCH_REVIEW_STATUS_HELP_TEXT,
   AI_SKETCH_REVIEW_STATUS_LABELS,
+  type AiSketchReviewStatus,
 } from '../../../../lib/ai-sketch-review-status';
 import {
   type BriefStatus,
@@ -38,11 +39,23 @@ type DetailSectionData = {
 };
 
 type AdminBriefDetailClientProps = {
+  aiSketchReview: AdminAiSketchReviewReadModel;
   decodedId: string;
   notificationEvent: AdminNotificationEventRecord | null;
   notificationEventMessage?: string;
   serverBrief: AdminBriefRecord | null;
   serverDataMessage?: string;
+};
+
+type AdminAiSketchReviewReadModel = {
+  reviewStatus: AiSketchReviewStatus;
+  revisionInstruction: string | null;
+  approvedForCustomerAt: string | null;
+  approvedBy: string | null;
+  approvalRevokedAt: string | null;
+  revokedBy: string | null;
+  updatedAt: string | null;
+  hasPersistedReview: boolean;
 };
 
 function getSourceLabel(brief: AdminBriefRecord) {
@@ -167,6 +180,7 @@ function DetailSection({ title, rows }: { title: string; rows: DetailRow[] }) {
 }
 
 export default function AdminBriefDetailClient({
+  aiSketchReview,
   decodedId,
   notificationEvent,
   notificationEventMessage,
@@ -265,9 +279,25 @@ export default function AdminBriefDetailClient({
         title: 'AI Sketch Review Workflow',
         rows: [
           {
+            label: 'Current review state',
+            value: AI_SKETCH_REVIEW_STATUS_LABELS[aiSketchReview.reviewStatus],
+          },
+          {
+            label: 'Review state source',
+            value: aiSketchReview.hasPersistedReview
+              ? 'Saved internal review state'
+              : 'No persisted AI sketch review yet',
+          },
+          {
             label: 'Default workflow status',
             value: AI_SKETCH_REVIEW_STATUS_LABELS[AI_SKETCH_REVIEW_INITIAL_STATUS],
           },
+          { label: 'Revision instruction', value: aiSketchReview.revisionInstruction || 'Not provided' },
+          { label: 'Approved for customer at', value: formatSubmittedTime(aiSketchReview.approvedForCustomerAt || '') },
+          { label: 'Approved by', value: aiSketchReview.approvedBy || 'Not provided' },
+          { label: 'Approval revoked at', value: formatSubmittedTime(aiSketchReview.approvalRevokedAt || '') },
+          { label: 'Revoked by', value: aiSketchReview.revokedBy || 'Not provided' },
+          { label: 'Last saved update', value: formatSubmittedTime(aiSketchReview.updatedAt || '') },
           { label: 'Empty state', value: 'No internal sketch drafts yet.' },
           {
             label: 'Customer visibility boundary',
@@ -380,6 +410,7 @@ export default function AdminBriefDetailClient({
     return sections;
   }, [
     brief,
+    aiSketchReview,
     internalNotes,
     isServerBacked,
     lastUpdatedAt,

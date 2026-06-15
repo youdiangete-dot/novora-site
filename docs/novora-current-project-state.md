@@ -737,6 +737,24 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   inspect `customer_safe_note`. PR #119 should remain draft, open, and unmerged
   pending review. The next step is: Ready/Merge decision after Final PR Check,
   then Agent 45D decision, not SQL.
+- Agent 45D: PR should be opened as a draft on branch
+  `codex/agent-45d-admin-ai-sketch-review-read-path`. This implementation adds
+  the smallest admin-only AI sketch review persistence read-path preparation for
+  the protected Concept Brief detail page. The read helper uses the shared Agent
+  45C status constants and normalizes persisted `review_status` values for
+  admin display only. If no persisted review exists, if the Supabase admin client
+  is unavailable, or if the read fails, the helper returns the safe fallback
+  `internal_draft_not_generated` with `hasPersistedReview: false` and nullable
+  metadata fields set to `null`. Invalid or legacy values, including `pending`,
+  are guarded and fall back to `internal_draft_not_generated`; `pending` remains
+  invalid/excluded and must never be treated as approved. Concept Brief admin
+  review state remains separate from AI sketch review persistence. No write path,
+  API route, server action, SQL, schema/RLS/storage change, OpenAI/image/storage
+  behavior, customer-facing AI sketch visibility, public gallery automation,
+  payment, points, auth, or deploy behavior is added. Codex did not execute SQL,
+  connect to Supabase live, inspect live schema, inspect rows/customer data/IDs/
+  notes, or inspect `reviewer_note` or `customer_safe_note`. The next step after
+  review and merge should be an Agent 45E write-path decision, not SQL.
 
 ## 7. Current Non-Goals And Boundaries
 
