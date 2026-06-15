@@ -1151,7 +1151,9 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByRole('heading', { name: 'Reference images metadata' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI sketch instruction / concept direction' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI Sketch Review Workflow' })).toBeVisible();
+    await expect(page.getByText('Current review state')).toBeVisible();
     await expect(page.getByText('Internal draft not generated')).toBeVisible();
+    await expect(page.getByText('No persisted AI sketch review yet')).toBeVisible();
     await expect(page.getByText('No internal sketch drafts yet.')).toBeVisible();
     await expect(page.getByText('Draft generated')).toBeVisible();
     await expect(page.getByText('Needs revision')).toBeVisible();

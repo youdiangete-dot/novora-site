@@ -9,6 +9,10 @@ import {
   isAdminAccessConfigured,
   isValidAdminAccessCookie,
 } from '../../../../lib/server/admin-access';
+import {
+  createFallbackAdminAiSketchReviewReadModel,
+  loadAdminAiSketchReviewByConceptBriefId,
+} from '../../../../lib/server/admin-ai-sketch-review-read';
 import { loadAdminConceptBriefRecordByReference } from '../../../../lib/server/admin-concept-briefs';
 import { loadLatestAdminNotificationEventByConceptBriefId } from '../../../../lib/server/admin-notification-events';
 import styles from '../admin-briefs.module.css';
@@ -124,6 +128,10 @@ export default async function AdminBriefDetailPage({ params, searchParams }: Adm
     serverBrief.record?.databaseId
       ? await loadLatestAdminNotificationEventByConceptBriefId(serverBrief.record.databaseId)
       : { ok: true as const, event: null };
+  const aiSketchReview =
+    serverBrief.record?.databaseId
+      ? await loadAdminAiSketchReviewByConceptBriefId(serverBrief.record.databaseId)
+      : createFallbackAdminAiSketchReviewReadModel();
   let serverDataMessage: string | undefined;
   let notificationEventMessage: string | undefined;
 
@@ -137,6 +145,7 @@ export default async function AdminBriefDetailPage({ params, searchParams }: Adm
 
   return (
     <AdminBriefDetailClient
+      aiSketchReview={aiSketchReview}
       decodedId={decodedId}
       notificationEvent={notificationEvent.event}
       notificationEventMessage={notificationEventMessage}
