@@ -62,39 +62,43 @@ export async function loadAdminAiSketchReviewByConceptBriefId(
     return createFallbackAdminAiSketchReviewReadModel();
   }
 
-  const supabase = createSupabaseAdminClientOrNull();
+  try {
+    const supabase = createSupabaseAdminClientOrNull();
 
-  if (!supabase) {
+    if (!supabase) {
+      return createFallbackAdminAiSketchReviewReadModel();
+    }
+
+    const { data: reviewRow, error: reviewError } = await supabase
+      .from("ai_sketch_reviews")
+      .select(
+        "review_status, revision_instruction, approved_for_customer_at, approved_by, approval_revoked_at, revoked_by, updated_at",
+      )
+      .eq("concept_brief_id", normalizedConceptBriefId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<AiSketchReviewRow>();
+
+    if (reviewError || !reviewRow) {
+      return createFallbackAdminAiSketchReviewReadModel();
+    }
+
+    const reviewStatus = normalizeReviewStatus(reviewRow.review_status);
+    const isApprovedForCustomer = reviewStatus === "approved_for_customer";
+
+    return {
+      reviewStatus,
+      revisionInstruction: readNullableString(reviewRow.revision_instruction),
+      approvedForCustomerAt: isApprovedForCustomer
+        ? readNullableString(reviewRow.approved_for_customer_at)
+        : null,
+      approvedBy: isApprovedForCustomer ? readNullableString(reviewRow.approved_by) : null,
+      approvalRevokedAt: readNullableString(reviewRow.approval_revoked_at),
+      revokedBy: readNullableString(reviewRow.revoked_by),
+      updatedAt: readNullableString(reviewRow.updated_at),
+      hasPersistedReview: true,
+    };
+  } catch {
     return createFallbackAdminAiSketchReviewReadModel();
   }
-
-  const { data: reviewRow, error: reviewError } = await supabase
-    .from("ai_sketch_reviews")
-    .select(
-      "review_status, revision_instruction, approved_for_customer_at, approved_by, approval_revoked_at, revoked_by, updated_at",
-    )
-    .eq("concept_brief_id", normalizedConceptBriefId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<AiSketchReviewRow>();
-
-  if (reviewError || !reviewRow) {
-    return createFallbackAdminAiSketchReviewReadModel();
-  }
-
-  const reviewStatus = normalizeReviewStatus(reviewRow.review_status);
-  const isApprovedForCustomer = reviewStatus === "approved_for_customer";
-
-  return {
-    reviewStatus,
-    revisionInstruction: readNullableString(reviewRow.revision_instruction),
-    approvedForCustomerAt: isApprovedForCustomer
-      ? readNullableString(reviewRow.approved_for_customer_at)
-      : null,
-    approvedBy: isApprovedForCustomer ? readNullableString(reviewRow.approved_by) : null,
-    approvalRevokedAt: readNullableString(reviewRow.approval_revoked_at),
-    revokedBy: readNullableString(reviewRow.revoked_by),
-    updatedAt: readNullableString(reviewRow.updated_at),
-    hasPersistedReview: true,
-  };
 }
