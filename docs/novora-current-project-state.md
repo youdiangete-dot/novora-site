@@ -812,7 +812,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - Agent 45E duplicate protection SQL planning: PR #123 on branch
   `codex/agent-45e-duplicate-protection-sql-plan` is draft, open, and unmerged
   at the time of this review pass. Initial commit:
-  `ef35c2471b2164fca1f94ce889343662cc13bf7f`. This PR started after PR #122
+  `ef35c2471b2164fca1f94ce889343662cc13bf7f`. Review-pass commit:
+  `9a3ec9aad3d2d552bb82e595da72731b2140e103`. This PR started after PR #122
   merged. It is docs-only and prepares only a manual SQL packet for duplicate
   protection on `public.ai_sketch_reviews(concept_brief_id)`. The user-run
   manual precheck reported `pending_mentioned_in_review_status_check = false`,
@@ -826,10 +827,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   insert, update, delete, or upsert behavior was implemented. No
   customer-facing AI sketch visibility, email/customer delivery, OpenAI, image,
   storage, public gallery, payment, points, auth, deploy, Supabase, RLS, grant,
-  policy, or storage change was made. The next step after this PR should be
-  Review Pass, Final PR Check, Ready/Merge, post-merge cleanup, then a
-  user-run manual SQL execution decision, not write-path implementation
-  automatically.
+  policy, or storage change was made. The next step after Final PR Check should
+  be Ready/Merge, post-merge cleanup, then a user-run manual SQL execution
+  decision, not write-path implementation automatically.
 
 ## 7. Current Non-Goals And Boundaries
 
