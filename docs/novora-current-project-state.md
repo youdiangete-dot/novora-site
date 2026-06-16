@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #121 merge commit:
-  `0795d85bc5222b4eab7c6155ae9ca634b5f1cac5`
+- Current `main` HEAD / PR #122 merge commit:
+  `4de05a67e55a1cb255e6d2efc7269be97ca0d7af`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -785,8 +785,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   reviewed, marked ready if appropriate, and merged, the next step should be an
   Agent 45E implementation decision, not SQL.
 - Agent 45E implementation precheck planning: PR #122 on branch
-  `codex/agent-45e-write-path-implementation-precheck-plan` is draft, open,
-  and unmerged at the time of this review pass. Initial commit
+  `codex/agent-45e-write-path-implementation-precheck-plan` has since been
+  merged into `main` at
+  `4de05a67e55a1cb255e6d2efc7269be97ca0d7af`. Initial commit
   `0fea5ba46313114c923b35debc09bd75925a617a` added the initial precheck
   packet. Review-pass commit
   `ae87c1fd8e197942e645942107709fe38aef068d` tightened the ledger to record
@@ -807,10 +808,26 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   inspected. No `reviewer_note` or `customer_safe_note` was inspected. No
   customer-facing AI sketch visibility was added. No email/customer delivery
   behavior was added. No OpenAI/image/storage/public gallery/payment/points/
-  auth/deploy changes were made. This PR should remain draft, open, and
-  unmerged through review. The next step is Ready/Merge decision after Final PR
-  Check; then a user-run manual precheck decision, not implementation
-  automatically.
+  auth/deploy changes were made.
+- Agent 45E duplicate protection SQL planning started on branch
+  `codex/agent-45e-duplicate-protection-sql-plan` after PR #122 merged. This
+  PR is docs-only and prepares only a manual SQL packet for duplicate protection
+  on `public.ai_sketch_reviews(concept_brief_id)`. The user-run manual
+  precheck reported `pending_mentioned_in_review_status_check = false`,
+  `all_final_statuses_mentioned_in_check = true`,
+  `invalid_or_legacy_status_rows = 0`, `total_rows = 0`, and no detected
+  `concept_brief_id` index rows, so the table is empty and status constraints
+  look good, but duplicate protection is missing. Codex did not execute SQL.
+  Codex did not connect to Supabase live. Codex did not inspect live schema.
+  Codex did not query rows, customer data, IDs, or notes. No `reviewer_note` or
+  `customer_safe_note` was inspected. No write path, API route, server action,
+  insert, update, delete, or upsert behavior was implemented. No
+  customer-facing AI sketch visibility, email/customer delivery, OpenAI, image,
+  storage, public gallery, payment, points, auth, deploy, Supabase, RLS, grant,
+  policy, or storage change was made. This PR should be draft, open, and
+  unmerged through review. The next step after this PR should be Review Pass,
+  Final PR Check, Ready/Merge, post-merge cleanup, then a user-run manual SQL
+  execution decision, not write-path implementation automatically.
 
 ## 7. Current Non-Goals And Boundaries
 
