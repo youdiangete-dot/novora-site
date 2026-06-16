@@ -787,7 +787,10 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - Agent 45E implementation precheck planning: PR #122 on branch
   `codex/agent-45e-write-path-implementation-precheck-plan` is draft, open,
   and unmerged at the time of this review pass. Initial commit
-  `0fea5ba46313114c923b35debc09bd75925a617a` adds
+  `0fea5ba46313114c923b35debc09bd75925a617a` added the initial precheck
+  packet. Review-pass commit
+  `ae87c1fd8e197942e645942107709fe38aef068d` tightened the ledger to record
+  PR #122 metadata explicitly. The PR adds
   `docs/novora-agent-45e-write-path-implementation-precheck-plan.md`, a
   docs-only precheck packet before any admin-only AI sketch review write-path
   implementation. The packet records that PR #121 has been merged into `main`
@@ -805,9 +808,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer-facing AI sketch visibility was added. No email/customer delivery
   behavior was added. No OpenAI/image/storage/public gallery/payment/points/
   auth/deploy changes were made. This PR should remain draft, open, and
-  unmerged through review. The next step after review should be Final PR Check
-  / Ready decision, then a user-run manual precheck decision, not automatic
-  implementation.
+  unmerged through review. The next step is Ready/Merge decision after Final PR
+  Check; then a user-run manual precheck decision, not implementation
+  automatically.
 
 ## 7. Current Non-Goals And Boundaries
 
