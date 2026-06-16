@@ -784,8 +784,10 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   this review pass should be Final PR Check / Ready decision. After PR #121 is
   reviewed, marked ready if appropriate, and merged, the next step should be an
   Agent 45E implementation decision, not SQL.
-- Agent 45E implementation precheck planning: branch
-  `codex/agent-45e-write-path-implementation-precheck-plan` adds
+- Agent 45E implementation precheck planning: PR #122 on branch
+  `codex/agent-45e-write-path-implementation-precheck-plan` is draft, open,
+  and unmerged at the time of this review pass. Initial commit
+  `0fea5ba46313114c923b35debc09bd75925a617a` adds
   `docs/novora-agent-45e-write-path-implementation-precheck-plan.md`, a
   docs-only precheck packet before any admin-only AI sketch review write-path
   implementation. The packet records that PR #121 has been merged into `main`
