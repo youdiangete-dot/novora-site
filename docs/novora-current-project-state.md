@@ -809,11 +809,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer-facing AI sketch visibility was added. No email/customer delivery
   behavior was added. No OpenAI/image/storage/public gallery/payment/points/
   auth/deploy changes were made.
-- Agent 45E duplicate protection SQL planning started on branch
-  `codex/agent-45e-duplicate-protection-sql-plan` after PR #122 merged. This
-  PR is docs-only and prepares only a manual SQL packet for duplicate protection
-  on `public.ai_sketch_reviews(concept_brief_id)`. The user-run manual
-  precheck reported `pending_mentioned_in_review_status_check = false`,
+- Agent 45E duplicate protection SQL planning: PR #123 on branch
+  `codex/agent-45e-duplicate-protection-sql-plan` is draft, open, and unmerged
+  at the time of this review pass. Initial commit:
+  `ef35c2471b2164fca1f94ce889343662cc13bf7f`. This PR started after PR #122
+  merged. It is docs-only and prepares only a manual SQL packet for duplicate
+  protection on `public.ai_sketch_reviews(concept_brief_id)`. The user-run
+  manual precheck reported `pending_mentioned_in_review_status_check = false`,
   `all_final_statuses_mentioned_in_check = true`,
   `invalid_or_legacy_status_rows = 0`, `total_rows = 0`, and no detected
   `concept_brief_id` index rows, so the table is empty and status constraints
@@ -824,10 +826,10 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   insert, update, delete, or upsert behavior was implemented. No
   customer-facing AI sketch visibility, email/customer delivery, OpenAI, image,
   storage, public gallery, payment, points, auth, deploy, Supabase, RLS, grant,
-  policy, or storage change was made. This PR should be draft, open, and
-  unmerged through review. The next step after this PR should be Review Pass,
-  Final PR Check, Ready/Merge, post-merge cleanup, then a user-run manual SQL
-  execution decision, not write-path implementation automatically.
+  policy, or storage change was made. The next step after this PR should be
+  Review Pass, Final PR Check, Ready/Merge, post-merge cleanup, then a
+  user-run manual SQL execution decision, not write-path implementation
+  automatically.
 
 ## 7. Current Non-Goals And Boundaries
 
