@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #120 merge commit:
-  `5b19d57aa55958c14dd0923d51223fdb9f588fb7`
+- Current `main` HEAD / PR #121 merge commit:
+  `0795d85bc5222b4eab7c6155ae9ca634b5f1cac5`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -784,6 +784,33 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   this review pass should be Final PR Check / Ready decision. After PR #121 is
   reviewed, marked ready if appropriate, and merged, the next step should be an
   Agent 45E implementation decision, not SQL.
+- Agent 45E implementation precheck planning: PR #122 on branch
+  `codex/agent-45e-write-path-implementation-precheck-plan` is draft, open,
+  and unmerged at the time of this review pass. Initial commit
+  `0fea5ba46313114c923b35debc09bd75925a617a` added the initial precheck
+  packet. Review-pass commit
+  `ae87c1fd8e197942e645942107709fe38aef068d` tightened the ledger to record
+  PR #122 metadata explicitly. The PR adds
+  `docs/novora-agent-45e-write-path-implementation-precheck-plan.md`, a
+  docs-only precheck packet before any admin-only AI sketch review write-path
+  implementation. The packet records that PR #121 has been merged into `main`
+  at `0795d85bc5222b4eab7c6155ae9ca634b5f1cac5`, that Agent 45C status
+  constants and Agent 45D protected admin-only read path are merged, and that
+  actual write-path implementation is still not approved. It documents required
+  preconditions, user-run read-only manual precheck SELECT queries,
+  duplicate/unique-constraint decision rules, admin route/auth precheck,
+  future writable field limits, customer boundary rules, and stop conditions.
+  This PR is docs-only planning. No write path was implemented. No API route or
+  server action was added. No insert/update/delete/upsert behavior was
+  implemented. No SQL was executed by Codex. Codex did not connect to Supabase
+  live. No live schema was inspected. No rows/customer data/IDs/notes were
+  inspected. No `reviewer_note` or `customer_safe_note` was inspected. No
+  customer-facing AI sketch visibility was added. No email/customer delivery
+  behavior was added. No OpenAI/image/storage/public gallery/payment/points/
+  auth/deploy changes were made. This PR should remain draft, open, and
+  unmerged through review. The next step is Ready/Merge decision after Final PR
+  Check; then a user-run manual precheck decision, not implementation
+  automatically.
 
 ## 7. Current Non-Goals And Boundaries
 
