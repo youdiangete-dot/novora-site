@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #117 merge commit:
-  `f35ad7619489064187f5757a3b1cc6720e596a23`
+- Current `main` HEAD / PR #120 merge commit:
+  `5b19d57aa55958c14dd0923d51223fdb9f588fb7`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -760,6 +760,30 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   next step is Ready/Merge decision after Final PR Check; after 45D is merged,
   the next implementation step should be an Agent 45E write-path decision, not
   SQL.
+- Agent 45E: PR #121 on branch
+  `codex/agent-45e-admin-ai-sketch-review-write-path-plan` adds
+  `docs/novora-agent-45e-admin-ai-sketch-review-write-path-plan.md`, a docs-only
+  future implementation plan for an admin-only AI sketch review write path after
+  PR #120 merged into `main` at
+  `5b19d57aa55958c14dd0923d51223fdb9f588fb7`. Initial commit:
+  `ce3eccbbbc393f3647728e0a86504ba312366206`. Review-pass commit:
+  `8b3644e076bef97ca021b6103014bb98c6b422d5`. The plan records the existing
+  protected Concept Brief admin review write/auth pattern, the proposed future
+  route/helper shape, strict allowed AI sketch review statuses,
+  approval/revocation metadata policy, no-record upsert policy, read/write
+  separation from Agent 45D, customer visibility and delivery boundaries, future
+  tests, and stop conditions. Agent 45E remains docs-only planning. No write
+  path was implemented. No API route or server action was added. No
+  insert/update/delete/upsert behavior was implemented. No SQL was executed by
+  Codex. Codex did not connect to Supabase live. No live schema was inspected.
+  No rows/customer data/IDs/notes were inspected. No `reviewer_note` or
+  `customer_safe_note` was inspected. No customer-facing AI sketch visibility
+  was added. No email/customer delivery behavior was added. No OpenAI/image/
+  storage/public gallery/payment/points/auth/deploy changes were made. PR #121
+  should remain draft, open, and unmerged through review. The next step after
+  this review pass should be Final PR Check / Ready decision. After PR #121 is
+  reviewed, marked ready if appropriate, and merged, the next step should be an
+  Agent 45E implementation decision, not SQL.
 
 ## 7. Current Non-Goals And Boundaries
 
