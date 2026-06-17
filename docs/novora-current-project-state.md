@@ -900,6 +900,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   `reviewer_note`, `customer_safe_note`, customer-facing AI sketch display,
   email, OpenAI call, image generation, third-party service connection, env,
   deploy, RLS, grant, policy, migration, or storage change was made.
+- Agent 46B: implements the minimal protected admin-only AI sketch review
+  write-path foundation for `public.ai_sketch_reviews` on branch
+  `codex/agent-46b-admin-ai-sketch-review-write-path`. The app-code slice adds
+  a protected `/admin/briefs/ai-sketch-review` route and a server-only helper
+  with an explicit `create` / `update` split. It does not use blind upsert.
+  The create path writes only `concept_brief_id` and `review_status`, relies on
+  the manually verified `UNIQUE (concept_brief_id)` duplicate protection, and
+  returns a safe already-exists error on unique conflict. The update path writes
+  only `review_status`, does not create missing rows, and returns a safe
+  missing-row error when no review row exists. The route uses the existing
+  protected admin access cookie pattern, accepts only final AI sketch review
+  statuses, and rejects `pending`, empty, null, legacy, or unknown statuses.
+  `reviewer_note` and `customer_safe_note` remain excluded from payloads,
+  responses, select lists, UI state, tests, and logging except as exclusion
+  language. No SQL was executed by Codex. Codex did not connect to Supabase
+  live, inspect live schema, inspect rows, inspect customer data, inspect IDs,
+  inspect `reviewer_note`, or inspect `customer_safe_note`. No customer-facing
+  AI sketch display, customer delivery, email, OpenAI/image generation, gallery
+  approval, payment, auth, CAD, order, production, env, deploy, RLS, grant,
+  policy, migration, storage, package, plugin, third-party service, or website
+  optimization change was made. Future admin UI create/update controls remain a
+  separate Agent 46C follow-up.
 
 ## 7. Current Non-Goals And Boundaries
 
