@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #122 merge commit:
-  `4de05a67e55a1cb255e6d2efc7269be97ca0d7af`
+- Current `main` HEAD / PR #123 merge commit:
+  `42b5566401653f199a377c3b51183584b175d879`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -810,26 +810,49 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   behavior was added. No OpenAI/image/storage/public gallery/payment/points/
   auth/deploy changes were made.
 - Agent 45E duplicate protection SQL planning: PR #123 on branch
-  `codex/agent-45e-duplicate-protection-sql-plan` is draft, open, and unmerged
-  at the time of this review pass. Initial commit:
+  `codex/agent-45e-duplicate-protection-sql-plan` has since been merged into
+  `main` at `42b5566401653f199a377c3b51183584b175d879`. Initial commit:
   `ef35c2471b2164fca1f94ce889343662cc13bf7f`. Review-pass commit:
-  `9a3ec9aad3d2d552bb82e595da72731b2140e103`. This PR started after PR #122
-  merged. It is docs-only and prepares only a manual SQL packet for duplicate
-  protection on `public.ai_sketch_reviews(concept_brief_id)`. The user-run
-  manual precheck reported `pending_mentioned_in_review_status_check = false`,
+  `9a3ec9aad3d2d552bb82e595da72731b2140e103`. Post-merge cleanup completed,
+  and the remote branch was deleted. This PR started after PR #122 merged. It
+  was docs-only and prepared only a manual SQL packet for duplicate protection
+  on `public.ai_sketch_reviews(concept_brief_id)`. The user-run manual precheck
+  reported `pending_mentioned_in_review_status_check = false`,
   `all_final_statuses_mentioned_in_check = true`,
   `invalid_or_legacy_status_rows = 0`, `total_rows = 0`, and no detected
-  `concept_brief_id` index rows, so the table is empty and status constraints
-  look good, but duplicate protection is missing. Codex did not execute SQL.
+  `concept_brief_id` index rows, so the table was empty and status constraints
+  looked good, but duplicate protection was missing. Codex did not execute SQL.
   Codex did not connect to Supabase live. Codex did not inspect live schema.
   Codex did not query rows, customer data, IDs, or notes. No `reviewer_note` or
   `customer_safe_note` was inspected. No write path, API route, server action,
   insert, update, delete, or upsert behavior was implemented. No
   customer-facing AI sketch visibility, email/customer delivery, OpenAI, image,
   storage, public gallery, payment, points, auth, deploy, Supabase, RLS, grant,
-  policy, or storage change was made. The next step after Final PR Check should
-  be Ready/Merge, post-merge cleanup, then a user-run manual SQL execution
-  decision, not write-path implementation automatically.
+  policy, or storage change was made.
+- Agent 45F: the user manually executed the PR #123 candidate duplicate
+  protection SQL in Supabase SQL Editor:
+  `alter table public.ai_sketch_reviews add constraint ai_sketch_reviews_concept_brief_id_key unique (concept_brief_id);`
+  Codex did not execute SQL, connect to Supabase live, inspect live schema,
+  inspect rows, inspect customer data, inspect IDs, inspect `reviewer_note`, or
+  inspect `customer_safe_note`. The user-reported post-SQL verification confirms
+  constraint `ai_sketch_reviews_concept_brief_id_key` exists with constraint
+  type `u` and definition `UNIQUE (concept_brief_id)`. The matching unique
+  index exists with `is_unique = true` and an index definition including
+  `concept_brief_id`. Aggregate checks reported
+  `duplicate_concept_brief_id_groups = 0`, `duplicate_extra_rows = 0`,
+  `total_rows = 0`, and `invalid_or_legacy_status_rows = 0`. Final
+  `review_status` CHECK signals remained
+  `pending_mentioned_in_review_status_check = false` and
+  `all_final_statuses_mentioned_in_check = true`. Duplicate protection for
+  `public.ai_sketch_reviews(concept_brief_id)` is now manually executed and
+  verified. This unblocks discussion of a future write-path implementation path,
+  but it does not automatically start implementation. Future implementation
+  still requires separate approval, must preserve admin-only access, must
+  validate final statuses only, must not touch `reviewer_note` or
+  `customer_safe_note`, and must preserve customer-delivery boundaries:
+  customer delivery remains email-only after human review, optimization, and
+  approval; `approved_for_customer` does not mean `approved_for_gallery`; and
+  customer pages must not display unreviewed AI sketches.
 
 ## 7. Current Non-Goals And Boundaries
 
