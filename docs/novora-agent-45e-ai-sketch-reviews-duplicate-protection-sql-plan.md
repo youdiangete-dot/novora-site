@@ -356,8 +356,10 @@ inspect `customer_safe_note`.
 User-reported post-SQL verification confirms:
 
 - constraint `ai_sketch_reviews_concept_brief_id_key` exists
+- constraint type is `u`
 - constraint definition is `UNIQUE (concept_brief_id)`
-- matching unique index exists with `is_unique = true`
+- matching unique index exists with `is_unique = true` and an index definition
+  including `concept_brief_id`
 - `duplicate_concept_brief_id_groups = 0`
 - `duplicate_extra_rows = 0`
 - `total_rows = 0`
@@ -367,7 +369,9 @@ User-reported post-SQL verification confirms:
 
 Duplicate protection is now manually executed and verified. This unblocks
 discussion of a future write-path implementation path, but it does not
-automatically start implementation.
+automatically start implementation. Future implementation still requires
+separate approval and must preserve admin-only access, final status validation,
+and customer-delivery boundaries.
 
 ## Decision Matrix
 
