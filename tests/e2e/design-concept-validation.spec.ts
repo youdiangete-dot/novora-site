@@ -1005,6 +1005,106 @@ test.describe('/design/brief submission', () => {
 });
 
 test.describe('/admin/briefs protected review UI', () => {
+  test('requires admin access for AI sketch review state writes', async ({ page }) => {
+    await page.goto('/');
+
+    const responseStatus = await page.evaluate(async () => {
+      const response = await fetch('/admin/briefs/ai-sketch-review', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: 'create',
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          reviewStatus: 'internal_draft_not_generated',
+        }),
+      });
+
+      return response.status;
+    });
+
+    expect(responseStatus).toBe(401);
+  });
+
+  test('rejects invalid AI sketch review write payloads before persistence', async ({ baseURL, context, page }) => {
+    const adminAccessKey = process.env.NOVORA_ADMIN_ACCESS_KEY;
+
+    if (!adminAccessKey) {
+      test.skip(true, 'NOVORA_ADMIN_ACCESS_KEY is required to verify protected AI sketch review API validation.');
+      return;
+    }
+
+    const appUrl = new URL(baseURL || 'http://127.0.0.1:3000');
+    const adminCookieValue = createHmac('sha256', adminAccessKey)
+      .update('novora-admin-briefs-access')
+      .digest('hex');
+
+    await context.addCookies([
+      {
+        name: 'novora_admin_access',
+        value: adminCookieValue,
+        domain: appUrl.hostname,
+        path: '/',
+        expires: Math.floor(Date.now() / 1000) + 60 * 60,
+        httpOnly: true,
+        sameSite: 'Strict',
+        secure: appUrl.protocol === 'https:',
+      },
+    ]);
+    await page.goto('/');
+
+    const responseStatuses = await page.evaluate(async () => {
+      const payloads: Array<string | Record<string, unknown>> = [
+        '{',
+        {
+          mode: 'create',
+          conceptBriefId: '',
+          reviewStatus: 'internal_draft_not_generated',
+        },
+        {
+          mode: 'create',
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          reviewStatus: 'pending',
+        },
+        {
+          mode: 'create',
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          reviewStatus: 'legacy_review_status',
+        },
+        {
+          mode: 'replace',
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          reviewStatus: 'internal_draft_not_generated',
+        },
+        {
+          mode: 'create',
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          reviewStatus: 'internal_draft_not_generated',
+          customer_safe_note: 'must not be accepted',
+        },
+      ];
+
+      return Promise.all(
+        payloads.map(async (payload) => {
+          const response = await fetch('/admin/briefs/ai-sketch-review', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: typeof payload === 'string' ? payload : JSON.stringify(payload),
+          });
+
+          return response.status;
+        }),
+      );
+    });
+
+    expect(responseStatuses).toEqual([400, 400, 400, 400, 400, 400]);
+  });
+
   test('uses legacy admin access cookie scope for admin-path review state saves', async ({ baseURL, context, page }) => {
     const adminAccessKey = process.env.NOVORA_ADMIN_ACCESS_KEY;
 
