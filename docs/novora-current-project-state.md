@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #124 merge commit:
-  `37fa6eb98ee81b17add1fc6a2ba5cd49e5195528`
+- Current `main` HEAD / PR #125 merge commit:
+  `1fd280c7e0b6f6afa40357221bc44abfcc86cd10`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -884,6 +884,22 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   inspection, customer-facing AI sketch display, email, OpenAI call, image
   generation, storage, public gallery, payment, auth, CAD, order, production,
   env, deploy, RLS, grant, policy, migration, or storage change was made.
+- Agent 47A: adds
+  `docs/novora-agent-47a-website-plugin-optimization-planning.md`, a docs-only
+  website plugin and website optimization strategy for NOVORA MVP. The planning
+  packet prioritizes low-risk metadata, copy clarity, CTA, mobile,
+  accessibility, image, and performance recommendations; defers analytics,
+  monitoring, chat, booking, CRM, and email marketing until privacy and data
+  handling are reviewed; and explicitly avoids payment, account, automatic AI
+  generation, automatic delivery, uncontrolled tracking, broad env/secrets,
+  customer-data forwarding, unreviewed AI sketch exposure, and upload/storage/
+  security-changing plugins. Agent 47A is docs-only planning. No plugin was
+  installed. No package, app code, API route, server action, AI sketch review
+  write path, insert, update, delete, upsert, SQL, Supabase live access, live
+  schema inspection, customer rows/customer data/IDs/notes inspection,
+  `reviewer_note`, `customer_safe_note`, customer-facing AI sketch display,
+  email, OpenAI call, image generation, third-party service connection, env,
+  deploy, RLS, grant, policy, migration, or storage change was made.
 
 ## 7. Current Non-Goals And Boundaries
 
