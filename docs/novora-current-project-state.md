@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #123 merge commit:
-  `42b5566401653f199a377c3b51183584b175d879`
+- Current `main` HEAD / PR #124 merge commit:
+  `37fa6eb98ee81b17add1fc6a2ba5cd49e5195528`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -853,6 +853,37 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer delivery remains email-only after human review, optimization, and
   approval; `approved_for_customer` does not mean `approved_for_gallery`; and
   customer pages must not display unreviewed AI sketches.
+- Agent 45F duplicate protection verification record: PR #124 on branch
+  `codex/agent-45f-record-duplicate-protection-verification` has since been
+  merged into `main` at `37fa6eb98ee81b17add1fc6a2ba5cd49e5195528`. The PR was
+  docs-only and recorded the user-manual duplicate protection execution and
+  post-SQL verification for
+  `ai_sketch_reviews_concept_brief_id_key UNIQUE (concept_brief_id)`. Post-merge
+  cleanup completed and local `main` was clean before Agent 46A started. No SQL
+  was executed by Codex. Codex did not connect to Supabase live, inspect live
+  schema, inspect rows, inspect customer data, inspect IDs, inspect
+  `reviewer_note`, or inspect `customer_safe_note`. No app/API/server action,
+  write path, insert, update, delete, upsert, customer-facing AI sketch display,
+  email, OpenAI, image generation, storage, public gallery, payment, auth, CAD,
+  order, production, env, deploy, RLS, grant, policy, or storage change was
+  made by that docs-only record.
+- Agent 46A: added
+  `docs/novora-agent-46a-ai-sketch-review-write-path-implementation-plan.md`, a
+  docs-only implementation path plan for the future protected admin-only AI
+  sketch review write path after duplicate protection was manually verified.
+  The plan recommends an explicit create/update split for the future NOVORA MVP
+  write path, not insert-only, update-only, or blind upsert. Future app-code
+  work still requires separate user approval and should preserve admin-only
+  access, final status validation, duplicate protection reliance on
+  `UNIQUE (concept_brief_id)`, safe no-row and existing-row handling, safe
+  duplicate/constraint error handling, and the rule that `reviewer_note` and
+  `customer_safe_note` must not be read, written, displayed, or returned.
+  Agent 46A is docs-only planning. No write path was implemented. No app code,
+  API route, server action, insert, update, delete, upsert, SQL, Supabase live
+  access, live schema inspection, customer rows/customer data/IDs/notes
+  inspection, customer-facing AI sketch display, email, OpenAI call, image
+  generation, storage, public gallery, payment, auth, CAD, order, production,
+  env, deploy, RLS, grant, policy, migration, or storage change was made.
 
 ## 7. Current Non-Goals And Boundaries
 
