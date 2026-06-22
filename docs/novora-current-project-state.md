@@ -922,6 +922,22 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   policy, migration, storage, package, plugin, third-party service, or website
   optimization change was made. Future admin UI create/update controls remain a
   separate Agent 46C follow-up.
+- Agent 46C: wires the existing protected admin Concept Brief detail AI Sketch
+  Review Workflow UI to the Agent 46B admin-only write route on branch
+  `codex/agent-46c-admin-ai-sketch-review-ui-save`. The admin UI reuses
+  `POST /admin/briefs/ai-sketch-review`, sends only `mode`, `conceptBriefId`,
+  and `reviewStatus`, and determines explicit `create` versus `update` mode
+  from the protected admin read model's `hasPersistedReview` signal. It does
+  not add a new write route or server action and does not use blind upsert. The
+  status control is constrained to the four final AI sketch review statuses:
+  `internal_draft_not_generated`, `draft_generated_internal_only`,
+  `needs_revision`, and `approved_for_customer`; `pending` remains absent from
+  the UI. `reviewer_note` and `customer_safe_note` remain excluded from UI
+  controls, submitted payloads, route responses, and logging. No customer pages
+  were modified, and no customer-facing AI sketch display, customer delivery,
+  email, OpenAI/image generation, gallery approval, SQL, Supabase live access,
+  live schema/row/customer-data inspection, env, deploy, RLS, storage, package,
+  plugin, or third-party service action was performed.
 
 ## 7. Current Non-Goals And Boundaries
 
