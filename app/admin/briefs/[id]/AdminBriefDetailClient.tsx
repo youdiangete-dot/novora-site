@@ -8,6 +8,7 @@ import {
   AI_SKETCH_REVIEW_STATUSES,
   AI_SKETCH_REVIEW_STATUS_HELP_TEXT,
   AI_SKETCH_REVIEW_STATUS_LABELS,
+  isAiSketchReviewStatus,
   type AiSketchReviewStatus,
 } from '../../../../lib/ai-sketch-review-status';
 import {
@@ -56,6 +57,15 @@ type AdminAiSketchReviewReadModel = {
   revokedBy: string | null;
   updatedAt: string | null;
   hasPersistedReview: boolean;
+};
+
+type AdminAiSketchReviewSaveResponse = {
+  ok?: boolean;
+  message?: string;
+  state?: {
+    hasPersistedReview?: boolean;
+    reviewStatus?: unknown;
+  };
 };
 
 function getSourceLabel(brief: AdminBriefRecord) {
@@ -196,6 +206,12 @@ export default function AdminBriefDetailClient({
     serverBrief?.reviewStateSource || 'unavailable',
   );
   const [reviewSaveMessage, setReviewSaveMessage] = useState('');
+  const [aiSketchReviewState, setAiSketchReviewState] = useState<AdminAiSketchReviewReadModel>(aiSketchReview);
+  const [selectedAiSketchReviewStatus, setSelectedAiSketchReviewStatus] = useState<AiSketchReviewStatus>(
+    aiSketchReview.reviewStatus,
+  );
+  const [isAiSketchReviewSaving, setIsAiSketchReviewSaving] = useState(false);
+  const [aiSketchReviewSaveMessage, setAiSketchReviewSaveMessage] = useState('');
 
   useEffect(() => {
     const records = serverBrief ? loadAdminBriefRecords([serverBrief]) : loadAdminBriefRecords();
@@ -218,8 +234,16 @@ export default function AdminBriefDetailClient({
     setIsReviewLoaded(true);
   }, [decodedId, serverBrief]);
 
+  useEffect(() => {
+    setAiSketchReviewState(aiSketchReview);
+    setSelectedAiSketchReviewStatus(aiSketchReview.reviewStatus);
+    setIsAiSketchReviewSaving(false);
+    setAiSketchReviewSaveMessage('');
+  }, [aiSketchReview]);
+
   const brief = briefs.find((record) => record.conceptBriefId === decodedId);
   const isServerBacked = brief?.source === 'supabase';
+  const canSaveAiSketchReview = Boolean(brief?.databaseId);
 
   const detailSections = useMemo(() => {
     if (!brief) {
@@ -280,11 +304,11 @@ export default function AdminBriefDetailClient({
         rows: [
           {
             label: 'Current review state',
-            value: AI_SKETCH_REVIEW_STATUS_LABELS[aiSketchReview.reviewStatus],
+            value: AI_SKETCH_REVIEW_STATUS_LABELS[aiSketchReviewState.reviewStatus],
           },
           {
             label: 'Review state source',
-            value: aiSketchReview.hasPersistedReview
+            value: aiSketchReviewState.hasPersistedReview
               ? 'Saved internal review state'
               : 'No persisted AI sketch review yet',
           },
@@ -292,12 +316,12 @@ export default function AdminBriefDetailClient({
             label: 'Default workflow status',
             value: AI_SKETCH_REVIEW_STATUS_LABELS[AI_SKETCH_REVIEW_INITIAL_STATUS],
           },
-          { label: 'Revision instruction', value: aiSketchReview.revisionInstruction || 'Not provided' },
-          { label: 'Approved for customer at', value: formatSubmittedTime(aiSketchReview.approvedForCustomerAt || '') },
-          { label: 'Approved by', value: aiSketchReview.approvedBy || 'Not provided' },
-          { label: 'Approval revoked at', value: formatSubmittedTime(aiSketchReview.approvalRevokedAt || '') },
-          { label: 'Revoked by', value: aiSketchReview.revokedBy || 'Not provided' },
-          { label: 'Last saved update', value: formatSubmittedTime(aiSketchReview.updatedAt || '') },
+          { label: 'Revision instruction', value: aiSketchReviewState.revisionInstruction || 'Not provided' },
+          { label: 'Approved for customer at', value: formatSubmittedTime(aiSketchReviewState.approvedForCustomerAt || '') },
+          { label: 'Approved by', value: aiSketchReviewState.approvedBy || 'Not provided' },
+          { label: 'Approval revoked at', value: formatSubmittedTime(aiSketchReviewState.approvalRevokedAt || '') },
+          { label: 'Revoked by', value: aiSketchReviewState.revokedBy || 'Not provided' },
+          { label: 'Last saved update', value: formatSubmittedTime(aiSketchReviewState.updatedAt || '') },
           { label: 'Empty state', value: 'No internal sketch drafts yet.' },
           {
             label: 'Customer visibility boundary',
@@ -410,7 +434,7 @@ export default function AdminBriefDetailClient({
     return sections;
   }, [
     brief,
-    aiSketchReview,
+    aiSketchReviewState,
     internalNotes,
     isServerBacked,
     lastUpdatedAt,
@@ -490,6 +514,55 @@ export default function AdminBriefDetailClient({
     }
   }
 
+  async function handleAiSketchReviewSave() {
+    if (!brief?.databaseId) {
+      setAiSketchReviewSaveMessage('AI sketch review status can only be saved for a Supabase-backed Concept Brief.');
+      return;
+    }
+
+    const mode = aiSketchReviewState.hasPersistedReview ? 'update' : 'create';
+
+    setIsAiSketchReviewSaving(true);
+    setAiSketchReviewSaveMessage('');
+
+    try {
+      const response = await fetch('/admin/briefs/ai-sketch-review', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode,
+          conceptBriefId: brief.databaseId,
+          reviewStatus: selectedAiSketchReviewStatus,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as AdminAiSketchReviewSaveResponse;
+
+      const savedReviewStatus = String(result.state?.reviewStatus || '');
+
+      if (!response.ok || !result.ok || !isAiSketchReviewStatus(savedReviewStatus)) {
+        throw new Error(result.message || 'AI sketch review state could not be saved.');
+      }
+
+      setAiSketchReviewState((currentState) => ({
+        ...currentState,
+        hasPersistedReview: true,
+        reviewStatus: savedReviewStatus,
+        updatedAt: new Date().toISOString(),
+      }));
+      setSelectedAiSketchReviewStatus(savedReviewStatus);
+      setAiSketchReviewSaveMessage('AI sketch review status saved.');
+    } catch (error) {
+      setAiSketchReviewSaveMessage(
+        error instanceof Error && error.message ? error.message : 'AI sketch review state could not be saved.',
+      );
+    } finally {
+      setIsAiSketchReviewSaving(false);
+    }
+  }
+
   if (!brief) {
     return (
       <main className={styles.page}>
@@ -546,6 +619,49 @@ export default function AdminBriefDetailClient({
           </section>
 
           <aside className={styles.notesPanel}>
+            <div>
+              <h2>AI sketch review controls</h2>
+              <p className={styles.helperText}>
+                Save internal AI sketch review status separately from Concept Brief review notes.
+              </p>
+              <p className={styles.helperText}>
+                {aiSketchReviewState.hasPersistedReview
+                  ? 'Next save will update the existing AI sketch review row.'
+                  : 'Next save will create the first AI sketch review row for this Concept Brief.'}
+              </p>
+              {!canSaveAiSketchReview ? (
+                <p className={styles.helperText}>
+                  AI sketch review status can only be saved for a Supabase-backed Concept Brief.
+                </p>
+              ) : null}
+              {aiSketchReviewSaveMessage ? <p className={styles.helperText}>{aiSketchReviewSaveMessage}</p> : null}
+            </div>
+
+            <label className={styles.fieldLabel}>
+              AI sketch review status
+              <select
+                className={styles.select}
+                disabled={isAiSketchReviewSaving || !canSaveAiSketchReview}
+                value={selectedAiSketchReviewStatus}
+                onChange={(event) => setSelectedAiSketchReviewStatus(event.target.value as AiSketchReviewStatus)}
+              >
+                {AI_SKETCH_REVIEW_STATUSES.map((option) => (
+                  <option key={option} value={option}>
+                    {AI_SKETCH_REVIEW_STATUS_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              className={styles.button}
+              disabled={isAiSketchReviewSaving || !canSaveAiSketchReview}
+              type="button"
+              onClick={handleAiSketchReviewSave}
+            >
+              {isAiSketchReviewSaving ? 'Saving AI sketch status...' : 'Save AI sketch status'}
+            </button>
+
             <div>
               <h2>{isServerBacked ? 'Supabase-backed review controls' : 'Local fallback review controls'}</h2>
               <p className={styles.helperText}>

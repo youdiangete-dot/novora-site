@@ -1166,6 +1166,7 @@ test.describe('/admin/briefs protected review UI', () => {
         'novora_submitted_concept_brief',
         JSON.stringify({
           conceptBriefId: 'NOVORA-CB-20260512-TEST',
+          databaseId: '55555555-5555-4555-8555-555555555555',
           submittedAt: '2026-05-12T08:00:00.000Z',
           pieceType: 'ring',
           branch: '',
@@ -1214,8 +1215,8 @@ test.describe('/admin/briefs protected review UI', () => {
       page.getByText('No CAD requests, quotes, production orders, emails, payments, or file storage are created here.'),
     ).toBeVisible();
     await expect(page.getByText('NOVORA-CB-20260512-TEST')).toBeVisible();
-    await expect(page.getByText('Mina Chen')).toBeVisible();
-    await expect(page.getByText('mina@example.com')).toBeVisible();
+    await expect(page.getByText('Mina Chen', { exact: true })).toBeVisible();
+    await expect(page.getByText('mina@example.com', { exact: true })).toBeVisible();
     await expect(page.getByText('Mina Chen / mina@example.com / United States')).toBeVisible();
     await expect(page.getByText('NOVORA-CB-MOCK-0001')).toBeVisible();
 
@@ -1243,6 +1244,29 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(
       page.getByText('No CAD requests, quotes, final pricing, production orders, emails, payments, or file storage are created here.').first(),
     ).toBeVisible();
+    await page.route('/admin/briefs/ai-sketch-review', async (route) => {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+
+      expect(payload).toEqual({
+        mode: 'create',
+        conceptBriefId: '55555555-5555-4555-8555-555555555555',
+        reviewStatus: 'needs_revision',
+      });
+      expect(payload).not.toHaveProperty('reviewer_note');
+      expect(payload).not.toHaveProperty('customer_safe_note');
+
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          state: {
+            hasPersistedReview: true,
+            reviewStatus: 'needs_revision',
+          },
+        }),
+      });
+    });
     await expect(page.getByRole('heading', { name: 'Concept Brief summary' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Contact summary' })).toBeVisible();
     await expect(page.getByText('Mina Chen', { exact: true })).toBeVisible();
@@ -1251,19 +1275,38 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByRole('heading', { name: 'Reference images metadata' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI sketch instruction / concept direction' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI Sketch Review Workflow' })).toBeVisible();
-    await expect(page.getByText('Current review state')).toBeVisible();
-    await expect(page.getByText('Internal draft not generated')).toBeVisible();
-    await expect(page.getByText('No persisted AI sketch review yet')).toBeVisible();
-    await expect(page.getByText('No internal sketch drafts yet.')).toBeVisible();
-    await expect(page.getByText('Draft generated')).toBeVisible();
-    await expect(page.getByText('Needs revision')).toBeVisible();
-    await expect(page.getByText('Approved for customer')).toBeVisible();
+    const aiSketchWorkflowSection = page.getByRole('region', { name: 'AI Sketch Review Workflow' });
+
+    await expect(aiSketchWorkflowSection).toContainText('Current review state');
+    await expect(aiSketchWorkflowSection).toContainText('Internal draft not generated');
+    await expect(aiSketchWorkflowSection).toContainText('No persisted AI sketch review yet');
+    await expect(aiSketchWorkflowSection).toContainText('No internal sketch drafts yet.');
+    await expect(aiSketchWorkflowSection).toContainText('Draft generated');
+    await expect(aiSketchWorkflowSection).toContainText('Needs revision');
+    await expect(aiSketchWorkflowSection).toContainText('Approved for customer');
     await expect(
       page.getByText(
         'AI sketches are internal drafts until reviewed and approved. Customers must only see sketches approved by the NOVORA design team.',
       ),
     ).toBeVisible();
     await expect(page.getByText('This does not generate, store, or deliver sketches yet.')).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText(
+      'Internal draft not generated',
+    );
+    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText(
+      'Draft generated',
+    );
+    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText('Needs revision');
+    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText(
+      'Approved for customer',
+    );
+    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).not.toContainText('pending');
+    await expect(page.getByRole('textbox', { name: 'reviewer_note' })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'customer_safe_note' })).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'AI sketch review status' }).selectOption('needs_revision');
+    await page.getByRole('button', { name: 'Save AI sketch status' }).click();
+    await expect(page.getByText('AI sketch review status saved.')).toBeVisible();
+    await expect(aiSketchWorkflowSection).toContainText('Saved internal review state');
     await expect(page.getByRole('heading', { name: 'Admin review status' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin notification status' })).toBeVisible();
     await expect(
@@ -1273,9 +1316,9 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByRole('heading', { name: 'Stored submission data' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Internal notes / local review state' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Boundary notes' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Status' })).toContainText('New');
+    await expect(page.getByRole('combobox', { name: 'Status', exact: true })).toContainText('New');
 
-    await page.getByRole('combobox', { name: 'Status' }).selectOption('Reviewing');
+    await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('Reviewing');
     await page.getByRole('textbox', { name: 'Internal notes' }).fill('Check stone scale before any CAD discussion.');
 
     const adminReviewState = await page.evaluate(() => {
