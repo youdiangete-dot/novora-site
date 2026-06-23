@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #125 merge commit:
-  `1fd280c7e0b6f6afa40357221bc44abfcc86cd10`
+- Current `main` HEAD / PR #128 merge commit:
+  `a6e12343c6faf9dab2729f44545c044b5632de5b`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -938,6 +938,26 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   email, OpenAI/image generation, gallery approval, SQL, Supabase live access,
   live schema/row/customer-data inspection, env, deploy, RLS, storage, package,
   plugin, or third-party service action was performed.
+- Agent 48A: adds
+  `docs/novora-agent-48a-codex-skills-plugins-audit.md`, a docs-only audit and
+  planning packet for safe NOVORA Codex skills and plugin strategy. The packet
+  recommends allowing only low-risk local workflow skills first, especially
+  skills that encode NOVORA PR lifecycle, review, final check, ready/merge,
+  post-merge cleanup, AI sketch boundary, sensitive-field exclusion, docs
+  ledger, and local-only validation rules. It defers or rejects plugins that
+  can access Supabase live, execute SQL, inspect live schema/customer data/IDs/
+  notes, inspect `reviewer_note` or `customer_safe_note`, modify env/secrets,
+  deploy, send email, call OpenAI/image generation, change packages, connect
+  third-party services, touch CRM/analytics/chat/booking/payment/account data,
+  or use broad MCP access. Any actual plugin installation must be a separate
+  explicitly approved task. Agent 48A is docs-only planning. No plugin was
+  installed or enabled. No Codex app setting was changed. No MCP server was
+  connected. No package, app code, API route, server action, SQL, Supabase live
+  access, live schema inspection, customer rows/customer data/IDs/notes
+  inspection, `reviewer_note`, `customer_safe_note`, customer-facing AI sketch
+  display, email, OpenAI call, image generation, third-party service
+  connection, website optimization implementation, env, deploy, RLS, grant,
+  policy, migration, or storage change was made.
 
 ## 7. Current Non-Goals And Boundaries
 
