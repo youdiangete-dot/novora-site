@@ -20,6 +20,7 @@
   letter-spacing: 0.08em;
   font-weight: 700;
   color: #2f3129;
+  flex: 0 0 auto;
 }
 
 .nav {
@@ -42,5 +43,28 @@
 
   .inner {
     min-height: 68px;
+  }
+}
+
+@media (max-width: 520px) {
+  .inner {
+    gap: 0.65rem;
+  }
+
+  .brand {
+    font-size: 1rem;
+  }
+
+  .inner :global(.btn) {
+    max-width: 12rem;
+    padding: 0.65rem 0.82rem;
+    text-align: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .inner :global(.btn) {
+    max-width: 10.5rem;
+    font-size: 0.9rem;
   }
 }

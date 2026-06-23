@@ -11,7 +11,7 @@ export default function SiteHeader() {
   return (
     <header className={styles.header}>
       <div className={`container ${styles.inner}`}>
-        <Link href="/" className={styles.brand}>
+        <Link href="/" className={styles.brand} aria-label="NOVORA home">
           NOVORA
         </Link>
         <nav aria-label="Main navigation" className={styles.nav}>
@@ -21,8 +21,8 @@ export default function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <Link href="/design/start" className="btn">
-          Start Your Design
+        <Link href="/design/start" className="btn" aria-label="Start a Concept Brief">
+          Start a Concept Brief
         </Link>
       </div>
     </header>

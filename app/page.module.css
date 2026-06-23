@@ -71,6 +71,11 @@
   transform: translateY(-1px);
 }
 
+.primaryCta:focus-visible {
+  outline: 3px solid #d8c39b;
+  outline-offset: 3px;
+}
+
 .proofStrip {
   margin-top: 1.35rem;
   padding-top: 1rem;
@@ -135,8 +140,15 @@
 .supportCard img,
 .supportCardWide img {
   width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
   border-radius: 10px;
   background: #f5ecde;
+}
+
+.supportCardWide img {
+  aspect-ratio: 1 / 1;
 }
 
 .supportCard h3,
@@ -236,5 +248,35 @@
 
   .boundarySection {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding-inline: clamp(0.8rem, 4vw, 1rem);
+  }
+
+  .heroContent h1 {
+    max-width: none;
+  }
+
+  .supportGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .supportCardWide {
+    grid-template-columns: 58px 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .supportCard,
+  .supportCardWide {
+    grid-template-columns: 1fr;
+  }
+
+  .supportCard img,
+  .supportCardWide img {
+    max-height: 180px;
   }
 }

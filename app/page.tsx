@@ -1,7 +1,38 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import HomeCarousel from '../components/HomeCarousel';
 import SketchGallery from '../components/SketchGallery';
 import styles from './page.module.css';
+
+const homeTitle = 'Start a Custom Jewelry Concept Brief';
+const homeDescription =
+  'Share a guided custom jewelry Concept Brief with NOVORA for studio review, illustrative concept direction, and separate paid CAD discussion later.';
+const homePreviewImage = {
+  url: '/assets/novora_hero_main_visual.png',
+  width: 1448,
+  height: 1086,
+  alt: 'NOVORA custom jewelry concept preview',
+};
+
+export const metadata: Metadata = {
+  title: homeTitle,
+  description: homeDescription,
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: `${homeTitle} | NOVORA`,
+    description: homeDescription,
+    url: '/',
+    images: [homePreviewImage],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${homeTitle} | NOVORA`,
+    description: homeDescription,
+    images: [homePreviewImage],
+  },
+};
 
 const steps = [
   {
@@ -33,7 +64,7 @@ export default function HomePage() {
           </p>
           <div className={styles.ctaRow}>
             <Link href="/design/start" className={styles.primaryCta}>
-              Start your design
+              Start a Concept Brief
             </Link>
           </div>
           <div className={styles.proofStrip}>
@@ -48,7 +79,14 @@ export default function HomePage() {
 
           <div className={styles.supportGrid}>
             <article className={styles.supportCard}>
-              <img src="/assets/novora_ai_sketch_ring.png" alt="Illustrative ring concept preview" />
+              <img
+                src="/assets/novora_ai_sketch_ring.png"
+                alt="Illustrative ring concept preview"
+                width="1448"
+                height="1086"
+                loading="lazy"
+                decoding="async"
+              />
               <div>
                 <h3>Illustrative Preview</h3>
                 <p>Example concept direction for your brief.</p>
@@ -56,7 +94,14 @@ export default function HomePage() {
             </article>
 
             <article className={styles.supportCard}>
-              <img src="/assets/novora_cad_ring_wireframe.png" alt="CAD ring wireframe preview" />
+              <img
+                src="/assets/novora_cad_ring_wireframe.png"
+                alt="CAD ring wireframe preview"
+                width="1448"
+                height="1086"
+                loading="lazy"
+                decoding="async"
+              />
               <div>
                 <h3>Paid CAD Later</h3>
                 <p>Scope, fee, and process confirmed separately.</p>
@@ -64,7 +109,14 @@ export default function HomePage() {
             </article>
 
             <article className={styles.supportCardWide}>
-              <img src="/assets/novora_jewelry_type_icons_set.png" alt="Jewelry type icon set" />
+              <img
+                src="/assets/novora_jewelry_type_icons_set.png"
+                alt="Jewelry type icon set"
+                width="1254"
+                height="1254"
+                loading="lazy"
+                decoding="async"
+              />
               <div>
                 <h3>Choose Your Piece Type</h3>
                 <p>Ring, pendant, and more — with clear guided options.</p>

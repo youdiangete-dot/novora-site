@@ -67,7 +67,7 @@ export default function HomeCarousel() {
   };
 
   return (
-    <div className={styles.carousel} aria-label="NOVORA custom jewelry carousel">
+    <div className={styles.carousel} aria-label="NOVORA illustrative custom jewelry concept carousel">
       <div className={styles.stage}>
         {slides.map((slide, index) => (
           <div
@@ -84,22 +84,32 @@ export default function HomeCarousel() {
           <strong>{slides[activeIndex].title}</strong>
         </div>
 
-        <button className={`${styles.navButton} ${styles.previous}`} type="button" onClick={showPrevious} aria-label="Previous carousel image">
+        <button
+          className={`${styles.navButton} ${styles.previous}`}
+          type="button"
+          onClick={showPrevious}
+          aria-label="Previous illustrative concept image"
+        >
           {'<'}
         </button>
-        <button className={`${styles.navButton} ${styles.next}`} type="button" onClick={showNext} aria-label="Next carousel image">
+        <button
+          className={`${styles.navButton} ${styles.next}`}
+          type="button"
+          onClick={showNext}
+          aria-label="Next illustrative concept image"
+        >
           {'>'}
         </button>
       </div>
 
-      <div className={styles.dots} aria-label="Select carousel image">
+      <div className={styles.dots} aria-label="Select illustrative concept image">
         {slides.map((slide, index) => (
           <button
             key={slide.src}
             className={`${styles.dot} ${index === activeIndex ? styles.activeDot : ''}`}
             type="button"
             onClick={() => setActiveIndex(index)}
-            aria-label={`Show ${slide.title}`}
+            aria-label={`Show ${slide.title} concept image`}
             aria-current={index === activeIndex}
           />
         ))}
