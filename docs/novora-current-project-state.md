@@ -980,6 +980,30 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   storage change was made. No OpenAI call, image generation, customer-facing AI
   sketch display, email/customer delivery, gallery approval, CAD, order, or
   production behavior was added.
+- Agent 49A: adds
+  `docs/novora-agent-49a-mvp-remaining-workstream-plan.md` on branch
+  `codex/agent-49a-mvp-remaining-workstream-planning`, a docs-only planning
+  packet for remaining NOVORA MVP workstreams, priorities, rough timing,
+  recommended next-Agent sequence, risk levels, future owner decision points,
+  and hard stop boundaries. The plan summarizes the completed Concept Brief,
+  Supabase/storage, admin review, notification, reference image, AI sketch
+  review, duplicate protection, admin write path/save UI, website optimization,
+  and Codex skills/plugins baseline. It recommends next planning stages for
+  Design Spec JSON Schema v1, Hand Sketch Instruction Template v1,
+  brief-to-design-spec mapping, admin review UI polish if needed, website
+  visual/mobile QA, internal AI sketch draft pipeline planning, and deployment
+  readiness. Review Pass tightened the planning doc to state the locked MVP AI
+  sketch business boundaries explicitly. Agent 49A is docs-only planning. No
+  app code, API route, server action, package, lockfile, SQL, Supabase live
+  access, live schema inspection, customer rows/customer data/IDs/notes
+  inspection, `reviewer_note`, `customer_safe_note`, environment variable,
+  secret, deploy, OpenAI call, image generation, email/customer delivery,
+  customer-facing AI sketch display, gallery approval, plugin installation,
+  MCP enablement, Codex settings change, analytics/tracking, CRM, chat,
+  booking, marketing, monitoring, payment, account, third-party service
+  connection, RLS, grant, policy, migration, or storage change was made.
+  Recommended next stage is Final PR Check, then Ready + Merge if Final PR
+  Check passes.
 
 ## 7. Current Non-Goals And Boundaries
 
