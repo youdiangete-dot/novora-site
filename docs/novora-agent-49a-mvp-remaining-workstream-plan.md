@@ -56,6 +56,26 @@ Major completed workstreams on `main`:
   skills first and deferred or rejected plugin/MCP access unless separately
   approved.
 
+## AI Sketch Business Boundaries
+
+Future AI sketch work must preserve these locked MVP boundaries:
+
+- The customer submits a Concept Brief before any sketch workflow begins.
+- GPT or an image model can generate internal drafts only.
+- GPT may assist revision prompts or redraw direction only inside an internal
+  workflow.
+- Human review and human final approval are required before any customer-facing
+  sketch delivery.
+- The customer only sees a human-reviewed version.
+- Unreviewed AI/GPT drafts must never be shown or delivered to customers.
+- An AI sketch is a concept sketch only, not CAD, not a quote, not an order,
+  and not production approval.
+- `approved_for_customer` is not equal to `approved_for_gallery`.
+- AI generation success alone must not approve a sketch.
+- Customer-facing sketch delivery remains email-only after human review,
+  optimization, and approval.
+- Customer pages must not display unreviewed AI sketches.
+
 ## Remaining MVP Workstreams
 
 ### A. AI Sketch Structured Input Foundation

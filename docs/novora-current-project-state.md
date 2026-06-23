@@ -992,16 +992,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Design Spec JSON Schema v1, Hand Sketch Instruction Template v1,
   brief-to-design-spec mapping, admin review UI polish if needed, website
   visual/mobile QA, internal AI sketch draft pipeline planning, and deployment
-  readiness. Agent 49A is docs-only planning. No app code, API route, server
-  action, package, lockfile, SQL, Supabase live access, live schema inspection,
-  customer rows/customer data/IDs/notes inspection, `reviewer_note`,
-  `customer_safe_note`, environment variable, secret, deploy, OpenAI call,
-  image generation, email/customer delivery, customer-facing AI sketch display,
-  gallery approval, plugin installation, MCP enablement, Codex settings change,
-  analytics/tracking, CRM, chat, booking, marketing, monitoring, payment,
-  account, third-party service connection, RLS, grant, policy, migration, or
-  storage change was made. Recommended next stage after PR creation is Review
-  Pass.
+  readiness. Review Pass tightened the planning doc to state the locked MVP AI
+  sketch business boundaries explicitly. Agent 49A is docs-only planning. No
+  app code, API route, server action, package, lockfile, SQL, Supabase live
+  access, live schema inspection, customer rows/customer data/IDs/notes
+  inspection, `reviewer_note`, `customer_safe_note`, environment variable,
+  secret, deploy, OpenAI call, image generation, email/customer delivery,
+  customer-facing AI sketch display, gallery approval, plugin installation,
+  MCP enablement, Codex settings change, analytics/tracking, CRM, chat,
+  booking, marketing, monitoring, payment, account, third-party service
+  connection, RLS, grant, policy, migration, or storage change was made.
+  Recommended next stage after PR creation is Review Pass.
 
 ## 7. Current Non-Goals And Boundaries
 
