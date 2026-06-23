@@ -949,7 +949,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   notes, inspect `reviewer_note` or `customer_safe_note`, modify env/secrets,
   deploy, send email, call OpenAI/image generation, change packages, connect
   third-party services, touch CRM/analytics/chat/booking/payment/account data,
-  or use broad MCP access. Agent 48A is docs-only planning. No plugin was
+  or use broad MCP access. Any actual plugin installation must be a separate
+  explicitly approved task. Agent 48A is docs-only planning. No plugin was
   installed or enabled. No Codex app setting was changed. No MCP server was
   connected. No package, app code, API route, server action, SQL, Supabase live
   access, live schema inspection, customer rows/customer data/IDs/notes

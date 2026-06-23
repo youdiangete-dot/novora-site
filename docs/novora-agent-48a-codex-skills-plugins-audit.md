@@ -72,6 +72,18 @@ AI sketch business boundaries:
 
 Safe default: allow only low-risk local workflow skills first.
 
+Explicit NOVORA safe default:
+
+- No skill or plugin installation by default.
+- No MCP server by default.
+- No Codex app, plugin, or settings change by default.
+- No broad filesystem, network, environment variable, secrets, database, or
+  customer-data access.
+- No Supabase live access, SQL execution, deploy, email sending, OpenAI/image
+  generation, CRM, analytics, chat, booking, payment, or customer-account
+  plugin.
+- Actual plugin installation remains a separate approved task.
+
 Recommended now:
 
 - Repo-local NOVORA skills that encode existing workflow rules and do not need
