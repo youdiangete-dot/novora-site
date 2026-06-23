@@ -958,6 +958,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   display, email, OpenAI call, image generation, third-party service
   connection, website optimization implementation, env, deploy, RLS, grant,
   policy, migration, or storage change was made.
+- Agent 47B: implements the first low-risk website optimization slice on branch
+  `codex/agent-47b-low-risk-website-optimization`. The app-code changes are
+  limited to public website metadata, homepage/header CTA clarity, carousel and
+  header accessibility labels, homepage static image attributes, and small
+  homepage/header mobile and focus-state CSS refinements. Changed website files
+  are `app/layout.tsx`, `app/page.tsx`, `app/page.module.css`,
+  `components/HomeCarousel.tsx`, `components/SiteHeader.tsx`, and
+  `components/SiteHeader.module.css`, plus this ledger update. The CTA now
+  names the actual MVP action as starting a Concept Brief while preserving the
+  `/design/start` route target and the Concept Brief / studio review / paid CAD
+  later boundary. The social preview metadata uses the existing local
+  `/assets/novora_hero_main_visual.png` asset. No plugin was installed or
+  enabled. No MCP server was connected. No Codex app setting was changed. No
+  package or lockfile was changed. No analytics, tracking, monitoring, CRM,
+  chat, booking, marketing, payment, account, or third-party service connection
+  was added. No SQL was executed. Codex did not connect to Supabase live,
+  inspect live schema, inspect rows, inspect customer data, inspect IDs, inspect
+  `reviewer_note`, or inspect `customer_safe_note`. No environment variable,
+  secret, Vercel, Resend, Cloudflare, deploy, RLS, grant, policy, migration, or
+  storage change was made. No OpenAI call, image generation, customer-facing AI
+  sketch display, email/customer delivery, gallery approval, CAD, order, or
+  production behavior was added.
 
 ## 7. Current Non-Goals And Boundaries
 
