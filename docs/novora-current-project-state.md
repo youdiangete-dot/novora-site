@@ -1027,7 +1027,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   installation, MCP enablement, Codex settings change, analytics/tracking, CRM,
   chat, booking, marketing, monitoring, payment, account, third-party service
   connection, RLS, grant, policy, migration, storage change, or real customer
-  submission was made. Recommended next stage after PR creation is Review Pass.
+  submission was made. Review Pass kept PR #132 docs-only and tightened the
+  schema doc to explicitly preserve human final approval, no approval from AI
+  generation success alone, email-only customer-facing sketch delivery after
+  human review/optimization/approval, and no unreviewed AI sketch display on
+  customer pages. Recommended next stage after Review Pass is Final PR Check.
 
 ## 7. Current Non-Goals And Boundaries
 

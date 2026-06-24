@@ -72,6 +72,11 @@ approved privacy and review policy explicitly allows it.
 - Keep sensitive customer notes out of generation-facing schema fields unless
   explicitly approved.
 - Preserve human review before generation and before customer delivery.
+- Preserve human final approval before any customer delivery.
+- Preserve the rule that AI generation success alone must not approve a sketch.
+- Preserve email-only customer-facing sketch delivery after human review,
+  optimization, and approval.
+- Preserve the rule that customer pages must not display unreviewed AI sketches.
 - Support future prompt policy versioning.
 - Support future validation without requiring a database migration for every
   wording change.
