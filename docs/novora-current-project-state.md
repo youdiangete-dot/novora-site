@@ -1004,6 +1004,34 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   connection, RLS, grant, policy, migration, or storage change was made.
   Recommended next stage is Final PR Check, then Ready + Merge if Final PR
   Check passes.
+- Agent 50A: adds
+  `docs/novora-agent-50a-design-spec-json-schema-v1.md` on branch
+  `codex/agent-50a-design-spec-json-schema-v1`, a docs-only schema planning
+  packet for Design Spec JSON Schema v1. The packet defines the canonical
+  internal structured design specification that should sit between a customer
+  Concept Brief and any future Hand Sketch Instruction or internal AI sketch
+  draft workflow. It records the intended chain as customer Concept Brief to
+  Design Spec JSON to Hand Sketch Instruction to future internal AI sketch
+  draft workflow, and reiterates that raw customer natural-language brief text
+  must not become the final sketch-generation prompt. The schema planning doc
+  covers top-level sections, suggested fields, practical enums, unknown and
+  uncertainty handling, reference-image inspiration-only boundaries, internal
+  review flags, customer-safe summaries, internal-only generation notes, human
+  review gates, future validation, illustrative fake JSON examples, and the
+  relationship to future Agent 50B and Agent 50C work. Agent 50A is docs-only
+  planning. No app code, API route, server action, package, lockfile, SQL,
+  Supabase live access, live schema inspection, customer rows/customer data/IDs/
+  notes inspection, `reviewer_note`, `customer_safe_note`, environment
+  variable, secret, deploy, OpenAI call, image generation, email/customer
+  delivery, customer-facing AI sketch display, gallery approval, plugin
+  installation, MCP enablement, Codex settings change, analytics/tracking, CRM,
+  chat, booking, marketing, monitoring, payment, account, third-party service
+  connection, RLS, grant, policy, migration, storage change, or real customer
+  submission was made. Review Pass kept PR #132 docs-only and tightened the
+  schema doc to explicitly preserve human final approval, no approval from AI
+  generation success alone, email-only customer-facing sketch delivery after
+  human review/optimization/approval, and no unreviewed AI sketch display on
+  customer pages. Recommended next stage after Review Pass is Final PR Check.
 
 ## 7. Current Non-Goals And Boundaries
 
