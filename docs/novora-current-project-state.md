@@ -1059,6 +1059,27 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   connection, RLS, grant, policy, migration, storage change, real customer
   submission, Agent 50C work, or Agent 53A work was made. Recommended next
   stage is Final PR Check, then Ready + Merge if Final PR Check passes.
+- Agent 50C: adds
+  `docs/novora-agent-50c-concept-brief-to-design-spec-transformation-plan.md`
+  on branch `codex/agent-50c-concept-brief-to-design-spec-planning`, a
+  docs-only transformation planning packet for how future NOVORA work should
+  convert existing customer Concept Brief data into Agent 50A Design Spec JSON
+  Schema v1 before Agent 50B Hand Sketch Instruction Template v1. The plan
+  covers local-only source Concept Brief categories, target Design Spec
+  sections, staged normalization and mapping, internal interpretation,
+  unknowns, human follow-up, risk flags, reference-image inspiration-only
+  handling, sensitive-field exclusion, future validation, fake illustrative
+  examples, future implementation boundaries, and the relationship to future
+  Agent 53A. Agent 50C is docs-only planning. No app code, API route, server
+  action, package, lockfile, SQL, Supabase live access, live schema inspection,
+  customer rows/customer data/IDs/notes inspection, `reviewer_note`,
+  `customer_safe_note`, environment variable, secret, deploy, OpenAI call,
+  image generation, email/customer delivery, customer-facing AI sketch display,
+  gallery approval, plugin installation, MCP enablement, Codex settings change,
+  analytics/tracking, CRM, chat, booking, marketing, monitoring, payment,
+  account, third-party service connection, RLS, grant, policy, migration,
+  storage change, real customer submission, or Agent 53A work was made.
+  Recommended next stage after Draft PR creation is Review Pass.
 
 ## 7. Current Non-Goals And Boundaries
 
