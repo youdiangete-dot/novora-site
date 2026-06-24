@@ -1058,7 +1058,7 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   chat, booking, marketing, monitoring, payment, account, third-party service
   connection, RLS, grant, policy, migration, storage change, real customer
   submission, Agent 50C work, or Agent 53A work was made. Recommended next
-  stage after PR creation is Review Pass.
+  stage is Final PR Check, then Ready + Merge if Final PR Check passes.
 
 ## 7. Current Non-Goals And Boundaries
 
