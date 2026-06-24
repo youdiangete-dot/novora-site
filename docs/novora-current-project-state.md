@@ -1084,6 +1084,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   `approved_for_customer` separate from gallery approval, and preserve that AI
   generation success alone must not approve a sketch. Recommended next stage is
   Final PR Check.
+- Agent 53A: adds
+  `docs/novora-agent-53a-internal-ai-sketch-draft-pipeline-plan.md` on branch
+  `codex/agent-53a-internal-ai-sketch-draft-pipeline-planning`, a docs-only
+  internal AI sketch draft pipeline planning packet for future NOVORA work
+  after Agent 50A Design Spec JSON Schema v1, Agent 50B Hand Sketch Instruction
+  Template v1, and Agent 50C Concept Brief to Design Spec transformation
+  planning. The plan defines a future staged internal-only pipeline, including
+  reviewed Design Spec JSON input, reviewed Hand Sketch Instruction input,
+  human pre-generation review, separately approved internal generation job
+  creation, separately approved output storage planning, admin-only draft
+  review, revision/redraw planning, human final approval, and email-only
+  customer delivery after separate planning. Agent 53A is docs-only planning.
+  No app code, API route, server action, package, lockfile, SQL, Supabase live
+  access, live schema inspection, customer rows/customer data/IDs/notes
+  inspection, `reviewer_note`, `customer_safe_note`, environment variable,
+  secret, deploy, OpenAI call, image generation, generated image,
+  email/customer delivery, customer-facing AI sketch display, gallery approval,
+  plugin installation, MCP enablement, Codex settings change, analytics/
+  tracking, CRM, chat, booking, marketing, monitoring, payment, account,
+  third-party service connection, RLS, grant, policy, migration, storage
+  change, real customer submission, or implementation Agent work was made.
+  Recommended next stage after PR creation is Review Pass.
 
 ## 7. Current Non-Goals And Boundaries
 
