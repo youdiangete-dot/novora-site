@@ -173,6 +173,18 @@ delivery. AI generation success alone must not approve a sketch. Customer-facing
 sketch delivery remains email-only after human review, optimization, and
 approval, and customer pages must not display unreviewed AI sketches.
 
+## AI Sketch Review Status Boundary
+
+The only legal final AI sketch review statuses remain:
+
+- `internal_draft_not_generated`
+- `draft_generated_internal_only`
+- `needs_revision`
+- `approved_for_customer`
+
+`pending` is illegal, excluded, and not valid. `approved_for_customer` is not
+gallery approval, and AI generation success alone must not approve a sketch.
+
 ## Field Mapping Matrix
 
 | Concept Brief source category | Design Spec JSON target |

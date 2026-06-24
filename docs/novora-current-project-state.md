@@ -1079,7 +1079,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   analytics/tracking, CRM, chat, booking, marketing, monitoring, payment,
   account, third-party service connection, RLS, grant, policy, migration,
   storage change, real customer submission, or Agent 53A work was made.
-  Recommended next stage after Draft PR creation is Review Pass.
+  Review Pass tightened the plan to explicitly enumerate the four legal final
+  AI sketch review statuses, keep `pending` illegal/excluded/not valid, keep
+  `approved_for_customer` separate from gallery approval, and preserve that AI
+  generation success alone must not approve a sketch. Recommended next stage is
+  Final PR Check.
 
 ## 7. Current Non-Goals And Boundaries
 
