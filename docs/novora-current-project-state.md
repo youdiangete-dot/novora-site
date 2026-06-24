@@ -1032,6 +1032,33 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   generation success alone, email-only customer-facing sketch delivery after
   human review/optimization/approval, and no unreviewed AI sketch display on
   customer pages. Recommended next stage after Review Pass is Final PR Check.
+- Agent 50B: adds
+  `docs/novora-agent-50b-hand-sketch-instruction-template-v1.md` on branch
+  `codex/agent-50b-hand-sketch-instruction-template-v1`, a docs-only template
+  planning packet for Hand Sketch Instruction Template v1. The packet defines
+  the canonical internal fixed-format instruction generated from Design Spec
+  JSON before any future internal AI sketch draft workflow. It preserves the
+  locked chain as customer Concept Brief to Design Spec JSON to Hand Sketch
+  Instruction to future internal AI sketch draft workflow, and reiterates that
+  raw customer natural-language brief text must not become the final
+  sketch-generation prompt. The template planning doc covers deterministic
+  section order, template metadata, customer-safe design summary, sketch
+  objective, piece/style/material/stone/composition/wearability/manufacturing
+  direction, reference-image inspiration-only rules, must-include and
+  must-avoid items, explicit uncertainty preservation, view and linework
+  requirements, annotation rules, internal review flags, human review
+  requirements, forbidden outputs, two fake illustrative instruction examples,
+  validation checklist, and hard stop boundaries. Agent 50B is docs-only
+  planning. No app code, API route, server action, package, lockfile, SQL,
+  Supabase live access, live schema inspection, customer rows/customer data/IDs/
+  notes inspection, `reviewer_note`, `customer_safe_note`, environment
+  variable, secret, deploy, OpenAI call, image generation, email/customer
+  delivery, customer-facing AI sketch display, gallery approval, plugin
+  installation, MCP enablement, Codex settings change, analytics/tracking, CRM,
+  chat, booking, marketing, monitoring, payment, account, third-party service
+  connection, RLS, grant, policy, migration, storage change, real customer
+  submission, Agent 50C work, or Agent 53A work was made. Recommended next
+  stage after PR creation is Review Pass.
 
 ## 7. Current Non-Goals And Boundaries
 
