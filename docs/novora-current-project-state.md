@@ -1163,7 +1163,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   tracking, CRM, chat, booking, marketing, monitoring, payment, account,
   third-party service connection, RLS, grant, policy, migration, storage
   change, real customer submission, or implementation Agent work was made.
-  Recommended next stage after PR creation is Review Pass.
+  Recommended next stage is Final PR Check, then Ready + Merge if Final PR
+  Check passes.
 
 ## 7. Current Non-Goals And Boundaries
 
