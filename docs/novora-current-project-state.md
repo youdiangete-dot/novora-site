@@ -1191,8 +1191,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   gallery approval, plugin/MCP/Codex settings, third-party service
   connections, analytics/tracking, CRM, chat, booking, marketing, monitoring,
   payment, account, CAD, order, production behavior, real customer
-  submissions, or production data. Recommended next stage after Draft PR
-  creation is Review Pass.
+  submissions, or production data. Recommended next stage is Final PR Check,
+  then Ready + Merge if Final PR Check passes.
 
 ## 7. Current Non-Goals And Boundaries
 
