@@ -1107,6 +1107,34 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   change, real customer submission, or implementation Agent work was made.
   Recommended next stage is Final PR Check, then Ready + Merge if Final PR
   Check passes.
+- Agent 53B: adds
+  `docs/novora-agent-53b-ai-sketch-pipeline-implementation-boundary-review.md`
+  on branch
+  `codex/agent-53b-ai-sketch-pipeline-implementation-boundary-review`, a
+  docs-only implementation boundary review before any future code-level work
+  on the internal AI sketch draft pipeline. Agent 53B defines what future work
+  may treat as low-risk helper scope, what requires separate planning, what
+  requires separate SQL/storage or env/secrets approval, what is deferred from
+  the MVP, and what is forbidden for the MVP. It relates Agent 50A Design Spec
+  JSON Schema v1, Agent 50B Hand Sketch Instruction Template v1, Agent 50C
+  Concept Brief to Design Spec transformation planning, and Agent 53A internal
+  AI sketch draft pipeline planning without replacing or implementing them.
+  The boundary review preserves the locked chain from customer Concept Brief
+  to Design Spec JSON to Hand Sketch Instruction to internal-only draft
+  planning, preserves the four legal final AI sketch review statuses, keeps
+  `pending` illegal, keeps `approved_for_customer` separate from gallery
+  approval, and preserves human review before generation and before customer
+  delivery. Agent 53B is docs-only. No app code, API route, server action,
+  package file, lockfile, SQL, Supabase live access, live schema inspection,
+  customer rows/customer data/IDs/notes inspection, `reviewer_note`,
+  `customer_safe_note`, environment variable, secret, deploy, OpenAI call,
+  image generation, generated image, email/customer delivery, customer-facing
+  AI sketch display, gallery approval, plugin installation, MCP enablement,
+  Codex settings change, analytics/tracking, CRM, chat, booking, marketing,
+  monitoring, payment, account, third-party service connection, RLS, grant,
+  policy, migration, storage change, real customer submission, or
+  implementation Agent work was made. Recommended next stage is Final PR
+  Check, then Ready + Merge if Final PR Check passes.
 
 ## 7. Current Non-Goals And Boundaries
 
