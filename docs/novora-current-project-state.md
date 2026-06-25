@@ -1135,6 +1135,36 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   policy, migration, storage change, real customer submission, or
   implementation Agent work was made. Recommended next stage is Final PR
   Check, then Ready + Merge if Final PR Check passes.
+- Agent 53C: adds
+  `docs/novora-agent-53c-pure-helper-fake-fixture-test-plan.md` on branch
+  `codex/agent-53c-pure-helper-fake-fixture-test-plan`, a docs-only planning
+  packet for the first safe future pure-helper and fake-fixture test layer
+  after Agent 50A Design Spec JSON Schema v1, Agent 50B Hand Sketch
+  Instruction Template v1, Agent 50C Concept Brief to Design Spec
+  transformation planning, Agent 53A internal AI sketch draft pipeline
+  planning, and Agent 53B implementation boundary review. Agent 53C defines
+  future helper scope for fake Design Spec validation, legal internal-only AI
+  sketch status guards, `pending` rejection, Hand Sketch Instruction section
+  formatting, internal prompt policy previews without provider calls, fake
+  metadata previews, customer-safe summaries from fake fixtures,
+  unknown/follow-up detection, reference copy-risk flags, and CAD/quote/order/
+  production implication risk flags. It also defines fake fixture principles,
+  future test categories, suggested future helper module boundaries, safe
+  input/output contracts, human review gate preservation, OpenAI/provider
+  exclusion, Supabase/storage exclusion, customer-facing exclusion, error/risk
+  fake test cases, a future code-agent readiness checklist, and a recommended
+  future Agent sequence. Agent 53C is docs-only planning. No app code, API
+  route, server action, package file, lockfile, helper code, test file, SQL,
+  Supabase live access, live schema inspection, customer rows/customer data/
+  IDs/notes inspection, `reviewer_note`, `customer_safe_note`, environment
+  variable, secret, deploy, OpenAI call, image generation, generated image,
+  email/customer delivery, customer-facing AI sketch display, gallery approval,
+  plugin installation, MCP enablement, Codex settings change, analytics/
+  tracking, CRM, chat, booking, marketing, monitoring, payment, account,
+  third-party service connection, RLS, grant, policy, migration, storage
+  change, real customer submission, or implementation Agent work was made.
+  Recommended next stage is Final PR Check, then Ready + Merge if Final PR
+  Check passes.
 
 ## 7. Current Non-Goals And Boundaries
 
