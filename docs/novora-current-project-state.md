@@ -1214,6 +1214,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   behavior was changed. No provider, SQL, Supabase, deploy, generated image,
   email sending, customer preview, gallery approval, Computer Use, plugin/MCP,
   or production mutation was performed.
+- Agent 54B: adds
+  `docs/novora-agent-54b-admin-concierge-ui-workflow-plan.md`, a docs-only
+  planning packet for the future admin concierge UI workflow. It translates
+  Agent 54A's agent-assisted design concierge strategy into future admin-side
+  UI planning for Design Spec drafts, Hand Sketch Instruction drafts, risk
+  flags, internal prompt preview, internal-only draft image area, human review
+  controls, `needs_revision`, `approved_for_customer`, draft customer email
+  preview, and gallery separation. Current MVP remains Mode A first: internal
+  agent assist, human review, human approval, and email-only customer delivery.
+  No UI implementation was added. No app, API, package, test, config, or
+  lockfile files were changed. No provider, SQL, Supabase, deploy, generated
+  image, email sending, customer preview, gallery approval, Computer Use,
+  plugin/MCP, or production mutation was performed. Existing AI sketch safety
+  boundaries remain unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
