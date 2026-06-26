@@ -1193,6 +1193,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   payment, account, CAD, order, production behavior, real customer
   submissions, or production data. Recommended next stage is Final PR Check,
   then Ready + Merge if Final PR Check passes.
+- Agent 54A: adds
+  `docs/novora-agent-54a-agent-assisted-design-concierge-workflow-plan.md` on
+  branch `codex/agent-54a-agent-assisted-design-concierge-planning`, a
+  docs-only planning packet for an agent-assisted design concierge workflow.
+  The recommended MVP path remains internal agent assist, human review, human
+  approval, and email-only customer delivery. Mode A is recommended first.
+  Mode B and Mode C are future-only paths. No implementation was added, no
+  provider was connected, no Computer Use was enabled, no plugin/MCP was
+  enabled, no SQL was run, no deploy was performed, no email was sent, no
+  generated images were created, no customer-facing preview was added, and no
+  gallery approval was added. Existing AI sketch safety boundaries remain
+  unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
