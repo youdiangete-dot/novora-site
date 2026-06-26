@@ -1228,6 +1228,22 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   image, email sending, customer preview, gallery approval, Computer Use,
   plugin/MCP, or production mutation was performed. Existing AI sketch safety
   boundaries remain unchanged.
+- Agent 54C: adds
+  `docs/novora-agent-54c-customer-email-delivery-control-plan.md`, a docs-only
+  planning packet for customer email draft and delivery control after Agent 54A
+  concierge workflow planning and Agent 54B admin concierge UI workflow
+  planning. The recommended MVP path remains agent-assisted email drafting,
+  human review, explicit delivery gate, human-controlled send, and email-only
+  customer delivery. Planned areas include delivery gate, customer-safe email
+  structure, disclaimers, approved asset rules, link/storage safety,
+  clarification flow, approved concept delivery flow, revision/needs_revision
+  flow, feedback loop, admin send-control, audit trail, idempotency, failure
+  fallback, and future Mode B semi-automatic email boundary. No email
+  implementation was added. No email was sent. No app, API, package, test,
+  config, or lockfile files were changed. No provider, SQL, Supabase, deploy,
+  generated image, customer preview, gallery approval, Computer Use,
+  plugin/MCP, or production mutation was performed. Existing AI sketch safety
+  boundaries remain unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
