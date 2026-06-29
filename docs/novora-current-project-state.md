@@ -1287,6 +1287,24 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   approval mutation, or production data mutation. Existing AI sketch,
   human-review, read-only display, and email-only delivery boundaries remain
   unchanged.
+- Agent 55D: adds
+  `docs/novora-agent-55d-design-artifact-schema-sql-planning-packet.md`, a
+  docs-only future Design Spec / Hand Sketch Instruction artifact schema and
+  SQL planning packet after Agent 55C's source-of-truth and persistence
+  boundary planning. It compares single-table and multi-table approaches and
+  recommends a cautious future schema direction with conceptual artifact,
+  validation result, risk flag, audit/event, lifecycle status,
+  versioning/staleness, Concept Brief linkage, private data exclusion,
+  idempotency, duplicate protection, RLS/access, admin write-path, 55B
+  read-only display consumption, future generation, customer email delivery,
+  gallery separation, migration safety, and implementation sequence planning.
+  It may include future candidate SQL text labeled do-not-run, not-executed,
+  and requiring separate approval. Agent 55D does not execute SQL, create
+  migrations, access Supabase, implement schema, implement app/API/UI, persist
+  artifacts, generate images, send email, expose customer preview, create
+  gallery approval, mutate status or approval, or mutate production data.
+  Existing AI sketch, human-review, read-only display, source-of-truth, and
+  email-only delivery boundaries remain unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
