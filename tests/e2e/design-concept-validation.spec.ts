@@ -1276,6 +1276,7 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByRole('heading', { name: 'AI sketch instruction / concept direction' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI Sketch Review Workflow' })).toBeVisible();
     const aiSketchWorkflowSection = page.getByRole('region', { name: 'AI Sketch Review Workflow' });
+    const planningArtifactsSection = page.getByRole('region', { name: 'Internal design planning artifacts' });
 
     await expect(aiSketchWorkflowSection).toContainText('Current review state');
     await expect(aiSketchWorkflowSection).toContainText('Internal draft not generated');
@@ -1290,6 +1291,22 @@ test.describe('/admin/briefs protected review UI', () => {
       ),
     ).toBeVisible();
     await expect(page.getByText('This does not generate, store, or deliver sketches yet.')).toBeVisible();
+    await expect(planningArtifactsSection).toContainText('Admin only');
+    await expect(planningArtifactsSection).toContainText('Read-only');
+    await expect(planningArtifactsSection).toContainText('Human review required');
+    await expect(planningArtifactsSection).toContainText('Design Spec draft is not available yet.');
+    await expect(planningArtifactsSection).toContainText('Hand Sketch Instruction draft is not available yet.');
+    await expect(planningArtifactsSection).toContainText('Validation has not been run.');
+    await expect(planningArtifactsSection).toContainText('Risk flags are not available yet.');
+    await expect(planningArtifactsSection).toContainText('approved_for_customer is not approved_for_gallery.');
+    await expect(planningArtifactsSection).toContainText('needs_revision blocks customer delivery.');
+    await expect(planningArtifactsSection).toContainText('Human-controlled send is still required for any future email delivery.');
+    await expect(planningArtifactsSection).not.toContainText('Mina Chen');
+    await expect(planningArtifactsSection).not.toContainText('mina@example.com');
+    await expect(planningArtifactsSection.getByRole('button')).toHaveCount(0);
+    await expect(planningArtifactsSection.getByRole('link')).toHaveCount(0);
+    await expect(planningArtifactsSection.getByRole('textbox')).toHaveCount(0);
+    await expect(planningArtifactsSection.getByRole('combobox')).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText(
       'Internal draft not generated',
     );
