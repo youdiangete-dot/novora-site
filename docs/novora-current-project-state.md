@@ -1244,6 +1244,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   generated image, customer preview, gallery approval, Computer Use,
   plugin/MCP, or production mutation was performed. Existing AI sketch safety
   boundaries remain unchanged.
+- Agent 55A: adds
+  `docs/novora-agent-55a-admin-readonly-design-spec-instruction-display-plan.md`,
+  a docs-only planning packet for future admin read-only Design Spec and Hand
+  Sketch Instruction display after Agent 54A concierge workflow planning, Agent
+  54B admin concierge UI workflow planning, and Agent 54C customer email
+  delivery control planning. Planned read-only display areas include Design
+  Spec draft, Hand Sketch Instruction draft, validation summary, risk flags
+  summary, internal-only indicators, human review gates, current review status,
+  customer delivery readiness summary, gallery separation, data privacy
+  controls, source/version display, and safe empty states. The first future
+  implementation should remain read-only and must not edit, generate, approve,
+  send, publish, or mutate status. No UI implementation was added. No app, API,
+  package, test, config, or lockfile files were changed. No SQL, Supabase,
+  env/secrets/deploy, Vercel, provider integration, generated image, email
+  sending, customer preview, gallery approval, Computer Use, plugin/MCP, or
+  production mutation was performed. Existing AI sketch safety boundaries
+  remain unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
