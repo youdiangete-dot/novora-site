@@ -1261,6 +1261,16 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   sending, customer preview, gallery approval, Computer Use, plugin/MCP, or
   production mutation was performed. Existing AI sketch safety boundaries
   remain unchanged.
+- Agent 55B: adds a low-risk protected admin-only read-only display for
+  internal Design Spec and Hand Sketch Instruction planning artifacts on the
+  existing admin brief detail page. The display may show safe summaries or
+  empty states for Design Spec, Hand Sketch Instruction, validation, risk
+  flags, human review gates, review status, customer delivery readiness,
+  gallery separation, and not-CAD/quote/order/production warnings. It does not
+  edit, generate, approve, send, publish, mutate status, access a provider,
+  send email, run SQL, change Supabase schema, expose customer preview, or
+  create gallery approval. Existing AI sketch, human-review, and email-only
+  delivery boundaries remain unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 

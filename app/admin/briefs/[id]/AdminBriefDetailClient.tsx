@@ -173,6 +173,120 @@ function AiSketchReviewGuidance() {
   );
 }
 
+function getDeliveryReadinessSummary(reviewStatus: AiSketchReviewStatus) {
+  if (reviewStatus === 'needs_revision') {
+    return 'Customer delivery is blocked because needs_revision requires human revision before any future email delivery.';
+  }
+
+  if (reviewStatus === 'approved_for_customer') {
+    return 'approved_for_customer means human-reviewed email delivery readiness only. Sending remains human-controlled, and gallery, CAD, quote, order, and production approvals are separate.';
+  }
+
+  if (reviewStatus === 'draft_generated_internal_only') {
+    return 'An internal draft is still not customer-ready. Human review is required before any customer delivery decision.';
+  }
+
+  return 'No internal draft has been generated. Customer delivery is not ready.';
+}
+
+function BoundaryBadges() {
+  return (
+    <ul className={styles.fileList}>
+      <li>Admin only</li>
+      <li>Read-only</li>
+      <li>Human review required</li>
+      <li>Not customer-facing</li>
+    </ul>
+  );
+}
+
+function InternalDesignPlanningArtifacts({
+  conceptBriefStatus,
+  reviewStatus,
+}: {
+  conceptBriefStatus: BriefStatus;
+  reviewStatus: AiSketchReviewStatus;
+}) {
+  return (
+    <DetailSection
+      title="Internal design planning artifacts"
+      rows={[
+        {
+          label: 'Boundary labels',
+          value: <BoundaryBadges />,
+        },
+        {
+          label: 'Design Spec draft',
+          value: (
+            <ul className={styles.fileList}>
+              <li>Design Spec draft is not available yet.</li>
+              <li>No persisted Design Spec artifact is attached to this Concept Brief record.</li>
+              <li>Customer contact fields are not copied into this generation-facing planning panel.</li>
+              <li>This does not imply CAD, quote, order confirmation, production approval, or customer approval.</li>
+            </ul>
+          ),
+        },
+        {
+          label: 'Hand Sketch Instruction draft',
+          value: (
+            <ul className={styles.fileList}>
+              <li>Hand Sketch Instruction draft is not available yet.</li>
+              <li>This internal planning area cannot generate, approve, send, publish, or preview customer assets.</li>
+              <li>Any future instruction remains internal only, concept-only, not CAD, not a quote, not an order confirmation, and not production approval.</li>
+              <li>Customer delivery remains email-only after human approval.</li>
+            </ul>
+          ),
+        },
+        {
+          label: 'Validation summary',
+          value: (
+            <ul className={styles.fileList}>
+              <li>Validation has not been run.</li>
+              <li>No real Design Spec artifact is available to validate on this page.</li>
+              <li>Validation display is read-only and must not auto-fix or auto-approve anything.</li>
+            </ul>
+          ),
+        },
+        {
+          label: 'Risk flags',
+          value: (
+            <ul className={styles.fileList}>
+              <li>Risk flags are not available yet.</li>
+              <li>No false risk certainty is shown while no real internal artifact exists.</li>
+              <li>Future risk review may cover unsupported material, exact-copy reference risk, private data leakage risk, CAD implication risk, quote implication risk, order or production implication risk, gallery approval implication risk, and generation success treated as approval risk.</li>
+            </ul>
+          ),
+        },
+        {
+          label: 'Human review and delivery readiness',
+          value: (
+            <ul className={styles.fileList}>
+              <li>Current Concept Brief review status: {conceptBriefStatus}.</li>
+              <li>Current AI sketch review status: {AI_SKETCH_REVIEW_STATUS_LABELS[reviewStatus]}.</li>
+              <li>{getDeliveryReadinessSummary(reviewStatus)}</li>
+              <li>AI generation success is not approval.</li>
+              <li>approved_for_customer is not approved_for_gallery.</li>
+              <li>approved_for_customer is not CAD, not a quote, not an order confirmation, and not production approval.</li>
+              <li>needs_revision blocks customer delivery.</li>
+              <li>Human-controlled send is still required for any future email delivery.</li>
+              <li>Gallery approval is separate and is not created by this page.</li>
+            </ul>
+          ),
+        },
+        {
+          label: 'Privacy and leakage warning',
+          value: (
+            <ul className={styles.fileList}>
+              <li>Do not move customer email, phone, WhatsApp, contact notes, internal notes, raw storage paths, provider output URLs, or secret metadata into Design Spec or Hand Sketch Instruction panels.</li>
+              <li>This protected admin page may show existing contact details elsewhere, but this planning artifact section keeps generation-facing panels contact-free.</li>
+            </ul>
+          ),
+        },
+      ]}
+    />
+  );
+}
+
 function DetailSection({ title, rows }: { title: string; rows: DetailRow[] }) {
   return (
     <section className={styles.detailSection} aria-label={title}>
@@ -616,6 +730,10 @@ export default function AdminBriefDetailClient({
             {detailSections.map((section) => (
               <DetailSection key={section.title} title={section.title} rows={section.rows} />
             ))}
+            <InternalDesignPlanningArtifacts
+              conceptBriefStatus={status}
+              reviewStatus={aiSketchReviewState.reviewStatus}
+            />
           </section>
 
           <aside className={styles.notesPanel}>
