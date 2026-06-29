@@ -70,6 +70,12 @@ Agent 55D must not:
 - create gallery approval
 - imply CAD, quote, order, or production approval
 
+CAD, quotation, gem procurement, and production remain offline and separate.
+Artifact persistence, artifact review, candidate schema planning, and future
+customer delivery readiness must not be treated as CAD approval, quotation
+approval, order confirmation, gemstone procurement authorization, or production
+approval.
+
 ## 5. Existing data model context
 
 Based on project docs only, the current NOVORA data model includes:
