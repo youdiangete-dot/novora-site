@@ -1271,6 +1271,22 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   send email, run SQL, change Supabase schema, expose customer preview, or
   create gallery approval. Existing AI sketch, human-review, and email-only
   delivery boundaries remain unchanged.
+- Agent 55C: adds
+  `docs/novora-agent-55c-design-artifact-source-of-truth-persistence-boundary-plan.md`,
+  a docs-only plan for future Design Spec and Hand Sketch Instruction
+  source-of-truth and persistence boundaries after Agent 55B's protected
+  admin-only read-only display with safe empty states. The plan covers future
+  artifact definitions, source of truth, creation lifecycle, human review and
+  edit lifecycle, versioning, validation result persistence, risk flags,
+  private data exclusion, Concept Brief linkage, 55B read-only display
+  consumption, future admin edit workflow, future generation workflow, customer
+  email delivery linkage, gallery separation, audit and idempotency, empty and
+  stale states, failure states, and future schema/API planning boundaries.
+  Agent 55C does not implement schema, SQL, API, admin UI, persistence,
+  generation, email, customer preview, gallery approval, status mutation,
+  approval mutation, or production data mutation. Existing AI sketch,
+  human-review, read-only display, and email-only delivery boundaries remain
+  unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
