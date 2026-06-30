@@ -1347,6 +1347,30 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   production data. Existing AI sketch, human-review, read-only display,
   source-of-truth, schema-planning, SQL-safety, and email-only delivery
   boundaries remain unchanged.
+- Agent 55G: adds
+  `docs/novora-agent-55g-user-run-sql-execution-decision-packet.md`, a
+  docs-only user-run SQL execution decision packet plan for future Design Spec
+  / Hand Sketch Instruction artifact schema work after Agent 55D schema / SQL
+  planning, Agent 55E execution safety / migration staging, and Agent 55F final
+  SQL packet review / manual verification checklist. It defines decision
+  options to not execute now, revise the packet before execution, prepare future
+  user-run execution, or proceed later to a separately approved
+  execution-support step. It recommends the conservative default: no SQL
+  execution now unless the human explicitly approves a separate future execution
+  path. It plans required frozen packet identity, explicit human approval
+  wording, Supabase project/environment confirmation, secrets/access boundary,
+  user-run execution boundary, read-only preflight, execution-day stop
+  conditions, post-execution verification, evidence capture,
+  rollback/escalation, no-destructive-change requirement, duplicate/idempotency,
+  RLS/access, private data exclusion, 55B display compatibility, customer
+  email/gallery/CAD/quote/order/production separation, and future Agent
+  sequencing. Agent 55G does not execute SQL, create migrations, access
+  Supabase, use Supabase CLI, implement schema, implement app/API/UI, persist
+  artifacts, generate images, send email, expose customer preview, create
+  gallery approval, mutate status or approval, mutate rows, mutate production
+  data, or start live execution support. Existing AI sketch, human-review,
+  read-only display, source-of-truth, schema-planning, SQL-safety,
+  final-checklist, and email-only delivery boundaries remain unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
