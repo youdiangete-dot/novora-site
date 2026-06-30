@@ -1390,6 +1390,29 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   generate images, send email, expose customer preview, create gallery
   approval, mutate status or approval, mutate rows, mutate production data,
   start live execution support, or start Agent 55H/56B.
+- Agent 56B: adds
+  `docs/novora-agent-56b-final-mvp-scope-lock-and-launch-readiness-definition.md`,
+  a docs-only final MVP scope lock and launch-readiness definition following
+  Agent 56A's remaining-work map and sequencing. It defines current non-SQL MVP
+  completion around public brief intake, reference image capture, protected
+  admin review, admin notes/status, admin notification baseline, human-review
+  policy, customer-safe email SOP, no-preview/no-gallery boundary, offline
+  CAD/quote/production handoff, privacy boundary, and launch-readiness
+  checklist. It clarifies the current MVP does not require SQL artifact schema
+  execution, persisted Design Spec / Hand Sketch Instruction artifacts, real
+  image generation, automatic customer delivery, customer web preview, gallery
+  workflow, CAD/quote/order/production automation, or Agent 55H. It preserves
+  that the Agent 55G merge does not authorize SQL execution and the default
+  remains Option A - do not execute SQL now. It recommends Agent 56C as the next
+  safe docs-only step for admin human-review SOP and customer-safe email SOP.
+  It preserves all existing internal-only AI sketch, human-review, email-only
+  delivery, no-gallery, no-customer-preview, SQL-safety, decision-packet,
+  source-of-truth, read-only display, and CAD/quote/order/production separation
+  boundaries. Agent 56B does not execute SQL, access Supabase, use Supabase
+  CLI, create migrations, implement schema, implement app/API/UI, persist
+  artifacts, generate images, send email, expose customer preview, create
+  gallery approval, mutate status or approval, mutate rows, mutate production
+  data, start live execution support, or start Agent 55H/56C.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -1445,9 +1468,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended next step: Agent 56B - docs-only final MVP scope lock and
-launch-readiness definition. This is the immediate safe non-SQL continuation
-after Agent 56A. Agent 55H is not the default next step and should only start if
+Recommended next step: Agent 56C - docs-only admin human-review SOP and
+customer-safe email SOP. This is the safest immediate non-SQL continuation
+after Agent 56B. Agent 55H is not the default next step and should only start if
 the user explicitly chooses the Agent 55G SQL execution preparation path.
 
 Keep Production rate-limit enforcement fail-open during the current MVP stage
@@ -1459,6 +1482,6 @@ submissions, admin notification noise, or payment/order/account Production
 workflows.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
-secrets, implement abuse-control code, start Agent 55H, start Agent 56B, or
+secrets, implement abuse-control code, start Agent 55H, start Agent 56C, or
 start any implementation Agent unless a separate reviewed Agent/task explicitly
 approves that exact action.
