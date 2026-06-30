@@ -1325,6 +1325,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   or approval, or mutate production data. Existing AI sketch, human-review,
   read-only display, source-of-truth, schema-planning, and email-only delivery
   boundaries remain unchanged.
+- Agent 55F: adds
+  `docs/novora-agent-55f-final-sql-packet-manual-verification-checklist.md`,
+  a docs-only final SQL packet review and manual verification checklist plan
+  for future Design Spec / Hand Sketch Instruction artifact schema work after
+  Agent 55D schema / SQL planning and Agent 55E execution safety / migration
+  staging planning. It plans final packet identity review, frozen SQL packet
+  review, SQL label and authorization checks, explicit human approval wording,
+  Supabase project and environment confirmation, secrets and access handling,
+  read-only preflight verification, no-destructive-change checks, additive
+  migration readiness, manual execution-day checks, stop conditions,
+  post-execution verification, evidence capture, rollback and escalation,
+  duplicate and idempotency checks, RLS and access checks, private data
+  exclusion, 55B display compatibility, future admin write-path readiness,
+  future generation linkage, customer email delivery, gallery separation,
+  CAD/quote/order/production separation, future implementation sequence, and
+  hard stops. Agent 55F does not execute SQL, create migrations, access
+  Supabase, use Supabase CLI, implement schema, implement app/API/UI, persist
+  artifacts, generate images, send email, expose customer preview, create
+  gallery approval, mutate status or approval, mutate rows, or mutate
+  production data. Existing AI sketch, human-review, read-only display,
+  source-of-truth, schema-planning, SQL-safety, and email-only delivery
+  boundaries remain unchanged.
 
 ## 7. Current Non-Goals And Boundaries
 
