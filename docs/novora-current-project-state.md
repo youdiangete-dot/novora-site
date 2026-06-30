@@ -16,8 +16,8 @@ from previous conversations conflict with this ledger and the current GitHub
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #128 merge commit:
-  `a6e12343c6faf9dab2729f44545c044b5632de5b`
+- Current `main` HEAD / PR #149 merge commit:
+  `c2dc4f820d5019d8ec717cac60ed5ea320c4841f`
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -1371,6 +1371,25 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   data, or start live execution support. Existing AI sketch, human-review,
   read-only display, source-of-truth, schema-planning, SQL-safety,
   final-checklist, and email-only delivery boundaries remain unchanged.
+- Agent 56A: adds
+  `docs/novora-agent-56a-mvp-remaining-work-map-and-next-step-sequencing.md`,
+  a docs-only NOVORA MVP remaining-work map and next-step sequence after Agent
+  55G. It recognizes Agent 55G is complete, that the Agent 55G merge does not
+  authorize SQL execution, and that the default decision remains Option A - do
+  not execute SQL now. It maps remaining work into can-continue-now,
+  human/product-decision gated, SQL-approval gated, post-SQL blocked, and
+  future/post-MVP categories. It recommends Agent 56B - docs-only final MVP
+  scope lock and launch-readiness definition - as the immediate next step, and
+  states Agent 55H is not the default next step and should only start if the
+  user explicitly chooses the Agent 55G SQL execution preparation path. It
+  preserves all existing AI sketch, human-review, read-only display,
+  source-of-truth, SQL-safety, decision-packet, email-only delivery, no-gallery,
+  no-customer-preview, and CAD/quote/order/production separation boundaries.
+  Agent 56A does not execute SQL, access Supabase, use Supabase CLI, create
+  migrations, implement schema, implement app/API/UI, persist artifacts,
+  generate images, send email, expose customer preview, create gallery
+  approval, mutate status or approval, mutate rows, mutate production data,
+  start live execution support, or start Agent 55H/56B.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -1426,21 +1445,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended next step: keep Production rate-limit enforcement fail-open during
-the current MVP stage and review
-`docs/novora-production-rate-limit-enablement-decision.md` before any
+Recommended next step: Agent 56B - docs-only final MVP scope lock and
+launch-readiness definition. This is the immediate safe non-SQL continuation
+after Agent 56A. Agent 55H is not the default next step and should only start if
+the user explicitly chooses the Agent 55G SQL execution preparation path.
+
+Keep Production rate-limit enforcement fail-open during the current MVP stage
+and review `docs/novora-production-rate-limit-enablement-decision.md` before any
 Production rate-limit environment/provider/deploy action. Option C remains the
-commercial-standard target: use a Production-dedicated Upstash Redis resource
-separate from Preview, with no shared Preview/Production keyspace. Do not reuse
-`novora-preview-rate-limit` for Production. Revisit and execute Option C before
-formal commercial launch, paid traffic, larger social traffic, increased real
-customer submissions, spam/fake/repeated submissions, admin notification noise,
-or payment/order/account Production workflows. PR #78 has passed manual Preview
-verification for Upstash-backed rate-limit enforcement and safe `429` handling,
-but Production environment configuration was not changed. Do not provision
-Vercel KV/Upstash, Turnstile, signing secrets, Vercel env values, or implement
-additional rate-limit/bot-protection code until a separate approved Agent/task.
+commercial-standard target before formal commercial launch, paid traffic, larger
+social traffic, increased real customer submissions, spam/fake/repeated
+submissions, admin notification noise, or payment/order/account Production
+workflows.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
-secrets, or implement abuse-control code unless a separate reviewed Agent/task
-explicitly approves that exact action.
+secrets, implement abuse-control code, start Agent 55H, start Agent 56B, or
+start any implementation Agent unless a separate reviewed Agent/task explicitly
+approves that exact action.
