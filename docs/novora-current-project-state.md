@@ -1484,13 +1484,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   `docs/novora-agent-56f-qa-release-readiness-checklist.md`, a docs-only QA /
   release readiness checklist for the current non-SQL MVP following Agent 56B's
   scope lock, Agent 56C's admin human-review and customer-safe email SOP, and
-  Agent 56D's public copy boundary plan. It defines evidence-capture rules,
-  public flow QA, submission integrity QA, reference image QA, protected admin
-  QA, copy and expectation QA, manual operations QA, security/privacy QA, a
-  release decision matrix, go/no-go summary, owner acceptance checklist, and
-  recommended future sequence. It clarifies that evidence may be gathered later
-  only by a separately approved QA, smoke-test, or release-readiness execution
-  task, and that the checklist itself does not approve launch, public
+  Agent 56D's public copy boundary plan. Its required 32-section structure
+  covers scope, source-of-truth hierarchy, current MVP launch candidate
+  definition, blocked actions, pre-QA repository readiness, public route
+  inventory, homepage/start/concept/brief/submitted/sketch/gallery QA, public
+  copy and timeline wording, contact and customer identity, admin access and
+  brief review, human-review SOP, customer-safe email delivery, AI/internal
+  draft safety, CAD/quote/order/production separation, privacy, security,
+  abuse-control, manual fallback, soft-launch go/no-go criteria, next Agent
+  sequence, and final recommendation. It clarifies that evidence may be
+  gathered later only by a separately approved QA, smoke-test, or
+  release-readiness execution task, and that the checklist itself does not
+  approve launch, public
   promotion, Production verification, protected admin access, customer-data
   review, SQL execution, Supabase changes, Vercel changes, provider
   configuration, email sending, deploys, app code changes, or test execution.
