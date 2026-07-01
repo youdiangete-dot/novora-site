@@ -1480,6 +1480,29 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   artifacts, generate images, send email, expose customer preview, create
   gallery approval, mutate status or approval, mutate rows, mutate production
   data, start live execution support, or start Agent 55H/56E.
+- Agent 56F: adds
+  `docs/novora-agent-56f-qa-release-readiness-checklist.md`, a docs-only QA /
+  release readiness checklist for the current non-SQL MVP following Agent 56B's
+  scope lock, Agent 56C's admin human-review and customer-safe email SOP, and
+  Agent 56D's public copy boundary plan. It defines evidence-capture rules,
+  public flow QA, submission integrity QA, reference image QA, protected admin
+  QA, copy and expectation QA, manual operations QA, security/privacy QA, a
+  release decision matrix, go/no-go summary, owner acceptance checklist, and
+  recommended future sequence. It clarifies that evidence may be gathered later
+  only by a separately approved QA, smoke-test, or release-readiness execution
+  task, and that the checklist itself does not approve launch, public
+  promotion, Production verification, protected admin access, customer-data
+  review, SQL execution, Supabase changes, Vercel changes, provider
+  configuration, email sending, deploys, app code changes, or test execution.
+  It preserves the current non-SQL MVP boundary, Agent 55G Option A default,
+  fail-open Production rate-limit posture for quiet MVP only, internal-only
+  AI/draft boundary, human-review and email-only delivery boundary,
+  no-gallery/no-customer-preview boundary, and CAD/quote/order/production
+  separation. Agent 56F does not execute SQL, access Supabase, use Supabase
+  CLI, create migrations, implement schema, implement app/API/UI, persist
+  artifacts, generate images, send email, expose customer preview, create
+  gallery approval, mutate status or approval, mutate rows, mutate production
+  data, start live execution support, or start Agent 55H/56E/56G.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -1535,12 +1558,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended next step: optional Agent 56E - safe static public copy
-implementation only if the owner explicitly approves website copy
-implementation. If the owner does not want implementation yet, the next safe
-docs-only step is Agent 56F - QA/release readiness checklist for the current
-non-SQL MVP. Agent 55H is not the default next step and should only start if the
-user explicitly chooses the Agent 55G SQL execution preparation path.
+Recommended next step: optional Agent 56G - docs-only final public-flow
+smoke-test plan only if the owner wants a precise non-mutating QA runbook before
+any live testing or release-readiness evidence gathering. Optional Agent 56E -
+safe static public copy implementation remains separate and should start only
+if the owner explicitly approves website copy implementation. Agent 55H is not
+the default next step and should only start if the user explicitly chooses the
+Agent 55G SQL execution preparation path.
 
 Keep Production rate-limit enforcement fail-open during the current MVP stage
 and review `docs/novora-production-rate-limit-enablement-decision.md` before any
@@ -1551,6 +1575,6 @@ submissions, admin notification noise, or payment/order/account Production
 workflows.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
-secrets, implement abuse-control code, start Agent 55H, start Agent 56E, or
-start any implementation Agent unless a separate reviewed Agent/task explicitly
-approves that exact action.
+secrets, implement abuse-control code, start Agent 55H, start Agent 56E, start
+Agent 56G, perform QA execution, or start any implementation Agent unless a
+separate reviewed Agent/task explicitly approves that exact action.
