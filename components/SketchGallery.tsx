@@ -63,13 +63,9 @@ const sketchGalleryItems: SketchGalleryItem[] = [
 
 function SketchPreview({ imageSrc, title }: Pick<SketchGalleryItem, 'imageSrc' | 'title'>) {
   return (
-    <img
-      className={styles.preview}
-      src={imageSrc}
-      alt={`Mock hand-drawn preview for ${title}`}
-      loading="lazy"
-      style={{ display: 'block', width: '100%', objectFit: 'cover' }}
-    />
+    <div className={styles.preview}>
+      <img className={styles.previewImage} src={imageSrc} alt={`Mock hand-drawn preview for ${title}`} loading="lazy" />
+    </div>
   );
 }
 
