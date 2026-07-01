@@ -6,6 +6,7 @@ type SketchGalleryItem = {
   tags: string[];
   boundaryLabel: string;
   variant: 'halo' | 'pendant' | 'band' | 'threeStone' | 'pearlDrop' | 'emeraldCut';
+  imageSrc: string;
 };
 
 // Future replacement can come from an approved `/api/public/sketch-gallery` endpoint with approved, non-sensitive items only.
@@ -16,6 +17,7 @@ const sketchGalleryItems: SketchGalleryItem[] = [
     tags: ['Oval center', 'Soft halo', 'Refined'],
     boundaryLabel: 'Concept sketch only',
     variant: 'halo',
+    imageSrc: '/images/novora-early-sketch-assets/01-oval-halo-engagement-ring-early-sketch.png',
   },
   {
     title: 'Modern lab diamond pendant concept',
@@ -23,6 +25,7 @@ const sketchGalleryItems: SketchGalleryItem[] = [
     tags: ['Lab diamond', 'Minimal', 'Daily wear'],
     boundaryLabel: 'Concept direction',
     variant: 'pendant',
+    imageSrc: '/images/novora-early-sketch-assets/02-modern-lab-diamond-pendant-early-sketch.png',
   },
   {
     title: 'Minimal pave band concept',
@@ -30,6 +33,7 @@ const sketchGalleryItems: SketchGalleryItem[] = [
     tags: ['Pave detail', 'Low profile', 'Quiet shine'],
     boundaryLabel: 'Not CAD or quote',
     variant: 'band',
+    imageSrc: '/images/novora-early-sketch-assets/03-minimal-pave-band-early-sketch.png',
   },
   {
     title: 'Romantic three-stone ring concept',
@@ -37,6 +41,7 @@ const sketchGalleryItems: SketchGalleryItem[] = [
     tags: ['Three stone', 'Balanced', 'Personal'],
     boundaryLabel: 'Studio review first',
     variant: 'threeStone',
+    imageSrc: '/images/novora-early-sketch-assets/04-romantic-three-stone-ring-early-sketch.png',
   },
   {
     title: 'Sculptural pearl drop earring concept',
@@ -44,6 +49,7 @@ const sketchGalleryItems: SketchGalleryItem[] = [
     tags: ['Pearl drop', 'Sculptural', 'Warm line'],
     boundaryLabel: 'Concept sketch only',
     variant: 'pearlDrop',
+    imageSrc: '/images/novora-early-sketch-assets/05-sculptural-pearl-drop-earring-early-sketch.png',
   },
   {
     title: 'Art deco emerald-cut ring concept',
@@ -51,17 +57,14 @@ const sketchGalleryItems: SketchGalleryItem[] = [
     tags: ['Emerald cut', 'Art deco', 'Architectural'],
     boundaryLabel: 'Concept direction',
     variant: 'emeraldCut',
+    imageSrc: '/images/novora-early-sketch-assets/06-art-deco-emerald-cut-ring-early-sketch.png',
   },
 ];
 
-function SketchPreview({ variant, title }: Pick<SketchGalleryItem, 'variant' | 'title'>) {
+function SketchPreview({ imageSrc, title }: Pick<SketchGalleryItem, 'imageSrc' | 'title'>) {
   return (
-    <div className={`${styles.preview} ${styles[variant]}`} role="img" aria-label={`Mock hand-drawn preview for ${title}`}>
-      <span className={styles.sketchLine} />
-      <span className={styles.sketchLineSecondary} />
-      <span className={styles.sketchStone} />
-      <span className={styles.sketchAccentOne} />
-      <span className={styles.sketchAccentTwo} />
+    <div className={styles.preview}>
+      <img className={styles.previewImage} src={imageSrc} alt={`Mock hand-drawn preview for ${title}`} loading="lazy" />
     </div>
   );
 }
@@ -69,7 +72,7 @@ function SketchPreview({ variant, title }: Pick<SketchGalleryItem, 'variant' | '
 function SketchCard({ item, isDuplicate = false }: { item: SketchGalleryItem; isDuplicate?: boolean }) {
   return (
     <article className={`${styles.card} ${isDuplicate ? styles.duplicateCard : ''}`} aria-hidden={isDuplicate}>
-      <SketchPreview variant={item.variant} title={item.title} />
+      <SketchPreview imageSrc={item.imageSrc} title={item.title} />
       <div className={styles.cardBody}>
         <div className={styles.cardHeader}>
           <span>{item.pieceType}</span>
