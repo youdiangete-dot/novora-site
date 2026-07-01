@@ -1444,6 +1444,42 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   artifacts, generate images, send email, expose customer preview, create
   gallery approval, mutate status or approval, mutate rows, mutate production
   data, start live execution support, or start Agent 55H/56D.
+- Agent 56D: adds
+  `docs/novora-agent-56d-website-public-copy-polish-and-expectation-setting-plan.md`,
+  a docs-only website/public copy polish and expectation-setting plan following
+  Agent 56C's admin human-review SOP and customer-safe email SOP. It defines
+  public-facing copy rules for the homepage, CTA, design start, concept, brief,
+  reference upload, submitted page, sketch/preview route boundary, gallery, AI
+  concept sketch wording, human review wording, email-only delivery wording,
+  CAD/quote/order/production boundary wording, timeline wording, pricing and
+  material wording, lab diamond/gemstone wording, customer-safe disclaimers,
+  and copy QA. It clarifies the current MVP public position: the customer
+  submits a design brief, the team reviews internally, customer-safe concept
+  direction is delivered by email after human review, and CAD, quotation, order,
+  and production are separate offline next steps. Public copy must not promise
+  instant AI sketch, automatic customer preview, CAD, quote, order confirmation,
+  production approval, final manufacturability, guaranteed material or stone
+  availability, gallery publication, or production-ready files. The
+  owner-approved public timeline expectation is a first human-reviewed
+  customer-safe concept draft or first concept response target within 24 hours
+  after a sufficiently complete brief is submitted; customer revision loops are
+  separate and not counted inside that first-draft target; production target is
+  15-30 days after CAD, materials, stones, quotation, and order details are
+  separately confirmed; and logistics target is 5-10 days, subject to
+  destination, carrier, customs, and local delivery conditions. It preserves
+  that website quick AI preview is future product only, `approved_for_customer`
+  is not `approved_for_gallery`, generation success is not approval, and the
+  Agent 55G merge does not authorize SQL execution because the default remains
+  Option A - do not execute SQL now. It recommends optional Agent 56E only if
+  the owner wants safe static public copy implementation, while preserving all
+  existing internal-only AI sketch, human-review, email-only delivery,
+  no-gallery, no-customer-preview, SQL-safety, decision-packet,
+  source-of-truth, read-only display, and CAD/quote/order/production separation
+  boundaries. Agent 56D does not execute SQL, access Supabase, use Supabase
+  CLI, create migrations, implement schema, implement app/API/UI, persist
+  artifacts, generate images, send email, expose customer preview, create
+  gallery approval, mutate status or approval, mutate rows, mutate production
+  data, start live execution support, or start Agent 55H/56E.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -1499,10 +1535,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended next step: Agent 56D - docs-only website/public copy polish and
-expectation-setting plan. This is the safest immediate non-SQL continuation
-after Agent 56C. Agent 55H is not the default next step and should only start if
-the user explicitly chooses the Agent 55G SQL execution preparation path.
+Recommended next step: optional Agent 56E - safe static public copy
+implementation only if the owner explicitly approves website copy
+implementation. If the owner does not want implementation yet, the next safe
+docs-only step is Agent 56F - QA/release readiness checklist for the current
+non-SQL MVP. Agent 55H is not the default next step and should only start if the
+user explicitly chooses the Agent 55G SQL execution preparation path.
 
 Keep Production rate-limit enforcement fail-open during the current MVP stage
 and review `docs/novora-production-rate-limit-enablement-decision.md` before any
@@ -1513,6 +1551,6 @@ submissions, admin notification noise, or payment/order/account Production
 workflows.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
-secrets, implement abuse-control code, start Agent 55H, start Agent 56D, or
+secrets, implement abuse-control code, start Agent 55H, start Agent 56E, or
 start any implementation Agent unless a separate reviewed Agent/task explicitly
 approves that exact action.
