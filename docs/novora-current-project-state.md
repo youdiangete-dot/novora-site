@@ -1413,6 +1413,37 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   artifacts, generate images, send email, expose customer preview, create
   gallery approval, mutate status or approval, mutate rows, mutate production
   data, start live execution support, or start Agent 55H/56C.
+- Agent 56C: adds
+  `docs/novora-agent-56c-admin-human-review-sop-and-customer-safe-email-sop.md`,
+  a docs-only admin human-review SOP and customer-safe email SOP following
+  Agent 56B's final MVP scope lock and launch-readiness definition. It defines
+  manual operating procedures for protected admin intake review,
+  customer/contact review, reference image review, design intent review,
+  internal AI sketch/internal draft review, human review checklist, jewelry
+  feasibility review, customer-safe material, email-only customer delivery,
+  revision/rejection/approval handling, gallery consent separation, CAD/quote/
+  order/production offline handoff, privacy handling, incident escalation, and
+  manual fallback. It clarifies customer-safe delivery requires human approval
+  and email-only delivery, and that raw Design Spec, raw Hand Sketch
+  Instruction, raw prompt, provider metadata, reviewer notes, admin notes,
+  rejected drafts, unreviewed drafts, internal-only drafts, private storage
+  paths, signed admin links, secrets, and internal risk comments must not be
+  sent to customers. It preserves legal AI sketch review statuses
+  `internal_draft_not_generated`, `draft_generated_internal_only`,
+  `needs_revision`, and `approved_for_customer`; keeps `pending` illegal; keeps
+  `approved_for_customer` separate from `approved_for_gallery`; and preserves
+  that generation success is not approval. It preserves that the Agent 55G
+  merge does not authorize SQL execution and default remains Option A - do not
+  execute SQL now. It recommends Agent 56D as the next safe docs-only step for
+  website/public copy polish and expectation-setting plan. It preserves all
+  existing internal-only AI sketch, human-review, email-only delivery,
+  no-gallery, no-customer-preview, SQL-safety, decision-packet,
+  source-of-truth, read-only display, and CAD/quote/order/production separation
+  boundaries. Agent 56C does not execute SQL, access Supabase, use Supabase
+  CLI, create migrations, implement schema, implement app/API/UI, persist
+  artifacts, generate images, send email, expose customer preview, create
+  gallery approval, mutate status or approval, mutate rows, mutate production
+  data, start live execution support, or start Agent 55H/56D.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -1468,9 +1499,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended next step: Agent 56C - docs-only admin human-review SOP and
-customer-safe email SOP. This is the safest immediate non-SQL continuation
-after Agent 56B. Agent 55H is not the default next step and should only start if
+Recommended next step: Agent 56D - docs-only website/public copy polish and
+expectation-setting plan. This is the safest immediate non-SQL continuation
+after Agent 56C. Agent 55H is not the default next step and should only start if
 the user explicitly chooses the Agent 55G SQL execution preparation path.
 
 Keep Production rate-limit enforcement fail-open during the current MVP stage
@@ -1482,6 +1513,6 @@ submissions, admin notification noise, or payment/order/account Production
 workflows.
 
 Do not run SQL, change Supabase, change Vercel env, provision providers, create
-secrets, implement abuse-control code, start Agent 55H, start Agent 56C, or
+secrets, implement abuse-control code, start Agent 55H, start Agent 56D, or
 start any implementation Agent unless a separate reviewed Agent/task explicitly
 approves that exact action.
