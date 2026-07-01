@@ -74,7 +74,7 @@
   align-items: center;
   justify-content: center;
   height: 170px;
-  padding: 0.5rem;
+  padding: 0.42rem;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.96), transparent 42%),
@@ -89,8 +89,38 @@
   border-radius: 11px;
   background: #fffdf8;
   box-shadow: 0 7px 18px rgba(87, 68, 48, 0.1);
-  object-fit: contain;
-  object-position: center;
+  object-fit: cover;
+  object-position: center 50%;
+}
+
+.halo .previewImage {
+  object-position: center 49%;
+  transform: scale(1.06);
+}
+
+.pendant .previewImage {
+  object-position: center 50%;
+  transform: scale(1.08);
+}
+
+.band .previewImage {
+  object-position: center 46%;
+  transform: scale(1.02);
+}
+
+.threeStone .previewImage {
+  object-position: center 48%;
+  transform: scale(1.02);
+}
+
+.pearlDrop .previewImage {
+  object-position: center 51%;
+  transform: scale(1.08);
+}
+
+.emeraldCut .previewImage {
+  object-position: center 50%;
+  transform: scale(1.08);
 }
 
 .preview::before,
