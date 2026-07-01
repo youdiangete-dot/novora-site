@@ -1459,7 +1459,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   and production are separate offline next steps. Public copy must not promise
   instant AI sketch, automatic customer preview, CAD, quote, order confirmation,
   production approval, final manufacturability, guaranteed material or stone
-  availability, gallery publication, or production-ready files. It preserves
+  availability, gallery publication, or production-ready files. The
+  owner-approved public timeline expectation is a first human-reviewed
+  customer-safe concept draft or first concept response target within 24 hours
+  after a sufficiently complete brief is submitted; customer revision loops are
+  separate and not counted inside that first-draft target; production target is
+  15-30 days after CAD, materials, stones, quotation, and order details are
+  separately confirmed; and logistics target is 5-10 days, subject to
+  destination, carrier, customs, and local delivery conditions. It preserves
   that website quick AI preview is future product only, `approved_for_customer`
   is not `approved_for_gallery`, generation success is not approval, and the
   Agent 55G merge does not authorize SQL execution because the default remains

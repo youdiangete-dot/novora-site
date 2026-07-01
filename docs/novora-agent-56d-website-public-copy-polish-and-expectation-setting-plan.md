@@ -433,15 +433,16 @@ timeline, and production are confirmed separately."
 
 Safe timeline language:
 
-- "Our team will review your brief and follow up."
-- "Timing depends on design complexity, reference clarity, and communication."
-- "CAD, quotation, and production timelines are separate."
-- "Previous planning expectations may discuss concept or CAD discussion windows
-  such as 30-90 days and production after CAD confirmation such as 7-30 days,
-  only when separately confirmed."
+- "After a sufficiently complete brief is submitted, NOVORA targets a first human-reviewed customer-safe concept draft or first concept response within 24 hours."
+- "The first draft target does not include customer-requested revision cycles, waiting for customer feedback, or repeated back-and-forth adjustments."
+- "Revision cycles are separate customer-driven interaction time."
+- "After CAD is confirmed and materials, stones, quotation, and order details are separately approved, production target is 15-30 days."
+- "Logistics target is 5-10 days, depending on destination, carrier, customs, and local delivery conditions."
+- "CAD, quotation, materials, stones, production, and logistics remain separate offline confirmations."
 
-Avoid guaranteed instant responses, guaranteed sketch delivery, guaranteed CAD
-turnaround, or guaranteed production timelines.
+Avoid guaranteed language. Do not promise instant AI output, automatic preview,
+final CAD, quote, order confirmation, production approval, material
+availability, stone availability, or delivery date certainty.
 
 ## 23. Pricing and material wording
 
