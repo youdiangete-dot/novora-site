@@ -61,9 +61,9 @@ const sketchGalleryItems: SketchGalleryItem[] = [
   },
 ];
 
-function SketchPreview({ imageSrc, title }: Pick<SketchGalleryItem, 'imageSrc' | 'title'>) {
+function SketchPreview({ imageSrc, title, variant }: Pick<SketchGalleryItem, 'imageSrc' | 'title' | 'variant'>) {
   return (
-    <div className={styles.preview}>
+    <div className={`${styles.preview} ${styles[variant]}`}>
       <img className={styles.previewImage} src={imageSrc} alt={`Mock hand-drawn preview for ${title}`} loading="lazy" />
     </div>
   );
@@ -72,7 +72,7 @@ function SketchPreview({ imageSrc, title }: Pick<SketchGalleryItem, 'imageSrc' |
 function SketchCard({ item, isDuplicate = false }: { item: SketchGalleryItem; isDuplicate?: boolean }) {
   return (
     <article className={`${styles.card} ${isDuplicate ? styles.duplicateCard : ''}`} aria-hidden={isDuplicate}>
-      <SketchPreview imageSrc={item.imageSrc} title={item.title} />
+      <SketchPreview imageSrc={item.imageSrc} title={item.title} variant={item.variant} />
       <div className={styles.cardBody}>
         <div className={styles.cardHeader}>
           <span>{item.pieceType}</span>
