@@ -244,9 +244,21 @@ test.describe('/design/start conversion flow', () => {
     await expect(page).toHaveURL(/\/design\/submitted$/);
     await expect(page.getByRole('heading', { name: 'Design start summary' })).toBeVisible();
     await expectTextsVisible(page, ['Partner', 'Bold modern', 'USD 2500+']);
-    await expect(page.getByRole('link', { name: 'View Mock Sketch Preview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'NOVORA received your Concept Brief for studio review and may follow up using the contact details you provided.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: 'View Mock Sketch Preview' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'View AI Sketch Preview' })).toHaveCount(0);
+    await expect(page.locator('a[href="/design/sketch"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'What NOVORA reviews next' })).toBeVisible();
+    await expect(
+      page.getByText(
+        'NOVORA will use the submitted email or contact information for follow-up about this Concept Brief. This receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is sent from this submission flow.',
+      ),
+    ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'From concept brief to production review' })).toHaveCount(0);
 
     const submittedBrief = await page.evaluate(() => {
