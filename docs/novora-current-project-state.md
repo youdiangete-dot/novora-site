@@ -1517,9 +1517,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   preview. CAD, quote, payment, order approval, and production approval remain
   offline and not approved through the website. This is docs-only; no app
   implementation, image generation, provider connection, route change,
-  Supabase change, Vercel change, email change, protected admin access,
-  Production data access, test change, asset change, deploy, merge, or cleanup
-  occurred.
+  Supabase change, email change, protected admin access, Production data
+  access, test change, asset change, merge, or cleanup occurred. No manual
+  deployment, Production deployment, Vercel configuration change, environment
+  variable change, or Production system action occurred. An automatic Vercel
+  Preview deployment may be triggered by the normal PR integration and is not a
+  manual or Production deployment.
 
 ## 7. Current Non-Goals And Boundaries
 

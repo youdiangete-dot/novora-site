@@ -11,6 +11,11 @@ generation, connect OpenAI or any image API, expose a customer preview route,
 change app code, change Supabase, change Vercel, change email behavior, or
 approve CAD, quote, order, payment, or production through the website.
 
+No manual deployment, Production deployment, Vercel configuration change,
+environment variable change, or Production system action occurred. An automatic
+Vercel Preview deployment may be triggered by the normal PR integration and is
+not a manual or Production deployment.
+
 ## 2. Owner Decision Summary
 
 Confirmed owner decisions:
