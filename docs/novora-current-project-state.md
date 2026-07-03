@@ -1523,6 +1523,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   variable change, or Production system action occurred. An automatic Vercel
   Preview deployment may be triggered by the normal PR integration and is not a
   manual or Production deployment.
+- Agent 61A: adds
+  `docs/novora-instant-customer-sketch-preview-implementation-plan.md`, a
+  docs-only implementation plan for the owner-approved instant customer-facing
+  AI concept sketch preview path. The planned flow is customer Concept Brief ->
+  structured Design Spec -> Hand Sketch Instruction -> first AI hand-drawn
+  concept sketch preview -> customer feedback -> human correction or
+  regeneration. The AI sketch remains an early concept preview only, not CAD,
+  not a quote, not payment confirmation, not order approval, and not production
+  approval. Agent 61A does not implement image generation, connect OpenAI or
+  any image API, change app code, routes, UI, tests, packages, Supabase, SQL,
+  Vercel config, environment variables, email behavior, protected admin pages,
+  Production data, assets, or deployment behavior.
 
 ## 7. Current Non-Goals And Boundaries
 
