@@ -1549,6 +1549,19 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   image generation, Supabase, SQL, Vercel config, environment variables, email,
   protected admin access, Production data access, tests, assets, deployment, or
   runtime behavior.
+- Agent 61C: adds
+  `docs/novora-instant-sketch-preview-data-status-sql-plan.md`, a docs-only
+  data/status model and SQL packet planning document for future instant
+  customer sketch preview and feedback records. The planning covers preview
+  lifecycle states, feedback records, generation jobs, generated outputs,
+  storage boundaries, public reference / token handling, idempotency, duplicate
+  protection, RLS and server-only boundaries, error/retry/delay states, and
+  customer-visible versus internal-only field separation. The AI sketch remains
+  a concept preview only, not CAD, not a quote, not payment confirmation, not
+  order approval, and not production approval. Agent 61C does not execute SQL,
+  create migrations, change Supabase, connect OpenAI or any image API, change
+  Vercel config or environment variables, implement routes or UI, deploy, or
+  access Production data.
 
 ## 7. Current Non-Goals And Boundaries
 
