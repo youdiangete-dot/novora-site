@@ -26,6 +26,8 @@ Relevant source documents and decisions:
   email-only, human-reviewed customer delivery boundary.
 - Agent 60C internal QA result, carried forward in current readiness docs as
   `PASS WITH NOTES` / no internal QA blockers.
+- Agent 60I instant customer sketch preview MVP decision:
+  `docs/novora-instant-customer-sketch-preview-mvp-decision.md`.
 
 Internal QA readiness does not equal external beta approval. Limited external
 beta remains blocked until the owner locks the operating owners, cadence,
@@ -46,35 +48,41 @@ accepted risk decisions required below.
 | Customer-safe sender | Owner decision required | Confirm the customer-safe sender address. | Documented admin notification sender is `NOVORA <briefs@notify.novora.design>`; this is not a customer-safe sender decision. |
 | Customer-safe reply-to | Owner decision required | Confirm the customer-safe reply-to address. | Agent 60F says customer-safe reply-to remains undecided. |
 | Customer reply sender authority | Owner decision required | Name who is allowed to send customer replies. | Customer reply sending remains manual and human-controlled. |
-| Customer-facing sketch approval owner | Owner decision required | Name who approves customer-facing sketch or concept delivery. | Human approval is required before any customer-safe concept delivery. |
+| Customer-facing sketch approval owner | Owner decision required | Name who approves customer-facing sketch or concept delivery. | Agent 60I changes the forward product direction toward website-based first sketch preview, but does not name an approval owner. |
 | Customer-safe notes review owner | Owner decision required | Name who reviews customer-safe notes before email. | Raw prompts, internal notes, reviewer notes, and unreviewed drafts remain customer-blocked. |
 | Incomplete brief handling | Owner decision required | Confirm clarification handling for incomplete briefs. | Agent 60F recommends clarification questions rather than speculative concept work. |
 | Unclear reference image handling | Owner decision required | Confirm handling for unclear, missing, inaccessible, or unusable references. | Reference images remain for protected review and manual follow-up. |
 | Out-of-scope request handling | Owner decision required | Confirm response or escalation path for out-of-scope requests. | Agent 60F recommends polite customer-safe response or owner escalation. |
 | CAD / quote / production discussion handling | Owner decision required | Confirm offline handling for CAD, quote, sourcing, order, production, QC, packaging, and logistics. | Current MVP has no payment, order, CAD approval, or production workflow. |
 | Privacy deletion / correction escalation | Owner decision required | Name deletion/correction escalation owner and request process. | `privacy@novora.design` is documented as receive-only MVP privacy contact forwarding; deletion/correction ownership remains unresolved. |
-| Limited beta invite-only status | Owner decision required | Confirm whether beta is invite-only. | Agent 60F recommends invite-only, not yet owner-approved. |
-| Maximum beta users or submissions | Owner decision required | Confirm maximum beta users or submissions. | No final beta size is documented. |
+| Limited beta invite-only status | Owner confirmed: invite-only | None for invite-only status; other beta operating decisions remain required. | Agent 60I owner decision confirms invite-only limited beta direction. |
+| Maximum beta users or submissions | Owner confirmed: 5-10 users; submission cap still TBD by owner | Confirm any maximum submission cap if needed. | Agent 60I owner decision confirms beta size only. |
 | Target beta markets | Owner decision required | Confirm target beta markets. | No final beta market selection is documented. |
-| Target beta languages | Owner decision required | Confirm target beta languages. | No final beta language selection is documented. |
+| Target beta languages | Owner confirmed: English and Traditional Chinese | None for target beta language options. | Agent 60I owner decision confirms target beta language options. |
+| Automatic submission response | Owner confirmed: desired | Future implementation must define safe response content, timing, failure handling, and delivery channel. | Agent 60I records automatic submission response as desired, without implementing it. |
+| Website first AI sketch preview direction | Owner confirmed: intended MVP product path | Future implementation must define safe preview flow, disclaimers, generation failure handling, feedback capture, and review-state semantics. | Agent 60I pivots the forward direction from conservative email-only delivery toward instant website-based first concept preview. |
+| Human intervention focus for first sketch preview | Owner confirmed: structure, craft, production feasibility, inconsistent views, setting logic, gemstone placement, proportion, mismatch, unsafe claims, correction, and regeneration | Name operating owners and escalation process before external beta or implementation. | Agent 60I confirms human intervention should focus on correction after initial AI preview rather than blocking every first sketch. |
 | Weekend / holiday coverage | Owner decision required | Confirm whether weekend or holiday review is supported. | Agent 60F says weekend/holiday coverage must not be assumed. |
 | Urgent escalation owner | Owner decision required | Name urgent customer issue escalation owner. | Agent 60F requires escalation ownership before beta. |
 | Rate-limit fail-open risk acceptance or mitigation owner | Owner decision required | Name who accepts narrow invite-only fail-open risk or owns mitigation. | Production rate-limit enforcement remains fail-open unless a separate approved provider/environment task changes it. |
 | Privacy / Terms publication owner | Owner decision required | Name owner/legal decision owner and final publication path. | Agent 60E says final public Privacy / Terms pages are not published and require owner/legal decisions. |
 
-## 4. Recommended Safe Baseline Pending Owner Confirmation
+## 4. Confirmed Direction And Remaining Operating Baseline
 
-Recommended baseline, not yet owner-approved:
+Confirmed Agent 60I direction and remaining operating baseline:
 
 - Invite-only limited beta.
-- Small initial group that the owner can manually support.
+- 5-10 beta users.
+- English and Traditional Chinese target language options.
+- Automatic submission response is desired.
+- Website-based first AI hand-sketch concept preview is now the intended MVP
+  product direction.
 - Business-day admin queue checks.
 - Business-day admin notification inbox checks.
-- Manual human review before every customer follow-up.
-- Email-only customer communication.
-- No automatic sketch delivery.
-- No unreviewed AI output emailed, linked, published, or shown on customer
-  pages.
+- Human intervention focused on structural logic errors, jewelry construction
+  errors, production feasibility issues, inconsistent views, wrong setting
+  logic, wrong gemstone placement, proportion problems, customer request
+  mismatch, unsafe claims, and correction or regeneration.
 - Customer-safe replies only through a confirmed sender and reply-to path.
 - Clarification questions for incomplete briefs.
 - Owner escalation for unclear, unsupported, privacy-sensitive, or urgent
@@ -83,8 +91,11 @@ Recommended baseline, not yet owner-approved:
 - CAD, quote, sourcing, production, QC, packaging, and logistics handled
   offline and separately from the website flow.
 
-This baseline is a conservative operating recommendation from Agent 60F. It is
-not final owner-approved policy.
+The invite-only status, 5-10 user beta size, English and Traditional Chinese
+language options, automatic submission response desire, website-based first
+sketch preview direction, and revised human-intervention focus are confirmed by
+the Agent 60I owner decision. The remaining operating fields below are still
+unresolved unless explicitly filled by the owner.
 
 ## 5. Owner-Fillable Decision Record
 
@@ -107,10 +118,13 @@ not final owner-approved policy.
 | Out-of-scope request handling | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
 | CAD / quote / production discussion handling | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
 | Privacy deletion / correction escalation | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
-| Limited beta invite-only status | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
-| Maximum beta users or submissions | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
+| Limited beta invite-only status | Invite-only | TBD by owner | TBD by owner | Confirmed by Agent 60I owner decision; owner/date fields not invented. |
+| Maximum beta users or submissions | 5-10 users; submission cap TBD by owner | TBD by owner | TBD by owner | User count confirmed by Agent 60I owner decision; submission cap remains unresolved. |
 | Target beta markets | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
-| Target beta languages | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
+| Target beta languages | English and Traditional Chinese | TBD by owner | TBD by owner | Confirmed by Agent 60I owner decision; owner/date fields not invented. |
+| Automatic submission response | Desired | TBD by owner | TBD by owner | Confirmed by Agent 60I owner decision; implementation details remain future work. |
+| Website first AI sketch preview direction | Intended MVP product path | TBD by owner | TBD by owner | Confirmed by Agent 60I owner decision; no implementation occurred. |
+| Human intervention focus for first sketch preview | Structure/craft/production errors and correction after initial AI preview | TBD by owner | TBD by owner | Confirmed by Agent 60I owner decision; operating owners remain unresolved. |
 | Weekend / holiday coverage | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
 | Urgent escalation owner | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
 | Rate-limit fail-open risk acceptance or mitigation owner | TBD by owner | TBD by owner | TBD by owner | TBD by owner |
@@ -132,7 +146,8 @@ Minimum required approvals before external beta:
 - Deletion / correction escalation owner.
 - Privacy / Terms publication decision.
 - Rate-limit risk acceptance or mitigation decision.
-- Beta size, market, and language decision.
+- Market decision and any submission cap decision.
+- Remaining beta operating ownership decisions.
 
 If any required field remains `Owner decision required` or `TBD by owner`,
 limited external beta remains no-go.
@@ -150,9 +165,12 @@ Future follow-up may include:
 - Later limited external beta go/no-go review.
 
 Each follow-up should remain separately scoped and should preserve the current
-human-review, email-only customer delivery, no-unreviewed-AI, and no online
-payment/order/CAD/production boundaries unless a later task explicitly changes
-them.
+AI concept sketch, human correction, customer safety, and no online
+payment/order/CAD/production boundaries. Agent 60I explicitly changes the
+forward product direction away from conservative email-only first sketch
+delivery toward website-based first concept preview, but it does not implement
+that preview or approve CAD, quote, order, payment, or production through the
+website.
 
 ## 8. Stop Conditions
 
@@ -161,8 +179,9 @@ Stop and request owner clarification before accepting wording if:
 - Any requested wording treats unresolved decisions as approved.
 - Any requested wording invents owner names, reviewer names, dates, or
   approvals.
-- Any requested wording weakens the human-review, email-only, or no-unreviewed
-  AI boundary.
+- Any requested wording presents the first AI sketch preview as final design,
+  CAD, quote, order approval, payment approval, production approval, or broad
+  public launch readiness.
 - Any requested wording implies online payment, order approval, CAD approval,
   quote approval, or production approval.
 - Owner decisions conflict with Privacy / Terms readiness requirements.

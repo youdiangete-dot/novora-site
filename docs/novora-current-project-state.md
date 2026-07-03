@@ -1508,6 +1508,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   artifacts, generate images, send email, expose customer preview, create
   gallery approval, mutate status or approval, mutate rows, mutate production
   data, start live execution support, or start Agent 55H/56E/56G.
+- Agent 60I: records the owner decision to pivot the MVP toward instant
+  customer-facing AI concept sketch preview as the intended product and
+  conversion path after Concept Brief submission. Limited beta direction is
+  invite-only, 5-10 users, with English and Traditional Chinese target language
+  options. Human intervention focus shifts toward structure logic, jewelry
+  construction, production feasibility, and correction after the initial AI
+  preview. CAD, quote, payment, order approval, and production approval remain
+  offline and not approved through the website. This is docs-only; no app
+  implementation, image generation, provider connection, route change,
+  Supabase change, Vercel change, email change, protected admin access,
+  Production data access, test change, asset change, deploy, merge, or cleanup
+  occurred.
 
 ## 7. Current Non-Goals And Boundaries
 
