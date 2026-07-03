@@ -1535,6 +1535,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   any image API, change app code, routes, UI, tests, packages, Supabase, SQL,
   Vercel config, environment variables, email behavior, protected admin pages,
   Production data, assets, or deployment behavior.
+- Agent 61B: adds
+  `docs/novora-customer-sketch-preview-route-ui-state-plan.md`, a docs-only
+  route and UI state plan for the future instant first AI concept sketch
+  preview path. The plan covers candidate customer preview routing, processing
+  states, first-preview-ready state, failure and fallback states, feedback
+  entry points, required disclaimers, bilingual copy needs, accessibility and
+  UX considerations, privacy and security boundaries, human correction handoff,
+  admin and operations implications, analytics planning, future agent
+  sequencing, open decisions, and stop conditions. The AI sketch remains a
+  concept preview only, not CAD, quote, payment, order, or production approval.
+  Agent 61B does not implement app routes, UI, OpenAI or image API integration,
+  image generation, Supabase, SQL, Vercel config, environment variables, email,
+  protected admin access, Production data access, tests, assets, deployment, or
+  runtime behavior.
 
 ## 7. Current Non-Goals And Boundaries
 
