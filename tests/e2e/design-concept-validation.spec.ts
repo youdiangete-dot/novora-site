@@ -343,7 +343,7 @@ test.describe('P0 public copy boundaries', () => {
     await expect(page.getByRole('heading', { name: 'How NOVORA approaches paid CAD later' })).toBeVisible();
     await expect(page.getByText('The website does not automatically generate CAD files, start production, or open an online order workflow.')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open order center demo' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Start a Concept Brief' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: 'Start a Concept Brief' })).toBeVisible();
   });
 });
 

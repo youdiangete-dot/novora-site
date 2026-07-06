@@ -1601,6 +1601,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Vercel config or environment variables, call OpenAI or image APIs, generate
   images, create or modify assets/logo files, send email, deploy, access
   protected admin pages, or access Production data.
+- Agent 61F-QA: fixes the existing CAD-page e2e strict locator failure caused by
+  duplicate `Start a Concept Brief` links from the shared header and CAD page
+  body. This is QA/test-stability only; it does not change business flow,
+  customer-submission behavior, Supabase, SQL, OpenAI/image API, image
+  generation, assets/logo work, Vercel/env, deploy, protected admin access, or
+  Production data. The Agent 61F mock preview route remains mock-only.
 
 ## 7. Current Non-Goals And Boundaries
 
