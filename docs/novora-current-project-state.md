@@ -1562,6 +1562,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   create migrations, change Supabase, connect OpenAI or any image API, change
   Vercel config or environment variables, implement routes or UI, deploy, or
   access Production data.
+- Agent 61D: adds
+  `docs/novora-first-preview-design-spec-hand-sketch-instruction-alignment.md`,
+  a docs-only alignment plan for future first-preview generation artifacts. The
+  planning covers raw brief -> normalized intent -> Design Spec JSON -> Hand
+  Sketch Instruction -> first-preview prompt package, and records the owner
+  requirement that first sketches should include subtle NOVORA branding/logo
+  treatment and a broadly unified NOVORA sketch style. The AI sketch remains a
+  concept preview only, not CAD, quote, payment, order, or production approval.
+  Agent 61D does not execute prompts, generate images, connect OpenAI or any
+  image API, change Supabase or SQL, change Vercel config or environment
+  variables, implement routes or UI, create or modify assets, deploy, access
+  protected admin pages, or access Production data.
 
 ## 7. Current Non-Goals And Boundaries
 
