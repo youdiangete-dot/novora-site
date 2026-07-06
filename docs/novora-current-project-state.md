@@ -1607,6 +1607,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer-submission behavior, Supabase, SQL, OpenAI/image API, image
   generation, assets/logo work, Vercel/env, deploy, protected admin access, or
   Production data. The Agent 61F mock preview route remains mock-only.
+- Agent 61G: adds a pure local Design Spec JSON helper and fake fixture
+  foundation for future first-preview planning. Raw customer natural language
+  remains prohibited as a direct final image-generation prompt; Design Spec
+  must precede Hand Sketch Instruction and any future image generation. The
+  fixture is mock-only, contains no real customer data, includes NOVORA
+  sketch-style and branding-watermark requirements, preserves the zodiac mouse
+  eye gemstone rule, and keeps `first_preview_ready` separate from
+  `approved_for_customer`. The AI sketch remains a concept preview only, not
+  CAD, quote, payment, order, or production approval. Agent 61G does not call
+  GPT/OpenAI or image APIs, generate images, read or mutate Supabase, execute
+  SQL, create migrations, change Vercel/env, send email, access protected
+  admin pages or Production data, create or modify assets/logo files, or wire
+  the helper into live routes, submissions, API routes, server actions, or
+  customer flows.
 
 ## 7. Current Non-Goals And Boundaries
 
