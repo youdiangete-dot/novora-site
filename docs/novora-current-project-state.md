@@ -1574,6 +1574,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   image API, change Supabase or SQL, change Vercel config or environment
   variables, implement routes or UI, create or modify assets, deploy, access
   protected admin pages, or access Production data.
+- Agent 61E: adds
+  `docs/novora-preview-lifecycle-feedback-sql-packet-draft.md`, a docs-only SQL
+  packet draft plan for future preview lifecycle and customer feedback records.
+  The planning covers a preview lifecycle table, feedback table, status
+  constraints, `ai_sketch_jobs` / `ai_sketch_outputs` integration,
+  `ai_sketch_reviews` boundary, duplicate protection, public reference/token
+  strategy, RLS/storage policy direction, verification queries, rollback, and
+  migration ordering. `first_preview_ready` remains separate from
+  `approved_for_customer`, and the AI sketch remains a concept preview only,
+  not CAD, quote, payment, order, or production approval. Agent 61E does not
+  execute SQL, create migrations, mutate Supabase, implement app routes or UI,
+  call OpenAI or image APIs, change Vercel config or environment variables,
+  create or change assets, deploy, access protected admin pages, or access
+  Production data.
 
 ## 7. Current Non-Goals And Boundaries
 
