@@ -1588,6 +1588,19 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   call OpenAI or image APIs, change Vercel config or environment variables,
   create or change assets, deploy, access protected admin pages, or access
   Production data.
+- Agent 61F: adds a mock-only customer preview route skeleton at
+  `/design/preview/[public_reference]` for future first AI hand-sketch concept
+  preview states. The route displays safe local mock states without database
+  reads, Supabase calls, SQL, OpenAI/image API calls, or live image generation.
+  It includes NOVORA concept preview branding, a unified CSS-only sketch-sheet
+  placeholder style, concept-preview disclaimers, and a disabled/mock feedback
+  entry point for future human correction or regeneration. `first_preview_ready`
+  remains separate from `approved_for_customer`, and the AI sketch remains a
+  concept preview only, not CAD, quote, payment, order, or production approval.
+  Agent 61F does not execute SQL, create migrations, mutate Supabase, change
+  Vercel config or environment variables, call OpenAI or image APIs, generate
+  images, create or modify assets/logo files, send email, deploy, access
+  protected admin pages, or access Production data.
 
 ## 7. Current Non-Goals And Boundaries
 
