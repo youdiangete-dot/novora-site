@@ -36,6 +36,13 @@ import {
   NOVORA_SKETCH_SHEET_STYLE,
   validateNovoraHandSketchInstruction,
 } from '../../lib/server/ai-sketch/hand-sketch-instruction';
+import {
+  createMockNovoraPreviewGenerationResult,
+  createNovoraPreviewGenerationMockFromDesignSpec,
+  MOCK_NOVORA_PREVIEW_GENERATION_RESULT,
+  NOVORA_PREVIEW_GENERATION_MOCK_VERSION,
+  validateNovoraPreviewGenerationMockResult,
+} from '../../lib/server/ai-sketch/preview-generation';
 
 function validationIssueCodes(value: unknown) {
   return validateInternalDesignSpecShape(value).issues.map((issue) => issue.code);
@@ -346,6 +353,203 @@ test.describe('pure NOVORA Hand Sketch Instruction helper fixture', () => {
         }),
         expect.objectContaining({
           code: 'raw_brief_direct_prompt_not_forbidden',
+        }),
+        expect.objectContaining({
+          code: 'missing_human_review_boundary',
+        }),
+      ]),
+    );
+  });
+});
+
+test.describe('pure NOVORA Preview Generation Mock Bridge fixture', () => {
+  test('creates a mock-only preview generation result with stable version and source carry-through', () => {
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.mock_version).toBe(
+      NOVORA_PREVIEW_GENERATION_MOCK_VERSION,
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.public_reference).toBe(
+      MOCK_NOVORA_DESIGN_SPEC.public_reference,
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.design_spec_version).toBe(
+      NOVORA_DESIGN_SPEC_VERSION,
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.hand_sketch_instruction_version).toBe(
+      NOVORA_HAND_SKETCH_INSTRUCTION_VERSION,
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.source_design_spec_summary).toMatchObject({
+      source_type: 'fake_mock_fixture',
+      mock_only: true,
+      contains_real_customer_data: false,
+    });
+    expect(validateNovoraPreviewGenerationMockResult(MOCK_NOVORA_PREVIEW_GENERATION_RESULT)).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('keeps first preview readiness separate from customer-safe approval', () => {
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.lifecycle_state).toBe('first_preview_ready');
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.status_boundaries).toMatchObject({
+      first_preview_ready: 'first_preview_ready',
+      approved_for_customer: 'approved_for_customer',
+      first_preview_ready_is_separate_from_approved_for_customer: true,
+      approved_for_customer_is_not_first_preview_lifecycle_state: true,
+      concept_preview_only: true,
+      not_cad: true,
+      not_quote: true,
+      not_order_approval: true,
+      not_payment_approval: true,
+      not_production_approval: true,
+    });
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.generation_flags).toMatchObject({
+      customer_safe_delivery_approved: false,
+      production_approval_granted: false,
+    });
+  });
+
+  test('does not create provider prompts, call providers, generate images, or write databases', () => {
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.generation_flags).toMatchObject({
+      design_spec_created: true,
+      hand_sketch_instruction_created: true,
+      provider_prompt_generated: false,
+      image_generation_requested: false,
+      image_generation_performed: false,
+      provider_called: false,
+      database_written: false,
+    });
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.internal_notes).toMatchObject({
+      raw_customer_brief_is_not_used_directly_as_final_image_generation_prompt: true,
+      design_spec_precedes_hand_sketch_instruction: true,
+      hand_sketch_instruction_precedes_future_provider_specific_image_prompt: true,
+      helper_calls_gpt_openai_or_image_api: false,
+      helper_generates_images: false,
+      helper_reads_supabase: false,
+      helper_writes_supabase: false,
+      helper_wires_live_route_submission_or_customer_flow: false,
+    });
+  });
+
+  test('returns a clearly fake mock output with no real image or provider output fields', () => {
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.mock_output).toMatchObject({
+      output_type: 'mock_sketch_sheet_placeholder',
+      mock_only: true,
+      placeholder_label: 'Mock NOVORA concept preview placeholder',
+      image_url: null,
+      base64_image_data: null,
+      provider_output_id: null,
+      generated_at: null,
+      provider_name: null,
+    });
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.display_copy.concept_preview_disclaimer).toContain(
+      'Concept preview only',
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.display_copy.non_approval_disclaimer).toContain(
+      'not CAD',
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.display_copy.non_approval_disclaimer).toContain(
+      'not a quote',
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.display_copy.non_approval_disclaimer).toContain(
+      'not order approval',
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.display_copy.non_approval_disclaimer).toContain(
+      'not payment approval',
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.display_copy.non_approval_disclaimer).toContain(
+      'not production approval',
+    );
+  });
+
+  test('keeps feedback mock-only and carries human review boundaries', () => {
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.feedback_entry).toMatchObject({
+      mock_only: true,
+      submitting_enabled: false,
+      database_write: false,
+    });
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.feedback_entry.future_feedback_categories).toEqual(
+      expect.arrayContaining(['request_revision', 'report_mismatch', 'request_human_followup']),
+    );
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.human_review).toMatchObject({
+      required_for_customer_safe_delivery: true,
+      required_for_production_decisions: true,
+    });
+    expect(MOCK_NOVORA_PREVIEW_GENERATION_RESULT.human_review.review_focus).toEqual(
+      expect.arrayContaining([
+        'structure logic',
+        'view consistency',
+        'setting/prong/bezel logic',
+        'stone count and placement plausibility',
+        'production feasibility',
+        'customer request match',
+        'unsafe claims',
+        'brand placement',
+        'disclaimer visibility',
+        ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+      ]),
+    );
+  });
+
+  test('builds from a supplied Design Spec and supports mock lifecycle states', () => {
+    const designSpec = createMockNovoraDesignSpec({
+      language: 'zh-Hant',
+      publicReference: 'NOVORA-CB-MOCK-003',
+    });
+    const result = createNovoraPreviewGenerationMockFromDesignSpec(designSpec, {
+      lifecycleState: 'processing',
+    });
+
+    expect(result.public_reference).toBe('NOVORA-CB-MOCK-003');
+    expect(result.lifecycle_state).toBe('processing');
+    expect(result.design_spec_version).toBe(NOVORA_DESIGN_SPEC_VERSION);
+    expect(result.hand_sketch_instruction_version).toBe(NOVORA_HAND_SKETCH_INSTRUCTION_VERSION);
+    expect(validateNovoraPreviewGenerationMockResult(result)).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('validation catches missing core fields and forbidden live-output signals', () => {
+    const invalidResult = {
+      ...createMockNovoraPreviewGenerationResult(),
+      mock_output: {
+        ...MOCK_NOVORA_PREVIEW_GENERATION_RESULT.mock_output,
+        image_url: 'https://example.invalid/not-a-real-novora-image.png',
+      },
+      feedback_entry: {
+        ...MOCK_NOVORA_PREVIEW_GENERATION_RESULT.feedback_entry,
+        submitting_enabled: true,
+        database_write: true,
+      },
+      generation_flags: {
+        ...MOCK_NOVORA_PREVIEW_GENERATION_RESULT.generation_flags,
+        provider_called: true,
+        customer_safe_delivery_approved: true,
+      },
+      human_review: {
+        ...MOCK_NOVORA_PREVIEW_GENERATION_RESULT.human_review,
+        required_for_customer_safe_delivery: false,
+      },
+    } as unknown as typeof MOCK_NOVORA_PREVIEW_GENERATION_RESULT;
+    delete (invalidResult as Partial<typeof MOCK_NOVORA_PREVIEW_GENERATION_RESULT>)
+      .status_boundaries;
+
+    expect(validateNovoraPreviewGenerationMockResult(invalidResult).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'missing_required_section',
+          path: '$.status_boundaries',
+        }),
+        expect.objectContaining({
+          code: 'real_image_or_provider_output_present',
+        }),
+        expect.objectContaining({
+          code: 'feedback_marked_submitting',
+        }),
+        expect.objectContaining({
+          code: 'provider_or_image_generation_flag_enabled',
+        }),
+        expect.objectContaining({
+          code: 'approval_boundary_broken',
         }),
         expect.objectContaining({
           code: 'missing_human_review_boundary',
