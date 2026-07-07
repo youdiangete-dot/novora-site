@@ -21,6 +21,13 @@ import { validateInternalDesignSpecShape } from '../../lib/server/ai-sketch/desi
 import { formatInternalHandSketchInstruction } from '../../lib/server/ai-sketch/hand-sketch-instruction-format';
 import { createInternalPromptPolicyPreview } from '../../lib/server/ai-sketch/internal-prompt-policy';
 import { flagInternalAiSketchRisks } from '../../lib/server/ai-sketch/risk-flags';
+import {
+  createMockNovoraDesignSpec,
+  MOCK_NOVORA_DESIGN_SPEC,
+  NOVORA_DESIGN_SPEC_VERSION,
+  validateNovoraDesignSpec,
+  ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+} from '../../lib/server/ai-sketch/design-spec';
 
 function validationIssueCodes(value: unknown) {
   return validateInternalDesignSpecShape(value).issues.map((issue) => issue.code);
@@ -111,6 +118,63 @@ test.describe('pure AI sketch Design Spec validation', () => {
     expect(validationIssueCodes(generationSuccessShortcut)).toContain(
       'generation_success_treated_as_approval',
     );
+  });
+});
+
+test.describe('pure NOVORA first-preview Design Spec helper', () => {
+  test('creates a mock-only fixture with stable version and reference', () => {
+    expect(MOCK_NOVORA_DESIGN_SPEC.spec_version).toBe(NOVORA_DESIGN_SPEC_VERSION);
+    expect(MOCK_NOVORA_DESIGN_SPEC.public_reference).toBe('NOVORA-CB-MOCK-001');
+    expect(MOCK_NOVORA_DESIGN_SPEC.source).toMatchObject({
+      source_type: 'fake_mock_fixture',
+      mock_only: true,
+      contains_real_customer_data: false,
+    });
+    expect(validateNovoraDesignSpec(MOCK_NOVORA_DESIGN_SPEC)).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('forbids raw customer language as a direct final image prompt', () => {
+    expect(MOCK_NOVORA_DESIGN_SPEC.source.raw_brief_usage_policy).toContain(
+      'Raw customer natural language must not be used directly as a final image-generation prompt',
+    );
+    expect(MOCK_NOVORA_DESIGN_SPEC.source.raw_brief_usage_policy).toContain('Design Spec');
+    expect(MOCK_NOVORA_DESIGN_SPEC.source.raw_brief_usage_policy).toContain(
+      'Hand Sketch Instruction',
+    );
+  });
+
+  test('keeps first preview readiness separate from customer approval boundaries', () => {
+    expect(MOCK_NOVORA_DESIGN_SPEC.safety_boundaries).toMatchObject({
+      concept_preview_only: true,
+      not_cad: true,
+      not_quote: true,
+      not_order_approval: true,
+      not_payment_approval: true,
+      not_production_approval: true,
+      first_preview_ready: 'first_preview_ready',
+      approved_for_customer: 'approved_for_customer',
+      first_preview_ready_is_separate_from_approved_for_customer: true,
+    });
+  });
+
+  test('includes the locked zodiac mouse eye gemstone rule', () => {
+    expect(MOCK_NOVORA_DESIGN_SPEC.stones.special_stone_rules).toContain(
+      ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+    );
+    expect(ZODIAC_MOUSE_EYE_GEMSTONE_RULE).toContain(
+      'do not use ruby or red gemstones for mouse eyes',
+    );
+    expect(ZODIAC_MOUSE_EYE_GEMSTONE_RULE).toContain(
+      'Use green gemstones, black gemstones, jadeite/emerald tones, or dark neutral stones',
+    );
+  });
+
+  test('supports English and Traditional Chinese fixture language', () => {
+    expect(createMockNovoraDesignSpec({ language: 'en' }).language).toBe('en');
+    expect(createMockNovoraDesignSpec({ language: 'zh-Hant' }).language).toBe('zh-Hant');
   });
 });
 
