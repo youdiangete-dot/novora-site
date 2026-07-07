@@ -28,6 +28,14 @@ import {
   validateNovoraDesignSpec,
   ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
 } from '../../lib/server/ai-sketch/design-spec';
+import {
+  createMockNovoraHandSketchInstruction,
+  createNovoraHandSketchInstructionFromDesignSpec,
+  MOCK_NOVORA_HAND_SKETCH_INSTRUCTION,
+  NOVORA_HAND_SKETCH_INSTRUCTION_VERSION,
+  NOVORA_SKETCH_SHEET_STYLE,
+  validateNovoraHandSketchInstruction,
+} from '../../lib/server/ai-sketch/hand-sketch-instruction';
 
 function validationIssueCodes(value: unknown) {
   return validateInternalDesignSpecShape(value).issues.map((issue) => issue.code);
@@ -175,6 +183,162 @@ test.describe('pure NOVORA first-preview Design Spec helper', () => {
   test('supports English and Traditional Chinese fixture language', () => {
     expect(createMockNovoraDesignSpec({ language: 'en' }).language).toBe('en');
     expect(createMockNovoraDesignSpec({ language: 'zh-Hant' }).language).toBe('zh-Hant');
+  });
+});
+
+test.describe('pure NOVORA Hand Sketch Instruction helper fixture', () => {
+  test('creates a mock-only instruction with stable version and Design Spec carry-through', () => {
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.instruction_version).toBe(
+      NOVORA_HAND_SKETCH_INSTRUCTION_VERSION,
+    );
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.public_reference).toBe(
+      MOCK_NOVORA_DESIGN_SPEC.public_reference,
+    );
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.design_spec_version).toBe(
+      NOVORA_DESIGN_SPEC_VERSION,
+    );
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.source_design_spec_summary).toMatchObject({
+      source_type: 'fake_mock_fixture',
+      mock_only: true,
+      contains_real_customer_data: false,
+    });
+    expect(validateNovoraHandSketchInstruction(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION)).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('forbids raw customer language as a final image prompt and does not create provider prompts', () => {
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.prompt_usage_policy).toMatchObject({
+      raw_customer_language_must_not_be_final_prompt: true,
+      design_spec_precedes_hand_sketch_instruction: true,
+      hand_sketch_instruction_precedes_provider_prompt: true,
+      helper_calls_gpt: false,
+      helper_calls_openai: false,
+      helper_calls_image_api: false,
+      helper_generates_images: false,
+    });
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.prompt_usage_policy.policy_text).toEqual(
+      expect.arrayContaining([
+        'Raw customer natural language must not be used directly as the final image-generation prompt.',
+        'Design Spec must precede Hand Sketch Instruction.',
+        'Hand Sketch Instruction must precede any future provider-specific image prompt.',
+        'This helper does not call GPT, OpenAI, image APIs, or generate images.',
+      ]),
+    );
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.generation_readiness).toMatchObject({
+      ready_for_future_provider_prompt: false,
+      provider_prompt_not_generated: true,
+    });
+  });
+
+  test('includes unified NOVORA sketch sheet style and keeps brand mark out of jewelry structure', () => {
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.sheet_style).toMatchObject({
+      style_version: NOVORA_SKETCH_SHEET_STYLE,
+      warm_light_background: true,
+      consistent_line_weight: true,
+      clean_jewelry_hand_sketch_feel: true,
+      main_view_plus_optional_detail_views: true,
+      clear_annotations_and_callouts: true,
+      subtle_text_only_novora_watermark_or_footer_label: true,
+      concept_preview_label: 'NOVORA concept preview',
+      no_cad_drawing_framing: true,
+      no_quote_order_or_production_approval_framing: true,
+    });
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.brand_placement).toMatchObject({
+      novora_text_watermark_allowed: true,
+      official_logo_asset_path_remains_separate_if_not_documented: true,
+      logo_or_brand_mark_must_not_be_jewelry_structure: true,
+      logo_or_brand_mark_must_not_cover_jewelry_annotations_or_view_labels: true,
+    });
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.negative_constraints).toContain(
+      'do not make NOVORA logo part of the jewelry design',
+    );
+  });
+
+  test('keeps concept-preview boundaries and status separation explicit', () => {
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.safety_boundaries).toMatchObject({
+      concept_preview_only: true,
+      not_cad: true,
+      not_quote: true,
+      not_order_approval: true,
+      not_payment_approval: true,
+      not_production_approval: true,
+      first_preview_ready: 'first_preview_ready',
+      approved_for_customer: 'approved_for_customer',
+      first_preview_ready_is_separate_from_approved_for_customer: true,
+    });
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.disclaimer_instructions).toMatchObject({
+      concept_preview_only: true,
+      not_cad: true,
+      not_quote: true,
+      not_order_approval: true,
+      not_payment_approval: true,
+      not_production_approval: true,
+    });
+  });
+
+  test('carries forward the zodiac mouse eye gemstone rule into stones and review checklist', () => {
+    expect(
+      MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.stone_and_setting_instructions.special_stone_rules,
+    ).toContain(ZODIAC_MOUSE_EYE_GEMSTONE_RULE);
+    expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.human_review_checklist).toEqual(
+      expect.arrayContaining([
+        'structure logic',
+        'view consistency',
+        'setting/prong/bezel logic',
+        'production feasibility',
+        'customer request match',
+        ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+      ]),
+    );
+  });
+
+  test('supports English and Traditional Chinese mock instructions', () => {
+    expect(createMockNovoraHandSketchInstruction({ language: 'en' }).language).toBe('en');
+    expect(createMockNovoraHandSketchInstruction({ language: 'zh-Hant' }).language).toBe(
+      'zh-Hant',
+    );
+  });
+
+  test('builds from a supplied Design Spec without live integration behavior', () => {
+    const designSpec = createMockNovoraDesignSpec({
+      language: 'zh-Hant',
+      publicReference: 'NOVORA-CB-MOCK-002',
+    });
+    const instruction = createNovoraHandSketchInstructionFromDesignSpec(designSpec);
+
+    expect(instruction.public_reference).toBe('NOVORA-CB-MOCK-002');
+    expect(instruction.internal_notes).toMatchObject({
+      fixture_only: true,
+      no_real_customer_data: true,
+      no_database_read: true,
+      no_database_write: true,
+      no_gpt_openai_or_image_api_call: true,
+      no_image_generation: true,
+      no_live_route_submission_or_customer_flow_integration: true,
+    });
+  });
+
+  test('validation catches missing required core fields', () => {
+    const missingCoreField = {
+      ...MOCK_NOVORA_HAND_SKETCH_INSTRUCTION,
+      prompt_usage_policy: undefined,
+    };
+    delete (missingCoreField as Partial<typeof MOCK_NOVORA_HAND_SKETCH_INSTRUCTION>)
+      .prompt_usage_policy;
+
+    expect(validateNovoraHandSketchInstruction(missingCoreField).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'missing_required_section',
+          path: '$.prompt_usage_policy',
+        }),
+        expect.objectContaining({
+          code: 'raw_brief_direct_prompt_not_forbidden',
+        }),
+      ]),
+    );
   });
 });
 

@@ -1621,6 +1621,21 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   admin pages or Production data, create or modify assets/logo files, or wire
   the helper into live routes, submissions, API routes, server actions, or
   customer flows.
+- Agent 61H: adds a pure local Hand Sketch Instruction helper and fake fixture
+  foundation that converts or aligns with the Agent 61G Design Spec fixture.
+  Raw customer natural language remains prohibited as a direct final
+  image-generation prompt; Design Spec precedes Hand Sketch Instruction, and
+  Hand Sketch Instruction precedes any future provider-specific image prompt.
+  The fixture is mock-only, contains no real customer data, includes NOVORA
+  sketch-sheet style and text-only watermark requirements, preserves the zodiac
+  mouse eye gemstone rule, and keeps `first_preview_ready` separate from
+  `approved_for_customer`. The AI sketch remains a concept preview only, not
+  CAD, quote, payment, order, or production approval. Agent 61H does not call
+  GPT/OpenAI or image APIs, generate images, read or mutate Supabase, execute
+  SQL, create migrations, change Vercel/env, send email, access protected
+  admin pages or Production data, create or modify assets/logo files, or wire
+  the helper into live routes, submissions, API routes, server actions, or
+  customer flows.
 
 ## 7. Current Non-Goals And Boundaries
 
