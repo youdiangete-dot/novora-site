@@ -1649,6 +1649,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   migrations, change Vercel/env, send email, access protected admin pages or
   Production data, create or modify assets/logo files, or wire the helper into
   live routes, submissions, API routes, server actions, or customer flows.
+- Agent 61J: integrates the Agent 61I Preview Generation Mock Bridge into the
+  existing `/design/preview/[public_reference]` mock route. The
+  `first_preview_ready` route content can now render mock bridge preview data
+  while keeping lifecycle states mock-only. No real image URL, provider output,
+  base64 image data, or generated image is introduced. No live route submission
+  integration, Supabase/SQL/migration, GPT/OpenAI/image API, image generation,
+  Vercel/env/email, Production data, protected admin, asset, logo, CAD, quote,
+  payment, order, or production approval work occurred. `first_preview_ready`
+  remains separate from `approved_for_customer`, human review remains required
+  for customer-safe delivery and production decisions, and the AI sketch
+  remains concept preview only.
 
 ## 7. Current Non-Goals And Boundaries
 

@@ -12,6 +12,7 @@
 
 .hero,
 .previewPanel,
+.bridgePanel,
 .feedbackPanel,
 .boundaryPanel,
 .actionsPanel {
@@ -45,6 +46,7 @@
 
 .hero h2,
 .previewPanel h2,
+.bridgePanel h2,
 .feedbackPanel h2,
 .boundaryPanel h2,
 .actionsPanel h2 {
@@ -55,6 +57,7 @@
 
 .hero p,
 .previewPanel p,
+.bridgePanel p,
 .feedbackPanel p,
 .boundaryPanel p,
 .actionsPanel p,
@@ -93,6 +96,7 @@
 .referencePanel,
 .statusPanel,
 .previewNote,
+.bridgeDisclaimer,
 .mockField,
 .actionsPanel {
   background: rgba(247, 242, 234, 0.74);
@@ -407,6 +411,43 @@
   padding: 0.72rem 0.78rem;
 }
 
+.bridgeDisclaimer {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  padding: 0.72rem 0.78rem;
+}
+
+.bridgeFacts {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.bridgeFacts div {
+  background: rgba(248, 243, 234, 0.72);
+  border: 1px solid rgba(232, 224, 211, 0.86);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.68rem 0.72rem;
+}
+
+.bridgeFacts dt {
+  color: #334b38;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.bridgeFacts dd {
+  color: #4f4a41;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .feedbackCategories {
   display: grid;
   gap: 0.55rem;
@@ -483,6 +524,7 @@
   }
 
   .feedbackCategories,
+  .bridgeFacts,
   .boundaryPanel ul {
     grid-template-columns: 1fr;
   }

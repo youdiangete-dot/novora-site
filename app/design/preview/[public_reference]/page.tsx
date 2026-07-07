@@ -1,16 +1,15 @@
 import Link from 'next/link';
 
+import {
+  createMockNovoraPreviewGenerationResult,
+  NOVORA_PREVIEW_LIFECYCLE_STATES,
+  type NovoraPreviewGenerationMockLifecycleState,
+  type NovoraPreviewGenerationMockResult,
+} from '../../../../lib/server/ai-sketch/preview-generation';
 import sharedStyles from '../../brief/brief.module.css';
 import styles from './preview.module.css';
 
-type PreviewState =
-  | 'processing'
-  | 'first_preview_ready'
-  | 'generation_delayed'
-  | 'generation_failed'
-  | 'preview_unavailable'
-  | 'feedback_submitted'
-  | 'human_followup_needed';
+type PreviewState = NovoraPreviewGenerationMockLifecycleState;
 
 type PreviewLocale = 'en' | 'zh-Hant';
 
@@ -31,15 +30,7 @@ type StateCopy = {
   detail: string;
 };
 
-const SUPPORTED_STATES: PreviewState[] = [
-  'processing',
-  'first_preview_ready',
-  'generation_delayed',
-  'generation_failed',
-  'preview_unavailable',
-  'feedback_submitted',
-  'human_followup_needed',
-];
+const SUPPORTED_STATES: readonly PreviewState[] = NOVORA_PREVIEW_LIFECYCLE_STATES;
 
 const feedbackCategories: Record<PreviewLocale, string[]> = {
   en: ['Structure issue', 'Style mismatch', 'Stone or setting issue', 'Proportion issue', 'Request human follow-up'],
@@ -299,6 +290,84 @@ function MockSketchSheet({ labels }: { labels: (typeof copy)['en'] }) {
   );
 }
 
+function MockBridgeDetails({
+  publicReference,
+  result,
+}: {
+  publicReference: string;
+  result: NovoraPreviewGenerationMockResult;
+}) {
+  const unavailableText = 'Not available in this local mock state';
+
+  return (
+    <section className={styles.bridgePanel} aria-labelledby="mock-bridge-heading">
+      <div className={styles.sectionHeader}>
+        <div>
+          <p className={sharedStyles.eyebrow}>Mock bridge preview data</p>
+          <h2 id="mock-bridge-heading">Mock bridge result</h2>
+        </div>
+        <span className={styles.disabledPill}>Route mock integration only</span>
+      </div>
+      <p>{result.display_copy.title}</p>
+      <p>{result.display_copy.body}</p>
+      <p className={styles.bridgeDisclaimer}>
+        Concept preview only. Not CAD. Not a quote. Not an order approval. Not a payment approval. Not production
+        approval.
+      </p>
+      <p className={styles.bridgeDisclaimer}>{result.display_copy.concept_preview_disclaimer}</p>
+      <p className={styles.bridgeDisclaimer}>{result.display_copy.non_approval_disclaimer}</p>
+      <p className={styles.bridgeDisclaimer}>
+        Human review is required before customer-safe delivery or production decisions.
+      </p>
+      <p className={styles.bridgeDisclaimer}>
+        first_preview_ready is separate from approved_for_customer.
+      </p>
+      <dl className={styles.bridgeFacts}>
+        <div>
+          <dt>Route public_reference</dt>
+          <dd>{publicReference}</dd>
+        </div>
+        <div>
+          <dt>Mock bridge public_reference</dt>
+          <dd>{result.public_reference}</dd>
+        </div>
+        <div>
+          <dt>lifecycle_state</dt>
+          <dd>{result.lifecycle_state}</dd>
+        </div>
+        <div>
+          <dt>Mock output placeholder label</dt>
+          <dd>{result.mock_output.placeholder_label}</dd>
+        </div>
+        <div>
+          <dt>Generated image</dt>
+          <dd>No real generated image is available in this mock state.</dd>
+        </div>
+        <div>
+          <dt>Image URL</dt>
+          <dd>{result.mock_output.image_url ?? unavailableText}</dd>
+        </div>
+        <div>
+          <dt>Provider output</dt>
+          <dd>{result.mock_output.provider_output_id ?? unavailableText}</dd>
+        </div>
+        <div>
+          <dt>Generated at</dt>
+          <dd>{result.mock_output.generated_at ?? unavailableText}</dd>
+        </div>
+        <div>
+          <dt>Feedback entry</dt>
+          <dd>{result.feedback_entry.disabled_reason}</dd>
+        </div>
+        <div>
+          <dt>Prompt chain</dt>
+          <dd>Design Spec precedes Hand Sketch Instruction; Hand Sketch Instruction precedes any future provider prompt.</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 export default async function CustomerPreviewPage({ params, searchParams }: PreviewPageProps) {
   const { public_reference: rawPublicReference } = await params;
   const resolvedSearchParams = await searchParams;
@@ -308,6 +377,12 @@ export default async function CustomerPreviewPage({ params, searchParams }: Prev
   const stateCopy = labels.state[previewState];
   const publicReference = decodeURIComponent(rawPublicReference);
   const shouldShowSketch = previewState === 'first_preview_ready';
+  const mockBridgeResult = shouldShowSketch
+    ? createMockNovoraPreviewGenerationResult({
+        lifecycleState: previewState,
+        publicReference,
+      })
+    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -352,6 +427,10 @@ export default async function CustomerPreviewPage({ params, searchParams }: Prev
               <MockSketchSheet labels={labels} />
               <p className={styles.previewNote}>{labels.previewNote}</p>
             </section>
+          ) : null}
+
+          {mockBridgeResult ? (
+            <MockBridgeDetails publicReference={publicReference} result={mockBridgeResult} />
           ) : null}
 
           <section className={styles.feedbackPanel} aria-labelledby="feedback-heading">
