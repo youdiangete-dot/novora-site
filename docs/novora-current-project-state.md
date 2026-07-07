@@ -1630,12 +1630,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   sketch-sheet style and text-only watermark requirements, preserves the zodiac
   mouse eye gemstone rule, and keeps `first_preview_ready` separate from
   `approved_for_customer`. The AI sketch remains a concept preview only, not
-  CAD, quote, payment, order, or production approval. Agent 61H does not call
-  GPT/OpenAI or image APIs, generate images, read or mutate Supabase, execute
-  SQL, create migrations, change Vercel/env, send email, access protected
-  admin pages or Production data, create or modify assets/logo files, or wire
-  the helper into live routes, submissions, API routes, server actions, or
-  customer flows.
+  CAD, quote, payment, order, or production approval. Agent 61H revision 1
+  explicitly adds the human-review-required safety boundary for customer-safe
+  delivery and production decisions. Agent 61H does not call GPT/OpenAI or
+  image APIs, generate images, read or mutate Supabase, execute SQL, create
+  migrations, change Vercel/env, send email, access protected admin pages or
+  Production data, create or modify assets/logo files, or wire the helper into
+  live routes, submissions, API routes, server actions, or customer flows.
 
 ## 7. Current Non-Goals And Boundaries
 

@@ -30,6 +30,10 @@ export const NOVORA_HAND_SKETCH_SAFETY_BOUNDARIES = {
   first_preview_ready: "first_preview_ready",
   approved_for_customer: "approved_for_customer",
   first_preview_ready_is_separate_from_approved_for_customer: true,
+  human_review_required_for_customer_safe_delivery: true,
+  human_review_required_for_production_decisions: true,
+  human_review_requirement:
+    "Human review remains required for customer-safe delivery and production decisions.",
 } as const;
 
 export type NovoraHandSketchViewInstruction = {
@@ -171,6 +175,7 @@ export type NovoraHandSketchInstructionValidationIssueCode =
   | "provider_prompt_marked_generated"
   | "missing_concept_preview_boundary"
   | "missing_status_separation"
+  | "missing_human_review_boundary"
   | "missing_zodiac_mouse_rule";
 
 export type NovoraHandSketchInstructionValidationIssue = {
@@ -581,6 +586,20 @@ export function validateNovoraHandSketchInstruction(
       "missing_status_separation",
       "$.safety_boundaries",
       "first_preview_ready must remain separate from approved_for_customer.",
+    );
+  }
+
+  if (
+    safetyBoundaries.human_review_required_for_customer_safe_delivery !== true ||
+    safetyBoundaries.human_review_required_for_production_decisions !== true ||
+    safetyBoundaries.human_review_requirement !==
+      "Human review remains required for customer-safe delivery and production decisions."
+  ) {
+    pushIssue(
+      issues,
+      "missing_human_review_boundary",
+      "$.safety_boundaries",
+      "Human review must remain required for customer-safe delivery and production decisions.",
     );
   }
 

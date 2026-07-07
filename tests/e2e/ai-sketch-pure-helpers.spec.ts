@@ -267,6 +267,10 @@ test.describe('pure NOVORA Hand Sketch Instruction helper fixture', () => {
       first_preview_ready: 'first_preview_ready',
       approved_for_customer: 'approved_for_customer',
       first_preview_ready_is_separate_from_approved_for_customer: true,
+      human_review_required_for_customer_safe_delivery: true,
+      human_review_required_for_production_decisions: true,
+      human_review_requirement:
+        'Human review remains required for customer-safe delivery and production decisions.',
     });
     expect(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.disclaimer_instructions).toMatchObject({
       concept_preview_only: true,
@@ -324,6 +328,12 @@ test.describe('pure NOVORA Hand Sketch Instruction helper fixture', () => {
     const missingCoreField = {
       ...MOCK_NOVORA_HAND_SKETCH_INSTRUCTION,
       prompt_usage_policy: undefined,
+      safety_boundaries: {
+        ...MOCK_NOVORA_HAND_SKETCH_INSTRUCTION.safety_boundaries,
+        human_review_required_for_customer_safe_delivery: undefined,
+        human_review_required_for_production_decisions: undefined,
+        human_review_requirement: undefined,
+      },
     };
     delete (missingCoreField as Partial<typeof MOCK_NOVORA_HAND_SKETCH_INSTRUCTION>)
       .prompt_usage_policy;
@@ -336,6 +346,9 @@ test.describe('pure NOVORA Hand Sketch Instruction helper fixture', () => {
         }),
         expect.objectContaining({
           code: 'raw_brief_direct_prompt_not_forbidden',
+        }),
+        expect.objectContaining({
+          code: 'missing_human_review_boundary',
         }),
       ]),
     );
