@@ -1660,6 +1660,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   remains separate from `approved_for_customer`, human review remains required
   for customer-safe delivery and production decisions, and the AI sketch
   remains concept preview only.
+- Agent 61K: adds a mock-only preview entry/link to `/design/submitted` so the
+  submitted page can point to the existing `/design/preview/[public_reference]`
+  mock route for a first-preview demonstration. The link targets the fixed local
+  mock reference `NOVORA-CB-MOCK-001` with `state=first_preview_ready`; it does
+  not connect real submissions, read or write Supabase, execute SQL, create a
+  migration, call GPT/OpenAI or image APIs, generate images, introduce a real
+  image URL, provider output id, or base64 image data, or perform
+  Vercel/env/email/Production data/protected admin work. `first_preview_ready`
+  remains separate from `approved_for_customer`, human review remains required
+  for customer-safe delivery and production decisions, and the AI sketch remains
+  concept preview only, not CAD, quote, payment, order, or production approval.
 
 ## 7. Current Non-Goals And Boundaries
 

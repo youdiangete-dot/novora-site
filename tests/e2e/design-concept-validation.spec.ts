@@ -180,8 +180,10 @@ function delay(milliseconds: number) {
 test.describe('/design/start conversion flow', () => {
   test('carries design start selections into the concept brief submission', async ({ page }) => {
     let receivedPayload: Record<string, unknown> | null = null;
+    let conceptBriefRequestCount = 0;
 
     await page.route('/api/concept-briefs', async (route) => {
+      conceptBriefRequestCount += 1;
       receivedPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
 
       await route.fulfill({
@@ -250,7 +252,27 @@ test.describe('/design/start conversion flow', () => {
         'NOVORA received your Concept Brief for studio review and may follow up using the contact details you provided.',
       ),
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: 'View Mock Sketch Preview' })).toHaveCount(0);
+    const mockPreviewLink = page.getByRole('link', { name: 'View mock concept preview' });
+
+    await expect(mockPreviewLink).toBeVisible();
+    await expect(mockPreviewLink).toHaveAttribute(
+      'href',
+      '/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready',
+    );
+    await expect(page.getByText('Mock preview route')).toBeVisible();
+    await expect(
+      page.getByText(
+        'This demonstration link opens a mock first-preview-ready state only. It does not use this submitted brief, connect live submissions, display a real generated image, or call an image provider.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByText('Concept preview only. Not CAD. Not a quote.')).toBeVisible();
+    await expect(page.getByText('Not an order approval. Not a payment approval. Not production approval.')).toBeVisible();
+    await expect(
+      page.getByText('Human review is required before customer-safe delivery or production decisions.'),
+    ).toBeVisible();
+    await expect(page.getByText('first_preview_ready is separate from approved_for_customer.')).toBeVisible();
+    await expect(page.getByText('generated image is ready', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('image API completed', { exact: false })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'View AI Sketch Preview' })).toHaveCount(0);
     await expect(page.locator('a[href="/design/sketch"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'What NOVORA reviews next' })).toBeVisible();
@@ -293,6 +315,17 @@ test.describe('/design/start conversion flow', () => {
         { label: 'Budget planning range', value: 'USD 2500+' },
       ]),
     );
+    expect(conceptBriefRequestCount).toBe(1);
+
+    await Promise.all([
+      page.waitForURL('**/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready'),
+      mockPreviewLink.click(),
+    ]);
+
+    await expect(page.getByRole('heading', { name: 'Customer concept preview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Mock first concept preview' })).toBeVisible();
+    await expect(page.getByText('No real generated image is available in this mock state.')).toBeVisible();
+    expect(conceptBriefRequestCount).toBe(1);
   });
 });
 

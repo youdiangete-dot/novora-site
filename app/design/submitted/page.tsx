@@ -57,6 +57,9 @@ type SubmittedConceptBrief = {
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 const SERVER_RECEIPT_WARNING =
   'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
+const MOCK_PREVIEW_PUBLIC_REFERENCE = 'NOVORA-CB-MOCK-001';
+const MOCK_PREVIEW_STATE = 'first_preview_ready';
+const MOCK_PREVIEW_HREF = `/design/preview/${MOCK_PREVIEW_PUBLIC_REFERENCE}?state=${MOCK_PREVIEW_STATE}`;
 
 type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   apiSubmission: {
@@ -316,6 +319,24 @@ export default function DesignSubmittedPage() {
               receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is
               sent from this submission flow.
             </p>
+            <div className={submittedStyles.mockPreviewEntry}>
+              <div>
+                <p className={submittedStyles.mockPreviewLabel}>Mock preview route</p>
+                <h3>Concept preview only</h3>
+                <p>
+                  This demonstration link opens a mock first-preview-ready state only. It does not use this submitted
+                  brief, connect live submissions, display a real generated image, or call an image provider.
+                </p>
+              </div>
+              <Link className={styles.secondaryButton} href={MOCK_PREVIEW_HREF}>
+                View mock concept preview
+              </Link>
+              <p className={submittedStyles.mockPreviewBoundary}>
+                Concept preview only. Not CAD. Not a quote. Not an order approval. Not a payment approval. Not
+                production approval. Human review is required before customer-safe delivery or production decisions.
+                first_preview_ready is separate from approved_for_customer.
+              </p>
+            </div>
           </section>
 
           <div className={styles.actions}>
