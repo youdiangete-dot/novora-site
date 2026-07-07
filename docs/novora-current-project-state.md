@@ -1637,6 +1637,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   migrations, change Vercel/env, send email, access protected admin pages or
   Production data, create or modify assets/logo files, or wire the helper into
   live routes, submissions, API routes, server actions, or customer flows.
+- Agent 61I: adds a pure local Preview Generation Mock Bridge connecting the
+  Agent 61G Design Spec fixture and Agent 61H Hand Sketch Instruction fixture
+  to a fake preview generation result. The mock result is provider-free,
+  contains no real generated image, no real image URL, and no provider output
+  id. `first_preview_ready` remains separate from `approved_for_customer`, and
+  human review remains required for customer-safe delivery and production
+  decisions. The AI sketch remains a concept preview only, not CAD, quote,
+  payment, order, or production approval. Agent 61I does not call GPT/OpenAI
+  or image APIs, generate images, read or write Supabase, execute SQL, create
+  migrations, change Vercel/env, send email, access protected admin pages or
+  Production data, create or modify assets/logo files, or wire the helper into
+  live routes, submissions, API routes, server actions, or customer flows.
 
 ## 7. Current Non-Goals And Boundaries
 
