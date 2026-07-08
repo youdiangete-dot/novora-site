@@ -1714,6 +1714,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   submitted-page demo link target. No Supabase, SQL, OpenAI/image API, real
   generation, deploy, env, Production, protected admin data, payment, CAD,
   quote, order, or production approval change is introduced.
+- Agent 63A-F1: Agent 63A smoke QA found stale preview-route e2e expectations
+  after Agent 62B. This follow-up aligned
+  `tests/e2e/design-preview-route.spec.ts` with the hardened Agent 62B preview
+  boundaries. No app behavior changed. No Supabase, SQL, OpenAI/image API, real
+  generation, deploy, env, Production, protected admin data, payment, CAD,
+  quote, order, or production approval changes occurred. `next-env.d.ts` and
+  `test-results/` remain QA artifacts and must not be committed.
 
 ## 7. Current Non-Goals And Boundaries
 
