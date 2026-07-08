@@ -1695,6 +1695,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Known local route-type churn in `next-env.d.ts` between
   `.next/types/routes.d.ts` and `.next/dev/types/routes.d.ts` was restored, and
   final Agent 61L status was `main` clean with no remaining changed files.
+- Agent 62A: adds
+  `docs/novora-preview-mock-flow-hardening-plan.md`, a docs-only hardening plan
+  for the next mock preview flow phase. It records current Agent 61K/61L/61M
+  baseline behavior, non-negotiable safety boundaries, open hardening
+  questions, recommended follow-up Agents, risks, acceptance criteria, and
+  out-of-scope items. Agent 62A does not implement route logic, app behavior,
+  tests, API behavior, Supabase, SQL, provider integration, image generation,
+  deployment, environment changes, assets, logo work, or any next Agent.
 
 ## 7. Current Non-Goals And Boundaries
 
