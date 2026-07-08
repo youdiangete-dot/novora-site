@@ -1703,6 +1703,17 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   out-of-scope items. Agent 62A does not implement route logic, app behavior,
   tests, API behavior, Supabase, SQL, provider integration, image generation,
   deployment, environment changes, assets, logo work, or any next Agent.
+- Agent 62B: implements consolidated preview mock flow hardening. The only
+  successful mock preview route remains
+  `/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready`; missing or
+  unsupported `state`, `approved_for_customer`, and unsupported
+  `public_reference` values render a safe unavailable state instead. The
+  submitted-page mock link copy is hardened as demo/navigation testing only
+  and stays disconnected from the customer's submitted brief. Focused e2e
+  coverage was added for the valid mock route, unavailable route cases, and the
+  submitted-page demo link target. No Supabase, SQL, OpenAI/image API, real
+  generation, deploy, env, Production, protected admin data, payment, CAD,
+  quote, order, or production approval change is introduced.
 
 ## 7. Current Non-Goals And Boundaries
 
