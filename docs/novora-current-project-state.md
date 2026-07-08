@@ -1736,6 +1736,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   images, or add payment, CAD, quote, order, or production approval behavior.
   It defines owner-run checks, go/no-go criteria, and a rollback/stop
   procedure.
+- Agent 65A: created
+  `docs/novora-agent-65a-owner-run-production-verification-tracker.md`, a
+  docs-only owner-run Production verification execution tracker and test-data
+  checklist. It does not deploy, mutate Production, access Supabase, execute
+  SQL, inspect environment values or secrets, send emails, call OpenAI/image
+  APIs, generate images, or add payment, CAD, quote, order, or production
+  approval behavior. It provides owner-fillable templates for test data,
+  evidence, checks, blockers, rollback/stop logging, and the go/no-go decision.
 
 ## 7. Current Non-Goals And Boundaries
 
