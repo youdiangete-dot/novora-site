@@ -321,20 +321,20 @@ export default function DesignSubmittedPage() {
             </p>
             <div className={submittedStyles.mockPreviewEntry}>
               <div>
-                <p className={submittedStyles.mockPreviewLabel}>Mock preview route</p>
-                <h3>Concept preview only</h3>
+                <p className={submittedStyles.mockPreviewLabel}>Demo mock preview route</p>
+                <h3>Demo navigation testing only</h3>
                 <p>
-                  This demonstration link opens a mock first-preview-ready state only. It does not use this submitted
-                  brief, connect live submissions, display a real generated image, or call an image provider.
+                  This demo link is for navigation testing only. It is not connected to your submitted Concept Brief,
+                  does not display a generated image, and is not customer-safe final delivery.
                 </p>
               </div>
               <Link className={styles.secondaryButton} href={MOCK_PREVIEW_HREF}>
-                View mock concept preview
+                View demo mock preview
               </Link>
               <p className={submittedStyles.mockPreviewBoundary}>
-                Concept preview only. Not CAD. Not a quote. Not an order approval. Not a payment approval. Not
-                production approval. Human review is required before customer-safe delivery or production decisions.
-                first_preview_ready is separate from approved_for_customer.
+                Human review and offline follow-up remain required. This mock preview is not CAD, not a quote, not
+                order approval, not payment approval, and not production approval. first_preview_ready is separate from
+                approved_for_customer.
               </p>
             </div>
           </section>
