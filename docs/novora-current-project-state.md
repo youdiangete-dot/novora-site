@@ -1721,6 +1721,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   generation, deploy, env, Production, protected admin data, payment, CAD,
   quote, order, or production approval changes occurred. `next-env.d.ts` and
   `test-results/` remain QA artifacts and must not be committed.
+- Agent 63B: created
+  `docs/novora-agent-63b-mvp-launch-readiness-checklist.md`, a docs-only final
+  MVP launch readiness checklist. It records controlled soft-launch readiness,
+  manual launch checks, and explicit no-go conditions. Agent 63B does not
+  deploy, modify app behavior, touch Supabase/SQL/env/Production/protected
+  data, call OpenAI/image APIs, send emails, or add payment, CAD, quote, order,
+  or production approval behavior.
 
 ## 7. Current Non-Goals And Boundaries
 
