@@ -1728,6 +1728,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   deploy, modify app behavior, touch Supabase/SQL/env/Production/protected
   data, call OpenAI/image APIs, send emails, or add payment, CAD, quote, order,
   or production approval behavior.
+- Agent 64A: created
+  `docs/novora-agent-64a-production-owner-run-verification-plan.md`, a
+  docs-only owner-run Production verification and controlled soft-launch
+  execution plan. It does not deploy, mutate Production, read/write Supabase,
+  execute SQL, expose secrets, send emails, call OpenAI/image APIs, generate
+  images, or add payment, CAD, quote, order, or production approval behavior.
+  It defines owner-run checks, go/no-go criteria, and a rollback/stop
+  procedure.
 
 ## 7. Current Non-Goals And Boundaries
 
