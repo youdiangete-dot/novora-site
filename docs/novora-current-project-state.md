@@ -1671,6 +1671,30 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   remains separate from `approved_for_customer`, human review remains required
   for customer-safe delivery and production decisions, and the AI sketch remains
   concept preview only, not CAD, quote, payment, order, or production approval.
+- Agent 61M: records completion of the mock preview flow milestone after PR
+  #175, `Agent 61K: Add submitted page mock preview link`, merged at
+  `e3b75528526c985580bc4d1e22aff6717ad981d7`. Agent 61K added the mock-only
+  `/design/submitted` link labeled `View mock concept preview` targeting exactly
+  `/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready`, then completed
+  post-merge cleanup by deleting local and remote branch
+  `codex/agent-61k-submitted-preview-link-mock-entry` with final branch `main`
+  clean. Agent 61L read-only QA passed and confirmed the mock flow from
+  `/design/submitted` to
+  `/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready`; safety
+  boundaries remained intact: `first_preview_ready` stays separate from
+  `approved_for_customer`, the preview is mock/demo/planning only, human review
+  remains required before customer-safe delivery or production decisions, and no
+  CAD, quote, order approval, payment approval, or production approval behavior
+  was added. Agent 61L also confirmed no live integration was introduced: no
+  Supabase read/write, server action/API/database write, GPT/OpenAI/image API
+  call, real image generation, real image URL/provider output/base64 image
+  data, or asset/logo work. Validation recorded `git diff --check`,
+  `npm.cmd run build`, a focused Playwright runnable test ok, and the full
+  focused spec with 30 runnable tests ok and 2 admin-env tests skipped; Windows
+  Playwright teardown timed out after runnable tests had already reported ok.
+  Known local route-type churn in `next-env.d.ts` between
+  `.next/types/routes.d.ts` and `.next/dev/types/routes.d.ts` was restored, and
+  final Agent 61L status was `main` clean with no remaining changed files.
 
 ## 7. Current Non-Goals And Boundaries
 
