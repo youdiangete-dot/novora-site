@@ -1889,6 +1889,16 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   dashboard access, email sending, OpenAI/image API, image generation, CAD,
   quote, payment, order, production, gallery, or customer-delivery changes.
 
+- Agent 66E: adds
+  `docs/novora-agent-66e-private-testing-round-1-execution-log-template.md`, a
+  docs-only private testing Round 1 execution log template for limited
+  owner-controlled private testing only. It records owner preflight,
+  per-tester execution, submission/admin checks, stop criteria, escalation
+  rules, sanitization rules, and go/pause/continue decision templates. Agent 66E
+  changed docs only and made no code, SQL, environment, deploy, Supabase
+  dashboard access, email sending, OpenAI/image API, image generation, CAD,
+  quote, payment, order, production, gallery, or customer-delivery changes.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
