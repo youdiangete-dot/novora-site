@@ -1867,6 +1867,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer-delivery, staging, commit, push, PR, merge, or Production access
   change.
 
+- Agent 66C: adds
+  `docs/novora-agent-66c-private-tester-invitation-wording-pack.md`, a docs-only
+  private tester invitation and intake wording pack for limited
+  owner-controlled private testing only. The pack reinforces Concept Brief
+  boundaries, AI internal-only / human-review / email-only delivery boundaries,
+  and no CAD, quote, payment, order, production, gallery, or customer-delivery
+  promises. Agent 66C changed docs only and made no code, SQL, environment,
+  deploy, Supabase dashboard access, email sending, OpenAI/image API, image
+  generation, CAD, quote, payment, order, production, gallery,
+  customer-delivery, staging, commit, push, PR, merge, or Production access
+  change.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
