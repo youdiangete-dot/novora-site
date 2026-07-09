@@ -68,12 +68,75 @@ type AdminAiSketchReviewSaveResponse = {
   };
 };
 
+type ReviewStorageSource = 'supabase' | 'localStorage' | 'unavailable' | 'empty';
+
+const adminReviewEmptyStateCopy =
+  'No saved admin review state yet. Status and notes will be saved to Supabase admin_notes after the first valid admin save.';
+const adminReviewUnavailableCopy =
+  'Supabase admin review persistence is unavailable for this record, so state is local-only fallback data.';
+
 function getSourceLabel(brief: AdminBriefRecord) {
   if (brief.source === 'supabase') {
     return 'Supabase concept brief submission';
   }
 
   return brief.source === 'localStorage' ? 'Local browser submission' : 'Mock seed record';
+}
+
+function getReviewStatusLabel(reviewStorageSource: ReviewStorageSource) {
+  if (reviewStorageSource === 'supabase') {
+    return 'Supabase-backed review status';
+  }
+
+  if (reviewStorageSource === 'empty') {
+    return 'Initial review status';
+  }
+
+  return 'Local review status';
+}
+
+function getReviewStateStorageCopy(reviewStorageSource: ReviewStorageSource) {
+  if (reviewStorageSource === 'supabase') {
+    return 'Status and notes are loaded from Supabase admin_notes.';
+  }
+
+  if (reviewStorageSource === 'empty') {
+    return adminReviewEmptyStateCopy;
+  }
+
+  if (reviewStorageSource === 'localStorage') {
+    return 'Status and notes are saved only in this browser localStorage fallback.';
+  }
+
+  return adminReviewUnavailableCopy;
+}
+
+function getInternalNotesPersistenceCopy(reviewStorageSource: ReviewStorageSource) {
+  if (reviewStorageSource === 'supabase') {
+    return 'Internal notes are saved to Supabase admin_notes for protected admin review.';
+  }
+
+  if (reviewStorageSource === 'empty') {
+    return 'Internal notes will be saved to Supabase admin_notes after the first valid admin save.';
+  }
+
+  return 'Internal notes are saved only in this browser localStorage fallback.';
+}
+
+function getReviewControlsCopy(reviewStorageSource: ReviewStorageSource) {
+  if (reviewStorageSource === 'supabase') {
+    return 'Status and notes are saved to Supabase admin_notes after valid admin access.';
+  }
+
+  if (reviewStorageSource === 'empty') {
+    return adminReviewEmptyStateCopy;
+  }
+
+  if (reviewStorageSource === 'localStorage') {
+    return 'Status and notes are saved only in this browser localStorage fallback.';
+  }
+
+  return 'Status and notes are currently local-only fallback review state.';
 }
 
 function formatJsonValue(value: unknown) {
@@ -316,8 +379,8 @@ export default function AdminBriefDetailClient({
   const [internalNotes, setInternalNotes] = useState('');
   const [lastUpdatedAt, setLastUpdatedAt] = useState(serverBrief?.lastUpdatedAt || '');
   const [isReviewLoaded, setIsReviewLoaded] = useState(false);
-  const [reviewStorageSource, setReviewStorageSource] = useState<'supabase' | 'localStorage' | 'unavailable'>(
-    serverBrief?.reviewStateSource || 'unavailable',
+  const [reviewStorageSource, setReviewStorageSource] = useState<ReviewStorageSource>(
+    serverBrief?.reviewStateSource || (serverBrief?.source === 'supabase' ? 'empty' : 'unavailable'),
   );
   const [reviewSaveMessage, setReviewSaveMessage] = useState('');
   const [aiSketchReviewState, setAiSketchReviewState] = useState<AdminAiSketchReviewReadModel>(aiSketchReview);
@@ -332,6 +395,15 @@ export default function AdminBriefDetailClient({
     const currentBrief = records.find((record) => record.conceptBriefId === decodedId);
     const reviewState = loadAdminReviewState(decodedId);
     const canUsePersistedReview = currentBrief?.reviewStateSource === 'supabase';
+    const hasLocalReviewState = currentBrief?.reviewStateSource === 'localStorage' || Boolean(reviewState.status || reviewState.internalNotes);
+    const hasReviewReadFailure = Boolean(serverDataMessage) && currentBrief?.source === 'supabase';
+    const nextReviewStorageSource: ReviewStorageSource = canUsePersistedReview
+      ? 'supabase'
+      : hasLocalReviewState
+        ? 'localStorage'
+        : currentBrief?.source === 'supabase' && !hasReviewReadFailure
+          ? 'empty'
+          : 'unavailable';
 
     setBriefs(records);
     setStatus(currentBrief?.status || (!canUsePersistedReview ? reviewState.status : undefined) || statusOptions[0]);
@@ -343,10 +415,10 @@ export default function AdminBriefDetailClient({
         currentBrief?.submittedAt ||
         '',
     );
-    setReviewStorageSource(canUsePersistedReview ? 'supabase' : reviewState.status || reviewState.internalNotes ? 'localStorage' : 'unavailable');
+    setReviewStorageSource(nextReviewStorageSource);
     setReviewSaveMessage('');
     setIsReviewLoaded(true);
-  }, [decodedId, serverBrief]);
+  }, [decodedId, serverBrief, serverDataMessage]);
 
   useEffect(() => {
     setAiSketchReviewState(aiSketchReview);
@@ -402,14 +474,11 @@ export default function AdminBriefDetailClient({
       {
         title: 'Admin review status',
         rows: [
-          { label: reviewStorageSource === 'supabase' ? 'Supabase-backed review status' : 'Local review status', value: status },
+          { label: getReviewStatusLabel(reviewStorageSource), value: status },
           { label: 'Last review update', value: formatSubmittedTime(lastUpdatedAt || brief.lastUpdatedAt || brief.submittedAt) },
           {
             label: 'Review state storage',
-            value:
-              reviewStorageSource === 'supabase'
-                ? 'Status and notes are loaded from Supabase admin_notes.'
-                : 'Supabase admin review persistence is unavailable for this record, so state is local-only fallback data.',
+            value: getReviewStateStorageCopy(reviewStorageSource),
           },
         ],
       },
@@ -500,15 +569,15 @@ export default function AdminBriefDetailClient({
         ],
       },
       {
-        title: 'Internal notes / local review state',
+        title:
+          reviewStorageSource === 'supabase' || reviewStorageSource === 'empty'
+            ? 'Internal notes / admin review state'
+            : 'Internal notes / local review state',
         rows: [
           { label: 'Current notes', value: internalNotes || 'No internal notes saved yet.' },
           {
             label: 'Persistence',
-            value:
-              reviewStorageSource === 'supabase'
-                ? 'Internal notes are saved to Supabase admin_notes for protected admin review.'
-                : 'Internal notes are saved only in this browser localStorage fallback.',
+            value: getInternalNotesPersistenceCopy(reviewStorageSource),
           },
         ],
       },
@@ -782,11 +851,7 @@ export default function AdminBriefDetailClient({
 
             <div>
               <h2>{isServerBacked ? 'Supabase-backed review controls' : 'Local fallback review controls'}</h2>
-              <p className={styles.helperText}>
-                {reviewStorageSource === 'supabase'
-                  ? 'Status and notes are saved to Supabase admin_notes after valid admin access.'
-                  : 'Status and notes are currently local-only fallback review state.'}
-              </p>
+              <p className={styles.helperText}>{getReviewControlsCopy(reviewStorageSource)}</p>
               {reviewSaveMessage ? <p className={styles.helperText}>{reviewSaveMessage}</p> : null}
             </div>
             <label className={styles.fieldLabel}>
