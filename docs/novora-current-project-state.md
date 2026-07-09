@@ -1829,6 +1829,27 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   add CAD, quote, payment, order, production, gallery approval, or customer
   delivery behavior. AI sketch review remains separate and internal-only.
 
+- Agent 66A: adds
+  `docs/novora-agent-66a-mvp-soft-launch-readiness-snapshot.md`, a docs-only
+  final MVP soft-launch readiness snapshot after successful owner-run
+  Production verification and PR #186 empty-state copy verification. The
+  snapshot records that the earlier Production submission failure was caused by
+  the paused `novora-production` Supabase Free project, not NOVORA app code;
+  after the owner resumed Supabase, controlled Production verification passed
+  for submitted-page success, admin notification receipt, protected admin
+  detail loading, Supabase-backed Concept Brief detail, sent notification
+  status, and CAD / quote / payment / production boundary copy. It also records
+  the ongoing Supabase pause risk, the verified PR #186 empty-state copy for a
+  new Supabase-backed record with no saved `admin_notes` row yet, and the locked
+  AI sketch / human review / email-only customer-delivery boundaries. Agent 66A
+  recommends limited owner-controlled soft-launch / private testing only, not
+  full public launch or broader public traffic, until Supabase health monitoring
+  or an upgrade/alternative hosting plan is in place. Agent 66A changed docs
+  only and made no code, SQL, environment, deploy, Supabase dashboard, email,
+  OpenAI/image API, image generation, CAD, quote, payment, order, production,
+  gallery, customer-delivery, staging, commit, push, PR, merge, or Production
+  access change.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
