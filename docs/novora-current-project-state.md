@@ -1777,6 +1777,43 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   SQL, environment or secret inspection, deploy, email sending, OpenAI/image
   API call, image generation, staging, commit, push, PR, merge, or next-agent
   action occurred.
+- Agent 65B-L1 (2026-07-09): records owner-run Production verification after
+  PR #184 / Agent 65B-F2 merged at
+  `d0bbeccd5582b9c9a1259385204cd4360ddef47a` and post-merge cleanup completed.
+  Vercel showed the Production deployment from `main` commit `d0bbecc` as
+  Ready. The first owner-run Production test after deployment still returned
+  `202` from `/api/concept-briefs` with `ok: true`, `mode: supabase`, and
+  `persisted: false`, and the page showed the server receipt warning. The new
+  diagnostics safely classified the failure as `stage: concept_briefs_insert`,
+  `messageClass: network_or_fetch_failure`, with safe hint `Check Supabase API
+  reachability from the runtime.` The root cause was owner-side
+  infrastructure/config state, not NOVORA app code: the `novora-production`
+  Supabase project was paused on the Free plan, so the Supabase project API was
+  not reachable. After the owner resumed the project, unauthenticated
+  `/rest/v1/` reachability returned the expected `No API key found in request`
+  response. The owner then reran one controlled Production test brief and final
+  verification passed: `/design/submitted` success was reached, the admin
+  notification email was received, the protected admin detail link opened, the
+  Supabase-backed Concept Brief detail loaded, admin notification status showed
+  `sent`, CAD / quote / payment / production boundary copy remained present,
+  and AI sketch behavior remained internal-only with human-review and customer
+  delivery boundaries intact. Final outcome: Production owner-run verification
+  PASS with operational risk. Supabase Free projects may pause again, so
+  soft-launch and Production operations should monitor this risk; before public
+  soft launch or continued external testing, the owner should keep the Supabase
+  project active, periodically verify project health, or plan an
+  upgrade/alternative hosting strategy. Non-blocking follow-up: the protected
+  admin detail showed Concept Brief and notification data correctly, but admin
+  review status / internal notes displayed local-only fallback for that record;
+  this did not block submission, admin email, or protected detail loading, and
+  a future optional Agent may diagnose Supabase-backed admin review
+  status/internal notes persistence separately. This ledger update is sanitized
+  owner-run verification documentation only: Codex did not access Production,
+  inspect customer data, access or write the Supabase dashboard, run SQL,
+  inspect environment values or secrets, deploy, send email, call OpenAI/image
+  APIs, generate images, stage, commit, push, create or update a PR, mark ready,
+  merge, start a next Agent, or perform payment, CAD, quote, order, production
+  approval, or customer-delivery action.
 
 ## 7. Current Non-Goals And Boundaries
 
