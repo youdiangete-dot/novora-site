@@ -1815,6 +1815,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   merge, start a next Agent, or perform payment, CAD, quote, order, production
   approval, or customer-delivery action.
 
+- Agent 65C-F1: fixes protected admin Concept Brief detail empty-state copy
+  after the owner-run follow-up confirmed Concept Brief admin review
+  status/internal notes persistence works after the first valid save. The
+  protected detail now distinguishes a new Supabase-backed Concept Brief with no
+  saved `admin_notes` review row yet from true Supabase admin review
+  persistence/read unavailability. This is an empty-state/copy-only app change:
+  first save behavior still creates an `admin_notes` row, successful save copy
+  still reports `Saved to Supabase admin_notes.`, and existing persisted review
+  state still displays as Supabase-backed. Agent 65C-F1 did not access
+  Production, Supabase, SQL, environment values or secrets, deploy, send email,
+  call OpenAI/image APIs, generate images, stage, commit, push, create a PR, or
+  add CAD, quote, payment, order, production, gallery approval, or customer
+  delivery behavior. AI sketch review remains separate and internal-only.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
