@@ -4,6 +4,10 @@ import {
   generateConceptBriefPublicReferencePreview,
   type ConceptBriefSubmissionPayload,
 } from "./concept-brief-validation";
+import {
+  classifyConceptBriefPersistenceError,
+  getSafeConceptBriefPersistenceErrorCode,
+} from "./concept-brief-persistence-diagnostics";
 import { createSupabaseAdminClientOrNull } from "./supabase";
 
 type ConceptBriefRow = {
@@ -112,64 +116,16 @@ function readBriefString(
   return readString(submission[field as keyof ConceptBriefSubmissionPayload] ?? brief[field]);
 }
 
-function readErrorField(error: unknown, field: keyof SupabaseErrorLike): string | undefined {
-  if (!isRecord(error)) {
-    return undefined;
-  }
-
-  const value = error[field];
-
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function getSafeErrorName(error: unknown): string {
-  return readErrorField(error, "name") || (error instanceof Error ? error.name : "UnknownError");
-}
-
-function getSafeErrorCode(error: unknown): string | undefined {
-  return readErrorField(error, "code");
-}
-
-function getSafeMessageClass(error: unknown): string {
-  const code = getSafeErrorCode(error);
-  const name = getSafeErrorName(error);
-  const message =
-    readErrorField(error, "message") || (error instanceof Error ? error.message : "");
-  const normalizedMessage = message.toLowerCase();
-
-  if (name === "TypeError") {
-    if (normalizedMessage.includes("url")) {
-      return "type_error_invalid_url";
-    }
-
-    if (normalizedMessage.includes("fetch") || normalizedMessage.includes("network")) {
-      return "type_error_fetch";
-    }
-
-    return "type_error";
-  }
-
-  if (code) {
-    return "supabase_error";
-  }
-
-  if (error instanceof Error) {
-    return "runtime_error";
-  }
-
-  return "unknown_error";
-}
-
 function logPersistenceFailure(
   stage: PersistenceFailureStage,
   error: unknown,
   extra?: Record<string, unknown>,
 ) {
+  const diagnostics = classifyConceptBriefPersistenceError(error);
+
   console.error(`Concept Brief persistence failed at ${stage}.`, {
     stage,
-    errorName: getSafeErrorName(error),
-    errorCode: getSafeErrorCode(error),
-    messageClass: getSafeMessageClass(error),
+    ...diagnostics,
     ...extra,
   });
 }
@@ -279,12 +235,12 @@ export async function persistConceptBriefSubmission(
       {
         cleanupSucceeded: cleanup?.cleanupSucceeded,
         cleanupErrorCode: cleanup?.cleanupError
-          ? getSafeErrorCode(cleanup.cleanupError)
+          ? getSafeConceptBriefPersistenceErrorCode(cleanup.cleanupError)
           : undefined,
         cleanupMessageClass: cleanup
           ? cleanup.cleanupSucceeded
             ? "cleanup_succeeded"
-            : getSafeMessageClass(cleanup.cleanupError)
+            : classifyConceptBriefPersistenceError(cleanup.cleanupError).messageClass
           : "cleanup_not_attempted",
       },
     );
@@ -317,9 +273,9 @@ export async function persistConceptBriefSubmission(
 
     logPersistenceFailure("concept_brief_contacts_insert", error, {
       cleanupSucceeded: cleanup.cleanupSucceeded,
-      cleanupErrorCode: getSafeErrorCode(cleanup.cleanupError),
+      cleanupErrorCode: getSafeConceptBriefPersistenceErrorCode(cleanup.cleanupError),
       cleanupMessageClass: cleanup.cleanupError
-        ? getSafeMessageClass(cleanup.cleanupError)
+        ? classifyConceptBriefPersistenceError(cleanup.cleanupError).messageClass
         : undefined,
     });
 
@@ -334,9 +290,9 @@ export async function persistConceptBriefSubmission(
 
     logPersistenceFailure("concept_brief_contacts_insert", contactError, {
       cleanupSucceeded: cleanup.cleanupSucceeded,
-      cleanupErrorCode: getSafeErrorCode(cleanup.cleanupError),
+      cleanupErrorCode: getSafeConceptBriefPersistenceErrorCode(cleanup.cleanupError),
       cleanupMessageClass: cleanup.cleanupError
-        ? getSafeMessageClass(cleanup.cleanupError)
+        ? classifyConceptBriefPersistenceError(cleanup.cleanupError).messageClass
         : undefined,
     });
 

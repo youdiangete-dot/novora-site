@@ -1758,6 +1758,25 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   protected admin/customer data, SQL, environment values, or secrets; did not
   deploy, send email, call OpenAI/image APIs, generate images, stage, commit,
   push, open a PR, or start another agent.
+- Agent 65B-F2: owner-run Production retest after Agent 65B-F1 still returned
+  `202` at the `concept_briefs_insert` stage with an `unknown_error`
+  classification. Agent 65B-F2 inspected the current local insert payload,
+  local schema references, admin read columns, and prior live-schema alignment
+  history. The current insert payload was preserved because local history shows
+  the app had previously aligned to live columns and later Production smoke
+  tests persisted Concept Brief rows with those app-facing fields. Agent 65B-F2
+  added safe local-only diagnostics for `concept_briefs` insert failures so the
+  next owner-run Production test can classify PostgREST schema/column mismatch,
+  not-null/check violations, permission/RLS issues, unique conflicts, invalid
+  JSON/type issues, URL/config problems, and network/fetch failures without
+  logging customer data or secrets. Public fallback responses remain
+  privacy-safe, successful persistence still requires `201`, `persisted: true`,
+  a valid `NOVORA-CB-...` public reference, and a valid Concept Brief UUID, and
+  admin notification remains secondary after confirmed persistence. This was
+  local code/test/docs work only: no Production access, Supabase dashboard,
+  SQL, environment or secret inspection, deploy, email sending, OpenAI/image
+  API call, image generation, staging, commit, push, PR, merge, or next-agent
+  action occurred.
 
 ## 7. Current Non-Goals And Boundaries
 
