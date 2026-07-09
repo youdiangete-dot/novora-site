@@ -54,6 +54,29 @@ export type ConceptBriefPersistenceResult =
   | ConceptBriefPersistenceSuccess
   | ConceptBriefPersistenceFailure;
 
+type SupabaseAdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClientOrNull>>;
+
+type SupabaseErrorLike = {
+  code?: unknown;
+  message?: unknown;
+  name?: unknown;
+};
+
+type PersistenceFailureStage =
+  | "concept_briefs_insert"
+  | "concept_briefs_insert_response"
+  | "concept_brief_contacts_insert"
+  | "concept_brief_contacts_cleanup";
+
+const CONCEPT_BRIEF_PERSISTENCE_FAILED_MESSAGE =
+  "Concept Brief persistence failed. The local submission flow continued safely.";
+
+const CONTACT_PERSISTENCE_FAILED_MESSAGE =
+  "Concept Brief contact persistence failed. The local submission flow continued safely.";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PUBLIC_REFERENCE_PATTERN = /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -87,6 +110,92 @@ function readBriefString(
   field: string,
 ): string | null {
   return readString(submission[field as keyof ConceptBriefSubmissionPayload] ?? brief[field]);
+}
+
+function readErrorField(error: unknown, field: keyof SupabaseErrorLike): string | undefined {
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  const value = error[field];
+
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function getSafeErrorName(error: unknown): string {
+  return readErrorField(error, "name") || (error instanceof Error ? error.name : "UnknownError");
+}
+
+function getSafeErrorCode(error: unknown): string | undefined {
+  return readErrorField(error, "code");
+}
+
+function getSafeMessageClass(error: unknown): string {
+  const code = getSafeErrorCode(error);
+  const name = getSafeErrorName(error);
+  const message =
+    readErrorField(error, "message") || (error instanceof Error ? error.message : "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (name === "TypeError") {
+    if (normalizedMessage.includes("url")) {
+      return "type_error_invalid_url";
+    }
+
+    if (normalizedMessage.includes("fetch") || normalizedMessage.includes("network")) {
+      return "type_error_fetch";
+    }
+
+    return "type_error";
+  }
+
+  if (code) {
+    return "supabase_error";
+  }
+
+  if (error instanceof Error) {
+    return "runtime_error";
+  }
+
+  return "unknown_error";
+}
+
+function logPersistenceFailure(
+  stage: PersistenceFailureStage,
+  error: unknown,
+  extra?: Record<string, unknown>,
+) {
+  console.error(`Concept Brief persistence failed at ${stage}.`, {
+    stage,
+    errorName: getSafeErrorName(error),
+    errorCode: getSafeErrorCode(error),
+    messageClass: getSafeMessageClass(error),
+    ...extra,
+  });
+}
+
+function isValidPersistedConceptBriefRow(value: ConceptBriefRow | null): boolean {
+  return Boolean(
+    value &&
+      UUID_PATTERN.test(value.id) &&
+      PUBLIC_REFERENCE_PATTERN.test(value.public_reference),
+  );
+}
+
+async function cleanupConceptBriefRow(supabase: SupabaseAdminClient, conceptBriefId: string) {
+  try {
+    const { error } = await supabase.from("concept_briefs").delete().eq("id", conceptBriefId);
+
+    return {
+      cleanupSucceeded: !error,
+      cleanupError: error,
+    };
+  } catch (error) {
+    return {
+      cleanupSucceeded: false,
+      cleanupError: error,
+    };
+  }
 }
 
 export async function persistConceptBriefSubmission(
@@ -127,21 +236,62 @@ export async function persistConceptBriefSubmission(
     },
   };
 
-  const { data: conceptBrief, error: conceptBriefError } = await supabase
-    .from("concept_briefs")
-    .insert(conceptBriefInsert)
-    .select("id, public_reference")
-    .single<ConceptBriefRow>();
+  let conceptBrief: ConceptBriefRow | null = null;
+  let conceptBriefError: SupabaseErrorLike | null = null;
 
-  if (conceptBriefError || !conceptBrief) {
-    console.error("Concept Brief persistence failed at concept_briefs insert.", {
-      code: conceptBriefError?.code,
-      message: conceptBriefError?.message,
-    });
+  try {
+    const result = await supabase
+      .from("concept_briefs")
+      .insert(conceptBriefInsert)
+      .select("id, public_reference")
+      .single<ConceptBriefRow>();
+
+    conceptBrief = result.data;
+    conceptBriefError = result.error;
+  } catch (error) {
+    logPersistenceFailure("concept_briefs_insert", error);
 
     return {
       persisted: false,
-      message: "Concept Brief persistence failed. The local submission flow continued safely.",
+      message: CONCEPT_BRIEF_PERSISTENCE_FAILED_MESSAGE,
+    };
+  }
+
+  if (conceptBriefError || !conceptBrief) {
+    logPersistenceFailure("concept_briefs_insert", conceptBriefError);
+
+    return {
+      persisted: false,
+      message: CONCEPT_BRIEF_PERSISTENCE_FAILED_MESSAGE,
+    };
+  }
+
+  if (!isValidPersistedConceptBriefRow(conceptBrief)) {
+    const cleanup = UUID_PATTERN.test(conceptBrief.id)
+      ? await cleanupConceptBriefRow(supabase, conceptBrief.id)
+      : null;
+
+    logPersistenceFailure(
+      "concept_briefs_insert_response",
+      {
+        name: "InvalidConceptBriefInsertResponse",
+      },
+      {
+        cleanupSucceeded: cleanup?.cleanupSucceeded,
+        cleanupErrorCode: cleanup?.cleanupError
+          ? getSafeErrorCode(cleanup.cleanupError)
+          : undefined,
+        cleanupMessageClass: cleanup
+          ? cleanup.cleanupSucceeded
+            ? "cleanup_succeeded"
+            : getSafeMessageClass(cleanup.cleanupError)
+          : "cleanup_not_attempted",
+      },
+    );
+
+    return {
+      persisted: false,
+      message: CONCEPT_BRIEF_PERSISTENCE_FAILED_MESSAGE,
     };
   }
 
@@ -156,25 +306,43 @@ export async function persistConceptBriefSubmission(
     contact_note: readContactString(payload, "contactNote"),
   };
 
-  const { error: contactError } = await supabase.from("concept_brief_contacts").insert(contactInsert);
+  let contactError: SupabaseErrorLike | null = null;
 
-  if (contactError) {
-    const { error: cleanupError } = await supabase
-      .from("concept_briefs")
-      .delete()
-      .eq("id", conceptBrief.id);
+  try {
+    const result = await supabase.from("concept_brief_contacts").insert(contactInsert);
 
-    console.error("Concept Brief persistence failed at concept_brief_contacts insert.", {
-      code: contactError.code,
-      message: contactError.message,
-      conceptBriefId: conceptBrief.id,
-      cleanupSucceeded: !cleanupError,
-      cleanupCode: cleanupError?.code,
+    contactError = result.error;
+  } catch (error) {
+    const cleanup = await cleanupConceptBriefRow(supabase, conceptBrief.id);
+
+    logPersistenceFailure("concept_brief_contacts_insert", error, {
+      cleanupSucceeded: cleanup.cleanupSucceeded,
+      cleanupErrorCode: getSafeErrorCode(cleanup.cleanupError),
+      cleanupMessageClass: cleanup.cleanupError
+        ? getSafeMessageClass(cleanup.cleanupError)
+        : undefined,
     });
 
     return {
       persisted: false,
-      message: "Concept Brief contact persistence failed. The local submission flow continued safely.",
+      message: CONTACT_PERSISTENCE_FAILED_MESSAGE,
+    };
+  }
+
+  if (contactError) {
+    const cleanup = await cleanupConceptBriefRow(supabase, conceptBrief.id);
+
+    logPersistenceFailure("concept_brief_contacts_insert", contactError, {
+      cleanupSucceeded: cleanup.cleanupSucceeded,
+      cleanupErrorCode: getSafeErrorCode(cleanup.cleanupError),
+      cleanupMessageClass: cleanup.cleanupError
+        ? getSafeMessageClass(cleanup.cleanupError)
+        : undefined,
+    });
+
+    return {
+      persisted: false,
+      message: CONTACT_PERSISTENCE_FAILED_MESSAGE,
     };
   }
 
