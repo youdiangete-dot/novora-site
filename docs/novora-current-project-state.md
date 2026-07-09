@@ -1879,6 +1879,16 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer-delivery, staging, commit, push, PR, merge, or Production access
   change.
 
+- Agent 66D: adds
+  `docs/novora-agent-66d-private-testing-feedback-triage-template.md`, a
+  docs-only private testing feedback log and issue triage template for limited
+  owner-controlled private testing only. The template records severity and type
+  categories, pause criteria, Agent/PR decision rules, privacy sanitization, and
+  NOVORA AI sketch / CAD / payment / customer-delivery boundaries. Agent 66D
+  changed docs only and made no code, SQL, environment, deploy, Supabase
+  dashboard access, email sending, OpenAI/image API, image generation, CAD,
+  quote, payment, order, production, gallery, or customer-delivery changes.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
