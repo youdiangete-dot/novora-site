@@ -1850,6 +1850,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   gallery, customer-delivery, staging, commit, push, PR, merge, or Production
   access change.
 
+- Agent 66B: adds
+  `docs/novora-agent-66b-soft-launch-owner-operating-checklist.md`, a docs-only
+  owner operating checklist for limited soft-launch / private testing after
+  Agent 66A. The checklist records Supabase health monitoring, Vercel
+  Production health checks, Concept Brief smoke-test pass criteria, admin
+  notification and protected admin detail checks, admin review empty/saved-state
+  checks, stop/recovery criteria for paused or unreachable Supabase, weekly
+  owner review prompts, go/no-go decision notes, and soft-launch limits. It
+  reinforces that NOVORA remains suitable only for owner-controlled private
+  testing, not full public launch, paid traffic, automated customer-facing AI
+  sketches, CAD/quote/payment/order/production automation, or unreviewed
+  customer delivery. Agent 66B changed docs only and made no code, SQL,
+  environment, deploy, Supabase dashboard access, email sending, OpenAI/image
+  API, image generation, CAD, quote, payment, order, production, gallery,
+  customer-delivery, staging, commit, push, PR, merge, or Production access
+  change.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
