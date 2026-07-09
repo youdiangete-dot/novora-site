@@ -2,8 +2,6 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { getNovoraServerEnvStatus } from "./env";
-
 type SupabaseServerReadiness = {
   readyForPublicServerClient: boolean;
   readyForAdminClient: boolean;
@@ -19,6 +17,26 @@ function getEnvValue(name: string): string | null {
   const value = process.env[name]?.trim();
 
   return value ? value : null;
+}
+
+function getSupabaseUrlValue(): string | null {
+  const value = getEnvValue(SUPABASE_URL_ENV);
+
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname) {
+      return null;
+    }
+
+    return value;
+  } catch {
+    return null;
+  }
 }
 
 function getMissingEnvValues(names: string[]): string[] {
@@ -51,7 +69,6 @@ function isSupabaseServiceRoleKey(key: string): boolean {
 }
 
 export function getSupabaseServerReadiness(): SupabaseServerReadiness {
-  const envStatus = getNovoraServerEnvStatus();
   const missingPublicServerClientVariables = getMissingEnvValues([
     SUPABASE_URL_ENV,
     SUPABASE_ANON_KEY_ENV,
@@ -60,10 +77,17 @@ export function getSupabaseServerReadiness(): SupabaseServerReadiness {
     SUPABASE_URL_ENV,
     SUPABASE_SERVICE_ROLE_KEY_ENV,
   ]);
+  const supabaseUrl = getSupabaseUrlValue();
+  const supabaseAnonKey = getEnvValue(SUPABASE_ANON_KEY_ENV);
+  const supabaseServiceRoleKey = getEnvValue(SUPABASE_SERVICE_ROLE_KEY_ENV);
 
   return {
-    readyForPublicServerClient: envStatus.readyForSupabasePublicClient,
-    readyForAdminClient: envStatus.readyForSupabaseAdminOperations,
+    readyForPublicServerClient: Boolean(supabaseUrl && supabaseAnonKey),
+    readyForAdminClient: Boolean(
+      supabaseUrl &&
+        supabaseServiceRoleKey &&
+        isSupabaseServiceRoleKey(supabaseServiceRoleKey),
+    ),
     missingPublicServerClientVariables,
     missingAdminClientVariables,
   };
@@ -76,7 +100,7 @@ export function getSupabaseServerReadiness(): SupabaseServerReadiness {
 // The anon key is browser-visible by design, but using it safely still requires
 // reviewed RLS, access validation, and storage policies before real data exists.
 export function createSupabasePublicServerClientOrNull(): SupabaseClient | null {
-  const supabaseUrl = getEnvValue(SUPABASE_URL_ENV);
+  const supabaseUrl = getSupabaseUrlValue();
   const supabaseAnonKey = getEnvValue(SUPABASE_ANON_KEY_ENV);
 
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -94,7 +118,7 @@ export function createSupabasePublicServerClientOrNull(): SupabaseClient | null 
 // The service role key is highly privileged and must stay server-only. Future
 // routes must validate caller access before using this helper for any operation.
 export function createSupabaseAdminClientOrNull(): SupabaseClient | null {
-  const supabaseUrl = getEnvValue(SUPABASE_URL_ENV);
+  const supabaseUrl = getSupabaseUrlValue();
   const supabaseServiceRoleKey = getEnvValue(SUPABASE_SERVICE_ROLE_KEY_ENV);
 
   if (

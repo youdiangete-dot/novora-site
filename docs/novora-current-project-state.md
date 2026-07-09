@@ -1744,6 +1744,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   APIs, generate images, or add payment, CAD, quote, order, or production
   approval behavior. It provides owner-fillable templates for test data,
   evidence, checks, blockers, rollback/stop logging, and the go/no-go decision.
+- Agent 65B-F1: investigated and fixed/hardened the local
+  `/api/concept-briefs` persistence failure path after owner-run Production
+  verification reported a `202` fallback with a TypeError at the
+  `concept_briefs` insert stage. The local code now rejects malformed Supabase
+  project URLs before creating the admin client, catches and classifies thrown
+  parent/contact persistence failures, keeps public fallback responses
+  privacy-safe, and only returns persisted success after a valid
+  `publicReference` and Concept Brief UUID are confirmed. A narrowly gated
+  local Playwright API regression covers the malformed URL fallback without
+  connecting to Supabase. Admin notification remains secondary after confirmed
+  persistence. Agent 65B-F1 did not access Production, Supabase dashboard,
+  protected admin/customer data, SQL, environment values, or secrets; did not
+  deploy, send email, call OpenAI/image APIs, generate images, stage, commit,
+  push, open a PR, or start another agent.
 
 ## 7. Current Non-Goals And Boundaries
 
