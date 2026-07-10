@@ -1,5 +1,15 @@
 # NOVORA Agent 66B Soft-Launch Owner Operating Checklist
 
+> **Transition notice — do not use for new private testing under the former AI
+> visibility rules.** Historical submission, admin, notification, privacy,
+> Supabase-health, and operational checks in this document may still be useful.
+> Former rules that kept the first AI concept sketch internal-only, required
+> human review before customer display, or limited delivery to email were
+> superseded by the post-Agent-60I instant-preview direction. A new limited-beta
+> runbook must be created only after real instant-preview implementation exists
+> and has passed implementation QA. Current Production remains mock-only for
+> preview and does not generate real AI customer previews.
+
 ## 1. Purpose
 
 This runbook gives the NOVORA owner a practical checklist for limited

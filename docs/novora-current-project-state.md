@@ -11,13 +11,74 @@ When chat memory, older local notes, detached worktree state, or assumptions
 from previous conversations conflict with this ledger and the current GitHub
 `main` branch, this ledger and current `main` win.
 
+## Current Locked Product Direction
+
+### Current implemented Production state
+
+- Production does not have a real AI image-generation API.
+- `/design/preview/[public_reference]` remains mock-only.
+- The submitted-page preview entry remains a demo/mock connection.
+- No real generated customer preview is currently live.
+- The target direction below is a locked product decision, not evidence of
+  completed implementation or deployment.
+
+### Locked target MVP direction
+
+After a customer's Concept Brief is successfully persisted, NOVORA should
+automatically begin generating the first AI hand-drawn concept sketch. Once the
+first result is generated and passes the required automatic safety, privacy,
+access-control, output-validity, and safe-failure gates, it becomes immediately
+visible on the customer's securely accessed website preview page without
+waiting for per-image human pre-approval.
+
+The mandatory automatic gates include:
+
+- Confirmed Concept Brief persistence and a valid `publicReference`.
+- A secure customer access mechanism.
+- Valid generation-job and generated-output lifecycle states.
+- A valid generated image or output asset.
+- No exposure of provider metadata, internal prompts, reviewer/admin notes,
+  secrets, or private storage paths.
+- Passed content-safety, privacy, and access-control checks.
+- Safe timeout, failure, and invalid-output handling.
+- No false-success customer-visible state.
+
+These automatic gates are not comprehensive human pre-review. Human
+intervention remains required after the first preview for structural logic,
+gemstone orientation and stacking/composition, jewelry construction,
+manufacturability, correction of infeasible or misleading details, style
+correction, customer-feedback interpretation, redraw/regeneration, and formal
+downstream communication and decisions.
+
+`first_preview_ready` is only the first customer-visible concept-preview
+lifecycle. It is not `approved_for_customer`, `approved_for_gallery`, CAD
+approval, quotation approval, payment confirmation, order approval, or
+production approval. `approved_for_customer` may remain relevant for later
+formal, human-approved customer-safe materials or downstream communication, but
+it is not a prerequisite for the first concept preview. `approved_for_gallery`
+remains a separate consent and publication decision.
+
+The first AI sketch remains an early concept preview only. It is not CAD, a
+quotation, payment confirmation, order approval, production approval, or a
+manufacturability guarantee. CAD, quotation, payment, order, and production
+confirmation remain offline and human-controlled.
+
+This post-Agent-60I direction supersedes former forward-looking rules that kept
+the first AI concept sketch internal-only, required human approval before first
+customer visibility, or limited customer delivery to email. Historical records
+of those earlier rules remain preserved below as transition-era context and
+must not be used as the current operating direction.
+
 ## 2. Current Production Baseline
 
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Current `main` HEAD / PR #149 merge commit:
-  `c2dc4f820d5019d8ec717cac60ed5ea320c4841f`
+- Verified GitHub `main` baseline fetched at the start of Agent 67A: Agent 66D /
+  PR #190 merge commit `80913f17ff4c9540b6d5c34b2daa087eadc7279e`.
+- Agent 67A is a documentation-only source-of-truth alignment task. At the
+  Agent 67A starting baseline, its changes were not part of GitHub `main`.
+  Runtime instant-preview behavior remains unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -1727,7 +1788,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   manual launch checks, and explicit no-go conditions. Agent 63B does not
   deploy, modify app behavior, touch Supabase/SQL/env/Production/protected
   data, call OpenAI/image APIs, send emails, or add payment, CAD, quote, order,
-  or production approval behavior.
+  or production approval behavior. Its human-first/email-only AI visibility
+  rules are transition-era wording superseded by the post-Agent-60I instant
+  first-preview direction; its other readiness history remains useful.
 - Agent 64A: created
   `docs/novora-agent-64a-production-owner-run-verification-plan.md`, a
   docs-only owner-run Production verification and controlled soft-launch
@@ -1744,6 +1807,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   APIs, generate images, or add payment, CAD, quote, order, or production
   approval behavior. It provides owner-fillable templates for test data,
   evidence, checks, blockers, rollback/stop logging, and the go/no-go decision.
+  Its former human-first/email-only AI visibility checks are transition-era
+  wording superseded by the post-Agent-60I direction; its Production and
+  operational verification history remains useful.
 - Agent 65B-F1: investigated and fixed/hardened the local
   `/api/concept-briefs` persistence failure path after owner-run Production
   verification reported a `202` fallback with a TypeError at the
@@ -1848,7 +1914,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   only and made no code, SQL, environment, deploy, Supabase dashboard, email,
   OpenAI/image API, image generation, CAD, quote, payment, order, production,
   gallery, customer-delivery, staging, commit, push, PR, merge, or Production
-  access change.
+  access change. Its internal-only, human-pre-approval, and email-only AI
+  visibility rules are preserved as transition-era history and are superseded
+  for future work by the post-Agent-60I instant first-preview direction.
 
 - Agent 66B: adds
   `docs/novora-agent-66b-soft-launch-owner-operating-checklist.md`, a docs-only
@@ -1865,7 +1933,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   environment, deploy, Supabase dashboard access, email sending, OpenAI/image
   API, image generation, CAD, quote, payment, order, production, gallery,
   customer-delivery, staging, commit, push, PR, merge, or Production access
-  change.
+  change. Its former AI visibility and email-only delivery rules are
+  transition-era wording superseded by the post-Agent-60I direction; its
+  Supabase-health and operating checks remain historical evidence.
 
 - Agent 66C: adds
   `docs/novora-agent-66c-private-tester-invitation-wording-pack.md`, a docs-only
@@ -1877,7 +1947,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   deploy, Supabase dashboard access, email sending, OpenAI/image API, image
   generation, CAD, quote, payment, order, production, gallery,
   customer-delivery, staging, commit, push, PR, merge, or Production access
-  change.
+  change. Its invitation language reflects the transition-era internal-only,
+  human-first, email-only direction and must not be used for new testing under
+  the locked instant first-preview direction.
 
 - Agent 66D: adds
   `docs/novora-agent-66d-private-testing-feedback-triage-template.md`, a
@@ -1888,6 +1960,16 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   changed docs only and made no code, SQL, environment, deploy, Supabase
   dashboard access, email sending, OpenAI/image API, image generation, CAD,
   quote, payment, order, production, gallery, or customer-delivery changes.
+  Its private-testing triage template preserves transition-era AI visibility
+  wording and must not be used to run new testing under the superseded rules.
+
+- Agent 66E branch status (not merged at the Agent 67A starting baseline): an
+  Agent 66E branch was previously reported locally and remotely at HEAD
+  `6cd23aa`. No GitHub PR was found at the Agent 67A starting baseline. Its
+  reported private-testing template uses superseded first-sketch visibility
+  wording, so it must not be merged as-is. Branch deletion, salvage, or
+  rebuilding is a separate future task; Agent 67A did not inspect or adopt its
+  unknown local files and does not alter that branch.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -1896,7 +1978,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - No CAD approval workflow.
 - No production order system.
 - No customer confirmation email workflow.
-- No real AI sketch generation API.
+- No real AI sketch generation API is implemented in Production yet. This is a
+  current implementation gap, not a prohibition on the locked instant first
+  customer-preview direction.
 - No automatic retry tooling for failed or reserved admin notifications yet.
 - A Concept Brief is not a final order, final pricing, CAD approval, or production confirmation.
 
@@ -1943,23 +2027,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended next step: optional Agent 56G - docs-only final public-flow
-smoke-test plan only if the owner wants a precise non-mutating QA runbook before
-any live testing or release-readiness evidence gathering. Optional Agent 56E -
-safe static public copy implementation remains separate and should start only
-if the owner explicitly approves website copy implementation. Agent 55H is not
-the default next step and should only start if the user explicitly chooses the
-Agent 55G SQL execution preparation path.
+Recommended sequence:
 
-Keep Production rate-limit enforcement fail-open during the current MVP stage
-and review `docs/novora-production-rate-limit-enablement-decision.md` before any
-Production rate-limit environment/provider/deploy action. Option C remains the
-commercial-standard target before formal commercial launch, paid traffic, larger
-social traffic, increased real customer submissions, spam/fake/repeated
-submissions, admin notification noise, or payment/order/account Production
-workflows.
+1. Optional Agent 67B: use a safe workspace to decide the obsolete Agent 66E
+   branch disposition. Do not delete, salvage, rebuild, or merge it without that
+   separate task.
+2. Agent 68A: define the First Preview Product Contract, including lifecycle,
+   customer-access, automatic-gate, safe-failure, feedback, correction, and
+   downstream-approval boundaries.
+3. Later separate planning: prepare the preview data model / SQL packet and a
+   provider / cost-control decision. SQL execution, provider setup, and
+   implementation Agents each require separate explicit approval.
 
-Do not run SQL, change Supabase, change Vercel env, provision providers, create
-secrets, implement abuse-control code, start Agent 55H, start Agent 56E, start
-Agent 56G, perform QA execution, or start any implementation Agent unless a
-separate reviewed Agent/task explicitly approves that exact action.
+Do not describe the instant-preview direction as implemented until real
+generation, secure preview access, automatic gates, and safe failure behavior
+have been built and passed implementation QA. Do not run new limited-beta or
+private-testing operations under the superseded internal-only,
+human-pre-approval, email-only rules.

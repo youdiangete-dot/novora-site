@@ -105,6 +105,22 @@ force pushing; merging a PR; or deploying Production.
 
 ## Product And UX Rules
 
+- The locked target MVP direction is an instant first customer preview: after a
+  Concept Brief is confirmed persisted, NOVORA should automatically generate
+  the first AI hand-drawn concept sketch and make it immediately visible when
+  the required automatic gates pass.
+- The first concept preview must not require per-image human pre-approval.
+  Automatic safety, privacy, access-control, output-validity, and safe-failure
+  gates remain mandatory, and no false-success state may be shown.
+- Human review focuses on post-preview structural logic, gemstone orientation
+  and composition, jewelry construction, manufacturability, correction,
+  regeneration, customer-feedback interpretation, and formal downstream
+  decisions.
+- An AI concept preview is not CAD, a quotation, payment confirmation, order
+  approval, production approval, or a manufacturability guarantee. Those
+  decisions remain offline and human-controlled.
+- Current Production still has no real AI generation implementation; the
+  customer preview route and submitted-page entry remain mock/demo-only.
 - NOVORA should feel like a professional custom jewelry studio: warm, guided,
   precise, and trustworthy.
 - Avoid implying that an AI sketch is CAD-ready. Use language like "concept
