@@ -7,13 +7,20 @@ customer-facing AI hand-sketch concept preview direction recorded by Agent 60I.
 The target direction is that a customer submits a Concept Brief, NOVORA
 structures the request, creates a hand-sketch instruction, generates the first
 AI hand-drawn concept sketch, shows that first preview to the customer as soon
-as safely possible, captures customer feedback, and keeps human intervention
-focused on correction, regeneration, jewelry logic, and production feasibility.
+as the required automatic gates pass, captures customer feedback, and keeps
+human intervention focused on correction, regeneration, jewelry logic, and
+production feasibility.
 
 This is an implementation plan only. It does not implement image generation,
 storage writes, provider API calls, routes, UI, database changes, environment
 variables, customer feedback UI, admin persistence, email, deployment, or
 Production behavior.
+
+Current Production does not have a real AI image-generation API.
+`/design/preview/[public_reference]` remains mock-only, the submitted-page
+preview entry remains a demo/mock connection, and no real generated customer
+preview is live. This plan describes the locked target direction, not deployed
+behavior.
 
 The first sketch remains an early concept preview. It is not CAD, not a quote,
 not an order confirmation, not payment confirmation, and not production
@@ -29,8 +36,10 @@ Confirmed owner direction from Agent 60I and related limited-beta planning:
 - Automatic submission response is desired.
 - Website-based first AI hand-sketch concept preview is now the intended MVP
   product path.
-- The customer should see the first AI-generated hand-sketch concept as soon as
-  possible after submitting a brief.
+- Once the first result is generated and passes the required automatic safety,
+  privacy, access-control, output-validity, and safe-failure gates, it becomes
+  immediately visible to the customer without waiting for per-image human
+  pre-approval.
 - Human intervention should focus on structure logic errors, jewelry
   construction errors, production feasibility issues, inconsistent views, wrong
   prong or setting logic, wrong gemstone placement, proportion problems,
@@ -55,8 +64,9 @@ Target customer experience:
 5. The system creates a Hand Sketch Instruction from the Design Spec.
 6. The system creates one sketch generation job for the first preview.
 7. The customer sees a waiting or processing state if generation is not ready.
-8. The first generated AI hand-drawn concept sketch appears on the website when
-   the future customer-visibility rules allow it.
+8. The first generated AI hand-drawn concept sketch passes the required
+   automatic gates and immediately appears to the securely authorized customer
+   without waiting for per-image human pre-approval.
 9. The preview page shows clear concept-only disclaimers.
 10. The customer can submit feedback, request a revision, clarify details, or
     ask for human follow-up.
@@ -78,6 +88,7 @@ Every future first preview must visibly state that the sketch is:
 - Not an order confirmation.
 - Not payment confirmation.
 - Not production approval.
+- Not a manufacturability guarantee.
 - Subject to human review, correction, CAD validation, pricing, and production
   feasibility review.
 
@@ -119,10 +130,27 @@ Future implementation should keep generation server-controlled:
 - Store generated output in NOVORA-controlled storage before any customer
   preview is made available.
 
-Future implementation must define whether the first preview can be shown
-without pre-display human approval under the Agent 60I direction, and what
-automated safety gates must pass before that display. Human correction remains
-available after preview.
+The pre-display decision is locked: the first preview does not wait for
+per-image human approval. Human correction remains available after preview,
+while formal downstream human approvals remain separate.
+
+### Required automatic first-preview gates
+
+Before `first_preview_ready` becomes customer-visible, implementation must
+confirm all of the following:
+
+- Confirmed Concept Brief persistence and a valid `publicReference`.
+- A secure customer access mechanism.
+- A valid generation-job lifecycle state and generated-output lifecycle state.
+- A valid generated image or output asset.
+- No exposure of provider metadata, internal prompts, reviewer notes, admin
+  notes, secrets, or private storage paths.
+- Passed content-safety, privacy, and access-control checks.
+- Safe timeout, failure, and invalid-output handling.
+- No false-success customer-visible state.
+
+These are automatic gates and must not be replaced with comprehensive human
+pre-review.
 
 ## 6. Data model / storage planning
 
@@ -183,9 +211,11 @@ Candidate future end-to-end customer/brief statuses:
 - `revision_requested`
 - `revised_preview_ready`
 
-These names are planning candidates only unless already implemented elsewhere.
-They should be reviewed against existing `concept_briefs`, admin notes, AI
-sketch workflow, and customer display state before any code or SQL uses them.
+These names are planning candidates only. Current mock/demo use of
+`first_preview_ready` is not evidence of an implemented database status, schema
+field, or live Production lifecycle. The candidates should be reviewed against
+existing `concept_briefs`, admin notes, AI sketch workflow, and customer display
+state before any code or SQL uses them.
 
 Future implementation should keep these concepts separate:
 
@@ -200,6 +230,13 @@ Future implementation should keep these concepts separate:
 
 AI generation success must never equal CAD approval, quote approval, payment
 approval, order approval, production approval, or gallery approval.
+
+`first_preview_ready` is only the first customer-visible concept-preview
+lifecycle. It is not `approved_for_customer` or `approved_for_gallery`.
+`approved_for_customer` may support later formal, human-approved customer-safe
+materials or downstream communication, but it is not a prerequisite for the
+first preview. `approved_for_gallery` remains a separate consent and publication
+decision.
 
 ## 8. Human intervention model
 
@@ -340,21 +377,22 @@ implement deletion/correction workflows.
 
 ## 14. Implementation phases
 
-Recommended safe phase sequence:
+Locked target sequence:
 
-1. Agent 61B: UI / route planning for customer processing and preview states,
-   no live image generation.
-2. Agent 61C: data model and SQL packet planning for generation jobs and
-   outputs, no SQL execution.
-3. Agent 61D: Design Spec JSON and Hand Sketch Instruction template alignment
-   for preview generation.
-4. Agent 61E: server-side generation orchestration plan.
-5. Agent 61F: customer feedback loop plan.
-6. Agent 61G: first code implementation behind safe gates, still without live
-   provider use unless separately approved.
-7. Later agent: live image API integration only after environment, cost,
-   rate-limit, storage, error handling, privacy/legal disclosure, and
-   disclaimers are ready.
+1. Confirmed Concept Brief persistence.
+2. Design Spec.
+3. Hand Sketch Instruction.
+4. First generation job.
+5. Required automatic gates.
+6. Customer-visible first preview.
+7. Customer feedback.
+8. Human correction, redraw, or regeneration.
+9. Formal downstream human-controlled CAD, quotation, payment, order, and
+   production decisions.
+
+Planning should proceed through Agent 68A First Preview Product Contract, then
+separate preview data-model/SQL and provider/cost-control decisions. Code and
+live-provider implementation require later, separately approved Agents.
 
 Each phase should stay narrow. Do not combine UI, SQL, live provider calls,
 storage, customer feedback, legal publication, rate-limit provider setup, and
@@ -379,8 +417,6 @@ Do not invent these answers:
 - Whether preview is synchronous, polling-based, redirect-based, or backed by
   an email/manual fallback.
 - Exact customer preview URL pattern.
-- Whether the first preview can display before human approval, and what
-  automated safety gates must pass if so.
 - Operating owner for customer-facing sketch correction and regeneration.
 - Customer feedback retention and deletion handling.
 
