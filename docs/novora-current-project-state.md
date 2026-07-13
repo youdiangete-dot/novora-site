@@ -74,15 +74,18 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline fetched at the start of Agent 70A: Agent 69C /
-  PR #195 merge commit `3cb09d9304b67484457471af23a5a290b1051bba`.
+- Verified GitHub `main` baseline at the start of Agent 70B-1: Agent 70A /
+  PR #196 normal merge commit
+  `68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`.
 - GitHub `main` includes the Agent 68A provider-neutral, server-only first-preview
   runtime foundation, the Agent 69A First Preview Product Contract v1, and the
   Agent 69B reuse-first data-model and candidate SQL plan. It also includes the
   merged Agent 69C OpenAI GPT Image 2 provider, privacy, safety-evidence, cost,
-  retry, and rate-limit decision. Real provider configuration/calls, persistent
-  preview lifecycle, private generated-asset delivery, secure customer access,
-  and customer route wiring remain unimplemented.
+  retry, and rate-limit decision. It also includes the merged Agent 70A
+  server-only, dependency-injected OpenAI GPT Image 2 adapter foundation. Real
+  provider client construction/configuration/calls, persistent preview
+  lifecycle, private generated-asset delivery, secure customer access, and
+  customer route wiring remain unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -2037,7 +2040,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   billing, execute SQL, connect to Supabase, inspect customer data, change
   schema/Storage/RLS/environment/application code, deploy, or change Production.
 
-- Agent 70A: adds a server-only, dependency-injected OpenAI GPT Image 2 adapter
+- Agent 70A / PR #196 merged with normal merge commit
+  `68c0042d1fec70cf07b87d47e6d8ef6f3b74e074` and adds a server-only,
+  dependency-injected OpenAI GPT Image 2 adapter
   foundation behind the existing provider-neutral First Preview request
   contract. It pins `gpt-image-2-2026-04-21`, maps one non-streaming
   1024-by-1024 medium-quality PNG request with `moderation=auto`, builds a
@@ -2048,8 +2053,24 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   client, read or create an API key, log in to a provider, make a real request,
   generate an image, wire a route or customer flow, execute SQL, access
   Supabase or customer data, change Storage/RLS/environment configuration,
-  activate customer preview visibility, deploy, or change Production. Agent
-  70A is an implementation branch and is not recorded here as merged.
+  activate customer preview visibility, deploy, or change Production.
+
+- Agent 70B-1: adds
+  `docs/novora-agent-70b1-first-preview-live-schema-preflight-v1.md`, a
+  documentation-only, owner-run, SELECT-only metadata verification packet for
+  `public.ai_sketch_jobs`, `public.ai_sketch_outputs`,
+  `public.ai_sketch_reviews`, `public.concept_briefs`,
+  `public.concept_brief_reference_assets`, and `public.admin_notes`. The packet
+  separates repository facts, historical live evidence, current unknowns, and
+  Agent 69B candidate fields; inventories tables, columns, constraints, foreign
+  keys, indexes, triggers, RLS, policies, grants, candidate capability fields,
+  and feedback-compatible relationships; and supplies sanitized owner result
+  capture and fail-closed decision gates. Agent 70B-1 does not connect to
+  Supabase, execute SQL, inspect business/customer rows, change schema/RLS/
+  policies/grants/triggers/Storage, modify app/runtime/test code, access a
+  provider or key, generate an image, wire a route, change an environment,
+  deploy, or operate Production. Exact migration SQL remains blocked until all
+  required owner-run sanitized metadata results are returned and reviewed.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -2107,24 +2128,27 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Agent 69C / PR #195 is merged at
-`3cb09d9304b67484457471af23a5a290b1051bba`. Agent 70A is the current
-server-only injected OpenAI adapter foundation step. It does not configure or
-call a provider, generate an image, activate customer visibility, or change
-Production.
+Agent 70A / PR #196 is merged with normal merge commit
+`68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`. It is a server-only,
+dependency-injected adapter foundation. It does not construct a real OpenAI
+client, read or configure an API key, make a provider request, generate an
+image, persist output, operate private Storage, activate customer visibility,
+wire a route, deploy, or change Production.
 
-Recommended sequence after Agent 70A review and merge:
+Required next sequence:
 
-1. Use a separate explicitly approved read-only live-schema verification and
-   exact-SQL preparation step, followed by a separate explicitly approved
-   SQL/schema execution step.
-2. Implement private asset Storage and server-mediated or short-lived signed
-   access in a separate approval slice.
-3. Add real provider client construction, credential configuration, budget and
-   limiter enforcement, and live-call authorization only in a separate
-   explicitly approved provider/environment slice.
-4. Wire confirmed-persistence generation triggering and the customer preview
-   route only after the preceding boundaries pass review.
+1. Agent 70B-1 prepares the owner-run SELECT-only live-schema metadata packet.
+2. The owner manually executes the packet and returns sanitized metadata
+   results.
+3. A separately approved Agent reviews those results and prepares exact
+   additive migration SQL.
+4. A later separately approved SQL Agent performs any authorized SQL execution.
+5. A separate slice implements private generated-asset Storage and secure
+   server-mediated or short-lived signed access.
+6. A separate provider/environment slice constructs the real provider client,
+   handles credentials, and enforces budget, limiter, and call authorization.
+7. Only after those boundaries pass may a separate implementation wire the
+   confirmed-persistence generation trigger and customer preview route.
 
 Do not claim those later steps are implemented, and do not combine their
 approval boundaries into one PR.
