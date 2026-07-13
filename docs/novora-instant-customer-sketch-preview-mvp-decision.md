@@ -204,6 +204,13 @@ Recommended next steps:
 
 - Optional Agent 67B: safely decide the disposition of the obsolete Agent 66E
   branch in a separate task.
-- Agent 68A: define the First Preview Product Contract.
-- Later separate planning: preview data model and SQL packet, provider and cost
-  controls, then implementation Agents only after separate approval.
+- Agent 68A / PR #192 merged the provider-neutral, server-only first-preview
+  runtime foundation at merge commit
+  `5777498c2db6c52b1d97127206578760acea0d3f`.
+- Agent 69A defines the docs-only First Preview Product Contract v1 in
+  `docs/novora-first-preview-product-contract-v1.md` and aligns the
+  post-Agent-68A source of truth.
+- Later separate planning should use a preview data-model and SQL packet, then a
+  provider, safety-evidence, access, retry, budget, and cost-control decision.
+  SQL execution, provider setup, and implementation Agents each require
+  separate explicit approval.

@@ -74,11 +74,12 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline fetched at the start of Agent 68A: Agent 67A /
-  PR #191 merge commit `80ab8ce2f987c2f306e586aa12557dd26abdc097`.
-- Agent 68A is a local first-preview runtime-foundation implementation step. At
-  the Agent 68A starting baseline, its changes were not part of GitHub `main`.
-  Real provider integration and customer route wiring remain unimplemented.
+- Verified GitHub `main` baseline fetched at the start of Agent 69A: Agent 68A /
+  PR #192 merge commit `5777498c2db6c52b1d97127206578760acea0d3f`.
+- GitHub `main` includes the Agent 68A provider-neutral, server-only first-preview
+  runtime foundation. Real provider integration, persistent preview lifecycle,
+  private generated-asset delivery, secure customer access, and customer route
+  wiring remain unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -1971,9 +1972,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   rebuilding is a separate future task; Agent 67A did not inspect or adopt its
   unknown local files and does not alter that branch.
 
-- Agent 68A: adds a provider-neutral, server-only first-preview runtime
-  foundation. It reuses the existing Design Spec and Hand Sketch Instruction
-  types and validators, defines a sanitized exactly-one-image provider
+- Agent 68A / PR #192 merged at
+  `5777498c2db6c52b1d97127206578760acea0d3f` and adds a provider-neutral,
+  server-only first-preview runtime foundation. It reuses the existing Design
+  Spec and Hand Sketch Instruction types and validators, defines a sanitized
+  exactly-one-image provider
   contract, adds dependency-injected orchestration with safe exception,
   timeout, cancellation, malformed-output, unsafe-output, and leakage handling,
   and adds fail-closed automatic gate evaluation. Deterministic fake-provider
@@ -1988,6 +1991,15 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   lifecycle, private Storage, customer authentication, customer submission or
   preview route wiring, deployment, or Production changes. Current customer
   preview behavior remains mock-only.
+
+- Agent 69A: adds `docs/novora-first-preview-product-contract-v1.md` and aligns
+  the post-Agent-68A source of truth. The docs-only contract defines the first
+  preview product boundary, lifecycle, trusted evidence producers, fail-closed
+  automatic gates, `first_preview_ready` rules, secure-access boundary, state
+  separation, human-review boundary, and idempotency/retry/cost requirements.
+  It does not implement or change app code, tests, schema, SQL, Supabase,
+  Storage, provider integration, API behavior, UI, environment configuration,
+  deployment, Production, real generation, or customer data.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -2045,17 +2057,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended sequence:
+Recommended sequence after review and merge of the Agent 69A docs-only Product
+Contract:
 
-1. Optional Agent 67B: use a safe workspace to decide the obsolete Agent 66E
-   branch disposition. Do not delete, salvage, rebuild, or merge it without that
-   separate task.
-2. Agent 68A: define the First Preview Product Contract, including lifecycle,
-   customer-access, automatic-gate, safe-failure, feedback, correction, and
-   downstream-approval boundaries.
-3. Later separate planning: prepare the preview data model / SQL packet and a
-   provider / cost-control decision. SQL execution, provider setup, and
-   implementation Agents each require separate explicit approval.
+1. Agent 69B: prepare a docs-only preview data-model and SQL planning packet
+   that maps jobs, outputs, validation evidence, review, access, and lifecycle
+   states. Do not execute SQL or change Supabase.
+2. Agent 69C: prepare a separate provider, safety-evidence, access-control,
+   retry, budget, rate-limit, privacy, and cost-control decision packet. Do not
+   configure a provider, environment, Storage, or Production.
+3. Only after those decisions are reviewed, use separately approved Agents for
+   schema/SQL execution, provider and private-asset adapters, secure customer
+   access, submission/preview route wiring, UI, and end-to-end QA. Do not
+   combine those approval boundaries into one PR.
+
+The obsolete Agent 66E branch and its dirty workspace remain a separate
+disposition task. Agent 69A uses an isolated clean worktree and does not reset,
+stash, check out over, delete, salvage, or merge Agent 66E files.
 
 Do not describe the instant-preview direction as implemented until real
 generation, secure preview access, automatic gates, and safe failure behavior
