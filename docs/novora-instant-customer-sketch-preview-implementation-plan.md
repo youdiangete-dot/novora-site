@@ -161,14 +161,18 @@ Documented current and planned concepts:
   a Concept Brief.
 - `novora-ai-sketches`: documented Supabase Storage bucket for generated AI
   sketch outputs.
-- `ai_sketch_jobs`: documented future/planned generation orchestration and
-  retry/idempotency state.
-- `ai_sketch_outputs`: documented future/planned generated output metadata and
-  private storage reference.
-- `ai_sketch_reviews`: documented future/planned human review decision record;
-  older docs also discuss compatibility for this table. A future schema
-  verification task must confirm the live table shape before app code depends
-  on it.
+- `ai_sketch_jobs`: an existing table according to earlier user-provided live
+  metadata. RLS is enabled and an `updated_at` trigger was recorded, but the
+  exact columns, status values, constraints, indexes, and current row shape
+  still require a separately approved fresh metadata verification.
+- `ai_sketch_outputs`: an existing table according to earlier user-provided
+  live metadata. RLS is enabled, and `ai_sketch_reviews` has a verified foreign
+  key to its `id`; the exact output, job, asset, and visibility fields still
+  require fresh metadata verification.
+- `ai_sketch_reviews`: the existing human review table. Prior user-run
+  verification records its four legal review statuses and
+  `UNIQUE (concept_brief_id)`. It remains a later human-review boundary and
+  must not be used as the initial automatic first-preview gate.
 
 Planned responsibilities:
 
@@ -179,22 +183,31 @@ Planned responsibilities:
 - Design Spec and Hand Sketch Instruction artifacts should become a versioned
   internal source of truth before generation. Agent 55D planned a future
   `design_artifacts` direction, but no SQL is executed here.
-- `ai_sketch_jobs` should own generation status, idempotency, attempt count,
-  provider/model/quality/size, prompt/spec/template versions, cost estimate,
-  trigger source, retry caps, and sanitized failure category.
-- `ai_sketch_outputs` should own generated image metadata, storage bucket/object
-  reference, output dimensions or MIME type when available, customer-visible
-  flags, generation metadata, and lineage to the job and brief.
-- `ai_sketch_reviews` should own human review decisions, reviewer label or
-  actor, internal notes, revision instruction, approval timestamp, and audit
-  linkage for a specific output.
+- `ai_sketch_jobs` should be reused for generation status, idempotency, attempt
+  lineage, structured-input version/hash binding, timeout/cancellation,
+  provider-neutral cost records, retry caps, and sanitized failure category
+  when verified existing fields can safely support those responsibilities.
+- `ai_sketch_outputs` should be reused for generated image metadata,
+  controlled private object identity, automatic-gate evidence, the persisted
+  output-bound `first_preview_ready` visibility decision, and lineage to the
+  job and brief. Asset existence, object ID, or URL alone is never readiness.
+- `ai_sketch_reviews` should remain human-review focused. Its
+  `approved_for_customer` status is relevant to later formal human-approved
+  material or downstream communication and is not required for the initial
+  first preview.
 - `novora-ai-sketches` should stay private by default. Customer access should
   use signed URLs or server-mediated access only after the future visibility
   rules are satisfied.
 
-Schema gaps remain future implementation requirements. This plan does not write
-SQL, create migrations, change Supabase, change RLS, change grants, change
-policies, or verify live schema.
+Agent 69B records the reuse-first model and candidate SQL boundary in
+`docs/novora-first-preview-data-model-sql-plan-v1.md`. It does not add the old
+candidate preview-lifecycle table merely to duplicate jobs, outputs, and
+visibility. A separate append-only feedback table is only a gated candidate
+after live metadata proves no compatible feedback table already exists.
+
+Schema gaps remain future implementation requirements. This plan and Agent 69B
+do not execute SQL, create migrations, connect to Supabase, change RLS, grants,
+policies, Storage, or Production, or inspect customer data.
 
 ## 7. Status model planning
 
@@ -391,12 +404,15 @@ Locked target sequence:
    production decisions.
 
 Agent 68A / PR #192 merged the provider-neutral, server-only first-preview
-runtime foundation. Agent 69A defines the docs-only First Preview Product
-Contract v1 in `docs/novora-first-preview-product-contract-v1.md` and aligns the
-post-Agent-68A source of truth. Planning should next proceed through separate
-preview data-model/SQL and provider, safety-evidence, access, retry, budget, and
-cost-control decisions. Code, SQL execution, Storage, secure customer access,
-and live-provider implementation require later, separately approved Agents.
+runtime foundation. Agent 69A / PR #193 merged the governing docs-only First
+Preview Product Contract v1 at
+`a368505413b244aace0a8d3dc84df5af9175d1f6`. Agent 69B prepares the docs-only
+reuse-first data-model inventory and candidate SQL packet; no SQL or Production
+change is implemented. The next recommended planning step is Agent 69C for the
+provider, model, privacy, safety-evidence, cost, retry, rate-limit, and budget
+decision. Read-only live-schema verification, exact SQL, SQL execution, private
+Storage/access, provider adapter work, and route wiring each require later,
+separately approved Agents.
 
 Each phase should stay narrow. Do not combine UI, SQL, live provider calls,
 storage, customer feedback, legal publication, rate-limit provider setup, and
