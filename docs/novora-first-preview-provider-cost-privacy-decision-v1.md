@@ -60,7 +60,8 @@ The future request profile is:
 - `quality`: `medium`.
 - `output_format`: `png`.
 - `moderation`: `auto`.
-- No streaming or partial images.
+- Although the current Image API guide supports optional streaming and partial
+  images, NOVORA disables both for this MVP and accepts only the final image.
 - No reference-image input in the initial adapter.
 - A 150-second server-side attempt deadline, subject to a separate hosting
   duration preflight before route wiring.
@@ -68,8 +69,11 @@ The future request profile is:
 `medium` is the selected MVP balance between a customer-meaningful concept
 preview and the large cost increase at `high`. The official price table checked
 on 2026-07-13 lists a 1024-by-1024 GPT Image 2 output at USD 0.053 for `medium`,
-USD 0.006 for `low`, and USD 0.211 for `high`, excluding input-token charges.
-These are planning observations, not a permanent price promise.
+USD 0.006 for `low`, and USD 0.211 for `high`. These are output-only planning
+estimates: they exclude text and image input tokens and any separately
+applicable safety-evaluator, operational, tax, currency, failed/late-request,
+or other charges. They are not a complete per-attempt cost, guaranteed invoice
+price, runtime spending limit, or permanent price promise.
 
 ## 3. Provider request contract
 
@@ -293,8 +297,11 @@ missing or unavailable generation-budget state blocks generation.
 
 The USD 0.053 medium-output observation is a planning baseline only. Input-token
 costs, provider pricing changes, taxes, currency conversion, failed/late request
-charges, and moderation calls can change actual cost. Implementation must never
-hard-code the documentation price as an eternal billing truth.
+charges, and separately applicable safety-evaluator or operational costs can
+change actual cost. The official source currently describes
+`omni-moderation-latest` as free, but that does not make the output estimate a
+complete system-cost estimate. Implementation must never hard-code the
+documentation price as an eternal billing truth.
 
 ## 9. Rate-limit decision by boundary
 
@@ -364,8 +371,8 @@ Agent 70A may:
 
 Agent 70A must not:
 
-- Add or request an API key, call OpenAI, generate an image, inspect billing, or
-  configure an environment.
+- Add or request an API key, require a real API key in tests, call OpenAI,
+  generate an image, inspect billing, or configure an environment.
 - Change routes, UI, customer visibility, schema, SQL, Supabase, Storage, RLS,
   access control, deployment, Production, or customer data.
 - Forward reference images or raw customer/contact/identity data.
