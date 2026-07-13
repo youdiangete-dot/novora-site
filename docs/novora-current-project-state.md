@@ -74,12 +74,13 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline fetched at the start of Agent 69A: Agent 68A /
-  PR #192 merge commit `5777498c2db6c52b1d97127206578760acea0d3f`.
+- Verified GitHub `main` baseline fetched at the start of Agent 69B: Agent 69A /
+  PR #193 merge commit `a368505413b244aace0a8d3dc84df5af9175d1f6`.
 - GitHub `main` includes the Agent 68A provider-neutral, server-only first-preview
-  runtime foundation. Real provider integration, persistent preview lifecycle,
-  private generated-asset delivery, secure customer access, and customer route
-  wiring remain unimplemented.
+  runtime foundation and the Agent 69A First Preview Product Contract v1. Real
+  provider integration, persistent preview lifecycle, private generated-asset
+  delivery, secure customer access, and customer route wiring remain
+  unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -1992,14 +1993,31 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   preview route wiring, deployment, or Production changes. Current customer
   preview behavior remains mock-only.
 
-- Agent 69A: adds `docs/novora-first-preview-product-contract-v1.md` and aligns
-  the post-Agent-68A source of truth. The docs-only contract defines the first
-  preview product boundary, lifecycle, trusted evidence producers, fail-closed
-  automatic gates, `first_preview_ready` rules, secure-access boundary, state
-  separation, human-review boundary, and idempotency/retry/cost requirements.
-  It does not implement or change app code, tests, schema, SQL, Supabase,
-  Storage, provider integration, API behavior, UI, environment configuration,
-  deployment, Production, real generation, or customer data.
+- Agent 69A / PR #193 merged at
+  `a368505413b244aace0a8d3dc84df5af9175d1f6`. It adds
+  `docs/novora-first-preview-product-contract-v1.md` and aligns the
+  post-Agent-68A source of truth. The docs-only contract is now the governing
+  First Preview source for product boundaries, lifecycle, trusted evidence
+  producers, fail-closed automatic gates, `first_preview_ready` rules,
+  secure-access boundaries, state separation, the post-preview human-review
+  boundary, and idempotency/retry/cost requirements. It does not implement or
+  change app code, tests, schema, SQL, Supabase, Storage, provider integration,
+  API behavior, UI, environment configuration, deployment, Production, real
+  generation, or customer data.
+
+- Agent 69B: adds
+  `docs/novora-first-preview-data-model-sql-plan-v1.md`, a docs-only First
+  Preview data-model inventory and candidate SQL planning packet governed by
+  Product Contract v1. It inventories repository-recorded live metadata and
+  current code-used fields, prefers reusing existing `ai_sketch_jobs`,
+  `ai_sketch_outputs`, and `ai_sketch_reviews`, keeps automatic first-preview
+  visibility separate from human `approved_for_customer` and gallery
+  `approved_for_gallery`, maps trusted persisted evidence, and plans
+  idempotency, retries, timeout, cost, private assets, and safe failure. Its SQL
+  is candidate-only and blocked on a separate approved live-schema verification
+  and exact-SQL step. Agent 69B does not execute SQL, connect to Supabase,
+  change schema/RLS/grants/policies/Storage, inspect customer data, or implement
+  provider, API, UI, access, deployment, or Production behavior.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -2057,23 +2075,29 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Recommended sequence after review and merge of the Agent 69A docs-only Product
-Contract:
+Agent 69B is the current docs-only data-model and candidate SQL planning step.
+It does not execute SQL or change Production.
 
-1. Agent 69B: prepare a docs-only preview data-model and SQL planning packet
-   that maps jobs, outputs, validation evidence, review, access, and lifecycle
-   states. Do not execute SQL or change Supabase.
-2. Agent 69C: prepare a separate provider, safety-evidence, access-control,
-   retry, budget, rate-limit, privacy, and cost-control decision packet. Do not
-   configure a provider, environment, Storage, or Production.
-3. Only after those decisions are reviewed, use separately approved Agents for
-   schema/SQL execution, provider and private-asset adapters, secure customer
-   access, submission/preview route wiring, UI, and end-to-end QA. Do not
-   combine those approval boundaries into one PR.
+Recommended sequence after Agent 69B review and merge:
+
+1. Agent 69C: prepare a separate provider, model, privacy, safety-evidence,
+   cost, retry, rate-limit, and budget decision packet. Do not configure a
+   provider, environment, Storage, or Production.
+2. Use a separate explicitly approved read-only live-schema verification and
+   exact-SQL preparation step, followed by a separate explicitly approved
+   SQL/schema execution step.
+3. Implement private asset Storage and server-mediated or short-lived signed
+   access in a separate approval slice.
+4. Implement the provider adapter separately.
+5. Wire confirmed-persistence generation triggering and the customer preview
+   route only after the preceding boundaries pass review.
+
+Do not claim those later steps are implemented, and do not combine their
+approval boundaries into one PR.
 
 The obsolete Agent 66E branch and its dirty workspace remain a separate
-disposition task. Agent 69A uses an isolated clean worktree and does not reset,
-stash, check out over, delete, salvage, or merge Agent 66E files.
+disposition task. Agents 69A and 69B use the isolated clean worktree and do not
+reset, stash, check out over, delete, salvage, or merge Agent 66E files.
 
 Do not describe the instant-preview direction as implemented until real
 generation, secure preview access, automatic gates, and safe failure behavior
