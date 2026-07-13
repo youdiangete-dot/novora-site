@@ -453,13 +453,33 @@ Preview Product Contract v1 at
 `a368505413b244aace0a8d3dc84df5af9175d1f6`. Agent 69B / PR #194 merged the
 docs-only reuse-first data-model inventory and candidate SQL packet at
 `184c84acda3caa8c47b81c859b511e3a061cee24`; no SQL or Production change was
-implemented. Agent 69C records the provider, model, privacy, safety-evidence,
-cost, retry, rate-limit, and budget decision without provider access or
-configuration. The next recommended implementation slice is Agent 70A, limited
-to a server-only GPT Image 2 adapter with fake transport tests. Read-only
-live-schema verification, exact SQL, SQL execution, private Storage/access,
-route wiring, real provider configuration/calls, and Production each require
-later, separately approved Agents.
+implemented. Agent 69C / PR #195 merged the provider, model, privacy,
+safety-evidence, cost, retry, rate-limit, and budget decision at
+`3cb09d9304b67484457471af23a5a290b1051bba` without provider access or
+configuration. Agent 70A / PR #196 then merged the server-only,
+dependency-injected GPT Image 2 adapter foundation with fake-client tests at
+normal merge commit `68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`.
+Agent 70A did not construct a real OpenAI client, access or configure an API
+key, make a provider request, generate an image, persist output, change Storage,
+activate customer visibility, wire a route, deploy, or change Production.
+
+The required next sequence is explicit:
+
+1. Agent 70B-1 prepares the owner-run SELECT-only live-schema metadata packet.
+2. The owner manually executes the packet and returns sanitized metadata
+   results.
+3. A separately approved Agent reviews those results and prepares exact
+   additive migration SQL.
+4. A later separately approved SQL Agent performs any authorized SQL execution.
+5. A separate slice implements private generated-asset Storage and secure
+   server-mediated or short-lived signed access.
+6. A separate provider/environment slice constructs the real provider client,
+   handles credentials, and enforces budget, limiter, and call authorization.
+7. Only after those boundaries pass may a separate implementation wire the
+   confirmed-persistence generation trigger and customer preview route.
+
+Agent 70B-1 is documentation-only. It does not connect to Supabase, execute
+SQL, inspect business/customer rows, or implement any later sequence stage.
 
 Each phase should stay narrow. Do not combine UI, SQL, live provider calls,
 storage, customer feedback, legal publication, rate-limit provider setup, and
