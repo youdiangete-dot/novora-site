@@ -23,12 +23,12 @@ runtime orchestration, provider request and response, raw generated asset,
 validation evidence, internal prompts, provider metadata, reviewer notes, and
 private storage locations remain internal.
 
-Only a sanitized first concept preview for which every required automatic gate
-has trusted evidence may become visible through a future secure customer-access
-mechanism. That early preview may become visible without per-image human
-pre-approval under the locked post-Agent-60I direction. It remains an early
-concept direction for communication and feedback, not a formal downstream
-approval or final deliverable.
+In the locked future flow, a sanitized first concept preview for which every
+required automatic gate has trusted evidence becomes immediately visible
+through the future secure customer-access mechanism. Per-image human
+pre-approval is not required. The result remains an early concept direction for
+communication and feedback, not a formal downstream approval or final
+deliverable.
 
 The first AI preview is not:
 
@@ -45,27 +45,34 @@ separate consent, privacy, curation, and publication decision.
 
 ## 3. Lifecycle Contract
 
-The target end-to-end lifecycle is:
+The locked target first-preview sequence is:
 
 ```text
-Concept Brief
+Confirmed Concept Brief Persistence
   -> Design Spec
   -> Hand Sketch Instruction
   -> Preview Job
   -> Provider Processing
   -> Asset Generated
-  -> Safety Validation
-  -> Human Review
-  -> Customer Delivery Eligible
+  -> Mandatory Automatic Gates Pass
+  -> First Customer-Visible Preview (`first_preview_ready`)
+  -> Customer Feedback
+  -> Human Correction Or Regeneration
+  -> Formal Downstream Human-Controlled Decisions
 ```
 
-This sequence contains two different visibility boundaries that must not be
-collapsed:
+Human review is after the first customer-visible preview in this sequence. It is
+not a mandatory automatic gate, and per-image human pre-approval is not required
+for `first_preview_ready`.
+
+The product contract still contains two different visibility and approval
+boundaries that must not be collapsed:
 
 1. **First concept-preview visibility:** after generation and all required
    automatic safety, privacy, identity, asset, access, and false-success gates
-   pass, the runtime may decide `first_preview_ready`. Per-image human approval
-   is not a prerequisite for this early preview under the locked direction.
+   pass, the server-side decision establishes `first_preview_ready` and makes
+   the preview immediately customer-visible through secure access. Per-image
+   human approval is not a prerequisite under the locked direction.
 2. **Formal customer-delivery eligibility:** human review may later set
    `approved_for_customer` for a formal, human-approved customer-safe artifact
    or downstream communication. This is not a prerequisite for the first early
@@ -87,11 +94,17 @@ The lifecycle stages have these responsibilities:
   customer-visible success.
 - **Asset Generated:** an untrusted candidate output until independent asset,
   safety, privacy, and leakage checks pass.
-- **Safety Validation:** server-controlled evaluation of all required automatic
-  gate evidence. Provider assertions alone are insufficient.
+- **Mandatory Automatic Gates:** server-controlled evaluation of all required
+  lifecycle, identity, asset, safety, privacy, access, output-validity, and
+  safe-failure evidence. Provider assertions alone are insufficient.
+- **First Customer-Visible Preview:** the exact sanitized output becomes
+  immediately visible through secure customer access when, and only when, all
+  mandatory automatic gates pass. Human review is not required first.
+- **Customer Feedback:** feedback follows the visible first preview and informs
+  later correction, clarification, or regeneration.
 - **Human Review:** post-preview review for jewelry structure, stone placement,
-  construction, feasibility, mismatch, correction, regeneration, and later
-  formal customer-safe delivery decisions.
+  construction, manufacturability, mismatch, feedback interpretation,
+  correction, regeneration, and later formal customer-safe decisions.
 - **Customer Delivery Eligible:** the separate human-reviewed
   `approved_for_customer` state for formal delivery. It is not gallery, CAD,
   quotation, payment, order, or production approval.
@@ -122,7 +135,7 @@ Design Spec version, Hand Sketch Instruction version, job, attempt, and output.
 Unknown, missing, stale, contradictory, cross-brief, or unverifiable evidence
 fails closed.
 
-## 5. Safety Gate Contract
+## 5. Automatic Safety Gate Contract
 
 The producers below are logical ownership boundaries for future implementation;
 Agent 69A does not implement them.
@@ -140,7 +153,6 @@ Agent 69A does not implement them.
 | Asset validity | A future server-side output/storage verifier | After storage and immediately before readiness/access | Require expected ownership/linkage, existence, supported image type, integrity, safe locator, and private-access posture; an `assetId` or URL alone fails |
 | Output validity | A future server-side output validator against the exactly-one-image MVP contract and required render constraints | After provider normalization and storage verification | Set `validation_failed` or `not_ready`; do not expose malformed, missing, unsupported, or multiple output assets |
 | No false success | Server orchestration aggregating all current evidence | At every state transition and response that could imply readiness | Any missing or contradictory evidence forces `not_ready`; never reuse stale ready state from another attempt |
-| Human review boundary | Authorized future admin/reviewer workflow operating on the exact output version | After automatic validation for correction work; before setting `approved_for_customer` | Human rejection/correction does not retroactively become CAD or production approval; keep `approved_for_customer` unset and route to correction/regeneration |
 
 Provider-originated `contentSafetyPassed`, `privacyPassed`, and
 `outputValidityPassed` fields in the Agent 68A runtime are normalized contract
@@ -148,12 +160,25 @@ inputs, not proof that independent safety, privacy, or access systems exist.
 A later implementation must document how each field is produced, verified, and
 bound to the exact output before it can be trusted.
 
+### Human Review Boundary - Not An Automatic First-Preview Gate
+
+Human review does not participate in the `first_preview_ready` decision and must
+not delay the initial first customer-visible preview after all mandatory
+automatic gates pass. It occurs after that preview for feedback interpretation,
+correction, regeneration, jewelry logic, manufacturability, and later formal
+downstream decisions.
+
+| Boundary | Evidence producer | Validation point | Failure behavior |
+| --- | --- | --- | --- |
+| Later human review | Authorized future admin/reviewer workflow operating on the exact output version | After the first customer-visible preview for correction work; before setting `approved_for_customer` for later formal material or downstream communication | Keep `approved_for_customer` unset and route to correction/regeneration; never reinterpret the review as CAD, quotation, payment, order, production, or gallery approval |
+
 ## 6. `first_preview_ready` Contract
 
-`first_preview_ready` is an automatic, fail-closed decision that a specific
-sanitized output may be shown as the first early concept preview through secure
-customer access. It is not automatically a database status, durable event, or
-delivery receipt until a separately approved data model defines persistence.
+`first_preview_ready` is an automatic, fail-closed decision that makes a
+specific sanitized output immediately customer-visible as the first early
+concept preview through secure customer access. It is not automatically a
+database status, durable event, or delivery receipt until a separately approved
+data model defines persistence.
 
 The following must never directly set `first_preview_ready`:
 
@@ -219,18 +244,25 @@ No access design is selected or implemented by Agent 69A.
 
 ## 8. State Machine
 
-The candidate persistent state machine for later data-model planning is:
+The candidate state relationship for later data-model planning is:
 
 ```text
 not_started
   -> queued
   -> processing
   -> generated
-  -> validation_failed
 
 generated
-  -> ready_for_review
-  -> approved_for_customer
+  -> mandatory automatic gates fail -> validation_failed
+  -> mandatory automatic gates pass -> ready_for_review + first_preview_ready
+
+first_preview_ready
+  -> customer feedback
+  -> human correction or regeneration
+
+ready_for_review
+  -> later human review
+  -> approved_for_customer (formal approved material or communication only)
 ```
 
 The states mean:
@@ -244,7 +276,9 @@ The states mean:
 - `validation_failed`: required automatic evidence failed or could not be
   established. The asset is not customer-visible.
 - `ready_for_review`: automatic validation completed for the exact output and
-  the artifact is available to the internal human-review workflow.
+  the artifact is available to the internal human-review workflow. Entering this
+  state does not mean human review has already happened; the same successful
+  automatic-gate decision may immediately establish `first_preview_ready`.
 - `approved_for_customer`: an authorized human made a separate formal
   customer-delivery decision for the exact output version.
 
@@ -253,11 +287,12 @@ The states mean:
 completed automatic evidence evaluation first.
 
 `first_preview_ready` is a separate automatic visibility decision for the early
-concept preview. It may be established when all required automatic gates pass
-and can coexist with `ready_for_review`; it does not imply the later
-`approved_for_customer` state. The exact persistence mapping between the job,
-output, validation, review, and visibility states belongs to Agent 69B's future
-data-model planning and must not be invented in application code first.
+concept preview. It is established immediately when all required automatic
+gates pass and can coexist with `ready_for_review`; no human-review action is
+required first. It does not imply the later `approved_for_customer` state. The
+exact persistence mapping between the job, output, validation, review, and
+visibility states belongs to Agent 69B's future data-model planning and must not
+be invented in application code first.
 
 Every state transition must be monotonic for one attempt, scoped to one output,
 and recorded by an authorized server-side actor. Client input cannot advance a
