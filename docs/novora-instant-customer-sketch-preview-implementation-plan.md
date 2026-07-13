@@ -130,6 +130,16 @@ Future implementation should keep generation server-controlled:
 - Store generated output in NOVORA-controlled storage before any customer
   preview is made available.
 
+Agent 69C selects OpenAI Image API with pinned model snapshot
+`gpt-image-2-2026-04-21` for the future adapter. The selected request profile is
+one 1024-by-1024, medium-quality PNG with `moderation=auto`, no streaming or
+partial images, and a 150-second server attempt deadline. The initial adapter
+must not forward reference images. It must use only the validated structured
+Design Spec and Hand Sketch Instruction allowlist and must normalize exactly one
+base64 PNG response without exposing provider URLs or payloads. The complete
+decision and official-source record is in
+`docs/novora-first-preview-provider-cost-privacy-decision-v1.md`.
+
 The pre-display decision is locked: the first preview does not wait for
 per-image human approval. Human correction remains available after preview,
 while formal downstream human approvals remain separate.
@@ -360,6 +370,27 @@ generation:
 - Synthetic-only test data for Preview and smoke testing unless a separate
   task explicitly approves otherwise.
 
+The Agent 69C product boundary permits at most two attempts in the automatic
+first-preview lineage: one initial attempt and one retry limited to eligible
+429, provider 5xx, or network failures. Timeouts are not automatically retried
+because provider completion and charge state may be unknown. One separately
+authorized feedback-regeneration lineage may make one additional attempt, for
+a maximum of three provider attempts per Concept Brief before human
+intervention. Refreshes and duplicate events must reuse the existing identity.
+
+Before each provider call, future server code must atomically reserve estimated
+cost against per-brief, daily, and monthly owner-approved limits. Missing or
+unavailable generation budget, idempotency, or internal generation-limiter
+evidence fails closed. The provider's current documented price is planning
+evidence only; pricing must be versioned and reconciled rather than hard-coded.
+
+The existing public submission boundary remains 30 requests per IP fingerprint
+per 10 minutes and 5 per HMAC email fingerprint per hour, with its existing
+documented fail-open infrastructure posture unchanged by this plan. Cost-bearing
+post-persistence generation, customer regeneration, and admin recovery are
+separate server-authorized boundaries and fail closed when their limiter,
+access, idempotency, audit, or budget evidence is unavailable.
+
 Production rate-limit enforcement remains documented as fail-open during the
 current MVP stage unless a separate approved provider/environment task changes
 that posture. Before broader public traffic, paid ads, formal commercial
@@ -384,6 +415,19 @@ The future preview flow must account for customer-provided data:
 - Public gallery use remains separate from private customer preview and needs
   separate consent, curation, and privacy review.
 
+The initial OpenAI adapter will not forward reference-image bytes, URLs,
+filenames, or metadata. It also excludes customer contact details,
+`publicReference`, Concept Brief UUID, database IDs, private paths, raw customer
+free text, and admin/reviewer notes. A future reference-image provider flow
+requires a separate approved privacy, consent, legal, retention, and private
+access task.
+
+OpenAI's published default API posture says API data is not used for training
+unless the customer opts in, while abuse-monitoring content may be retained for
+up to 30 days. NOVORA does not assume account-specific Zero Data Retention,
+residency, or custom retention without later written verification. See the
+Agent 69C decision for dated official sources and limitations.
+
 This PR does not draft legal pages, publish Privacy or Terms, add legal links,
 add consent checkboxes, change retention policy, access customer data, or
 implement deletion/correction workflows.
@@ -406,13 +450,16 @@ Locked target sequence:
 Agent 68A / PR #192 merged the provider-neutral, server-only first-preview
 runtime foundation. Agent 69A / PR #193 merged the governing docs-only First
 Preview Product Contract v1 at
-`a368505413b244aace0a8d3dc84df5af9175d1f6`. Agent 69B prepares the docs-only
-reuse-first data-model inventory and candidate SQL packet; no SQL or Production
-change is implemented. The next recommended planning step is Agent 69C for the
-provider, model, privacy, safety-evidence, cost, retry, rate-limit, and budget
-decision. Read-only live-schema verification, exact SQL, SQL execution, private
-Storage/access, provider adapter work, and route wiring each require later,
-separately approved Agents.
+`a368505413b244aace0a8d3dc84df5af9175d1f6`. Agent 69B / PR #194 merged the
+docs-only reuse-first data-model inventory and candidate SQL packet at
+`184c84acda3caa8c47b81c859b511e3a061cee24`; no SQL or Production change was
+implemented. Agent 69C records the provider, model, privacy, safety-evidence,
+cost, retry, rate-limit, and budget decision without provider access or
+configuration. The next recommended implementation slice is Agent 70A, limited
+to a server-only GPT Image 2 adapter with fake transport tests. Read-only
+live-schema verification, exact SQL, SQL execution, private Storage/access,
+route wiring, real provider configuration/calls, and Production each require
+later, separately approved Agents.
 
 Each phase should stay narrow. Do not combine UI, SQL, live provider calls,
 storage, customer feedback, legal publication, rate-limit provider setup, and
@@ -430,10 +477,12 @@ Do not invent these answers:
 - Privacy / Terms publication owner.
 - Rate-limit mitigation owner.
 - Final limited-beta go/no-go owner.
-- Exact image provider and model.
-- Generation budget.
-- Maximum sketches per Concept Brief.
-- Maximum retries per failed generation.
+- Owner-approved daily and monthly generation-budget amounts.
+- Provider account usage tier, billing owner, data-control settings, and
+  account-specific retention evidence.
+- The separately approved server-side output-safety evaluator and policy.
+- Hosting execution limits and whether durable asynchronous generation is
+  required for the selected 150-second deadline.
 - Whether preview is synchronous, polling-based, redirect-based, or backed by
   an email/manual fallback.
 - Exact customer preview URL pattern.

@@ -74,13 +74,13 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline fetched at the start of Agent 69B: Agent 69A /
-  PR #193 merge commit `a368505413b244aace0a8d3dc84df5af9175d1f6`.
+- Verified GitHub `main` baseline fetched at the start of Agent 69C: Agent 69B /
+  PR #194 merge commit `184c84acda3caa8c47b81c859b511e3a061cee24`.
 - GitHub `main` includes the Agent 68A provider-neutral, server-only first-preview
-  runtime foundation and the Agent 69A First Preview Product Contract v1. Real
-  provider integration, persistent preview lifecycle, private generated-asset
-  delivery, secure customer access, and customer route wiring remain
-  unimplemented.
+  runtime foundation, the Agent 69A First Preview Product Contract v1, and the
+  Agent 69B reuse-first data-model and candidate SQL plan. Real provider
+  integration, persistent preview lifecycle, private generated-asset delivery,
+  secure customer access, and customer route wiring remain unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -2005,7 +2005,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   API behavior, UI, environment configuration, deployment, Production, real
   generation, or customer data.
 
-- Agent 69B: adds
+- Agent 69B / PR #194 merged at
+  `184c84acda3caa8c47b81c859b511e3a061cee24` and adds
   `docs/novora-first-preview-data-model-sql-plan-v1.md`, a docs-only First
   Preview data-model inventory and candidate SQL planning packet governed by
   Product Contract v1. It inventories repository-recorded live metadata and
@@ -2018,6 +2019,21 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   and exact-SQL step. Agent 69B does not execute SQL, connect to Supabase,
   change schema/RLS/grants/policies/Storage, inspect customer data, or implement
   provider, API, UI, access, deployment, or Production behavior.
+
+- Agent 69C: adds
+  `docs/novora-first-preview-provider-cost-privacy-decision-v1.md`, a docs-only
+  provider decision packet. It selects OpenAI Image API with pinned
+  `gpt-image-2-2026-04-21`, exactly one 1024-by-1024 medium-quality PNG,
+  `moderation=auto`, no streaming, and no reference-image forwarding for the
+  initial adapter. It defines a structured-data allowlist, provider-response
+  normalization, independent trusted safety evidence, a 150-second attempt
+  deadline, bounded retry/regeneration and late-result behavior, cost
+  reservation and fail-closed budget rules, and separate submission,
+  generation, feedback, and admin-recovery rate-limit boundaries. The observed
+  provider price is dated planning evidence, not a permanent price promise.
+  Agent 69C does not add a provider SDK or key, make an image request, access
+  billing, execute SQL, connect to Supabase, inspect customer data, change
+  schema/Storage/RLS/environment/application code, deploy, or change Production.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -2075,14 +2091,16 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Agent 69B is the current docs-only data-model and candidate SQL planning step.
-It does not execute SQL or change Production.
+Agent 69C is the current docs-only provider, privacy, safety-evidence, cost,
+retry, and rate-limit decision step. It does not configure or call a provider
+and does not change Production.
 
-Recommended sequence after Agent 69B review and merge:
+Recommended sequence after Agent 69C review and merge:
 
-1. Agent 69C: prepare a separate provider, model, privacy, safety-evidence,
-   cost, retry, rate-limit, and budget decision packet. Do not configure a
-   provider, environment, Storage, or Production.
+1. Agent 70A: implement a server-only OpenAI GPT Image 2 adapter behind the
+   existing provider-neutral interface using fake transport responses only.
+   Do not configure a key, call OpenAI, generate an image, or wire routes,
+   persistence, Storage, access, or Production.
 2. Use a separate explicitly approved read-only live-schema verification and
    exact-SQL preparation step, followed by a separate explicitly approved
    SQL/schema execution step.
@@ -2096,8 +2114,8 @@ Do not claim those later steps are implemented, and do not combine their
 approval boundaries into one PR.
 
 The obsolete Agent 66E branch and its dirty workspace remain a separate
-disposition task. Agents 69A and 69B use the isolated clean worktree and do not
-reset, stash, check out over, delete, salvage, or merge Agent 66E files.
+disposition task. Agents 69A, 69B, and 69C use the isolated clean worktree and
+do not reset, stash, check out over, delete, salvage, or merge Agent 66E files.
 
 Do not describe the instant-preview direction as implemented until real
 generation, secure preview access, automatic gates, and safe failure behavior
