@@ -280,6 +280,11 @@ still pass an approved customer access mechanism.
 Required future access posture:
 
 - Generated assets remain private by default.
+- RLS remains enabled and deny-by-default on every server-owned preview table.
+  Do not add direct `anon` or `authenticated` access, public asset policies, or
+  browser-authoritative writes without a separate approved access design. The
+  future customer path remains server-mediated even when a short-lived signed
+  asset URL is issued.
 - Use server-mediated delivery or a narrowly scoped, short-lived signed URL
   only after a separately approved access design.
 - Public provider URLs and permanent public Storage URLs are prohibited for
@@ -301,6 +306,12 @@ Agent 69B does not select or implement final customer authentication.
 - One deterministic idempotency key represents the same Concept Brief,
   generation purpose, Design Spec version/hash, Hand Sketch Instruction
   version/hash, and requested attempt.
+- The future reservation path must reject a null or incomplete idempotency key
+  or attempt identity before any provider call. Because ordinary PostgreSQL
+  unique indexes do not treat nullable identity components as equal, exact SQL
+  must use verified non-null write requirements, later verified `NOT NULL`
+  constraints, or another reviewed null-safe uniqueness mechanism after legacy
+  compatibility is known.
 - Browser refresh, replay, duplicate submission, polling, and concurrent
   requests reuse or reject the existing reservation.
 - One active first-preview attempt per Concept Brief is enforced after live
@@ -328,6 +339,12 @@ Agent 69B does not select or implement final customer authentication.
 - Provider operations have a server deadline and cancellation signal.
 - `timed_out` and `cancelled` are terminal for that attempt.
 - Late provider results cannot overwrite a terminal attempt or a newer lineage.
+- Unique indexes do not prevent a late callback from resurrecting a terminal
+  row. The future server completion path must use one authorized atomic
+  compare-and-set transition conditioned on the attempt still being active,
+  not timed out or cancelled, and still belonging to the expected lineage. A
+  zero-row transition is a rejected late result; it must not create a current
+  output or enter the readiness transaction.
 - No output from a timed-out/cancelled attempt becomes current or ready without
   a separate reconciliation rule approved later.
 
@@ -604,6 +621,11 @@ insufficiently documented for safe exact SQL.
 
 - Add candidate columns nullable first, except safe defaults that cannot create
   readiness.
+- Before any backfill, run aggregate-only row-count, null, duplicate, and status
+  preflight checks and approve the expected affected-row bound. Execute only in
+  bounded primary-key or other verified stable-key batches with explicit
+  transaction/lock timeouts, stop conditions, and post-batch aggregate checks;
+  do not issue an unbounded table-wide rewrite.
 - Backfill legacy outputs to `visibility_status = 'not_ready'` and
   `automatic_gate_status = 'pending'`; never infer ready from provider success,
   asset ID, URL, old `customer_visible`, or human approval.
