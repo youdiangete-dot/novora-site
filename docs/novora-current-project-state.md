@@ -74,11 +74,11 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline fetched at the start of Agent 67A: Agent 66D /
-  PR #190 merge commit `80913f17ff4c9540b6d5c34b2daa087eadc7279e`.
-- Agent 67A is a documentation-only source-of-truth alignment task. At the
-  Agent 67A starting baseline, its changes were not part of GitHub `main`.
-  Runtime instant-preview behavior remains unimplemented.
+- Verified GitHub `main` baseline fetched at the start of Agent 68A: Agent 67A /
+  PR #191 merge commit `80ab8ce2f987c2f306e586aa12557dd26abdc097`.
+- Agent 68A is a local first-preview runtime-foundation implementation step. At
+  the Agent 68A starting baseline, its changes were not part of GitHub `main`.
+  Real provider integration and customer route wiring remain unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -1970,6 +1970,24 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   wording, so it must not be merged as-is. Branch deletion, salvage, or
   rebuilding is a separate future task; Agent 67A did not inspect or adopt its
   unknown local files and does not alter that branch.
+
+- Agent 68A: adds a provider-neutral, server-only first-preview runtime
+  foundation. It reuses the existing Design Spec and Hand Sketch Instruction
+  types and validators, defines a sanitized exactly-one-image provider
+  contract, adds dependency-injected orchestration with safe exception,
+  timeout, cancellation, malformed-output, unsafe-output, and leakage handling,
+  and adds fail-closed automatic gate evaluation. Deterministic fake-provider
+  tests cover valid output, provider error, timeout, malformed output, unsafe
+  output, missing asset, metadata/internal-prompt/reviewer-note leakage,
+  privacy/access failure, no-network behavior, and multiple-image rejection.
+  `first_preview_ready` is a TypeScript-only internal runtime decision here; it
+  is not a database column or live persistent status, does not require
+  `approved_for_customer`, and remains unrelated to `approved_for_gallery`,
+  CAD, quotation, payment, order, or production approval. Agent 68A does not
+  implement a real provider, real image generation, SQL or persistent preview
+  lifecycle, private Storage, customer authentication, customer submission or
+  preview route wiring, deployment, or Production changes. Current customer
+  preview behavior remains mock-only.
 
 ## 7. Current Non-Goals And Boundaries
 
