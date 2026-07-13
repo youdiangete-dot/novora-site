@@ -74,13 +74,15 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline fetched at the start of Agent 69C: Agent 69B /
-  PR #194 merge commit `184c84acda3caa8c47b81c859b511e3a061cee24`.
+- Verified GitHub `main` baseline fetched at the start of Agent 70A: Agent 69C /
+  PR #195 merge commit `3cb09d9304b67484457471af23a5a290b1051bba`.
 - GitHub `main` includes the Agent 68A provider-neutral, server-only first-preview
   runtime foundation, the Agent 69A First Preview Product Contract v1, and the
-  Agent 69B reuse-first data-model and candidate SQL plan. Real provider
-  integration, persistent preview lifecycle, private generated-asset delivery,
-  secure customer access, and customer route wiring remain unimplemented.
+  Agent 69B reuse-first data-model and candidate SQL plan. It also includes the
+  merged Agent 69C OpenAI GPT Image 2 provider, privacy, safety-evidence, cost,
+  retry, and rate-limit decision. Real provider configuration/calls, persistent
+  preview lifecycle, private generated-asset delivery, secure customer access,
+  and customer route wiring remain unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -2035,6 +2037,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   billing, execute SQL, connect to Supabase, inspect customer data, change
   schema/Storage/RLS/environment/application code, deploy, or change Production.
 
+- Agent 70A: adds a server-only, dependency-injected OpenAI GPT Image 2 adapter
+  foundation behind the existing provider-neutral First Preview request
+  contract. It pins `gpt-image-2-2026-04-21`, maps one non-streaming
+  1024-by-1024 medium-quality PNG request with `moderation=auto`, builds a
+  deterministic prompt from a deep Hand Sketch Instruction field allowlist,
+  validates exactly one canonical base64 PNG up to 16 MiB, normalizes safe
+  provider failure categories, and uses deterministic fake-client tests that
+  block external network access. Agent 70A does not construct a real OpenAI
+  client, read or create an API key, log in to a provider, make a real request,
+  generate an image, wire a route or customer flow, execute SQL, access
+  Supabase or customer data, change Storage/RLS/environment configuration,
+  activate customer preview visibility, deploy, or change Production. Agent
+  70A is an implementation branch and is not recorded here as merged.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2091,23 +2107,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Agent 69C is the current docs-only provider, privacy, safety-evidence, cost,
-retry, and rate-limit decision step. It does not configure or call a provider
-and does not change Production.
+Agent 69C / PR #195 is merged at
+`3cb09d9304b67484457471af23a5a290b1051bba`. Agent 70A is the current
+server-only injected OpenAI adapter foundation step. It does not configure or
+call a provider, generate an image, activate customer visibility, or change
+Production.
 
-Recommended sequence after Agent 69C review and merge:
+Recommended sequence after Agent 70A review and merge:
 
-1. Agent 70A: implement a server-only OpenAI GPT Image 2 adapter behind the
-   existing provider-neutral interface using fake transport responses only.
-   Do not configure a key, call OpenAI, generate an image, or wire routes,
-   persistence, Storage, access, or Production.
-2. Use a separate explicitly approved read-only live-schema verification and
+1. Use a separate explicitly approved read-only live-schema verification and
    exact-SQL preparation step, followed by a separate explicitly approved
    SQL/schema execution step.
-3. Implement private asset Storage and server-mediated or short-lived signed
+2. Implement private asset Storage and server-mediated or short-lived signed
    access in a separate approval slice.
-4. Implement the provider adapter separately.
-5. Wire confirmed-persistence generation triggering and the customer preview
+3. Add real provider client construction, credential configuration, budget and
+   limiter enforcement, and live-call authorization only in a separate
+   explicitly approved provider/environment slice.
+4. Wire confirmed-persistence generation triggering and the customer preview
    route only after the preceding boundaries pass review.
 
 Do not claim those later steps are implemented, and do not combine their
