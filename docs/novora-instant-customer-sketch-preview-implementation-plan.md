@@ -390,9 +390,13 @@ Locked target sequence:
 9. Formal downstream human-controlled CAD, quotation, payment, order, and
    production decisions.
 
-Planning should proceed through Agent 68A First Preview Product Contract, then
-separate preview data-model/SQL and provider/cost-control decisions. Code and
-live-provider implementation require later, separately approved Agents.
+Agent 68A / PR #192 merged the provider-neutral, server-only first-preview
+runtime foundation. Agent 69A defines the docs-only First Preview Product
+Contract v1 in `docs/novora-first-preview-product-contract-v1.md` and aligns the
+post-Agent-68A source of truth. Planning should next proceed through separate
+preview data-model/SQL and provider, safety-evidence, access, retry, budget, and
+cost-control decisions. Code, SQL execution, Storage, secure customer access,
+and live-provider implementation require later, separately approved Agents.
 
 Each phase should stay narrow. Do not combine UI, SQL, live provider calls,
 storage, customer feedback, legal publication, rate-limit provider setup, and
