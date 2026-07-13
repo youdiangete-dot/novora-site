@@ -164,25 +164,42 @@ pre-review.
 
 ## 6. Data model / storage planning
 
-Documented current and planned concepts:
+Verified current and planned concepts after Agent 70B-1 / PR #197 and the
+owner-run Q01-Q11 metadata collection dated 2026-07-13:
 
 - `concept_briefs`: existing submitted Concept Brief parent record.
 - `concept_brief_reference_assets`: existing reference image metadata linked to
   a Concept Brief.
 - `novora-ai-sketches`: documented Supabase Storage bucket for generated AI
   sketch outputs.
-- `ai_sketch_jobs`: an existing table according to earlier user-provided live
-  metadata. RLS is enabled and an `updated_at` trigger was recorded, but the
-  exact columns, status values, constraints, indexes, and current row shape
-  still require a separately approved fresh metadata verification.
-- `ai_sketch_outputs`: an existing table according to earlier user-provided
-  live metadata. RLS is enabled, and `ai_sketch_reviews` has a verified foreign
-  key to its `id`; the exact output, job, asset, and visibility fields still
-  require fresh metadata verification.
-- `ai_sketch_reviews`: the existing human review table. Prior user-run
-  verification records its four legal review statuses and
-  `UNIQUE (concept_brief_id)`. It remains a later human-review boundary and
-  must not be used as the initial automatic first-preview gate.
+- `ai_sketch_jobs`: verified ordinary public table with RLS enabled, forced RLS
+  false, primary key `id`, required Concept Brief FK with `ON DELETE CASCADE`,
+  `status text NOT NULL DEFAULT 'draft'`, `prompt_version`, `prompt_payload`,
+  `model_name`, `error_message`, creation/update timestamps, a
+  `concept_brief_id` index, and the live `set_ai_sketch_jobs_updated_at`
+  trigger. Current status row values remain unknown.
+- `ai_sketch_outputs`: verified ordinary public table with RLS enabled, forced
+  RLS false, primary key `id`, required `job_id` and `concept_brief_id` cascade
+  FKs, `bucket_name NOT NULL DEFAULT 'novora-ai-sketches'`, nullable
+  `object_path`, `preview_status NOT NULL DEFAULT 'pending_review'`, `metadata`,
+  and `created_at`. It has a Concept Brief index but no separate `job_id` index,
+  no one-output-per-job invariant, and no current-preview invariant. Current
+  `preview_status` row values and semantics remain unknown.
+- `ai_sketch_reviews`: verified ordinary human-review table with RLS enabled,
+  forced RLS false, `ai_sketch_output_id NOT NULL`, cascade FKs to output and
+  brief, and `UNIQUE (concept_brief_id)`. The exact legal review statuses remain
+  `internal_draft_not_generated`, `draft_generated_internal_only`,
+  `needs_revision`, and `approved_for_customer`; `pending` remains illegal.
+  Because output linkage is non-null, a review row cannot exist before a real
+  output. The relationship and statuses remain unchanged.
+
+All six approved public tables are verified ordinary tables with RLS enabled,
+forced RLS false, and no table comments. Q07 visibly reported a complete
+zero-row explicit-policy result, but it is screenshot evidence rather than a
+raw CSV. Q08 direct grants do not establish effective privileges, role
+membership, ownership, BYPASSRLS behavior, PostgREST behavior, or API
+exploitability. Effective access posture requires separate owner-run metadata
+preflights before access-control remediation or live wiring.
 
 Planned responsibilities:
 
@@ -206,18 +223,47 @@ Planned responsibilities:
   material or downstream communication and is not required for the initial
   first preview.
 - `novora-ai-sketches` should stay private by default. Customer access should
-  use signed URLs or server-mediated access only after the future visibility
-  rules are satisfied.
+  use short-lived signed access or server-mediated access only after the future
+  visibility and independent request-access rules are satisfied. A permanent
+  public generated-asset URL is prohibited.
 
-Agent 69B records the reuse-first model and candidate SQL boundary in
+Verified additive gaps include deterministic idempotency, attempt numbering and
+lineage, structured Design Spec and Hand Sketch Instruction version/hash
+bindings, provider request identity, lifecycle/terminal timestamps, normalized
+failure and retry evidence, cost fields, output MIME/size/dimensions/checksum,
+asset validation time, automatic-gate evidence, output-bound readiness, and a
+database invariant allowing at most one current customer preview per Concept
+Brief. Provider/model/request configuration belongs on the job; binary and
+asset-integrity evidence belongs on the output. Existing `model_name`,
+`prompt_version`, `error_message`, `bucket_name`, and `object_path` should be
+reused within their verified responsibilities instead of duplicated.
+
+`ai_sketch_jobs.status` is partially compatible and remains the generation-job
+lifecycle field, but no CHECK/default change is allowed until owner-run grouped
+status evidence passes. `ai_sketch_outputs.preview_status` remains a historical
+output-workflow field; its `pending_review` default must not be repurposed as
+automatic readiness without supplemental row evidence and repository-semantic
+review. `ai_sketch_reviews.review_status` remains unchanged and separate.
+Dedicated additive automatic-gate/readiness fields are required so provider
+success, output creation, an object path, `pending_review`, or human
+`approved_for_customer` cannot independently establish `first_preview_ready`.
+
+Agent 69B records the original reuse-first model and candidate SQL boundary in
 `docs/novora-first-preview-data-model-sql-plan-v1.md`. It does not add the old
 candidate preview-lifecycle table merely to duplicate jobs, outputs, and
 visibility. A separate append-only feedback table is only a gated candidate
 after live metadata proves no compatible feedback table already exists.
 
-Schema gaps remain future implementation requirements. This plan and Agent 69B
-do not execute SQL, create migrations, connect to Supabase, change RLS, grants,
-policies, Storage, or Production, or inspect customer data.
+Agent 70B-2 records the evidence-led inventory, aggregate/effective-privilege
+preflights, and exact additive candidate blocks in
+`docs/novora-agent-70b2-first-preview-live-schema-review-and-additive-sql-plan-v1.md`.
+Every row-dependent CHECK, FK validation, `NOT NULL` hardening, and unique index
+remains blocked until its exact owner-run aggregate preflight passes. No SQL was
+executed, no migration was created, no Supabase connection was made by Codex,
+and no business/customer rows were inspected. Access-control remediation,
+Storage, Provider setup/calls, route wiring, automatic-gate implementation,
+customer preview behavior, deployment, and Production remain separate later
+approval slices.
 
 ## 7. Status model planning
 
@@ -462,23 +508,30 @@ normal merge commit `68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`.
 Agent 70A did not construct a real OpenAI client, access or configure an API
 key, make a provider request, generate an image, persist output, change Storage,
 activate customer visibility, wire a route, deploy, or change Production.
+Agent 70B-1 / PR #197 then merged the owner-run SELECT-only metadata packet at
+normal merge commit `e77d2e6267f78ecf1109198ae100149eb8e466e4`. The owner
+completed Q01-Q11 on 2026-07-13, and Agent 70B-2 reviewed that evidence and
+prepared a documentation-only additive candidate plan without SQL execution or
+a Supabase connection.
 
 The required next sequence is explicit:
 
-1. Agent 70B-1 prepares the owner-run SELECT-only live-schema metadata packet.
-2. The owner manually executes the packet and returns sanitized metadata
-   results.
-3. A separately approved Agent reviews those results and prepares exact
-   additive migration SQL.
-4. A later separately approved SQL Agent performs any authorized SQL execution.
-5. A separate slice implements private generated-asset Storage and secure
+1. Formal review of the Agent 70B-2 documentation PR.
+2. The owner manually executes separately approved supplemental SELECT-only
+   effective-privilege and aggregate compatibility preflights.
+3. A later documentation Agent reconciles supplemental results and regenerates
+   blocked SQL when needed.
+4. A separately approved SQL Agent performs only authorized additive SQL.
+5. Owner-run post-execution metadata and aggregate verification.
+6. A separate slice implements private generated-asset Storage and secure
    server-mediated or short-lived signed access.
-6. A separate provider/environment slice constructs the real provider client,
+7. A separate provider/environment slice constructs the real provider client,
    handles credentials, and enforces budget, limiter, and call authorization.
-7. Only after those boundaries pass may a separate implementation wire the
-   confirmed-persistence generation trigger and customer preview route.
+8. A separate implementation wires generation only after confirmed persistence.
+9. Separate implementations add trusted automatic readiness gates, customer
+   First Preview route/UI, and post-preview human review in that order.
 
-Agent 70B-1 is documentation-only. It does not connect to Supabase, execute
+Agent 70B-2 is documentation-only. It does not connect to Supabase, execute
 SQL, inspect business/customer rows, or implement any later sequence stage.
 
 Each phase should stay narrow. Do not combine UI, SQL, live provider calls,

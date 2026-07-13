@@ -74,9 +74,9 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline at the start of Agent 70B-1: Agent 70A /
-  PR #196 normal merge commit
-  `68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`.
+- Verified GitHub `main` baseline at the start of Agent 70B-2: Agent 70B-1 /
+  PR #197 normal merge commit
+  `e77d2e6267f78ecf1109198ae100149eb8e466e4`.
 - GitHub `main` includes the Agent 68A provider-neutral, server-only first-preview
   runtime foundation, the Agent 69A First Preview Product Contract v1, and the
   Agent 69B reuse-first data-model and candidate SQL plan. It also includes the
@@ -2055,7 +2055,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Supabase or customer data, change Storage/RLS/environment configuration,
   activate customer preview visibility, deploy, or change Production.
 
-- Agent 70B-1: adds
+- Agent 70B-1 / PR #197 merged with normal merge commit
+  `e77d2e6267f78ecf1109198ae100149eb8e466e4` and adds
   `docs/novora-agent-70b1-first-preview-live-schema-preflight-v1.md`, a
   documentation-only, owner-run, SELECT-only metadata verification packet for
   `public.ai_sketch_jobs`, `public.ai_sketch_outputs`,
@@ -2069,8 +2070,32 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Supabase, execute SQL, inspect business/customer rows, change schema/RLS/
   policies/grants/triggers/Storage, modify app/runtime/test code, access a
   provider or key, generate an image, wire a route, change an environment,
-  deploy, or operate Production. Exact migration SQL remains blocked until all
-  required owner-run sanitized metadata results are returned and reviewed.
+  deploy, or operate Production. Exact migration SQL remained blocked until all
+  required owner-run sanitized metadata results were returned and reviewed.
+
+- Agent 70B-2 reviews the complete owner-run Q01-Q11 metadata evidence dated
+  2026-07-13 and adds
+  `docs/novora-agent-70b2-first-preview-live-schema-review-and-additive-sql-plan-v1.md`.
+  The validated row counts are Q01-Q11 = `6, 63, 9, 7, 14, 2, 0, 103, 5, 10,
+  9`; Q01 is complete CSV metadata evidence, while Q07 is owner-attested
+  screenshot evidence that visibly reports a successful complete zero-row
+  policy result. The evidence verifies six ordinary public tables with RLS
+  enabled and forced RLS false; the existing job -> output -> review relation
+  chain; the four exact review statuses with `pending` excluded; review
+  uniqueness by `concept_brief_id`; existing defaults, FKs, indexes, and update
+  triggers; zero visible explicit policies; and missing dedicated idempotency,
+  attempt, lineage, asset-integrity, automatic-readiness, cost, and
+  current-preview invariants. Q08 direct grants do not resolve ownership,
+  membership, BYPASSRLS, effective privileges, PostgREST behavior, or API
+  exploitability, so the effective access posture remains unresolved. Agent
+  70B-2 is documentation-only and prepares additive candidate SQL plus separate
+  owner-run metadata and aggregate compatibility preflights. No SQL was
+  executed, no Supabase connection was made by Codex, no business/customer rows
+  were inspected, and migration execution remains blocked pending formal review
+  and returned supplemental evidence. Private generated-asset Storage and
+  access, real Provider credentials/client/calls, confirmed-persistence route
+  wiring, automatic readiness implementation, customer First Preview UI,
+  deployment, and Production behavior remain unimplemented.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -2128,27 +2153,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Agent 70A / PR #196 is merged with normal merge commit
-`68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`. It is a server-only,
-dependency-injected adapter foundation. It does not construct a real OpenAI
-client, read or configure an API key, make a provider request, generate an
-image, persist output, operate private Storage, activate customer visibility,
-wire a route, deploy, or change Production.
+Agent 70B-1 / PR #197 is merged with normal merge commit
+`e77d2e6267f78ecf1109198ae100149eb8e466e4`. The owner-run Q01-Q11 evidence is
+complete, and Agent 70B-2 has prepared a documentation-only reuse-first review,
+supplemental preflights, and additive candidate SQL. No migration has been
+executed and effective access-control evidence remains incomplete.
 
 Required next sequence:
 
-1. Agent 70B-1 prepares the owner-run SELECT-only live-schema metadata packet.
-2. The owner manually executes the packet and returns sanitized metadata
-   results.
-3. A separately approved Agent reviews those results and prepares exact
-   additive migration SQL.
-4. A later separately approved SQL Agent performs any authorized SQL execution.
-5. A separate slice implements private generated-asset Storage and secure
+1. Formal review of the Agent 70B-2 documentation PR.
+2. The owner manually executes the separately approved supplemental SELECT-only
+   metadata and aggregate compatibility preflights.
+3. A later documentation Agent reconciles supplemental results and regenerates
+   blocked predicates or statements when necessary.
+4. A separately approved SQL Agent performs only authorized additive SQL.
+5. Owner-run post-execution metadata and aggregate verification.
+6. A separate slice implements private generated-asset Storage and secure
    server-mediated or short-lived signed access.
-6. A separate provider/environment slice constructs the real provider client,
+7. A separate provider/environment slice constructs the real provider client,
    handles credentials, and enforces budget, limiter, and call authorization.
-7. Only after those boundaries pass may a separate implementation wire the
-   confirmed-persistence generation trigger and customer preview route.
+8. A separate implementation wires generation only after confirmed persistence.
+9. Separate implementations add trusted automatic readiness gates, customer
+   First Preview route/UI, and post-preview human review in that order.
 
 Do not claim those later steps are implemented, and do not combine their
 approval boundaries into one PR.
