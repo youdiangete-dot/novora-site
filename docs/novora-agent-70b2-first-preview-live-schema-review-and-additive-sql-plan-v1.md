@@ -30,9 +30,13 @@ independent Re-Review returned **FAIL — CORRECTION REQUIRED** because
 placed binary/image validation before private asset persistence. This third
 correction adds the status-exclusive `failed_at` timestamp, updates every
 matching predicate and preflight, and restores persistence-before-validation
-ordering. PR #198 must remain Draft until another independent Re-Review passes.
-All owner-run supplemental preflights remain blocked until that Re-Review
-passes.
+ordering. The fourth independent Re-Review confirmed those two findings were
+resolved but returned **FAIL — CORRECTION REQUIRED** because V01 did not fully
+mirror B13 and the candidate lifecycle CHECKs. The fourth correction makes V01
+count timeout-before-deadline, start/deadline, staged, nonterminal, terminal,
+and reverse evidence-to-status contradictions with total NULL-safe predicates.
+PR #198 must remain Draft until another independent Re-Review passes. All
+owner-run supplemental preflights remain blocked until that Re-Review passes.
 
 ## 2. Product authority
 
@@ -523,6 +527,14 @@ populated with status NULL; ready/current; ready/non-current; current/not-ready;
 revoked after ready; revoked without prior ready; and every out-of-order
 timestamp pair. NULL-result acceptance is a blocking SQL-review defect. This
 rule applies again if the candidate is regenerated after owner evidence.
+
+Every post-execution lifecycle verification query must mirror every
+corresponding preflight and candidate CHECK predicate. Matching coverage must
+include status-specific required evidence, evidence-to-status reverse
+implications, start/deadline pairing, deadline-specific ordering, terminal
+timestamp exclusivity, staged and nonterminal evidence contradictions, and all
+NULL or partial-population cases. Checking only the primary terminal timestamp
+is incomplete even when that reduced sample returns zero.
 
 ## 21. Owner-run supplemental metadata-only queries
 
@@ -2420,85 +2432,278 @@ SQL execution.
 
 ### V01 - Added columns and terminal lifecycle
 
-Purpose: verify exact types/nullability/defaults and aggregate status-exclusive
-terminal lifecycle compatibility. Pass: the reviewed candidate set appears
-exactly once with no unexpected default and every aggregate count is zero. Fail
-closed: any metadata mismatch or nonzero lifecycle count. The second SELECT is
-valid only after the additive job columns exist and does not return identities.
+Purpose: verify exact types/nullability/defaults and complete post-execution
+parity with B13 and the candidate job lifecycle CHECKs. Pass: the reviewed
+candidate set appears exactly once with no unexpected default and every named
+lifecycle violation count, including the overall invalid-row count, is zero.
+Fail closed: any metadata mismatch, predicate-parity gap, or nonzero lifecycle
+count. The second SELECT is valid only after the additive job columns exist and
+returns aggregate counts only, never identities.
 
 OWNER-RUN SELECT-ONLY PREFLIGHT — DO NOT EXECUTE IN THIS AGENT
 
 ```sql
-SELECT table_name, ordinal_position, column_name, data_type, udt_name,
-       is_nullable, column_default
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name IN ('ai_sketch_jobs', 'ai_sketch_outputs')
-  AND column_name IN (
-    'generation_purpose', 'idempotency_key', 'attempt_number',
-    'lineage_identity', 'parent_job_id', 'parent_generation_purpose',
-    'parent_attempt_number', 'source_output_id',
-    'design_spec_version', 'design_spec_hash',
-    'hand_sketch_instruction_version', 'hand_sketch_instruction_hash',
-    'provider_name', 'provider_request_id', 'provider_endpoint',
-    'request_image_count', 'request_streaming', 'request_partial_images',
-    'request_size', 'request_quality',
-    'output_format', 'moderation_mode', 'started_at', 'deadline_at',
-    'completed_at', 'failed_at', 'cancelled_at', 'timed_out_at',
-    'failure_category',
-    'retry_eligible', 'terminal_reason', 'estimated_cost_micros',
-    'actual_cost_micros', 'cost_currency', 'pricing_assumption_version',
-    'mime_type', 'byte_size', 'width_px', 'height_px', 'content_sha256',
-    'asset_created_at', 'asset_validation_status',
-    'asset_validation_evidence', 'asset_validated_at',
-    'automatic_gate_status', 'automatic_gate_evidence',
-    'automatic_gate_policy_version',
-    'automatic_gate_passed_at', 'readiness_status',
-    'first_preview_ready_at', 'readiness_revoked_at',
-    'is_current_customer_preview'
-  )
-ORDER BY table_name, ordinal_position;
-
+WITH expected_added_columns(
+  table_name, column_name, data_type, udt_name, is_nullable, column_default
+) AS (
+  VALUES
+    ('ai_sketch_jobs', 'generation_purpose', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'idempotency_key', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'attempt_number', 'smallint', 'int2', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'lineage_identity', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'parent_job_id', 'uuid', 'uuid', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'parent_generation_purpose', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'parent_attempt_number', 'smallint', 'int2', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'source_output_id', 'uuid', 'uuid', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'design_spec_version', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'design_spec_hash', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'hand_sketch_instruction_version', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'hand_sketch_instruction_hash', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'provider_name', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'provider_request_id', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'provider_endpoint', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'request_image_count', 'smallint', 'int2', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'request_streaming', 'boolean', 'bool', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'request_partial_images', 'smallint', 'int2', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'request_size', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'request_quality', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'output_format', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'moderation_mode', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'started_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'deadline_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'completed_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'failed_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'cancelled_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'timed_out_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'failure_category', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'retry_eligible', 'boolean', 'bool', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'terminal_reason', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'estimated_cost_micros', 'bigint', 'int8', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'actual_cost_micros', 'bigint', 'int8', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'cost_currency', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'pricing_assumption_version', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'mime_type', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'byte_size', 'bigint', 'int8', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'width_px', 'integer', 'int4', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'height_px', 'integer', 'int4', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'content_sha256', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'asset_created_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'asset_validation_status', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'asset_validation_evidence', 'jsonb', 'jsonb', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'asset_validated_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'automatic_gate_status', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'automatic_gate_evidence', 'jsonb', 'jsonb', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'automatic_gate_policy_version', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'automatic_gate_passed_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'readiness_status', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'first_preview_ready_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'readiness_revoked_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'is_current_customer_preview', 'boolean', 'bool', 'NO', 'false')
+), actual_added_columns AS (
+  SELECT table_name, column_name, data_type, udt_name, is_nullable,
+         column_default
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name IN ('ai_sketch_jobs', 'ai_sketch_outputs')
+    AND column_name IN (SELECT column_name FROM expected_added_columns)
+)
 SELECT
+  (SELECT count(*)
+   FROM expected_added_columns expected
+   LEFT JOIN actual_added_columns actual
+     USING (table_name, column_name)
+   WHERE actual.column_name IS NULL) AS missing_added_column_count,
+  (SELECT count(*)
+   FROM actual_added_columns actual
+   LEFT JOIN expected_added_columns expected
+     USING (table_name, column_name)
+   WHERE expected.column_name IS NULL) AS unexpected_added_column_count,
+  (SELECT count(*)
+   FROM expected_added_columns expected
+   JOIN actual_added_columns actual
+     USING (table_name, column_name)
+   WHERE actual.data_type IS DISTINCT FROM expected.data_type
+      OR actual.udt_name IS DISTINCT FROM expected.udt_name
+      OR actual.is_nullable IS DISTINCT FROM expected.is_nullable
+      OR actual.column_default IS DISTINCT FROM expected.column_default)
+    AS invalid_added_column_shape_count;
+
+WITH lifecycle_parity AS (
+  SELECT
+    (status IS NULL OR status NOT IN (
+      'draft', 'queued', 'processing', 'succeeded', 'failed', 'timed_out', 'cancelled'
+    )) AS invalid_job_status,
+    ((started_at IS NULL AND deadline_at IS NOT NULL)
+     OR (started_at IS NOT NULL
+         AND (deadline_at IS NULL OR deadline_at <= started_at)))
+      AS invalid_start_deadline_pairing,
+    ((completed_at IS NOT NULL
+      AND started_at IS NOT NULL
+      AND completed_at < started_at)
+     OR (failed_at IS NOT NULL
+         AND started_at IS NOT NULL
+         AND failed_at < started_at)
+     OR (cancelled_at IS NOT NULL
+         AND started_at IS NOT NULL
+         AND cancelled_at < started_at)
+     OR (timed_out_at IS NOT NULL
+         AND started_at IS NOT NULL
+         AND timed_out_at < started_at))
+      AS terminal_timestamp_before_start,
+    (timed_out_at IS NOT NULL
+     AND (deadline_at IS NULL OR timed_out_at < deadline_at))
+      AS timeout_before_deadline,
+    (num_nonnulls(
+       completed_at, failed_at, cancelled_at, timed_out_at
+     ) > 1) AS conflicting_terminal_timestamp,
+    ((status IS NOT DISTINCT FROM 'succeeded' AND completed_at IS NULL)
+     OR (status IS NOT DISTINCT FROM 'failed' AND failed_at IS NULL)
+     OR (status IS NOT DISTINCT FROM 'cancelled' AND cancelled_at IS NULL)
+     OR (status IS NOT DISTINCT FROM 'timed_out' AND timed_out_at IS NULL))
+      AS missing_status_specific_terminal_timestamp,
+    ((completed_at IS NOT NULL AND status IS DISTINCT FROM 'succeeded')
+     OR (failed_at IS NOT NULL AND status IS DISTINCT FROM 'failed')
+     OR (cancelled_at IS NOT NULL AND status IS DISTINCT FROM 'cancelled')
+     OR (timed_out_at IS NOT NULL AND status IS DISTINCT FROM 'timed_out'))
+      AS terminal_timestamp_status_mismatch,
+    (status IS NOT DISTINCT FROM 'draft'
+     AND num_nonnulls(
+       started_at, deadline_at, completed_at, failed_at, cancelled_at,
+       timed_out_at, failure_category, retry_eligible, terminal_reason,
+       error_message
+     ) <> 0) AS invalid_staged_terminal_evidence,
+    ((status IS NOT DISTINCT FROM 'queued' AND (
+        started_at IS NOT NULL OR deadline_at IS NOT NULL
+        OR completed_at IS NOT NULL OR failed_at IS NOT NULL
+        OR cancelled_at IS NOT NULL OR timed_out_at IS NOT NULL
+        OR failure_category IS NOT NULL OR retry_eligible IS NOT NULL
+        OR terminal_reason IS NOT NULL OR error_message IS NOT NULL
+      ))
+     OR (status IS NOT DISTINCT FROM 'processing' AND (
+          started_at IS NULL OR deadline_at IS NULL
+          OR deadline_at <= started_at OR completed_at IS NOT NULL
+          OR failed_at IS NOT NULL OR cancelled_at IS NOT NULL
+          OR timed_out_at IS NOT NULL OR failure_category IS NOT NULL
+          OR retry_eligible IS NOT NULL OR terminal_reason IS NOT NULL
+          OR error_message IS NOT NULL
+        ))) AS invalid_nonterminal_status_evidence,
+    ((status IS NOT DISTINCT FROM 'succeeded' AND (
+        started_at IS NULL OR deadline_at IS NULL
+        OR deadline_at <= started_at OR completed_at IS NULL
+        OR completed_at < started_at OR failed_at IS NOT NULL
+        OR cancelled_at IS NOT NULL OR timed_out_at IS NOT NULL
+        OR failure_category IS NOT NULL OR retry_eligible IS NOT NULL
+        OR terminal_reason IS NOT NULL OR error_message IS NOT NULL
+      ))
+     OR (status IS NOT DISTINCT FROM 'failed' AND (
+          failed_at IS NULL OR completed_at IS NOT NULL
+          OR cancelled_at IS NOT NULL OR timed_out_at IS NOT NULL
+          OR failure_category IS NULL
+          OR failure_category IS NOT DISTINCT FROM 'timeout'
+          OR failure_category IS NOT DISTINCT FROM 'cancelled'
+          OR retry_eligible IS NULL OR terminal_reason IS NULL
+          OR btrim(terminal_reason) = ''
+          OR (started_at IS NULL AND deadline_at IS NOT NULL)
+          OR (started_at IS NOT NULL AND (
+                deadline_at IS NULL OR deadline_at <= started_at
+                OR failed_at < started_at
+              ))
+        ))
+     OR (status IS NOT DISTINCT FROM 'timed_out' AND (
+          started_at IS NULL OR deadline_at IS NULL
+          OR deadline_at <= started_at OR timed_out_at IS NULL
+          OR timed_out_at < deadline_at OR completed_at IS NOT NULL
+          OR failed_at IS NOT NULL OR cancelled_at IS NOT NULL
+          OR failure_category IS DISTINCT FROM 'timeout'
+          OR retry_eligible IS DISTINCT FROM false
+          OR terminal_reason IS NULL OR btrim(terminal_reason) = ''
+        ))
+     OR (status IS NOT DISTINCT FROM 'cancelled' AND (
+          completed_at IS NOT NULL OR failed_at IS NOT NULL
+          OR timed_out_at IS NOT NULL OR cancelled_at IS NULL
+          OR failure_category IS DISTINCT FROM 'cancelled'
+          OR retry_eligible IS DISTINCT FROM false
+          OR terminal_reason IS NULL OR btrim(terminal_reason) = ''
+          OR (started_at IS NULL AND deadline_at IS NOT NULL)
+          OR (started_at IS NOT NULL AND (
+                deadline_at IS NULL OR deadline_at <= started_at
+                OR cancelled_at < started_at
+              ))
+        ))) AS invalid_terminal_status_evidence
+  FROM public.ai_sketch_jobs
+)
+SELECT
+  count(*) FILTER (WHERE invalid_job_status)
+    AS invalid_job_status_count,
+  count(*) FILTER (WHERE invalid_start_deadline_pairing)
+    AS invalid_start_deadline_pairing_count,
+  count(*) FILTER (WHERE terminal_timestamp_before_start)
+    AS terminal_timestamp_before_start_count,
+  count(*) FILTER (WHERE timeout_before_deadline)
+    AS timeout_before_deadline_count,
+  count(*) FILTER (WHERE conflicting_terminal_timestamp)
+    AS conflicting_terminal_timestamp_count,
+  count(*) FILTER (WHERE missing_status_specific_terminal_timestamp)
+    AS missing_status_specific_terminal_timestamp_count,
+  count(*) FILTER (WHERE terminal_timestamp_status_mismatch)
+    AS terminal_timestamp_status_mismatch_count,
+  count(*) FILTER (WHERE invalid_staged_terminal_evidence)
+    AS invalid_staged_terminal_evidence_count,
+  count(*) FILTER (WHERE invalid_nonterminal_status_evidence)
+    AS invalid_nonterminal_status_evidence_count,
+  count(*) FILTER (WHERE invalid_terminal_status_evidence)
+    AS invalid_terminal_status_evidence_count,
   count(*) FILTER (
-    WHERE (status IS NOT DISTINCT FROM 'succeeded' AND completed_at IS NULL)
-       OR (status IS NOT DISTINCT FROM 'failed' AND failed_at IS NULL)
-       OR (status IS NOT DISTINCT FROM 'cancelled' AND cancelled_at IS NULL)
-       OR (status IS NOT DISTINCT FROM 'timed_out' AND timed_out_at IS NULL)
-  ) AS missing_status_specific_terminal_timestamp_count,
-  count(*) FILTER (
-    WHERE (completed_at IS NOT NULL AND status IS DISTINCT FROM 'succeeded')
-       OR (failed_at IS NOT NULL AND status IS DISTINCT FROM 'failed')
-       OR (cancelled_at IS NOT NULL AND status IS DISTINCT FROM 'cancelled')
-       OR (timed_out_at IS NOT NULL AND status IS DISTINCT FROM 'timed_out')
-  ) AS terminal_timestamp_status_mismatch_count,
-  count(*) FILTER (
-    WHERE num_nonnulls(completed_at, failed_at, cancelled_at, timed_out_at) > 1
-  ) AS conflicting_terminal_timestamp_count,
-  count(*) FILTER (
-    WHERE (completed_at IS NOT NULL
-           AND started_at IS NOT NULL
-           AND completed_at < started_at)
-       OR (failed_at IS NOT NULL
-           AND started_at IS NOT NULL
-           AND failed_at < started_at)
-       OR (cancelled_at IS NOT NULL
-           AND started_at IS NOT NULL
-           AND cancelled_at < started_at)
-       OR (timed_out_at IS NOT NULL
-           AND started_at IS NOT NULL
-           AND timed_out_at < started_at)
-  ) AS terminal_timestamp_before_start_count,
-  count(*) FILTER (
-    WHERE status IS NOT DISTINCT FROM 'draft'
-      AND num_nonnulls(
-        started_at, deadline_at, completed_at, failed_at, cancelled_at,
-        timed_out_at, failure_category, retry_eligible, terminal_reason,
-        error_message
-      ) <> 0
-  ) AS invalid_staged_terminal_evidence_count
-FROM public.ai_sketch_jobs;
+    WHERE invalid_job_status
+       OR invalid_start_deadline_pairing
+       OR terminal_timestamp_before_start
+       OR timeout_before_deadline
+       OR conflicting_terminal_timestamp
+       OR missing_status_specific_terminal_timestamp
+       OR terminal_timestamp_status_mismatch
+       OR invalid_staged_terminal_evidence
+       OR invalid_nonterminal_status_evidence
+       OR invalid_terminal_status_evidence
+  ) AS invalid_lifecycle_row_count
+FROM lifecycle_parity;
 ```
+
+#### V01 lifecycle predicate-parity map
+
+The candidate CHECKs and B13 remain the baseline. V01 splits some B13 aggregate
+groups into narrower named counts for diagnosis, but it does not omit any
+lifecycle rule.
+
+| Lifecycle rule | Candidate CHECK | B13 preflight predicate | V01 predicate/count |
+| --- | --- | --- | --- |
+| Exact legal status vocabulary | `ai_sketch_jobs_status_check` | `invalid_job_status_count` | `invalid_job_status_count` |
+| Start/deadline pairing and ordering | `ai_sketch_jobs_attempt_timing_check` | `invalid_attempt_timing_count` | `invalid_start_deadline_pairing_count` and `terminal_timestamp_before_start_count` |
+| At most one terminal timestamp | `ai_sketch_jobs_terminal_timestamp_check` | `conflicting_terminal_timestamp_count` | `conflicting_terminal_timestamp_count` |
+| Terminal status requires its own timestamp | `ai_sketch_jobs_status_terminal_consistency_check` | `missing_status_specific_terminal_timestamp_count` | Same named count |
+| Terminal timestamp implies its matching status | `ai_sketch_jobs_status_terminal_consistency_check` | `terminal_timestamp_status_mismatch_count` | Same named count |
+| Exact staged `draft` has no lifecycle evidence | `ai_sketch_jobs_status_terminal_consistency_check` | Lifecycle subset of `invalid_staged_state_count` | `invalid_staged_terminal_evidence_count` |
+| `queued` has no timing/terminal evidence; `processing` requires valid start/deadline and no terminal evidence | `ai_sketch_jobs_status_terminal_consistency_check` | Nonterminal branches of `invalid_status_timestamp_evidence_count` | `invalid_nonterminal_status_evidence_count` |
+| Terminal statuses have complete compatible evidence | `ai_sketch_jobs_status_terminal_consistency_check` | Terminal branches of `invalid_status_timestamp_evidence_count` | `invalid_terminal_status_evidence_count` |
+| Timeout occurs at or after its deadline and is not auto-retryable | `timed_out` branch of `ai_sketch_jobs_status_terminal_consistency_check` | `timed_out` branch of `invalid_status_timestamp_evidence_count` | `timeout_before_deadline_count` plus `invalid_terminal_status_evidence_count` |
+| No row violates any mapped lifecycle predicate | Combined lifecycle CHECKs | Every lifecycle violation count must be zero | `invalid_lifecycle_row_count` must be zero |
+
+#### V01 false-zero counterexample review
+
+The predicates were independently evaluated in memory; no SQL was executed.
+Every case below produced the same reject/count decision in the candidate CHECK,
+B13, and corrected V01, for **zero parity mismatches**.
+
+| Case | Candidate CHECK | B13 | Corrected V01 |
+| --- | --- | --- | --- |
+| `timed_out`, start < timeout < deadline, otherwise valid | Rejected | Counted | Counted by `timeout_before_deadline_count` and terminal evidence count |
+| `processing` with failure category, retry value, and terminal reason but no terminal timestamp | Rejected | Counted | Counted by `invalid_nonterminal_status_evidence_count` |
+| `queued` with terminal reason | Rejected | Counted | Counted by `invalid_nonterminal_status_evidence_count` |
+| `queued` with otherwise valid start/deadline evidence | Rejected | Counted | Counted by `invalid_nonterminal_status_evidence_count` |
+| `processing` with `failed_at` | Rejected | Counted | Counted by nonterminal and timestamp/status mismatch counts |
+| `succeeded` with failure category | Rejected | Counted | Counted by `invalid_terminal_status_evidence_count` |
+| `failed` with `completed_at` | Rejected | Counted | Counted by terminal evidence and timestamp/status mismatch counts |
+| `timed_out` with `retry_eligible = true` | Rejected | Counted | Counted by `invalid_terminal_status_evidence_count` |
+| `deadline_at` without compatible start/status evidence | Rejected | Counted | Counted by start/deadline, staged/nonterminal, or terminal evidence count as applicable |
 
 ### V02 - Added constraints and validation state
 

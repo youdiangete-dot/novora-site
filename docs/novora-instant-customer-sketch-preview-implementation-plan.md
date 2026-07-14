@@ -257,6 +257,12 @@ Planned responsibilities:
   both directions. A terminal timestamp cannot appear on a staged or nonterminal
   job, and each populated terminal timestamp must be at or after `started_at`
   when the attempt has started.
+- Every post-execution lifecycle verification must mirror the matching
+  preflight and candidate CHECK predicates, including status-specific evidence,
+  reverse evidence-to-status implications, start/deadline pairing,
+  timeout-before-deadline ordering, exclusivity, nonterminal contradictions,
+  and NULL/partial-population cases. A reduced timestamp-only verification is
+  incomplete even when its returned counts are zero.
 - `ai_sketch_outputs` should be reused for generated image metadata,
   controlled private object identity, automatic-gate evidence, the persisted
   output-bound `first_preview_ready` visibility decision, and lineage to the
@@ -361,6 +367,14 @@ main-plan sequence placed validation before private persistence. The third
 correction adds nullable candidate `failed_at`, makes every terminal timestamp
 mutually exclusive and status-specific, updates B13 and V01, and restores the
 required persistence-before-validation order.
+
+The fourth independent Re-Review returned **FAIL — CORRECTION REQUIRED** after
+confirming both third-correction findings were resolved. Its one blocking
+finding was that V01 remained a reduced post-execution sample and could return
+false zero for timeout before deadline or processing rows carrying terminal
+failure/retry/reason evidence. The fourth correction gives V01 complete
+candidate/B13 lifecycle parity, total NULL-safe aggregate flags, an explicit
+predicate map, and counterexample review with zero parity mismatches.
 
 PR #198 remains Draft and requires another independent Re-Review before any
 Owner-run supplemental preflight. The corrected packet still contains 30

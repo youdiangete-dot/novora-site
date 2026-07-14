@@ -2167,10 +2167,27 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   only to `succeeded`, `failed_at` only to `failed`, `cancelled_at` only to
   `cancelled`, and `timed_out_at` only to `timed_out`. Terminal timestamps are
   mutually exclusive, must follow `started_at` when it exists, and are forbidden
-  on staged or nonterminal jobs. B13 and V01 now count missing, mismatched,
-  conflicting, out-of-order, and staged terminal evidence explicitly. The
-  lifecycle sequence is corrected to persist the private generated asset,
-  record `asset_created_at`, and only then perform binary/image validation.
+  on staged or nonterminal jobs. B13 comprehensively counts missing, mismatched,
+  conflicting, out-of-order, staged, nonterminal, and terminal status/evidence
+  contradictions. The lifecycle sequence is corrected to persist the private
+  generated asset, record `asset_created_at`, and only then perform binary/image
+  validation.
+
+  The fourth independent Re-Review returned **FAIL — CORRECTION REQUIRED**. It
+  confirmed both third-correction findings were resolved, including `failed_at`
+  propagation and persistence-before-validation, but found one new blocking
+  verification gap: V01 did not fully mirror B13 and the candidate lifecycle
+  CHECKs. Specifically, V01 could return a false zero for timeout before
+  deadline and for processing rows carrying failure/retry/reason evidence.
+
+  The fourth correction makes V01 count exact status vocabulary,
+  start/deadline pairing, terminal-before-start, timeout-before-deadline,
+  terminal timestamp exclusivity, missing status-specific timestamps, reverse
+  timestamp-to-status mismatches, staged evidence, nonterminal terminal/failure/
+  retry evidence, and complete terminal status/evidence contradictions. It also
+  adds an explicit candidate/B13/V01 predicate map and in-memory counterexample
+  review with zero parity mismatches. No SQL or Owner-run query was executed and
+  no Supabase connection occurred.
 
   PR #198 remains Draft. No supplemental Owner-run query may run until another
   independent Re-Review passes. This correction is documentation-only: no SQL
@@ -2246,6 +2263,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   `cancelled_at`, and `timed_out_at` must each imply and be required by only
   their matching terminal status, and every populated terminal timestamp must
   satisfy the approved ordering rules.
+- Every post-execution lifecycle verification query must mirror every
+  corresponding preflight and candidate CHECK predicate. This includes
+  status-specific required evidence, evidence-to-status reverse implications,
+  start/deadline pairing, deadline-specific ordering, terminal timestamp
+  exclusivity, nonterminal evidence contradictions, and NULL/partial-population
+  cases. A reduced terminal-timestamp sample is a blocking false-zero risk.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2258,12 +2281,15 @@ Agent 70B-1 / PR #197 is merged with normal merge commit
 complete, and Agent 70B-2 has prepared a documentation-only reuse-first review,
 supplemental preflights, and additive candidate SQL. No migration has been
 executed and effective access-control evidence remains incomplete. The first
-independent Review, second independent Re-Review, and third independent
-Re-Review all returned **FAIL — CORRECTION REQUIRED**. The third correction
-separates succeeded `completed_at` from failed `failed_at` and corrects the asset
-sequence so private persistence precedes binary/image validation. Corrected
-Draft PR #198 now requires another independent Re-Review, and the supplemental
-Owner-run preflights remain blocked until that Re-Review passes.
+independent Review, second independent Re-Review, third independent Re-Review,
+and fourth independent Re-Review all returned **FAIL — CORRECTION REQUIRED**.
+The third correction separated succeeded `completed_at` from failed `failed_at`
+and corrected the asset sequence so private persistence precedes binary/image
+validation. The fourth correction aligns V01 with every B13 and candidate
+lifecycle predicate, including timeout-before-deadline and complete
+status/evidence contradictions. Corrected Draft PR #198 now requires another
+independent Re-Review, and the supplemental Owner-run preflights remain blocked
+until that Re-Review passes.
 
 Required next sequence:
 
