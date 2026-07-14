@@ -2097,6 +2097,37 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   wiring, automatic readiness implementation, customer First Preview UI,
   deployment, and Production behavior remain unimplemented.
 
+  The first independent formal review of Draft PR #198 returned **FAIL —
+  CORRECTION REQUIRED**. Its six blocking categories were: (1) NULL-safe
+  readiness constraints and violation preflights; (2) ready/current separation;
+  (3) purpose/attempt and complete pinned Provider-profile NULL safety; (4)
+  enforceable same-brief lineage, source-output, and output/job consistency; (5)
+  complete versioned deterministic idempotency; and (6) private-asset/readiness/
+  revocation chronology. PR #198 remains Draft. The correction is
+  documentation-only; no SQL was executed and no Supabase connection occurred.
+  Another independent review must pass before the owner runs any supplemental
+  preflight. The corrected packet contains 30 owner-run SELECT-only preflight
+  blocks and 7 candidate-only SQL blocks; none was executed.
+
+  The corrected lifecycle keeps readiness output-bound and current selection
+  separate: a ready output may be non-current, while a current output must be
+  ready and at most one may be current per Concept Brief. A later writer must
+  switch current selection transactionally. `asset_created_at` is the
+  authoritative private-persistence timestamp, followed in order by
+  `asset_validated_at`, `automatic_gate_passed_at`, and
+  `first_preview_ready_at`; revocation retains prior ready evidence, occurs
+  later, and clears current selection. Composite unique/FK guards are planned
+  for same-brief parent/source lineage and output/job consistency, with strictly
+  increasing bounded attempts preventing cycles.
+
+  Canonical idempotency uses namespace
+  `novora:first-preview-idempotency:v1`: RFC 8785 canonical JSON containing the
+  internal Concept Brief UUID, purpose, Design Spec version/hash, Hand Sketch
+  Instruction version/hash, stable lineage identity, parent/source identity,
+  and attempt; UTF-8 without BOM; SHA-256; lowercase hexadecimal output; and
+  explicit JSON `null` only for non-applicable parent/source identities. Missing
+  identity fails before reservation, Provider invocation, or output persistence.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2146,6 +2177,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - Read `docs/novora-codex-operating-mode.md` before changing workflow,
   branching, PR, deployment, permission, or agent-handoff rules.
 - Do not run `git add .` without explicit approval for that exact command.
+- Every proposed PostgreSQL `CHECK` involving nullable columns requires an
+  explicit NULL truth-table review because TRUE and NULL both satisfy a CHECK.
+  At minimum review all-null, controlling-status NULL, evidence NULL,
+  ready/current, ready/non-current, current/not-ready, revoked-after-ready,
+  revoked-without-ready, and out-of-order timestamp cases. Matching violation
+  preflights must explicitly count NULL-invalid combinations; NULL-result
+  acceptance is a blocking SQL-review defect.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2157,12 +2195,15 @@ Agent 70B-1 / PR #197 is merged with normal merge commit
 `e77d2e6267f78ecf1109198ae100149eb8e466e4`. The owner-run Q01-Q11 evidence is
 complete, and Agent 70B-2 has prepared a documentation-only reuse-first review,
 supplemental preflights, and additive candidate SQL. No migration has been
-executed and effective access-control evidence remains incomplete.
+executed and effective access-control evidence remains incomplete. The first
+independent review returned **FAIL — CORRECTION REQUIRED**; corrected Draft PR
+#198 requires a new independent review, and the supplemental owner-run
+preflights remain blocked until that review passes.
 
 Required next sequence:
 
-1. Formal review of the Agent 70B-2 documentation PR.
-2. The owner manually executes the separately approved supplemental SELECT-only
+1. New independent read-only formal review of corrected Draft PR #198.
+2. Only after that review passes, the owner manually executes the separately approved supplemental SELECT-only
    metadata and aggregate compatibility preflights.
 3. A later documentation Agent reconciles supplemental results and regenerates
    blocked predicates or statements when necessary.

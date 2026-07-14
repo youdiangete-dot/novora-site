@@ -113,8 +113,8 @@ Future implementation should keep generation server-controlled:
 - Create a generation job record before calling any image provider so refresh,
   retry, redirect, or duplicate requests cannot create uncontrolled duplicate
   generations.
-- Use an idempotency key scoped to the Concept Brief, generation purpose, Design
-  Spec version, Hand Sketch Instruction version, and first-preview attempt.
+- Compute the complete versioned canonical idempotency identity described below
+  before reserving a job or calling the Provider.
 - Reuse or return the existing active or completed first-preview job when the
   customer refreshes or lands on the preview URL again.
 - Record prompt/spec/template version, provider, model, size, quality, cost
@@ -143,6 +143,32 @@ decision and official-source record is in
 The pre-display decision is locked: the first preview does not wait for
 per-image human approval. Human correction remains available after preview,
 while formal downstream human approvals remain separate.
+
+### Canonical idempotency identity
+
+The normative namespace is `novora:first-preview-idempotency:v1`. Build a JSON
+object with exactly `version`, internal `concept_brief_id`,
+`generation_purpose`, `design_spec_version`, `design_spec_sha256`,
+`hand_sketch_instruction_version`, `hand_sketch_instruction_sha256`,
+`lineage_identity`, `parent_job_id`, `source_output_id`, and `attempt_number`.
+Serialize with RFC 8785 JSON Canonicalization Scheme rules, encode as UTF-8
+without a BOM, hash with SHA-256, and store lowercase 64-character hexadecimal.
+UUIDs are lowercase hyphenated strings; hashes are lowercase hexadecimal;
+attempt is a JSON integer; and non-applicable parent/source identities are
+explicit JSON `null`, never omitted. `version` is the exact namespace above and
+the bounded initial lineage identity is `first-preview:v1`.
+
+Any missing, blank, malformed, or omitted required component fails closed
+before job reservation, idempotency reservation, Provider invocation, or
+output persistence. The same complete identity produces the same key; changing
+purpose, either structured artifact version/hash, lineage, parent/source, or
+attempt produces a different identity. `publicReference` is not a substitute
+for the internal Concept Brief UUID.
+
+Database format/completeness CHECKs and uniqueness are defense in depth; they do
+not prove canonical derivation. The future server reservation boundary must
+canonicalize, hash, compare, and atomically persist the identity before any
+Provider or output action.
 
 ### Required automatic first-preview gates
 
@@ -218,6 +244,13 @@ Planned responsibilities:
   controlled private object identity, automatic-gate evidence, the persisted
   output-bound `first_preview_ready` visibility decision, and lineage to the
   job and brief. Asset existence, object ID, or URL alone is never readiness.
+- A root First Preview job is attempt 1 with no parent/source. One eligible
+  automatic retry may be a child First Preview attempt 2. One later authorized
+  feedback regeneration extends the same lineage, increments its parent
+  attempt by one (bounded at 3), and names the exact prior parent output as its
+  source. Composite unique/FK guards must enforce same-brief parentage, exact
+  parent purpose/attempt, same-brief source output, and output/job brief
+  consistency; strictly increasing bounded attempts prevent cycles.
 - `ai_sketch_reviews` should remain human-review focused. Its
   `approved_for_customer` status is relevant to later formal human-approved
   material or downstream communication and is not required for the initial
@@ -231,7 +264,8 @@ Verified additive gaps include deterministic idempotency, attempt numbering and
 lineage, structured Design Spec and Hand Sketch Instruction version/hash
 bindings, provider request identity, lifecycle/terminal timestamps, normalized
 failure and retry evidence, cost fields, output MIME/size/dimensions/checksum,
-asset validation time, automatic-gate evidence, output-bound readiness, and a
+asset persistence/validation time, automatic-gate evidence/passed time,
+output-bound readiness, and a
 database invariant allowing at most one current customer preview per Concept
 Brief. Provider/model/request configuration belongs on the job; binary and
 asset-integrity evidence belongs on the output. Existing `model_name`,
@@ -248,6 +282,19 @@ Dedicated additive automatic-gate/readiness fields are required so provider
 success, output creation, an object path, `pending_review`, or human
 `approved_for_customer` cannot independently establish `first_preview_ready`.
 
+`asset_created_at` is the authoritative proof that private generated-asset
+persistence succeeded; an object path alone is not proof. The required order is
+`asset_created_at <= asset_validated_at <= automatic_gate_passed_at <=
+first_preview_ready_at`. Ready rows have no revocation timestamp. Revoked rows
+retain the prior ready timestamp/evidence, record `readiness_revoked_at >=
+first_preview_ready_at`, and are not current.
+
+Readiness and current selection are separate. `first_preview_ready` means one
+specific output passed all automatic display gates; it may be non-current.
+`is_current_customer_preview = true` selects one already-ready output, with at
+most one current output per Concept Brief. The later persistence writer must
+replace that pointer transactionally and preserve historical ready outputs.
+
 Agent 69B records the original reuse-first model and candidate SQL boundary in
 `docs/novora-first-preview-data-model-sql-plan-v1.md`. It does not add the old
 candidate preview-lifecycle table merely to duplicate jobs, outputs, and
@@ -257,6 +304,14 @@ after live metadata proves no compatible feedback table already exists.
 Agent 70B-2 records the evidence-led inventory, aggregate/effective-privilege
 preflights, and exact additive candidate blocks in
 `docs/novora-agent-70b2-first-preview-live-schema-review-and-additive-sql-plan-v1.md`.
+The first independent review of Draft PR #198 returned **FAIL — CORRECTION
+REQUIRED** for six blocking categories: NULL safety; ready/current separation;
+purpose/attempt/Provider-profile completeness; enforceable lineage and
+cross-table consistency; canonical idempotency; and asset/readiness chronology.
+The corrected documentation keeps PR #198 Draft and requires another
+independent review before any owner-run supplemental preflight. The corrected
+packet contains 30 owner-run SELECT-only preflight blocks and 7 candidate-only SQL
+blocks; none was executed.
 Every row-dependent CHECK, FK validation, `NOT NULL` hardening, and unique index
 remains blocked until its exact owner-run aggregate preflight passes. No SQL was
 executed, no migration was created, no Supabase connection was made by Codex,
@@ -516,8 +571,8 @@ a Supabase connection.
 
 The required next sequence is explicit:
 
-1. Formal review of the Agent 70B-2 documentation PR.
-2. The owner manually executes separately approved supplemental SELECT-only
+1. New independent read-only formal review of corrected Draft PR #198.
+2. Only after that review passes, the owner manually executes separately approved supplemental SELECT-only
    effective-privilege and aggregate compatibility preflights.
 3. A later documentation Agent reconciles supplemental results and regenerates
    blocked SQL when needed.
