@@ -249,11 +249,14 @@ Planned responsibilities:
   and the complete pinned OpenAI request profile before it is written.
 - Job lifecycle rules are bidirectional. `queued` carries no started or terminal
   evidence; `processing` requires start/deadline and no terminal evidence;
-  `succeeded` requires start/deadline/completion and no failure evidence;
-  `failed`, `timed_out`, and `cancelled` require their compatible terminal
-  timestamp, category/retry decision, and terminal reason. A terminal timestamp
-  cannot appear on a staged or nonterminal job, and every started/terminal time
-  must satisfy the reviewed ordering rules.
+  `succeeded` requires success-only `completed_at` and no failure evidence;
+  `failed` requires failure-only `failed_at`; `timed_out` requires only
+  `timed_out_at`; and `cancelled` requires only `cancelled_at`, together with
+  their compatible category/retry decision and terminal reason. These four
+  terminal timestamps are mutually exclusive and imply their matching status in
+  both directions. A terminal timestamp cannot appear on a staged or nonterminal
+  job, and each populated terminal timestamp must be at or after `started_at`
+  when the attempt has started.
 - `ai_sketch_outputs` should be reused for generated image metadata,
   controlled private object identity, automatic-gate evidence, the persisted
   output-bound `first_preview_ready` visibility decision, and lineage to the
@@ -276,7 +279,8 @@ Planned responsibilities:
 
 Verified additive gaps include deterministic idempotency, attempt numbering and
 lineage, structured Design Spec and Hand Sketch Instruction version/hash
-bindings, provider request identity, lifecycle/terminal timestamps, normalized
+bindings, provider request identity, status-exclusive `completed_at`,
+`failed_at`, `cancelled_at`, and `timed_out_at`, normalized
 failure and retry evidence, cost fields, output MIME/size/dimensions/checksum,
 asset persistence time, asset-validation status/evidence/time,
 automatic-gate status/evidence/passed time,
@@ -303,6 +307,13 @@ persistence succeeded; an object path alone is not proof. The required order is
 first_preview_ready_at`. Ready rows have no revocation timestamp. Revoked rows
 retain the prior ready timestamp/evidence, record `readiness_revoked_at >=
 first_preview_ready_at`, and are not current.
+
+The operational sequence receives Provider output, persists the private
+generated asset, records `asset_created_at`, validates the persisted binary and
+image, records `asset_validated_at`, runs and passes automatic gates, marks the
+output ready, and only then may select that ready output as current. Human
+review remains later and `approved_for_customer` is not the initial display
+gate.
 
 Asset and gate state is also bidirectional. A populated `asset_created_at`
 requires the private bucket/path locators. `asset_validation_status = 'passed'`
@@ -344,7 +355,14 @@ bound to exact staged `draft`, and asset-validation/gate-passed evidence was not
 bidirectionally bound to its status and timestamp. This second correction closes
 those areas without changing ready/current or human-review separation.
 
-PR #198 remains Draft and requires a third independent Re-Review before any
+The third independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+It found that failed jobs still reused success-only `completed_at` and that one
+main-plan sequence placed validation before private persistence. The third
+correction adds nullable candidate `failed_at`, makes every terminal timestamp
+mutually exclusive and status-specific, updates B13 and V01, and restores the
+required persistence-before-validation order.
+
+PR #198 remains Draft and requires another independent Re-Review before any
 Owner-run supplemental preflight. The corrected packet still contains 30
 Owner-run SELECT-only preflight blocks and 7 candidate-only SQL blocks, 37 SQL
 blocks total; none was executed.
@@ -607,7 +625,7 @@ a Supabase connection.
 
 The required next sequence is explicit:
 
-1. Third independent read-only formal Re-Review of corrected Draft PR #198.
+1. Another independent read-only formal Re-Review of corrected Draft PR #198.
 2. Only after that review passes, the owner manually executes separately approved supplemental SELECT-only
    effective-privilege and aggregate compatibility preflights.
 3. A later documentation Agent reconciles supplemental results and regenerates

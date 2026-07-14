@@ -24,9 +24,15 @@ idempotency. The second independent Re-Review also returned **FAIL — CORRECTIO
 REQUIRED** because two lifecycle areas remained incomplete: an all-NULL job
 identity/Provider profile was not bound to one exact staged status, and asset
 validation/gate-passed evidence was not bidirectionally bound to its status and
-timestamps. This second correction closes those two areas. PR #198 must remain
-Draft until a third independent Re-Review passes. All owner-run supplemental
-preflights remain blocked until that Re-Review passes.
+timestamps. The second correction closed those two areas, but the third
+independent Re-Review returned **FAIL — CORRECTION REQUIRED** because
+`completed_at` was still shared by succeeded and failed jobs and section 19
+placed binary/image validation before private asset persistence. This third
+correction adds the status-exclusive `failed_at` timestamp, updates every
+matching predicate and preflight, and restores persistence-before-validation
+ordering. PR #198 must remain Draft until another independent Re-Review passes.
+All owner-run supplemental preflights remain blocked until that Re-Review
+passes.
 
 ## 2. Product authority
 
@@ -196,8 +202,8 @@ parent-purpose/attempt snapshots, `source_output_id`, Design Spec version/hash,
 Hand Sketch Instruction version/hash, `provider_name`, Provider endpoint and
 non-streaming/final-image request-mode facts, provider request identity, image
 count, request size/quality/format/moderation, `started_at`, `deadline_at`,
-`completed_at`, `cancelled_at`, `timed_out_at`, normalized failure category,
-retry eligibility, terminal reason, cost micros, currency, and pricing
+`completed_at`, `failed_at`, `cancelled_at`, `timed_out_at`, normalized failure
+category, retry eligibility, terminal reason, cost micros, currency, and pricing
 assumption version.
 
 The root is `generation_purpose = 'first_preview'`, `attempt_number = 1`, with
@@ -229,6 +235,15 @@ identity, lineage, and pinned Provider profile before it is written. The
 candidate CHECKs express this as a total `valid_staged_state OR
 valid_non_staged_state`; legacy compatibility is supplied by `NOT VALID`, not
 by allowing a terminal future row to masquerade as staged.
+
+Success, failure, cancellation, and timeout use mutually exclusive,
+status-specific terminal timestamps: `completed_at` belongs only to
+`succeeded`, `failed_at` only to `failed`, `cancelled_at` only to `cancelled`,
+and `timed_out_at` only to `timed_out`. `queued` is the reserved non-running
+state and `processing` is the running state; neither may carry a terminal
+timestamp. Each populated terminal timestamp must not precede `started_at` when
+an attempt has started, while `timed_out_at` must also be at or after
+`deadline_at`.
 
 For the selected live profile, the future authorized server writer must record
 `deadline_at` as the 150-second NOVORA attempt deadline derived from
@@ -452,18 +467,25 @@ table is proposed by this Agent.
 
 ## 19. Human-review versus automatic-readiness separation
 
-These states remain distinct:
+These states remain distinct and ordered:
 
-1. Provider request succeeded.
-2. Provider output passed binary/image validation.
-3. The generated asset was persisted privately.
-4. Trusted automatic safety/privacy/access/lifecycle gates passed.
-5. The exact output became `first_preview_ready`.
-6. The exact ready output became current for the customer.
-7. Human review started.
-8. Human review requested revision.
-9. Human approval was granted.
-10. Human approval was revoked.
+1. Provider output is received.
+2. The private generated asset is persisted successfully.
+3. `asset_created_at` records authoritative persistence success.
+4. Binary/image validation runs against the persisted artifact.
+5. `asset_validated_at` records successful validation.
+6. Trusted automatic safety/privacy/access/lifecycle/quality gates run.
+7. The automatic gates pass and record `automatic_gate_passed_at`.
+8. The exact output becomes `first_preview_ready` and records
+   `first_preview_ready_at`.
+9. A ready output may be selected as current for the customer.
+10. Human review remains a later post-preview workflow.
+
+The normative chronology is `asset_created_at <= asset_validated_at <=
+automatic_gate_passed_at <= first_preview_ready_at <= readiness_revoked_at`
+whenever the later timestamps apply. An object path alone is not persistence
+proof, current implies ready, ready does not imply current, and a revoked output
+cannot remain current.
 
 Job `status` represents generation lifecycle, output `preview_status` remains a
 historical output-workflow field pending evidence, new output automatic/readiness
@@ -941,7 +963,8 @@ SELECT
         provider_name, model_name, provider_endpoint, request_image_count,
         request_streaming, request_partial_images, request_size, request_quality,
         output_format, moderation_mode, provider_request_id, started_at,
-        deadline_at, completed_at, cancelled_at, timed_out_at, failure_category,
+        deadline_at, completed_at, failed_at, cancelled_at, timed_out_at,
+        failure_category,
         retry_eligible, terminal_reason, error_message, estimated_cost_micros,
         actual_cost_micros, cost_currency, pricing_assumption_version
       ) <> 0
@@ -982,6 +1005,9 @@ SELECT
        OR (completed_at IS NOT NULL
            AND started_at IS NOT NULL
            AND completed_at < started_at)
+       OR (failed_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND failed_at < started_at)
        OR (cancelled_at IS NOT NULL
            AND started_at IS NOT NULL
            AND cancelled_at < started_at)
@@ -989,34 +1015,52 @@ SELECT
            AND started_at IS NOT NULL
            AND timed_out_at < started_at)
   ) AS invalid_attempt_timing_count,
-  count(*) FILTER (WHERE num_nonnulls(completed_at, cancelled_at, timed_out_at) > 1) AS conflicting_terminal_timestamp_count,
+  count(*) FILTER (
+    WHERE num_nonnulls(completed_at, failed_at, cancelled_at, timed_out_at) > 1
+  ) AS conflicting_terminal_timestamp_count,
+  count(*) FILTER (
+    WHERE (status IS NOT DISTINCT FROM 'succeeded' AND completed_at IS NULL)
+       OR (status IS NOT DISTINCT FROM 'failed' AND failed_at IS NULL)
+       OR (status IS NOT DISTINCT FROM 'cancelled' AND cancelled_at IS NULL)
+       OR (status IS NOT DISTINCT FROM 'timed_out' AND timed_out_at IS NULL)
+  ) AS missing_status_specific_terminal_timestamp_count,
+  count(*) FILTER (
+    WHERE (completed_at IS NOT NULL AND status IS DISTINCT FROM 'succeeded')
+       OR (failed_at IS NOT NULL AND status IS DISTINCT FROM 'failed')
+       OR (cancelled_at IS NOT NULL AND status IS DISTINCT FROM 'cancelled')
+       OR (timed_out_at IS NOT NULL AND status IS DISTINCT FROM 'timed_out')
+  ) AS terminal_timestamp_status_mismatch_count,
   count(*) FILTER (
     WHERE (status IS NOT DISTINCT FROM 'queued' AND (
              started_at IS NOT NULL OR deadline_at IS NOT NULL
-             OR completed_at IS NOT NULL OR cancelled_at IS NOT NULL
-             OR timed_out_at IS NOT NULL OR failure_category IS NOT NULL
+             OR completed_at IS NOT NULL OR failed_at IS NOT NULL
+             OR cancelled_at IS NOT NULL OR timed_out_at IS NOT NULL
+             OR failure_category IS NOT NULL
              OR retry_eligible IS NOT NULL OR terminal_reason IS NOT NULL
              OR error_message IS NOT NULL
            ))
        OR (status IS NOT DISTINCT FROM 'processing' AND (
              started_at IS NULL OR deadline_at IS NULL
              OR deadline_at <= started_at
-             OR completed_at IS NOT NULL OR cancelled_at IS NOT NULL
-             OR timed_out_at IS NOT NULL OR failure_category IS NOT NULL
+             OR completed_at IS NOT NULL OR failed_at IS NOT NULL
+             OR cancelled_at IS NOT NULL OR timed_out_at IS NOT NULL
+             OR failure_category IS NOT NULL
              OR retry_eligible IS NOT NULL OR terminal_reason IS NOT NULL
              OR error_message IS NOT NULL
            ))
        OR (status IS NOT DISTINCT FROM 'succeeded' AND (
              started_at IS NULL OR deadline_at IS NULL
              OR deadline_at <= started_at OR completed_at IS NULL
-             OR completed_at < started_at OR cancelled_at IS NOT NULL
-             OR timed_out_at IS NOT NULL OR failure_category IS NOT NULL
+             OR completed_at < started_at OR failed_at IS NOT NULL
+             OR cancelled_at IS NOT NULL OR timed_out_at IS NOT NULL
+             OR failure_category IS NOT NULL
              OR retry_eligible IS NOT NULL OR terminal_reason IS NOT NULL
              OR error_message IS NOT NULL
            ))
        OR (status IS NOT DISTINCT FROM 'failed' AND (
-             completed_at IS NULL OR cancelled_at IS NOT NULL
-             OR timed_out_at IS NOT NULL OR failure_category IS NULL
+             failed_at IS NULL OR completed_at IS NOT NULL
+             OR cancelled_at IS NOT NULL OR timed_out_at IS NOT NULL
+             OR failure_category IS NULL
              OR failure_category IS NOT DISTINCT FROM 'timeout'
              OR failure_category IS NOT DISTINCT FROM 'cancelled'
              OR retry_eligible IS NULL OR terminal_reason IS NULL
@@ -1024,21 +1068,21 @@ SELECT
              OR (started_at IS NULL AND deadline_at IS NOT NULL)
              OR (started_at IS NOT NULL AND (
                    deadline_at IS NULL OR deadline_at <= started_at
-                   OR completed_at < started_at
+                   OR failed_at < started_at
                  ))
            ))
        OR (status IS NOT DISTINCT FROM 'timed_out' AND (
              started_at IS NULL OR deadline_at IS NULL
              OR deadline_at <= started_at OR timed_out_at IS NULL
              OR timed_out_at < deadline_at OR completed_at IS NOT NULL
-             OR cancelled_at IS NOT NULL
+             OR failed_at IS NOT NULL OR cancelled_at IS NOT NULL
              OR failure_category IS DISTINCT FROM 'timeout'
              OR retry_eligible IS DISTINCT FROM false
              OR terminal_reason IS NULL OR btrim(terminal_reason) = ''
            ))
        OR (status IS NOT DISTINCT FROM 'cancelled' AND (
-             completed_at IS NOT NULL OR timed_out_at IS NOT NULL
-             OR cancelled_at IS NULL
+             completed_at IS NOT NULL OR failed_at IS NOT NULL
+             OR timed_out_at IS NOT NULL OR cancelled_at IS NULL
              OR failure_category IS DISTINCT FROM 'cancelled'
              OR retry_eligible IS DISTINCT FROM false
              OR terminal_reason IS NULL OR btrim(terminal_reason) = ''
@@ -1568,6 +1612,7 @@ ALTER TABLE public.ai_sketch_jobs
   ADD COLUMN started_at timestamptz,
   ADD COLUMN deadline_at timestamptz,
   ADD COLUMN completed_at timestamptz,
+  ADD COLUMN failed_at timestamptz,
   ADD COLUMN cancelled_at timestamptz,
   ADD COLUMN timed_out_at timestamptz,
   ADD COLUMN failure_category text,
@@ -1723,6 +1768,9 @@ ALTER TABLE public.ai_sketch_jobs
       AND (completed_at IS NULL
            OR started_at IS NULL
            OR completed_at >= started_at)
+      AND (failed_at IS NULL
+           OR started_at IS NULL
+           OR failed_at >= started_at)
       AND (cancelled_at IS NULL
            OR started_at IS NULL
            OR cancelled_at >= started_at)
@@ -1731,25 +1779,29 @@ ALTER TABLE public.ai_sketch_jobs
            OR timed_out_at >= started_at)
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_terminal_timestamp_check
-    CHECK (num_nonnulls(completed_at, cancelled_at, timed_out_at) <= 1) NOT VALID,
+    CHECK (
+      num_nonnulls(completed_at, failed_at, cancelled_at, timed_out_at) <= 1
+    ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_status_terminal_consistency_check
     CHECK (
       (status IS NOT DISTINCT FROM 'draft'
        AND num_nonnulls(
-         started_at, deadline_at, completed_at, cancelled_at, timed_out_at,
-         failure_category, retry_eligible, terminal_reason, error_message
+         started_at, deadline_at, completed_at, failed_at, cancelled_at,
+         timed_out_at, failure_category, retry_eligible, terminal_reason,
+         error_message
        ) = 0)
       OR (status IS NOT DISTINCT FROM 'queued'
           AND num_nonnulls(
-            started_at, deadline_at, completed_at, cancelled_at, timed_out_at,
-            failure_category, retry_eligible, terminal_reason, error_message
+            started_at, deadline_at, completed_at, failed_at, cancelled_at,
+            timed_out_at, failure_category, retry_eligible, terminal_reason,
+            error_message
           ) = 0)
       OR (status IS NOT DISTINCT FROM 'processing'
           AND started_at IS NOT NULL
           AND deadline_at IS NOT NULL
           AND deadline_at > started_at
           AND num_nonnulls(
-            completed_at, cancelled_at, timed_out_at, failure_category,
+            completed_at, failed_at, cancelled_at, timed_out_at, failure_category,
             retry_eligible, terminal_reason, error_message
           ) = 0)
       OR (status IS NOT DISTINCT FROM 'succeeded'
@@ -1759,11 +1811,12 @@ ALTER TABLE public.ai_sketch_jobs
           AND completed_at IS NOT NULL
           AND completed_at >= started_at
           AND num_nonnulls(
-            cancelled_at, timed_out_at, failure_category, retry_eligible,
+            failed_at, cancelled_at, timed_out_at, failure_category, retry_eligible,
             terminal_reason, error_message
           ) = 0)
       OR (status IS NOT DISTINCT FROM 'failed'
-          AND completed_at IS NOT NULL
+          AND completed_at IS NULL
+          AND failed_at IS NOT NULL
           AND cancelled_at IS NULL
           AND timed_out_at IS NULL
           AND failure_category IS NOT NULL
@@ -1777,7 +1830,7 @@ ALTER TABLE public.ai_sketch_jobs
             OR (started_at IS NOT NULL
                 AND deadline_at IS NOT NULL
                 AND deadline_at > started_at
-                AND completed_at >= started_at)
+                AND failed_at >= started_at)
           ))
       OR (status IS NOT DISTINCT FROM 'timed_out'
           AND started_at IS NOT NULL
@@ -1786,6 +1839,7 @@ ALTER TABLE public.ai_sketch_jobs
           AND timed_out_at IS NOT NULL
           AND timed_out_at >= deadline_at
           AND completed_at IS NULL
+          AND failed_at IS NULL
           AND cancelled_at IS NULL
           AND failure_category IS NOT DISTINCT FROM 'timeout'
           AND retry_eligible IS NOT DISTINCT FROM false
@@ -1793,6 +1847,7 @@ ALTER TABLE public.ai_sketch_jobs
           AND btrim(terminal_reason) <> '')
       OR (status IS NOT DISTINCT FROM 'cancelled'
           AND completed_at IS NULL
+          AND failed_at IS NULL
           AND timed_out_at IS NULL
           AND cancelled_at IS NOT NULL
           AND failure_category IS NOT DISTINCT FROM 'cancelled'
@@ -2296,10 +2351,17 @@ counts use explicit NULL-aware violation conditions.
 | --- | --- |
 | All new job fields NULL with `status = 'draft'` | Permitted as the one exact fail-closed legacy/pre-reservation state |
 | `draft` with started or deadline evidence | Rejected |
-| `draft` with completed, failed, timed-out, cancelled, retry, terminal-reason, or Provider evidence | Rejected |
+| `draft` with `failed_at` or any other terminal, retry, terminal-reason, or Provider evidence | Rejected |
 | Any non-`draft` status with all identity fields NULL | Rejected |
-| Terminal timestamp or terminal evidence on `queued`/`processing` | Rejected |
-| `succeeded` without complete identity/profile, start/deadline, or completion evidence | Rejected |
+| `queued` (reserved) or `processing` (running) with `failed_at` or another terminal timestamp | Rejected |
+| `succeeded` with `completed_at` only, after start | Permitted when identity/profile and all other evidence are valid |
+| `succeeded` without `completed_at`, or with `failed_at`/failure evidence | Rejected |
+| `failed` with `failed_at` only, after start when started | Permitted when identity/profile and failure evidence are valid |
+| `failed` with `completed_at`, or without `failed_at` | Rejected |
+| `cancelled` with `cancelled_at` only | Permitted when cancellation evidence is valid |
+| `timed_out` with `timed_out_at` only | Permitted when timeout evidence is valid |
+| Any two of `completed_at`, `failed_at`, `cancelled_at`, `timed_out_at` | Rejected |
+| Any terminal timestamp before `started_at` | Rejected |
 | Purpose NULL, attempt populated | Rejected |
 | Purpose populated, attempt NULL | Rejected |
 | Provider group all NULL | Permitted only for exact staged `draft` |
@@ -2356,10 +2418,13 @@ Storage mutation is included.
 These are for a future owner-run verification only after separately authorized
 SQL execution.
 
-### V01 - Added columns
+### V01 - Added columns and terminal lifecycle
 
-Purpose: verify exact types/nullability/defaults. Pass: the reviewed candidate
-set appears exactly once with no unexpected default. Fail closed: any mismatch.
+Purpose: verify exact types/nullability/defaults and aggregate status-exclusive
+terminal lifecycle compatibility. Pass: the reviewed candidate set appears
+exactly once with no unexpected default and every aggregate count is zero. Fail
+closed: any metadata mismatch or nonzero lifecycle count. The second SELECT is
+valid only after the additive job columns exist and does not return identities.
 
 OWNER-RUN SELECT-ONLY PREFLIGHT — DO NOT EXECUTE IN THIS AGENT
 
@@ -2379,7 +2444,8 @@ WHERE table_schema = 'public'
     'request_image_count', 'request_streaming', 'request_partial_images',
     'request_size', 'request_quality',
     'output_format', 'moderation_mode', 'started_at', 'deadline_at',
-    'completed_at', 'cancelled_at', 'timed_out_at', 'failure_category',
+    'completed_at', 'failed_at', 'cancelled_at', 'timed_out_at',
+    'failure_category',
     'retry_eligible', 'terminal_reason', 'estimated_cost_micros',
     'actual_cost_micros', 'cost_currency', 'pricing_assumption_version',
     'mime_type', 'byte_size', 'width_px', 'height_px', 'content_sha256',
@@ -2392,6 +2458,46 @@ WHERE table_schema = 'public'
     'is_current_customer_preview'
   )
 ORDER BY table_name, ordinal_position;
+
+SELECT
+  count(*) FILTER (
+    WHERE (status IS NOT DISTINCT FROM 'succeeded' AND completed_at IS NULL)
+       OR (status IS NOT DISTINCT FROM 'failed' AND failed_at IS NULL)
+       OR (status IS NOT DISTINCT FROM 'cancelled' AND cancelled_at IS NULL)
+       OR (status IS NOT DISTINCT FROM 'timed_out' AND timed_out_at IS NULL)
+  ) AS missing_status_specific_terminal_timestamp_count,
+  count(*) FILTER (
+    WHERE (completed_at IS NOT NULL AND status IS DISTINCT FROM 'succeeded')
+       OR (failed_at IS NOT NULL AND status IS DISTINCT FROM 'failed')
+       OR (cancelled_at IS NOT NULL AND status IS DISTINCT FROM 'cancelled')
+       OR (timed_out_at IS NOT NULL AND status IS DISTINCT FROM 'timed_out')
+  ) AS terminal_timestamp_status_mismatch_count,
+  count(*) FILTER (
+    WHERE num_nonnulls(completed_at, failed_at, cancelled_at, timed_out_at) > 1
+  ) AS conflicting_terminal_timestamp_count,
+  count(*) FILTER (
+    WHERE (completed_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND completed_at < started_at)
+       OR (failed_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND failed_at < started_at)
+       OR (cancelled_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND cancelled_at < started_at)
+       OR (timed_out_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND timed_out_at < started_at)
+  ) AS terminal_timestamp_before_start_count,
+  count(*) FILTER (
+    WHERE status IS NOT DISTINCT FROM 'draft'
+      AND num_nonnulls(
+        started_at, deadline_at, completed_at, failed_at, cancelled_at,
+        timed_out_at, failure_category, retry_eligible, terminal_reason,
+        error_message
+      ) <> 0
+  ) AS invalid_staged_terminal_evidence_count
+FROM public.ai_sketch_jobs;
 ```
 
 ### V02 - Added constraints and validation state
@@ -2707,7 +2813,7 @@ documentation for later owner review.
 
 ## 30. Recommended later Agent sequence
 
-1. Third independent read-only formal Re-Review of corrected Draft PR #198.
+1. Another independent read-only formal Re-Review of corrected Draft PR #198.
 2. Only after that review passes, the owner manually executes separately approved supplemental `SELECT`-only
    metadata and aggregate preflights.
 3. A later documentation Agent reconciles the returned supplemental evidence

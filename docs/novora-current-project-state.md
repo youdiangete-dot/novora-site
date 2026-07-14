@@ -2155,6 +2155,29 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   occurred. The packet still contains 30 Owner-run SELECT-only blocks and 7
   candidate-only blocks, 37 SQL blocks total.
 
+  The third independent Re-Review returned **FAIL — CORRECTION REQUIRED** for
+  two remaining documentation defects. First, the candidate reused
+  `completed_at` for both succeeded and failed jobs, so a success timestamp did
+  not imply `status = 'succeeded'` and B13 could return a false zero. Second,
+  section 19 placed binary/image validation before private generated-asset
+  persistence even though the normative chronology requires persistence first.
+
+  The third correction adds nullable candidate column `failed_at timestamptz`
+  and makes all terminal timestamps status-exclusive: `completed_at` belongs
+  only to `succeeded`, `failed_at` only to `failed`, `cancelled_at` only to
+  `cancelled`, and `timed_out_at` only to `timed_out`. Terminal timestamps are
+  mutually exclusive, must follow `started_at` when it exists, and are forbidden
+  on staged or nonterminal jobs. B13 and V01 now count missing, mismatched,
+  conflicting, out-of-order, and staged terminal evidence explicitly. The
+  lifecycle sequence is corrected to persist the private generated asset,
+  record `asset_created_at`, and only then perform binary/image validation.
+
+  PR #198 remains Draft. No supplemental Owner-run query may run until another
+  independent Re-Review passes. This correction is documentation-only: no SQL
+  was executed, no Owner-run query was executed, and no Supabase connection
+  occurred. Counts remain 30 Owner-run blocks, 7 candidate-only blocks, and 37
+  SQL blocks total.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2218,6 +2241,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   profiles, validation timestamps without complete integrity evidence, gate
   pass timestamps with non-passed status, and all ready/current/revoked NULL
   combinations. A one-way implication is incomplete.
+- Success, failure, cancellation, and timeout must use mutually exclusive,
+  status-specific terminal timestamps. `completed_at`, `failed_at`,
+  `cancelled_at`, and `timed_out_at` must each imply and be required by only
+  their matching terminal status, and every populated terminal timestamp must
+  satisfy the approved ordering rules.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2230,15 +2258,16 @@ Agent 70B-1 / PR #197 is merged with normal merge commit
 complete, and Agent 70B-2 has prepared a documentation-only reuse-first review,
 supplemental preflights, and additive candidate SQL. No migration has been
 executed and effective access-control evidence remains incomplete. The first
-independent Review and second independent Re-Review both returned **FAIL —
-CORRECTION REQUIRED**. The second correction closes the two remaining staged-job
-and asset-validation/gate-status lifecycle gaps. Corrected Draft PR #198 now
-requires a third independent Re-Review, and the supplemental Owner-run
-preflights remain blocked until that Re-Review passes.
+independent Review, second independent Re-Review, and third independent
+Re-Review all returned **FAIL — CORRECTION REQUIRED**. The third correction
+separates succeeded `completed_at` from failed `failed_at` and corrects the asset
+sequence so private persistence precedes binary/image validation. Corrected
+Draft PR #198 now requires another independent Re-Review, and the supplemental
+Owner-run preflights remain blocked until that Re-Review passes.
 
 Required next sequence:
 
-1. Third independent read-only formal Re-Review of corrected Draft PR #198.
+1. Another independent read-only formal Re-Review of corrected Draft PR #198.
 2. Only after that review passes, the owner manually executes the separately approved supplemental SELECT-only
    metadata and aggregate compatibility preflights.
 3. A later documentation Agent reconciles supplemental results and regenerates
