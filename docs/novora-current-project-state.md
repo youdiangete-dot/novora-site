@@ -2105,7 +2105,7 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   complete versioned deterministic idempotency; and (6) private-asset/readiness/
   revocation chronology. PR #198 remains Draft. The correction is
   documentation-only; no SQL was executed and no Supabase connection occurred.
-  Another independent review must pass before the owner runs any supplemental
+  A second independent Re-Review must pass before the owner runs any supplemental
   preflight. The corrected packet contains 30 owner-run SELECT-only preflight
   blocks and 7 candidate-only SQL blocks; none was executed.
 
@@ -2127,6 +2127,33 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   and attempt; UTF-8 without BOM; SHA-256; lowercase hexadecimal output; and
   explicit JSON `null` only for non-applicable parent/source identities. Missing
   identity fails before reservation, Provider invocation, or output persistence.
+
+  The second independent Re-Review of corrected Draft PR #198 also returned
+  **FAIL — CORRECTION REQUIRED**. It confirmed ready/current separation,
+  same-brief lineage, output/job consistency, cycle prevention, canonical
+  idempotency, review-state separation, access-evidence limits, and Product
+  boundaries, but found two remaining lifecycle defects. First, all-NULL job
+  identity and Provider-profile fields were not bound to one exact staged
+  status, and terminal timestamps were not bidirectionally bound to terminal
+  statuses. Second, asset validation and automatic-gate passed evidence were
+  not bidirectionally bound to their statuses and timestamps.
+
+  The second correction defines only `status = 'draft'` as the staged job state;
+  it carries no purpose, attempt, canonical identity, lineage, Provider profile,
+  Provider request, started/deadline, terminal, failure/retry, or cost evidence.
+  Every non-staged job requires complete canonical identity and the pinned
+  Provider profile, while job timestamps and terminal evidence imply compatible
+  statuses in both directions. Output planning now adds explicit
+  `asset_validation_status` and bounded `asset_validation_evidence`, binds passed
+  validation to complete persisted-asset and binary-integrity facts, and binds a
+  passed automatic gate to prior validation, policy, evidence, and pass time in
+  both directions. Ready/current separation remains unchanged.
+
+  PR #198 remains Draft. No supplemental Owner-run query may run until a third
+  independent Re-Review passes. This correction is documentation-only: no SQL
+  was executed, no Owner-run query was executed, and no Supabase connection
+  occurred. The packet still contains 30 Owner-run SELECT-only blocks and 7
+  candidate-only blocks, 37 SQL blocks total.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -2184,6 +2211,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   revoked-without-ready, and out-of-order timestamp cases. Matching violation
   preflights must explicitly count NULL-invalid combinations; NULL-result
   acceptance is a blocking SQL-review defect.
+- Every lifecycle truth table must test both `status -> required evidence` and
+  `evidence/timestamp -> compatible status`. It must include the exact staged
+  state with started/terminal evidence, terminal status with missing identity,
+  terminal timestamps on nonterminal statuses, all-NULL and partial Provider
+  profiles, validation timestamps without complete integrity evidence, gate
+  pass timestamps with non-passed status, and all ready/current/revoked NULL
+  combinations. A one-way implication is incomplete.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2196,13 +2230,15 @@ Agent 70B-1 / PR #197 is merged with normal merge commit
 complete, and Agent 70B-2 has prepared a documentation-only reuse-first review,
 supplemental preflights, and additive candidate SQL. No migration has been
 executed and effective access-control evidence remains incomplete. The first
-independent review returned **FAIL — CORRECTION REQUIRED**; corrected Draft PR
-#198 requires a new independent review, and the supplemental owner-run
-preflights remain blocked until that review passes.
+independent Review and second independent Re-Review both returned **FAIL —
+CORRECTION REQUIRED**. The second correction closes the two remaining staged-job
+and asset-validation/gate-status lifecycle gaps. Corrected Draft PR #198 now
+requires a third independent Re-Review, and the supplemental Owner-run
+preflights remain blocked until that Re-Review passes.
 
 Required next sequence:
 
-1. New independent read-only formal review of corrected Draft PR #198.
+1. Third independent read-only formal Re-Review of corrected Draft PR #198.
 2. Only after that review passes, the owner manually executes the separately approved supplemental SELECT-only
    metadata and aggregate compatibility preflights.
 3. A later documentation Agent reconciles supplemental results and regenerates

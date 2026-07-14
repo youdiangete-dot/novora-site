@@ -17,13 +17,16 @@ Every SQL statement below is either a candidate for a later separately approved
 SQL Agent or an owner-run `SELECT`-only preflight. Nothing in this document is
 authorization to execute SQL.
 
-The independent formal review of Draft PR #198 returned **FAIL — CORRECTION
-REQUIRED**. This correction records and resolves six blocking design categories:
-NULL-safe constraints/preflights; ready/current separation; purpose, attempt,
-and Provider-profile completeness; enforceable lineage and cross-table
-consistency; deterministic idempotency; and asset/readiness chronology. PR #198
-must remain Draft until this correction receives a new independent review. The
-owner-run supplemental preflights remain blocked until that review passes.
+The first independent formal review of Draft PR #198 returned **FAIL —
+CORRECTION REQUIRED**, and the first correction resolved ready/current
+separation, enforceable lineage and cross-table consistency, and deterministic
+idempotency. The second independent Re-Review also returned **FAIL — CORRECTION
+REQUIRED** because two lifecycle areas remained incomplete: an all-NULL job
+identity/Provider profile was not bound to one exact staged status, and asset
+validation/gate-passed evidence was not bidirectionally bound to its status and
+timestamps. This second correction closes those two areas. PR #198 must remain
+Draft until a third independent Re-Review passes. All owner-run supplemental
+preflights remain blocked until that Re-Review passes.
 
 ## 2. Product authority
 
@@ -216,6 +219,17 @@ cycle impossible. Future authorized server transactions must additionally
 enforce retry eligibility, customer-feedback authorization, budget, limiter,
 and atomic terminal transitions.
 
+The only permitted pre-reservation staged state is the existing live
+`status = 'draft'`. A staged row has every new purpose, attempt, canonical
+identity, lineage, Provider-profile, Provider-request, timing, terminal,
+failure/retry, and cost field NULL. It has not started or completed work. Every
+non-staged future row uses one of `queued`, `processing`, `succeeded`, `failed`,
+`timed_out`, or `cancelled` and must have complete purpose/attempt, canonical
+identity, lineage, and pinned Provider profile before it is written. The
+candidate CHECKs express this as a total `valid_staged_state OR
+valid_non_staged_state`; legacy compatibility is supplied by `NOT VALID`, not
+by allowing a terminal future row to masquerade as staged.
+
 For the selected live profile, the future authorized server writer must record
 `deadline_at` as the 150-second NOVORA attempt deadline derived from
 `started_at`. The database timing check guards ordering; it does not initiate,
@@ -235,18 +249,25 @@ cancel, retry, or guarantee hosting duration.
 | `created_at` | `timestamptz NOT NULL DEFAULT now()` | Output creation audit | Reuse | Preserve; add explicit asset/readiness timestamps instead of inferring them from creation | None |
 
 Required additive output capabilities are MIME type, byte size, width, height,
-SHA-256 content hash, asset-created/validated timestamps, automatic-gate status,
-bounded automatic-gate evidence, gate-policy version, gate-passed time,
-readiness status, ready/revoked timestamps, and a current-customer-preview
-marker with a partial unique index.
+SHA-256 content hash, asset-created time, explicit asset-validation status and
+bounded evidence, asset-validated time, automatic-gate status, bounded
+automatic-gate evidence, gate-policy version, gate-passed time, readiness
+status, ready/revoked timestamps, and a current-customer-preview marker with a
+partial unique index.
 
 `asset_created_at` is the authoritative database proof that private generated
-asset persistence completed successfully. `object_path` and `bucket_name` are
+asset persistence completed successfully and, when populated, requires
+nonblank `bucket_name` and `object_path`. `object_path` and `bucket_name` are
 locators only and cannot prove persistence, privacy, existence, integrity, or
-readiness. `asset_validated_at` must follow `asset_created_at`;
-`automatic_gate_passed_at` must follow asset validation; and
-`first_preview_ready_at` must follow automatic-gate passage. A revoked output
-retains its prior ready timestamp/evidence, records a later
+readiness. `asset_validation_status = 'passed'` is bidirectionally bound to a
+nonempty bounded evidence object, complete MIME/size/dimension/checksum facts,
+and `asset_validated_at >= asset_created_at`. `pending` has no evidence or pass
+timestamp; `failed` retains bounded failure evidence but no validated-at
+timestamp or accepted binary facts. `automatic_gate_status` is likewise a
+total state group: `passed` requires prior passed asset validation, nonblank
+policy version, nonempty evidence, and a pass timestamp; any pass timestamp
+requires `passed`. `first_preview_ready_at` must follow automatic-gate passage.
+A revoked output retains its prior ready timestamp/evidence, records a later
 `readiness_revoked_at`, and cannot remain current.
 
 Provider, pinned model, size, quality, format, moderation mode, and provider
@@ -254,13 +275,13 @@ request identity belong on the job because they describe the attempt request.
 The output inherits them through required `job_id`; duplicating them on every
 output would permit contradictory evidence. Binary facts belong on the output.
 
-`automatic_gate_evidence` may be JSONB only for a bounded collection of gate
-code, boolean/result, trusted producer ID, validator/policy version, validation
-time, and input/output binding hashes. It must not contain prompts, customer
-contact data, notes, secrets, object paths, provider payloads, URLs, or image
-content. Dedicated columns and constraints remain authoritative for readiness,
-current selection, timestamps, identity, asset integrity, attempt identity, and
-uniqueness.
+`asset_validation_evidence` and `automatic_gate_evidence` may be JSONB only for
+a bounded collection of validator/gate code, boolean/result, trusted producer
+ID, validator/policy version, validation time, and input/output binding hashes.
+They must not contain prompts, customer contact data, notes, secrets, object
+paths, provider payloads, URLs, or image content. Dedicated columns and
+constraints remain authoritative for validation, readiness, current selection,
+timestamps, identity, asset integrity, attempt identity, and uniqueness.
 
 ### 8.4 `ai_sketch_reviews` fields and structural tension
 
@@ -468,6 +489,12 @@ The reviewer must prove that each invalid combination evaluates to FALSE, not
 UNKNOWN, and that its matching aggregate violation preflight counts the same
 combination explicitly.
 
+Lifecycle truth tables must prove both directions: `status -> required
+evidence` and `evidence/timestamp -> compatible status`. A staged status must
+not carry started, terminal, Provider, validation, or passed-gate evidence; a
+non-staged or terminal status must not omit its required identity, profile, or
+timestamp evidence. Status-only implication checks are incomplete.
+
 At minimum, each lifecycle review must cover: all fields NULL; controlling
 status NULL; controlling status populated with evidence NULL; evidence
 populated with status NULL; ready/current; ready/non-current; current/not-ready;
@@ -658,9 +685,11 @@ prompts, notes, paths, payloads, contacts, references, or image content.
 
 ### B01 - Current job status counts
 
-Purpose: learn existing system status values before constraining `status`.
-Pass: every value maps explicitly to the later lifecycle. Fail closed: any
-unknown/blank/null value or a value that cannot be preserved safely.
+Purpose: learn existing system status values before constraining `status` and
+confirm that only existing `draft` may represent the staged legacy state. Pass:
+every value maps explicitly to staged `draft` or one reviewed non-staged
+lifecycle branch. Fail closed: any unknown/blank/null value, any evidence that a
+different status must remain staged, or a value that cannot be preserved safely.
 
 OWNER-RUN SELECT-ONLY PREFLIGHT — DO NOT EXECUTE IN THIS AGENT
 
@@ -886,11 +915,14 @@ FROM duplicates;
 
 ### B13 - Proposed job CHECK and Provider-profile violations
 
-Purpose: gate validation of job status, purpose/attempt pairing, timing, retry,
-hash, cost, and complete pinned Provider-profile checks. Pass: every count is
-zero. Fail closed: any nonzero count, including a partially populated Provider
-group or any NULL half of the purpose/attempt pair. This query is runnable only
-after the additive columns exist.
+Purpose: gate validation of the one exact staged `draft`, every non-staged
+identity/profile requirement, bidirectional status/timestamp evidence,
+purpose/attempt pairing, timing, retry, hash, cost, and the complete pinned
+Provider profile. Pass: every count is zero. Fail closed: any nonzero count,
+including a terminal row with all identity/profile fields NULL, a staged row
+with started/terminal/Provider evidence, a partial Provider group, or any NULL
+half of the purpose/attempt pair. This query is runnable only after the additive
+columns exist.
 
 OWNER-RUN SELECT-ONLY PREFLIGHT — DO NOT EXECUTE IN THIS AGENT
 
@@ -900,48 +932,123 @@ SELECT
     'draft', 'queued', 'processing', 'succeeded', 'failed', 'timed_out', 'cancelled'
   )) AS invalid_job_status_count,
   count(*) FILTER (
-    WHERE (generation_purpose IS NULL AND attempt_number IS NOT NULL)
-       OR (generation_purpose IS NOT NULL AND attempt_number IS NULL)
-       OR (generation_purpose IS NOT NULL
-           AND generation_purpose IS DISTINCT FROM 'first_preview'
-           AND generation_purpose IS DISTINCT FROM 'feedback_regeneration')
-       OR (generation_purpose IS NOT DISTINCT FROM 'first_preview'
-           AND attempt_number IS NOT NULL
-           AND attempt_number NOT BETWEEN 1 AND 2)
-       OR (generation_purpose IS NOT DISTINCT FROM 'feedback_regeneration'
-           AND attempt_number IS NOT NULL
-           AND attempt_number NOT BETWEEN 2 AND 3)
+    WHERE status IS NOT DISTINCT FROM 'draft'
+      AND num_nonnulls(
+        generation_purpose, attempt_number, idempotency_key, lineage_identity,
+        parent_job_id, parent_generation_purpose, parent_attempt_number,
+        source_output_id, design_spec_version, design_spec_hash,
+        hand_sketch_instruction_version, hand_sketch_instruction_hash,
+        provider_name, model_name, provider_endpoint, request_image_count,
+        request_streaming, request_partial_images, request_size, request_quality,
+        output_format, moderation_mode, provider_request_id, started_at,
+        deadline_at, completed_at, cancelled_at, timed_out_at, failure_category,
+        retry_eligible, terminal_reason, error_message, estimated_cost_micros,
+        actual_cost_micros, cost_currency, pricing_assumption_version
+      ) <> 0
+  ) AS invalid_staged_state_count,
+  count(*) FILTER (
+    WHERE status IS DISTINCT FROM 'draft'
+      AND (
+        generation_purpose IS NULL
+        OR attempt_number IS NULL
+        OR idempotency_key IS NULL
+        OR lineage_identity IS NULL
+        OR design_spec_version IS NULL
+        OR btrim(design_spec_version) = ''
+        OR design_spec_hash IS NULL
+        OR hand_sketch_instruction_version IS NULL
+        OR btrim(hand_sketch_instruction_version) = ''
+        OR hand_sketch_instruction_hash IS NULL
+      )
+  ) AS incomplete_nonstaged_identity_count,
+  count(*) FILTER (
+    WHERE (status IS NOT DISTINCT FROM 'draft'
+           AND (generation_purpose IS NOT NULL OR attempt_number IS NOT NULL))
+       OR (status IS DISTINCT FROM 'draft' AND (
+             generation_purpose IS NULL
+             OR attempt_number IS NULL
+             OR (generation_purpose IS DISTINCT FROM 'first_preview'
+                 AND generation_purpose IS DISTINCT FROM 'feedback_regeneration')
+             OR (generation_purpose IS NOT DISTINCT FROM 'first_preview'
+                 AND attempt_number NOT BETWEEN 1 AND 2)
+             OR (generation_purpose IS NOT DISTINCT FROM 'feedback_regeneration'
+                 AND attempt_number NOT BETWEEN 2 AND 3)
+           ))
   ) AS invalid_attempt_policy_count,
   count(*) FILTER (
-    WHERE (generation_purpose IS NULL AND (
-             idempotency_key IS NOT NULL
-             OR lineage_identity IS NOT NULL
-             OR design_spec_version IS NOT NULL
-             OR design_spec_hash IS NOT NULL
-             OR hand_sketch_instruction_version IS NOT NULL
-             OR hand_sketch_instruction_hash IS NOT NULL
-           ))
-       OR (generation_purpose IS NOT NULL AND (
-             idempotency_key IS NULL
-             OR lineage_identity IS NULL
-             OR design_spec_version IS NULL
-             OR btrim(design_spec_version) = ''
-             OR design_spec_hash IS NULL
-             OR hand_sketch_instruction_version IS NULL
-             OR btrim(hand_sketch_instruction_version) = ''
-             OR hand_sketch_instruction_hash IS NULL
-           ))
-  ) AS incomplete_reserved_identity_count,
-  count(*) FILTER (WHERE deadline_at IS NOT NULL AND (started_at IS NULL OR deadline_at <= started_at)) AS invalid_deadline_count,
+    WHERE (started_at IS NULL AND deadline_at IS NOT NULL)
+       OR (started_at IS NOT NULL
+           AND (deadline_at IS NULL OR deadline_at <= started_at))
+       OR (completed_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND completed_at < started_at)
+       OR (cancelled_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND cancelled_at < started_at)
+       OR (timed_out_at IS NOT NULL
+           AND started_at IS NOT NULL
+           AND timed_out_at < started_at)
+  ) AS invalid_attempt_timing_count,
   count(*) FILTER (WHERE num_nonnulls(completed_at, cancelled_at, timed_out_at) > 1) AS conflicting_terminal_timestamp_count,
   count(*) FILTER (
-    WHERE (status IS NOT DISTINCT FROM 'timed_out'
-           AND (timed_out_at IS NULL OR retry_eligible IS TRUE))
-       OR (status IS NOT DISTINCT FROM 'cancelled' AND cancelled_at IS NULL)
-       OR ((status IS NOT DISTINCT FROM 'succeeded'
-            OR status IS NOT DISTINCT FROM 'failed')
-           AND completed_at IS NULL)
-  ) AS invalid_status_terminal_count,
+    WHERE (status IS NOT DISTINCT FROM 'queued' AND (
+             started_at IS NOT NULL OR deadline_at IS NOT NULL
+             OR completed_at IS NOT NULL OR cancelled_at IS NOT NULL
+             OR timed_out_at IS NOT NULL OR failure_category IS NOT NULL
+             OR retry_eligible IS NOT NULL OR terminal_reason IS NOT NULL
+             OR error_message IS NOT NULL
+           ))
+       OR (status IS NOT DISTINCT FROM 'processing' AND (
+             started_at IS NULL OR deadline_at IS NULL
+             OR deadline_at <= started_at
+             OR completed_at IS NOT NULL OR cancelled_at IS NOT NULL
+             OR timed_out_at IS NOT NULL OR failure_category IS NOT NULL
+             OR retry_eligible IS NOT NULL OR terminal_reason IS NOT NULL
+             OR error_message IS NOT NULL
+           ))
+       OR (status IS NOT DISTINCT FROM 'succeeded' AND (
+             started_at IS NULL OR deadline_at IS NULL
+             OR deadline_at <= started_at OR completed_at IS NULL
+             OR completed_at < started_at OR cancelled_at IS NOT NULL
+             OR timed_out_at IS NOT NULL OR failure_category IS NOT NULL
+             OR retry_eligible IS NOT NULL OR terminal_reason IS NOT NULL
+             OR error_message IS NOT NULL
+           ))
+       OR (status IS NOT DISTINCT FROM 'failed' AND (
+             completed_at IS NULL OR cancelled_at IS NOT NULL
+             OR timed_out_at IS NOT NULL OR failure_category IS NULL
+             OR failure_category IS NOT DISTINCT FROM 'timeout'
+             OR failure_category IS NOT DISTINCT FROM 'cancelled'
+             OR retry_eligible IS NULL OR terminal_reason IS NULL
+             OR btrim(terminal_reason) = ''
+             OR (started_at IS NULL AND deadline_at IS NOT NULL)
+             OR (started_at IS NOT NULL AND (
+                   deadline_at IS NULL OR deadline_at <= started_at
+                   OR completed_at < started_at
+                 ))
+           ))
+       OR (status IS NOT DISTINCT FROM 'timed_out' AND (
+             started_at IS NULL OR deadline_at IS NULL
+             OR deadline_at <= started_at OR timed_out_at IS NULL
+             OR timed_out_at < deadline_at OR completed_at IS NOT NULL
+             OR cancelled_at IS NOT NULL
+             OR failure_category IS DISTINCT FROM 'timeout'
+             OR retry_eligible IS DISTINCT FROM false
+             OR terminal_reason IS NULL OR btrim(terminal_reason) = ''
+           ))
+       OR (status IS NOT DISTINCT FROM 'cancelled' AND (
+             completed_at IS NOT NULL OR timed_out_at IS NOT NULL
+             OR cancelled_at IS NULL
+             OR failure_category IS DISTINCT FROM 'cancelled'
+             OR retry_eligible IS DISTINCT FROM false
+             OR terminal_reason IS NULL OR btrim(terminal_reason) = ''
+             OR (started_at IS NULL AND deadline_at IS NOT NULL)
+             OR (started_at IS NOT NULL AND (
+                   deadline_at IS NULL OR deadline_at <= started_at
+                   OR cancelled_at < started_at
+                 ))
+           ))
+  ) AS invalid_status_timestamp_evidence_count,
   count(*) FILTER (
     WHERE (design_spec_hash IS NOT NULL AND design_spec_hash !~ '^[0-9a-f]{64}$')
        OR (hand_sketch_instruction_hash IS NOT NULL
@@ -971,20 +1078,37 @@ SELECT
     WHERE estimated_cost_micros < 0
        OR actual_cost_micros < 0
        OR (cost_currency IS NOT NULL AND cost_currency !~ '^[A-Z]{3}$')
+       OR (status IS NOT DISTINCT FROM 'draft' AND num_nonnulls(
+             estimated_cost_micros, actual_cost_micros, cost_currency,
+             pricing_assumption_version
+           ) <> 0)
+       OR (status IS DISTINCT FROM 'draft' AND (
+             (estimated_cost_micros IS NULL
+              AND actual_cost_micros IS NULL
+              AND (cost_currency IS NOT NULL
+                   OR pricing_assumption_version IS NOT NULL))
+             OR ((estimated_cost_micros IS NOT NULL
+                  OR actual_cost_micros IS NOT NULL)
+                 AND (cost_currency IS NULL
+                      OR cost_currency !~ '^[A-Z]{3}$'
+                      OR pricing_assumption_version IS NULL
+                      OR btrim(pricing_assumption_version) = ''))
+           ))
   ) AS invalid_cost_count,
   count(*) FILTER (
-    WHERE num_nonnulls(
-      provider_name, model_name, provider_endpoint, request_image_count,
-      request_streaming, request_partial_images, request_size, request_quality,
-      output_format, moderation_mode
-    ) BETWEEN 1 AND 9
+    WHERE (status IS NOT DISTINCT FROM 'draft' AND num_nonnulls(
+             provider_name, model_name, provider_endpoint, request_image_count,
+             request_streaming, request_partial_images, request_size,
+             request_quality, output_format, moderation_mode
+           ) <> 0)
+       OR (status IS DISTINCT FROM 'draft' AND num_nonnulls(
+             provider_name, model_name, provider_endpoint, request_image_count,
+             request_streaming, request_partial_images, request_size,
+             request_quality, output_format, moderation_mode
+           ) <> 10)
   ) AS incomplete_request_profile_count,
   count(*) FILTER (
-    WHERE num_nonnulls(
-      provider_name, model_name, provider_endpoint, request_image_count,
-      request_streaming, request_partial_images, request_size, request_quality,
-      output_format, moderation_mode
-    ) = 10
+    WHERE status IS DISTINCT FROM 'draft'
       AND (
         provider_name IS DISTINCT FROM 'openai'
         OR model_name IS DISTINCT FROM 'gpt-image-2-2026-04-21'
@@ -999,17 +1123,23 @@ SELECT
       )
   ) AS mismatched_request_profile_count,
   count(*) FILTER (
-    WHERE provider_request_id IS NOT NULL AND provider_name IS NULL
+    WHERE (status IS NOT DISTINCT FROM 'draft' AND provider_request_id IS NOT NULL)
+       OR (status IS DISTINCT FROM 'draft'
+           AND provider_request_id IS NOT NULL
+           AND (provider_name IS DISTINCT FROM 'openai'
+                OR btrim(provider_request_id) = ''))
   ) AS provider_request_without_profile_count
 FROM public.ai_sketch_jobs;
 ```
 
 ### B14 - Proposed output readiness, integrity, and chronology violations
 
-Purpose: gate validation of output CHECK constraints, including every required
-NULL and timestamp-order case. Pass: every count is zero. Fail closed: any
-nonzero count. `asset_created_at` is the authoritative persistence timestamp;
-this aggregate does not independently prove Storage privacy or access.
+Purpose: gate validation of output CHECK constraints, including bidirectional
+asset-validation and automatic-gate status/evidence/timestamp groups plus every
+required NULL and timestamp-order case. Pass: every count is zero. Fail closed:
+any nonzero count. `asset_created_at` is the authoritative persistence
+timestamp; this aggregate does not independently prove Storage privacy or
+access.
 
 OWNER-RUN SELECT-ONLY PREFLIGHT — DO NOT EXECUTE IN THIS AGENT
 
@@ -1021,11 +1151,122 @@ SELECT
   count(*) FILTER (WHERE automatic_gate_status IS NOT NULL AND automatic_gate_status NOT IN (
     'pending', 'passed', 'failed'
   )) AS invalid_gate_status_count,
+  count(*) FILTER (WHERE asset_validation_status IS NOT NULL AND asset_validation_status NOT IN (
+    'pending', 'passed', 'failed'
+  )) AS invalid_asset_validation_status_count,
+  count(*) FILTER (
+    WHERE num_nonnulls(
+            mime_type, byte_size, width_px, height_px, content_sha256
+          ) BETWEEN 1 AND 4
+       OR (num_nonnulls(
+             mime_type, byte_size, width_px, height_px, content_sha256
+           ) = 5 AND (
+             mime_type IS DISTINCT FROM 'image/png'
+             OR byte_size NOT BETWEEN 1 AND 16777216
+             OR width_px IS DISTINCT FROM 1024
+             OR height_px IS DISTINCT FROM 1024
+             OR content_sha256 !~ '^[0-9a-f]{64}$'
+           ))
+  ) AS invalid_integrity_shape_count,
+  count(*) FILTER (
+    WHERE asset_created_at IS NOT NULL
+      AND (
+        bucket_name IS NULL OR btrim(bucket_name) = ''
+        OR object_path IS NULL OR btrim(object_path) = ''
+      )
+  ) AS invalid_asset_persistence_count,
+  count(*) FILTER (
+    WHERE (asset_validation_status IS NULL AND (
+             asset_validation_evidence IS NOT NULL
+             OR asset_validated_at IS NOT NULL
+             OR num_nonnulls(
+                  mime_type, byte_size, width_px, height_px, content_sha256
+                ) <> 0
+           ))
+       OR (asset_validation_status IS NOT DISTINCT FROM 'pending' AND (
+             asset_created_at IS NULL
+             OR bucket_name IS NULL OR btrim(bucket_name) = ''
+             OR object_path IS NULL OR btrim(object_path) = ''
+             OR asset_validation_evidence IS NOT NULL
+             OR asset_validated_at IS NOT NULL
+             OR num_nonnulls(
+                  mime_type, byte_size, width_px, height_px, content_sha256
+                ) <> 0
+           ))
+       OR (asset_validation_status IS NOT DISTINCT FROM 'failed' AND (
+             asset_created_at IS NULL
+             OR bucket_name IS NULL OR btrim(bucket_name) = ''
+             OR object_path IS NULL OR btrim(object_path) = ''
+             OR asset_validation_evidence IS NULL
+             OR jsonb_typeof(asset_validation_evidence) IS DISTINCT FROM 'object'
+             OR asset_validation_evidence = '{}'::jsonb
+             OR asset_validated_at IS NOT NULL
+             OR num_nonnulls(
+                  mime_type, byte_size, width_px, height_px, content_sha256
+                ) <> 0
+           ))
+       OR (asset_validation_status IS NOT DISTINCT FROM 'passed' AND (
+             asset_created_at IS NULL
+             OR bucket_name IS NULL OR btrim(bucket_name) = ''
+             OR object_path IS NULL OR btrim(object_path) = ''
+             OR asset_validation_evidence IS NULL
+             OR jsonb_typeof(asset_validation_evidence) IS DISTINCT FROM 'object'
+             OR asset_validation_evidence = '{}'::jsonb
+             OR asset_validated_at IS NULL
+             OR asset_validated_at < asset_created_at
+             OR mime_type IS DISTINCT FROM 'image/png'
+             OR byte_size IS NULL OR byte_size NOT BETWEEN 1 AND 16777216
+             OR width_px IS DISTINCT FROM 1024
+             OR height_px IS DISTINCT FROM 1024
+             OR content_sha256 IS NULL
+             OR content_sha256 !~ '^[0-9a-f]{64}$'
+           ))
+  ) AS invalid_asset_validation_consistency_count,
+  count(*) FILTER (
+    WHERE (automatic_gate_status IS NULL AND (
+             automatic_gate_policy_version IS NOT NULL
+             OR automatic_gate_evidence IS NOT NULL
+             OR automatic_gate_passed_at IS NOT NULL
+           ))
+       OR (automatic_gate_status IS NOT DISTINCT FROM 'pending' AND (
+             asset_validation_status IS DISTINCT FROM 'passed'
+             OR asset_validated_at IS NULL
+             OR automatic_gate_policy_version IS NULL
+             OR btrim(automatic_gate_policy_version) = ''
+             OR automatic_gate_evidence IS NOT NULL
+             OR automatic_gate_passed_at IS NOT NULL
+           ))
+       OR (automatic_gate_status IS NOT DISTINCT FROM 'failed' AND (
+             asset_validation_status IS DISTINCT FROM 'passed'
+             OR asset_validated_at IS NULL
+             OR automatic_gate_policy_version IS NULL
+             OR btrim(automatic_gate_policy_version) = ''
+             OR automatic_gate_evidence IS NULL
+             OR jsonb_typeof(automatic_gate_evidence) IS DISTINCT FROM 'object'
+             OR automatic_gate_evidence = '{}'::jsonb
+             OR automatic_gate_passed_at IS NOT NULL
+           ))
+       OR (automatic_gate_status IS NOT DISTINCT FROM 'passed' AND (
+             asset_validation_status IS DISTINCT FROM 'passed'
+             OR asset_validated_at IS NULL
+             OR automatic_gate_policy_version IS NULL
+             OR btrim(automatic_gate_policy_version) = ''
+             OR automatic_gate_evidence IS NULL
+             OR jsonb_typeof(automatic_gate_evidence) IS DISTINCT FROM 'object'
+             OR automatic_gate_evidence = '{}'::jsonb
+             OR automatic_gate_passed_at IS NULL
+             OR automatic_gate_passed_at < asset_validated_at
+           ))
+  ) AS invalid_automatic_gate_consistency_count,
   count(*) FILTER (
     WHERE (readiness_status IS NOT DISTINCT FROM 'first_preview_ready'
            OR readiness_status IS NOT DISTINCT FROM 'revoked')
       AND (
-        automatic_gate_status IS DISTINCT FROM 'passed'
+        asset_validation_status IS DISTINCT FROM 'passed'
+        OR asset_validation_evidence IS NULL
+        OR jsonb_typeof(asset_validation_evidence) IS DISTINCT FROM 'object'
+        OR asset_validation_evidence = '{}'::jsonb
+        OR automatic_gate_status IS DISTINCT FROM 'passed'
         OR automatic_gate_evidence IS NULL
         OR jsonb_typeof(automatic_gate_evidence) IS DISTINCT FROM 'object'
         OR automatic_gate_evidence = '{}'::jsonb
@@ -1354,6 +1595,8 @@ ALTER TABLE public.ai_sketch_outputs
   ADD COLUMN height_px integer,
   ADD COLUMN content_sha256 text,
   ADD COLUMN asset_created_at timestamptz,
+  ADD COLUMN asset_validation_status text,
+  ADD COLUMN asset_validation_evidence jsonb,
   ADD COLUMN asset_validated_at timestamptz,
   ADD COLUMN automatic_gate_status text,
   ADD COLUMN automatic_gate_evidence jsonb,
@@ -1385,9 +1628,12 @@ ALTER TABLE public.ai_sketch_jobs
     )) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_attempt_policy_check
     CHECK (
-      (generation_purpose IS NULL AND attempt_number IS NULL)
+      (status IS NOT DISTINCT FROM 'draft'
+       AND generation_purpose IS NULL
+       AND attempt_number IS NULL)
       OR (
-        generation_purpose IS NOT NULL
+        status IS DISTINCT FROM 'draft'
+        AND generation_purpose IS NOT NULL
         AND attempt_number IS NOT NULL
         AND (
           (generation_purpose IS NOT DISTINCT FROM 'first_preview'
@@ -1399,7 +1645,8 @@ ALTER TABLE public.ai_sketch_jobs
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_reserved_identity_completeness_check
     CHECK (
-      (generation_purpose IS NULL
+      (status IS NOT DISTINCT FROM 'draft'
+       AND generation_purpose IS NULL
        AND idempotency_key IS NULL
        AND lineage_identity IS NULL
        AND design_spec_version IS NULL
@@ -1407,7 +1654,9 @@ ALTER TABLE public.ai_sketch_jobs
        AND hand_sketch_instruction_version IS NULL
        AND hand_sketch_instruction_hash IS NULL)
       OR (
-        idempotency_key IS NOT NULL
+        status IS DISTINCT FROM 'draft'
+        AND generation_purpose IS NOT NULL
+        AND idempotency_key IS NOT NULL
         AND lineage_identity IS NOT NULL
         AND design_spec_version IS NOT NULL
         AND btrim(design_spec_version) <> ''
@@ -1419,13 +1668,16 @@ ALTER TABLE public.ai_sketch_jobs
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_lineage_shape_check
     CHECK (
-      (generation_purpose IS NULL
+      (status IS NOT DISTINCT FROM 'draft'
+       AND generation_purpose IS NULL
+       AND lineage_identity IS NULL
        AND parent_job_id IS NULL
        AND parent_generation_purpose IS NULL
        AND parent_attempt_number IS NULL
        AND source_output_id IS NULL)
       OR (
-        generation_purpose IS NOT DISTINCT FROM 'first_preview'
+        status IS DISTINCT FROM 'draft'
+        AND generation_purpose IS NOT DISTINCT FROM 'first_preview'
         AND attempt_number IS NOT DISTINCT FROM 1
         AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
         AND parent_job_id IS NULL
@@ -1434,7 +1686,8 @@ ALTER TABLE public.ai_sketch_jobs
         AND source_output_id IS NULL
       )
       OR (
-        generation_purpose IS NOT DISTINCT FROM 'first_preview'
+        status IS DISTINCT FROM 'draft'
+        AND generation_purpose IS NOT DISTINCT FROM 'first_preview'
         AND attempt_number IS NOT DISTINCT FROM 2
         AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
         AND parent_job_id IS NOT NULL
@@ -1443,7 +1696,8 @@ ALTER TABLE public.ai_sketch_jobs
         AND source_output_id IS NULL
       )
       OR (
-        generation_purpose IS NOT DISTINCT FROM 'feedback_regeneration'
+        status IS DISTINCT FROM 'draft'
+        AND generation_purpose IS NOT DISTINCT FROM 'feedback_regeneration'
         AND attempt_number IS NOT NULL
         AND attempt_number BETWEEN 2 AND 3
         AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
@@ -1461,16 +1715,97 @@ ALTER TABLE public.ai_sketch_jobs
       AND (idempotency_key IS NULL OR idempotency_key ~ '^[0-9a-f]{64}$')
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_attempt_timing_check
-    CHECK (deadline_at IS NULL OR (started_at IS NOT NULL AND deadline_at > started_at)) NOT VALID,
+    CHECK (
+      ((started_at IS NULL AND deadline_at IS NULL)
+       OR (started_at IS NOT NULL
+           AND deadline_at IS NOT NULL
+           AND deadline_at > started_at))
+      AND (completed_at IS NULL
+           OR started_at IS NULL
+           OR completed_at >= started_at)
+      AND (cancelled_at IS NULL
+           OR started_at IS NULL
+           OR cancelled_at >= started_at)
+      AND (timed_out_at IS NULL
+           OR started_at IS NULL
+           OR timed_out_at >= started_at)
+    ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_terminal_timestamp_check
     CHECK (num_nonnulls(completed_at, cancelled_at, timed_out_at) <= 1) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_status_terminal_consistency_check
     CHECK (
-      (status IS DISTINCT FROM 'timed_out'
-       OR (timed_out_at IS NOT NULL AND retry_eligible IS NOT TRUE))
-      AND (status IS DISTINCT FROM 'cancelled' OR cancelled_at IS NOT NULL)
-      AND ((status IS DISTINCT FROM 'succeeded' AND status IS DISTINCT FROM 'failed')
-           OR completed_at IS NOT NULL)
+      (status IS NOT DISTINCT FROM 'draft'
+       AND num_nonnulls(
+         started_at, deadline_at, completed_at, cancelled_at, timed_out_at,
+         failure_category, retry_eligible, terminal_reason, error_message
+       ) = 0)
+      OR (status IS NOT DISTINCT FROM 'queued'
+          AND num_nonnulls(
+            started_at, deadline_at, completed_at, cancelled_at, timed_out_at,
+            failure_category, retry_eligible, terminal_reason, error_message
+          ) = 0)
+      OR (status IS NOT DISTINCT FROM 'processing'
+          AND started_at IS NOT NULL
+          AND deadline_at IS NOT NULL
+          AND deadline_at > started_at
+          AND num_nonnulls(
+            completed_at, cancelled_at, timed_out_at, failure_category,
+            retry_eligible, terminal_reason, error_message
+          ) = 0)
+      OR (status IS NOT DISTINCT FROM 'succeeded'
+          AND started_at IS NOT NULL
+          AND deadline_at IS NOT NULL
+          AND deadline_at > started_at
+          AND completed_at IS NOT NULL
+          AND completed_at >= started_at
+          AND num_nonnulls(
+            cancelled_at, timed_out_at, failure_category, retry_eligible,
+            terminal_reason, error_message
+          ) = 0)
+      OR (status IS NOT DISTINCT FROM 'failed'
+          AND completed_at IS NOT NULL
+          AND cancelled_at IS NULL
+          AND timed_out_at IS NULL
+          AND failure_category IS NOT NULL
+          AND failure_category IS DISTINCT FROM 'timeout'
+          AND failure_category IS DISTINCT FROM 'cancelled'
+          AND retry_eligible IS NOT NULL
+          AND terminal_reason IS NOT NULL
+          AND btrim(terminal_reason) <> ''
+          AND (
+            (started_at IS NULL AND deadline_at IS NULL)
+            OR (started_at IS NOT NULL
+                AND deadline_at IS NOT NULL
+                AND deadline_at > started_at
+                AND completed_at >= started_at)
+          ))
+      OR (status IS NOT DISTINCT FROM 'timed_out'
+          AND started_at IS NOT NULL
+          AND deadline_at IS NOT NULL
+          AND deadline_at > started_at
+          AND timed_out_at IS NOT NULL
+          AND timed_out_at >= deadline_at
+          AND completed_at IS NULL
+          AND cancelled_at IS NULL
+          AND failure_category IS NOT DISTINCT FROM 'timeout'
+          AND retry_eligible IS NOT DISTINCT FROM false
+          AND terminal_reason IS NOT NULL
+          AND btrim(terminal_reason) <> '')
+      OR (status IS NOT DISTINCT FROM 'cancelled'
+          AND completed_at IS NULL
+          AND timed_out_at IS NULL
+          AND cancelled_at IS NOT NULL
+          AND failure_category IS NOT DISTINCT FROM 'cancelled'
+          AND retry_eligible IS NOT DISTINCT FROM false
+          AND terminal_reason IS NOT NULL
+          AND btrim(terminal_reason) <> ''
+          AND (
+            (started_at IS NULL AND deadline_at IS NULL)
+            OR (started_at IS NOT NULL
+                AND deadline_at IS NOT NULL
+                AND deadline_at > started_at
+                AND cancelled_at >= started_at)
+          ))
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_failure_category_check
     CHECK (failure_category IS NULL OR failure_category IN (
@@ -1492,19 +1827,38 @@ ALTER TABLE public.ai_sketch_jobs
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_cost_check
     CHECK (
-      (estimated_cost_micros IS NULL OR estimated_cost_micros >= 0)
-      AND (actual_cost_micros IS NULL OR actual_cost_micros >= 0)
-      AND (cost_currency IS NULL OR cost_currency ~ '^[A-Z]{3}$')
+      (status IS NOT DISTINCT FROM 'draft'
+       AND num_nonnulls(
+         estimated_cost_micros, actual_cost_micros, cost_currency,
+         pricing_assumption_version
+       ) = 0)
+      OR (status IS DISTINCT FROM 'draft'
+          AND (estimated_cost_micros IS NULL OR estimated_cost_micros >= 0)
+          AND (actual_cost_micros IS NULL OR actual_cost_micros >= 0)
+          AND (
+            (estimated_cost_micros IS NULL
+             AND actual_cost_micros IS NULL
+             AND cost_currency IS NULL
+             AND pricing_assumption_version IS NULL)
+            OR ((estimated_cost_micros IS NOT NULL
+                 OR actual_cost_micros IS NOT NULL)
+                AND cost_currency IS NOT NULL
+                AND cost_currency ~ '^[A-Z]{3}$'
+                AND pricing_assumption_version IS NOT NULL
+                AND btrim(pricing_assumption_version) <> '')
+          ))
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_first_preview_request_profile_check
     CHECK (
-      num_nonnulls(
-        provider_name, model_name, provider_endpoint, request_image_count,
-        request_streaming, request_partial_images, request_size, request_quality,
-        output_format, moderation_mode
-      ) = 0
+      (status IS NOT DISTINCT FROM 'draft'
+       AND num_nonnulls(
+         provider_name, model_name, provider_endpoint, request_image_count,
+         request_streaming, request_partial_images, request_size,
+         request_quality, output_format, moderation_mode
+       ) = 0)
       OR (
-        provider_name IS NOT DISTINCT FROM 'openai'
+        status IS DISTINCT FROM 'draft'
+        AND provider_name IS NOT DISTINCT FROM 'openai'
         AND model_name IS NOT DISTINCT FROM 'gpt-image-2-2026-04-21'
         AND provider_endpoint IS NOT DISTINCT FROM '/v1/images/generations'
         AND request_image_count IS NOT DISTINCT FROM 1
@@ -1517,14 +1871,22 @@ ALTER TABLE public.ai_sketch_jobs
       )
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_jobs_provider_request_identity_check
-    CHECK (provider_request_id IS NULL OR provider_name IS NOT NULL) NOT VALID;
+    CHECK (
+      (status IS NOT DISTINCT FROM 'draft' AND provider_request_id IS NULL)
+      OR (status IS DISTINCT FROM 'draft' AND (
+            provider_request_id IS NULL
+            OR (provider_name IS NOT DISTINCT FROM 'openai'
+                AND btrim(provider_request_id) <> '')
+          ))
+    ) NOT VALID;
 ```
 
 The complete Provider group represents the already approved OpenAI Image API
 profile: `/v1/images/generations`, exactly one final image, non-streaming, zero
 partial images, pinned `gpt-image-2-2026-04-21`, 1024x1024, medium, PNG, and
 `moderation=auto`. It does not invent a second Provider mode. A wholly NULL
-group is permitted only before profile selection; any partial or mismatched
+group is permitted only on the exact staged `status = 'draft'` row; every
+non-staged row requires the complete exact group, and any partial or mismatched
 group is rejected.
 
 The feedback-regeneration label does not create a feedback flow. That future
@@ -1539,16 +1901,120 @@ CANDIDATE ONLY — DO NOT EXECUTE
 ALTER TABLE public.ai_sketch_outputs
   ADD CONSTRAINT ai_sketch_outputs_integrity_shape_check
     CHECK (
-      (mime_type IS NULL OR mime_type IS NOT DISTINCT FROM 'image/png')
-      AND (byte_size IS NULL OR byte_size BETWEEN 1 AND 16777216)
-      AND (width_px IS NULL OR width_px IS NOT DISTINCT FROM 1024)
-      AND (height_px IS NULL OR height_px IS NOT DISTINCT FROM 1024)
-      AND (content_sha256 IS NULL OR content_sha256 ~ '^[0-9a-f]{64}$')
+      num_nonnulls(
+        mime_type, byte_size, width_px, height_px, content_sha256
+      ) = 0
+      OR (
+        mime_type IS NOT DISTINCT FROM 'image/png'
+        AND byte_size IS NOT NULL
+        AND byte_size BETWEEN 1 AND 16777216
+        AND width_px IS NOT DISTINCT FROM 1024
+        AND height_px IS NOT DISTINCT FROM 1024
+        AND content_sha256 IS NOT NULL
+        AND content_sha256 ~ '^[0-9a-f]{64}$'
+      )
+    ) NOT VALID,
+  ADD CONSTRAINT ai_sketch_outputs_asset_persistence_check
+    CHECK (
+      asset_created_at IS NULL
+      OR (bucket_name IS NOT NULL
+          AND btrim(bucket_name) <> ''
+          AND object_path IS NOT NULL
+          AND btrim(object_path) <> '')
+    ) NOT VALID,
+  ADD CONSTRAINT ai_sketch_outputs_asset_validation_status_check
+    CHECK (
+      asset_validation_status IS NULL
+      OR asset_validation_status IN ('pending', 'passed', 'failed')
+    ) NOT VALID,
+  ADD CONSTRAINT ai_sketch_outputs_asset_validation_consistency_check
+    CHECK (
+      (asset_validation_status IS NULL
+       AND asset_validation_evidence IS NULL
+       AND asset_validated_at IS NULL
+       AND num_nonnulls(
+         mime_type, byte_size, width_px, height_px, content_sha256
+       ) = 0)
+      OR (asset_validation_status IS NOT DISTINCT FROM 'pending'
+          AND asset_created_at IS NOT NULL
+          AND bucket_name IS NOT NULL
+          AND btrim(bucket_name) <> ''
+          AND object_path IS NOT NULL
+          AND btrim(object_path) <> ''
+          AND asset_validation_evidence IS NULL
+          AND asset_validated_at IS NULL
+          AND num_nonnulls(
+            mime_type, byte_size, width_px, height_px, content_sha256
+          ) = 0)
+      OR (asset_validation_status IS NOT DISTINCT FROM 'failed'
+          AND asset_created_at IS NOT NULL
+          AND bucket_name IS NOT NULL
+          AND btrim(bucket_name) <> ''
+          AND object_path IS NOT NULL
+          AND btrim(object_path) <> ''
+          AND asset_validation_evidence IS NOT NULL
+          AND jsonb_typeof(asset_validation_evidence) IS NOT DISTINCT FROM 'object'
+          AND asset_validation_evidence <> '{}'::jsonb
+          AND asset_validated_at IS NULL
+          AND num_nonnulls(
+            mime_type, byte_size, width_px, height_px, content_sha256
+          ) = 0)
+      OR (asset_validation_status IS NOT DISTINCT FROM 'passed'
+          AND asset_created_at IS NOT NULL
+          AND bucket_name IS NOT NULL
+          AND btrim(bucket_name) <> ''
+          AND object_path IS NOT NULL
+          AND btrim(object_path) <> ''
+          AND asset_validation_evidence IS NOT NULL
+          AND jsonb_typeof(asset_validation_evidence) IS NOT DISTINCT FROM 'object'
+          AND asset_validation_evidence <> '{}'::jsonb
+          AND asset_validated_at IS NOT NULL
+          AND asset_validated_at >= asset_created_at
+          AND mime_type IS NOT DISTINCT FROM 'image/png'
+          AND byte_size IS NOT NULL
+          AND byte_size BETWEEN 1 AND 16777216
+          AND width_px IS NOT DISTINCT FROM 1024
+          AND height_px IS NOT DISTINCT FROM 1024
+          AND content_sha256 IS NOT NULL
+          AND content_sha256 ~ '^[0-9a-f]{64}$')
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_outputs_automatic_gate_status_check
     CHECK (
       automatic_gate_status IS NULL
       OR automatic_gate_status IN ('pending', 'passed', 'failed')
+    ) NOT VALID,
+  ADD CONSTRAINT ai_sketch_outputs_automatic_gate_consistency_check
+    CHECK (
+      (automatic_gate_status IS NULL
+       AND automatic_gate_evidence IS NULL
+       AND automatic_gate_policy_version IS NULL
+       AND automatic_gate_passed_at IS NULL)
+      OR (automatic_gate_status IS NOT DISTINCT FROM 'pending'
+          AND asset_validation_status IS NOT DISTINCT FROM 'passed'
+          AND asset_validated_at IS NOT NULL
+          AND automatic_gate_policy_version IS NOT NULL
+          AND btrim(automatic_gate_policy_version) <> ''
+          AND automatic_gate_evidence IS NULL
+          AND automatic_gate_passed_at IS NULL)
+      OR (automatic_gate_status IS NOT DISTINCT FROM 'failed'
+          AND asset_validation_status IS NOT DISTINCT FROM 'passed'
+          AND asset_validated_at IS NOT NULL
+          AND automatic_gate_policy_version IS NOT NULL
+          AND btrim(automatic_gate_policy_version) <> ''
+          AND automatic_gate_evidence IS NOT NULL
+          AND jsonb_typeof(automatic_gate_evidence) IS NOT DISTINCT FROM 'object'
+          AND automatic_gate_evidence <> '{}'::jsonb
+          AND automatic_gate_passed_at IS NULL)
+      OR (automatic_gate_status IS NOT DISTINCT FROM 'passed'
+          AND asset_validation_status IS NOT DISTINCT FROM 'passed'
+          AND asset_validated_at IS NOT NULL
+          AND automatic_gate_policy_version IS NOT NULL
+          AND btrim(automatic_gate_policy_version) <> ''
+          AND automatic_gate_evidence IS NOT NULL
+          AND jsonb_typeof(automatic_gate_evidence) IS NOT DISTINCT FROM 'object'
+          AND automatic_gate_evidence <> '{}'::jsonb
+          AND automatic_gate_passed_at IS NOT NULL
+          AND automatic_gate_passed_at >= asset_validated_at)
     ) NOT VALID,
   ADD CONSTRAINT ai_sketch_outputs_readiness_status_check
     CHECK (
@@ -1596,7 +2062,11 @@ ALTER TABLE public.ai_sketch_outputs
       (readiness_status IS DISTINCT FROM 'first_preview_ready'
        AND readiness_status IS DISTINCT FROM 'revoked')
       OR (
-        automatic_gate_status IS NOT DISTINCT FROM 'passed'
+        asset_validation_status IS NOT DISTINCT FROM 'passed'
+        AND asset_validation_evidence IS NOT NULL
+        AND jsonb_typeof(asset_validation_evidence) IS NOT DISTINCT FROM 'object'
+        AND asset_validation_evidence <> '{}'::jsonb
+        AND automatic_gate_status IS NOT DISTINCT FROM 'passed'
         AND automatic_gate_evidence IS NOT NULL
         AND jsonb_typeof(automatic_gate_evidence) IS NOT DISTINCT FROM 'object'
         AND automatic_gate_evidence <> '{}'::jsonb
@@ -1627,7 +2097,9 @@ ALTER TABLE public.ai_sketch_outputs
 These checks are defense in depth. They cannot prove private Storage posture,
 trusted evidence producers, current access eligibility, or safe serialization;
 future server code must verify those independently. The readiness transaction
-sets `asset_created_at` only after successful private persistence, and a
+sets `asset_created_at` only after successful private persistence, records
+asset validation and gate evaluation as atomic total status/evidence groups,
+and never writes a pass timestamp independently from its `passed` status. A
 revocation transaction transitions an already-ready row while preserving its
 ready timestamp and evidence. A later application/persistence Agent must switch
 the current pointer transactionally: clear the old current pointer and select
@@ -1783,7 +2255,19 @@ ALTER TABLE public.ai_sketch_outputs
   VALIDATE CONSTRAINT ai_sketch_outputs_integrity_shape_check;
 
 ALTER TABLE public.ai_sketch_outputs
+  VALIDATE CONSTRAINT ai_sketch_outputs_asset_persistence_check;
+
+ALTER TABLE public.ai_sketch_outputs
+  VALIDATE CONSTRAINT ai_sketch_outputs_asset_validation_status_check;
+
+ALTER TABLE public.ai_sketch_outputs
+  VALIDATE CONSTRAINT ai_sketch_outputs_asset_validation_consistency_check;
+
+ALTER TABLE public.ai_sketch_outputs
   VALIDATE CONSTRAINT ai_sketch_outputs_automatic_gate_status_check;
+
+ALTER TABLE public.ai_sketch_outputs
+  VALIDATE CONSTRAINT ai_sketch_outputs_automatic_gate_consistency_check;
 
 ALTER TABLE public.ai_sketch_outputs
   VALIDATE CONSTRAINT ai_sketch_outputs_readiness_status_check;
@@ -1810,14 +2294,22 @@ counts use explicit NULL-aware violation conditions.
 
 | Case | Expected result |
 | --- | --- |
-| All new fields NULL | Permitted only as the fail-closed legacy/pre-reservation state; never ready or current |
+| All new job fields NULL with `status = 'draft'` | Permitted as the one exact fail-closed legacy/pre-reservation state |
+| `draft` with started or deadline evidence | Rejected |
+| `draft` with completed, failed, timed-out, cancelled, retry, terminal-reason, or Provider evidence | Rejected |
+| Any non-`draft` status with all identity fields NULL | Rejected |
+| Terminal timestamp or terminal evidence on `queued`/`processing` | Rejected |
+| `succeeded` without complete identity/profile, start/deadline, or completion evidence | Rejected |
 | Purpose NULL, attempt populated | Rejected |
 | Purpose populated, attempt NULL | Rejected |
-| Provider group all NULL | Permitted before profile selection |
-| Provider group partially populated or one field NULL | Rejected |
+| Provider group all NULL | Permitted only for exact staged `draft` |
+| Provider group all NULL or partially populated on non-staged status | Rejected |
+| Asset validation timestamp without passed status, bounded evidence, persistence, and complete integrity facts | Rejected |
+| Gate status `passed` without passed asset validation, policy, evidence, or pass timestamp | Rejected |
+| Gate pass timestamp with NULL, pending, or failed gate status | Rejected |
 | Readiness status NULL, readiness evidence NULL | Permitted as not ready; current must be false |
 | Readiness status populated as ready, any critical evidence NULL | Rejected |
-| Evidence populated, readiness status NULL | Permitted only as staged evidence; it does not establish ready/current |
+| Validated asset or failed/passed gate evidence with readiness NULL or `not_ready` | Permitted when its own status/evidence group is complete; it does not establish ready/current |
 | Ready and current | Permitted when all evidence and chronology pass |
 | Ready and non-current | Permitted and required for history/replacement |
 | Current and not ready, NULL, or revoked | Rejected |
@@ -1827,8 +2319,8 @@ counts use explicit NULL-aware violation conditions.
 
 This document contains **30 owner-run SELECT-only preflight blocks** (M01-M06,
 B01-B19, and V01-V05) and **7 candidate-only SQL blocks** (23.1-23.7). Those
-counts are normative for this corrected revision and must match parser-based
-validation before commit.
+counts produce **37 total SQL blocks** and are normative for this corrected
+revision. They must match parser-based validation before commit.
 
 ## 24. Statement-by-statement prerequisites
 
@@ -1891,8 +2383,10 @@ WHERE table_schema = 'public'
     'retry_eligible', 'terminal_reason', 'estimated_cost_micros',
     'actual_cost_micros', 'cost_currency', 'pricing_assumption_version',
     'mime_type', 'byte_size', 'width_px', 'height_px', 'content_sha256',
-    'asset_created_at', 'asset_validated_at', 'automatic_gate_status',
-    'automatic_gate_evidence', 'automatic_gate_policy_version',
+    'asset_created_at', 'asset_validation_status',
+    'asset_validation_evidence', 'asset_validated_at',
+    'automatic_gate_status', 'automatic_gate_evidence',
+    'automatic_gate_policy_version',
     'automatic_gate_passed_at', 'readiness_status',
     'first_preview_ready_at', 'readiness_revoked_at',
     'is_current_customer_preview'
@@ -1966,19 +2460,120 @@ ORDER BY table_name, index_name;
 
 ### V04 - Readiness integrity and chronology
 
-Purpose: prove no row violates the output-bound ready, one-way current,
-revocation, retained-evidence, or timestamp-order rules. Pass: all counts zero.
-Fail closed: any nonzero count and no customer rollout.
+Purpose: prove no row violates bidirectional asset validation or gate evidence,
+output-bound ready, one-way current, revocation, retained-evidence, or
+timestamp-order rules. Pass: all counts zero. Fail closed: any nonzero count and
+no customer rollout.
 
 OWNER-RUN SELECT-ONLY PREFLIGHT — DO NOT EXECUTE IN THIS AGENT
 
 ```sql
 SELECT
+  count(*) FILTER (WHERE asset_validation_status IS NOT NULL AND asset_validation_status NOT IN (
+    'pending', 'passed', 'failed'
+  )) AS invalid_asset_validation_status_count,
+  count(*) FILTER (
+    WHERE asset_created_at IS NOT NULL
+      AND (
+        bucket_name IS NULL OR btrim(bucket_name) = ''
+        OR object_path IS NULL OR btrim(object_path) = ''
+      )
+  ) AS invalid_asset_persistence_count,
+  count(*) FILTER (
+    WHERE (asset_validation_status IS NULL AND (
+             asset_validation_evidence IS NOT NULL
+             OR asset_validated_at IS NOT NULL
+             OR num_nonnulls(
+                  mime_type, byte_size, width_px, height_px, content_sha256
+                ) <> 0
+           ))
+       OR (asset_validation_status IS NOT DISTINCT FROM 'pending' AND (
+             asset_created_at IS NULL
+             OR bucket_name IS NULL OR btrim(bucket_name) = ''
+             OR object_path IS NULL OR btrim(object_path) = ''
+             OR asset_validation_evidence IS NOT NULL
+             OR asset_validated_at IS NOT NULL
+             OR num_nonnulls(
+                  mime_type, byte_size, width_px, height_px, content_sha256
+                ) <> 0
+           ))
+       OR (asset_validation_status IS NOT DISTINCT FROM 'failed' AND (
+             asset_created_at IS NULL
+             OR bucket_name IS NULL OR btrim(bucket_name) = ''
+             OR object_path IS NULL OR btrim(object_path) = ''
+             OR asset_validation_evidence IS NULL
+             OR jsonb_typeof(asset_validation_evidence) IS DISTINCT FROM 'object'
+             OR asset_validation_evidence = '{}'::jsonb
+             OR asset_validated_at IS NOT NULL
+             OR num_nonnulls(
+                  mime_type, byte_size, width_px, height_px, content_sha256
+                ) <> 0
+           ))
+       OR (asset_validation_status IS NOT DISTINCT FROM 'passed' AND (
+             asset_created_at IS NULL
+             OR bucket_name IS NULL OR btrim(bucket_name) = ''
+             OR object_path IS NULL OR btrim(object_path) = ''
+             OR asset_validation_evidence IS NULL
+             OR jsonb_typeof(asset_validation_evidence) IS DISTINCT FROM 'object'
+             OR asset_validation_evidence = '{}'::jsonb
+             OR asset_validated_at IS NULL
+             OR asset_validated_at < asset_created_at
+             OR mime_type IS DISTINCT FROM 'image/png'
+             OR byte_size IS NULL OR byte_size NOT BETWEEN 1 AND 16777216
+             OR width_px IS DISTINCT FROM 1024
+             OR height_px IS DISTINCT FROM 1024
+             OR content_sha256 IS NULL
+             OR content_sha256 !~ '^[0-9a-f]{64}$'
+           ))
+  ) AS invalid_asset_validation_consistency_count,
+  count(*) FILTER (WHERE automatic_gate_status IS NOT NULL AND automatic_gate_status NOT IN (
+    'pending', 'passed', 'failed'
+  )) AS invalid_gate_status_count,
+  count(*) FILTER (
+    WHERE (automatic_gate_status IS NULL AND (
+             automatic_gate_policy_version IS NOT NULL
+             OR automatic_gate_evidence IS NOT NULL
+             OR automatic_gate_passed_at IS NOT NULL
+           ))
+       OR (automatic_gate_status IS NOT DISTINCT FROM 'pending' AND (
+             asset_validation_status IS DISTINCT FROM 'passed'
+             OR asset_validated_at IS NULL
+             OR automatic_gate_policy_version IS NULL
+             OR btrim(automatic_gate_policy_version) = ''
+             OR automatic_gate_evidence IS NOT NULL
+             OR automatic_gate_passed_at IS NOT NULL
+           ))
+       OR (automatic_gate_status IS NOT DISTINCT FROM 'failed' AND (
+             asset_validation_status IS DISTINCT FROM 'passed'
+             OR asset_validated_at IS NULL
+             OR automatic_gate_policy_version IS NULL
+             OR btrim(automatic_gate_policy_version) = ''
+             OR automatic_gate_evidence IS NULL
+             OR jsonb_typeof(automatic_gate_evidence) IS DISTINCT FROM 'object'
+             OR automatic_gate_evidence = '{}'::jsonb
+             OR automatic_gate_passed_at IS NOT NULL
+           ))
+       OR (automatic_gate_status IS NOT DISTINCT FROM 'passed' AND (
+             asset_validation_status IS DISTINCT FROM 'passed'
+             OR asset_validated_at IS NULL
+             OR automatic_gate_policy_version IS NULL
+             OR btrim(automatic_gate_policy_version) = ''
+             OR automatic_gate_evidence IS NULL
+             OR jsonb_typeof(automatic_gate_evidence) IS DISTINCT FROM 'object'
+             OR automatic_gate_evidence = '{}'::jsonb
+             OR automatic_gate_passed_at IS NULL
+             OR automatic_gate_passed_at < asset_validated_at
+           ))
+  ) AS invalid_automatic_gate_consistency_count,
   count(*) FILTER (
     WHERE (readiness_status IS NOT DISTINCT FROM 'first_preview_ready'
            OR readiness_status IS NOT DISTINCT FROM 'revoked')
       AND (
-        automatic_gate_status IS DISTINCT FROM 'passed'
+        asset_validation_status IS DISTINCT FROM 'passed'
+        OR asset_validation_evidence IS NULL
+        OR jsonb_typeof(asset_validation_evidence) IS DISTINCT FROM 'object'
+        OR asset_validation_evidence = '{}'::jsonb
+        OR automatic_gate_status IS DISTINCT FROM 'passed'
         OR automatic_gate_evidence IS NULL
         OR jsonb_typeof(automatic_gate_evidence) IS DISTINCT FROM 'object'
         OR automatic_gate_evidence = '{}'::jsonb
@@ -2112,7 +2707,7 @@ documentation for later owner review.
 
 ## 30. Recommended later Agent sequence
 
-1. New independent read-only formal review of corrected Draft PR #198.
+1. Third independent read-only formal Re-Review of corrected Draft PR #198.
 2. Only after that review passes, the owner manually executes separately approved supplemental `SELECT`-only
    metadata and aggregate preflights.
 3. A later documentation Agent reconciles the returned supplemental evidence

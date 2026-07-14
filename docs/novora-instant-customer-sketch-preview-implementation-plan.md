@@ -240,6 +240,20 @@ Planned responsibilities:
   lineage, structured-input version/hash binding, timeout/cancellation,
   provider-neutral cost records, retry caps, and sanitized failure category
   when verified existing fields can safely support those responsibilities.
+- The only permitted staged/pre-reservation job state is the existing
+  `status = 'draft'`. It has NULL purpose, attempt, canonical identity, Design
+  Spec identity, Hand Sketch Instruction identity, lineage, Provider profile,
+  Provider request, started/deadline, terminal, failure/retry, and cost fields.
+  Every non-staged future job must have complete purpose/attempt, RFC 8785-based
+  canonical identity, structured-artifact version/hash fields, bounded lineage,
+  and the complete pinned OpenAI request profile before it is written.
+- Job lifecycle rules are bidirectional. `queued` carries no started or terminal
+  evidence; `processing` requires start/deadline and no terminal evidence;
+  `succeeded` requires start/deadline/completion and no failure evidence;
+  `failed`, `timed_out`, and `cancelled` require their compatible terminal
+  timestamp, category/retry decision, and terminal reason. A terminal timestamp
+  cannot appear on a staged or nonterminal job, and every started/terminal time
+  must satisfy the reviewed ordering rules.
 - `ai_sketch_outputs` should be reused for generated image metadata,
   controlled private object identity, automatic-gate evidence, the persisted
   output-bound `first_preview_ready` visibility decision, and lineage to the
@@ -264,7 +278,8 @@ Verified additive gaps include deterministic idempotency, attempt numbering and
 lineage, structured Design Spec and Hand Sketch Instruction version/hash
 bindings, provider request identity, lifecycle/terminal timestamps, normalized
 failure and retry evidence, cost fields, output MIME/size/dimensions/checksum,
-asset persistence/validation time, automatic-gate evidence/passed time,
+asset persistence time, asset-validation status/evidence/time,
+automatic-gate status/evidence/passed time,
 output-bound readiness, and a
 database invariant allowing at most one current customer preview per Concept
 Brief. Provider/model/request configuration belongs on the job; binary and
@@ -289,6 +304,19 @@ first_preview_ready_at`. Ready rows have no revocation timestamp. Revoked rows
 retain the prior ready timestamp/evidence, record `readiness_revoked_at >=
 first_preview_ready_at`, and are not current.
 
+Asset and gate state is also bidirectional. A populated `asset_created_at`
+requires the private bucket/path locators. `asset_validation_status = 'passed'`
+requires bounded validation evidence, complete PNG MIME/size/dimension/checksum
+facts, and `asset_validated_at >= asset_created_at`; any validated-at timestamp
+requires that passed state. Pending validation has no evidence/pass timestamp,
+while failed validation may retain bounded failure evidence but no accepted
+binary facts or validated-at timestamp. A passed automatic gate requires prior
+passed validation, a nonblank policy version, bounded nonempty gate evidence,
+and `automatic_gate_passed_at >= asset_validated_at`; any gate-pass timestamp
+requires `automatic_gate_status = 'passed'`. A failed gate may retain bounded
+evaluation evidence but never a pass timestamp. Gate passage does not select the
+current preview and does not replace the readiness decision.
+
 Readiness and current selection are separate. `first_preview_ready` means one
 specific output passed all automatic display gates; it may be non-current.
 `is_current_customer_preview = true` selects one already-ready output, with at
@@ -308,10 +336,18 @@ The first independent review of Draft PR #198 returned **FAIL — CORRECTION
 REQUIRED** for six blocking categories: NULL safety; ready/current separation;
 purpose/attempt/Provider-profile completeness; enforceable lineage and
 cross-table consistency; canonical idempotency; and asset/readiness chronology.
-The corrected documentation keeps PR #198 Draft and requires another
-independent review before any owner-run supplemental preflight. The corrected
-packet contains 30 owner-run SELECT-only preflight blocks and 7 candidate-only SQL
-blocks; none was executed.
+The second independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+It confirmed the previously resolved ready/current, lineage, composite
+consistency, cycle, idempotency, review, access-evidence, and Product boundaries,
+but found two remaining lifecycle defects: all-NULL job identity/profile was not
+bound to exact staged `draft`, and asset-validation/gate-passed evidence was not
+bidirectionally bound to its status and timestamp. This second correction closes
+those areas without changing ready/current or human-review separation.
+
+PR #198 remains Draft and requires a third independent Re-Review before any
+Owner-run supplemental preflight. The corrected packet still contains 30
+Owner-run SELECT-only preflight blocks and 7 candidate-only SQL blocks, 37 SQL
+blocks total; none was executed.
 Every row-dependent CHECK, FK validation, `NOT NULL` hardening, and unique index
 remains blocked until its exact owner-run aggregate preflight passes. No SQL was
 executed, no migration was created, no Supabase connection was made by Codex,
@@ -571,7 +607,7 @@ a Supabase connection.
 
 The required next sequence is explicit:
 
-1. New independent read-only formal review of corrected Draft PR #198.
+1. Third independent read-only formal Re-Review of corrected Draft PR #198.
 2. Only after that review passes, the owner manually executes separately approved supplemental SELECT-only
    effective-privilege and aggregate compatibility preflights.
 3. A later documentation Agent reconciles supplemental results and regenerates
