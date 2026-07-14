@@ -263,6 +263,11 @@ Planned responsibilities:
   timeout-before-deadline ordering, exclusivity, nonterminal contradictions,
   and NULL/partial-population cases. A reduced timestamp-only verification is
   incomplete even when its returned counts are zero.
+- Post-execution verification must cover every applicable Candidate/preflight
+  Job predicate, not only lifecycle timestamps. Metadata actual-set discovery
+  must be independent of expected names: subtract a verified, table-qualified
+  pre-candidate baseline from the current catalog, compare both directions, and
+  fail closed on unresolved baseline drift until a separately reviewed refresh.
 - `ai_sketch_outputs` should be reused for generated image metadata,
   controlled private object identity, automatic-gate evidence, the persisted
   output-bound `first_preview_ready` visibility decision, and lineage to the
@@ -372,9 +377,21 @@ The fourth independent Re-Review returned **FAIL — CORRECTION REQUIRED** after
 confirming both third-correction findings were resolved. Its one blocking
 finding was that V01 remained a reduced post-execution sample and could return
 false zero for timeout before deadline or processing rows carrying terminal
-failure/retry/reason evidence. The fourth correction gives V01 complete
-candidate/B13 lifecycle parity, total NULL-safe aggregate flags, an explicit
-predicate map, and counterexample review with zero parity mismatches.
+failure/retry/reason evidence. The fourth correction closed those two named
+status/timestamp false-zero paths.
+
+The fifth independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+It confirmed the timeout/status-evidence checks passed, but found that V01 still
+omitted purpose, attempt, identity, lineage, pinned Provider profile, Provider
+request, hash, cost, and related Job rules, and that expected-name filtering
+made its metadata actual set unable to see a genuinely unexpected name. The
+fifth correction gives V01 complete applicable Candidate/B13 Job-invariant
+coverage, a full predicate map and 34 in-memory lifecycle parity cases with
+zero mismatches, and an
+independent bidirectional metadata diff based on verified Q02 baseline
+subtraction. Expected-name filtering is prohibited for actual-set discovery,
+unresolved baseline drift fails closed, and 11 in-memory metadata cases have
+zero comparison mismatches.
 
 PR #198 remains Draft and requires another independent Re-Review before any
 Owner-run supplemental preflight. The corrected packet still contains 30

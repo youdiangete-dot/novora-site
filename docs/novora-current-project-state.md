@@ -2189,6 +2189,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   review with zero parity mismatches. No SQL or Owner-run query was executed and
   no Supabase connection occurred.
 
+  The fifth independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+  It confirmed timeout-before-deadline and required status/timestamp/evidence
+  checks passed, while identifying two remaining blockers. First, V01 still
+  omitted Candidate/B13 Job invariants for staged/non-draft identity, purpose,
+  attempt, lineage, pinned Provider profile, Provider request, hash, cost, and
+  related evidence. Second, V01 built its metadata actual set by filtering live
+  columns through expected names, so a genuinely unexpected name could produce
+  a false-zero unexpected count.
+
+  The fifth correction extends V01 to every applicable Candidate/B13 Job
+  predicate, includes every named predicate in one overall invalid-Job-row
+  aggregate, and records 34 Candidate/B13/V01 lifecycle parity cases with zero
+  mismatches. It also
+  represents the verified Q02 pre-candidate baseline for the two affected
+  tables and independently derives candidate-added columns as current catalog
+  columns minus that baseline before comparing expected and actual sets in both
+  directions. Expected-name filtering is not used for actual-set discovery.
+  Baseline absence or shape drift fails closed and requires a separately
+  reviewed baseline refresh; 11 in-memory metadata cases produced zero
+  comparison mismatches. No SQL or Owner-run query was executed, no
+  Supabase connection occurred, and no customer data was inspected.
+
   PR #198 remains Draft. No supplemental Owner-run query may run until another
   independent Re-Review passes. This correction is documentation-only: no SQL
   was executed, no Owner-run query was executed, and no Supabase connection
@@ -2269,6 +2291,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   start/deadline pairing, deadline-specific ordering, terminal timestamp
   exclusivity, nonterminal evidence contradictions, and NULL/partial-population
   cases. A reduced terminal-timestamp sample is a blocking false-zero risk.
+- Post-execution verification must mirror every applicable Candidate and
+  preflight predicate, not only lifecycle timestamps. Actual-set discovery must
+  be independent of the expected set because expected-name filtering cannot
+  prove the absence of unexpected names. Metadata subtraction must use a
+  verified, table-qualified baseline and fail closed on missing, changed, or
+  otherwise unresolved baseline schema until a separately reviewed refresh.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2282,14 +2310,17 @@ complete, and Agent 70B-2 has prepared a documentation-only reuse-first review,
 supplemental preflights, and additive candidate SQL. No migration has been
 executed and effective access-control evidence remains incomplete. The first
 independent Review, second independent Re-Review, third independent Re-Review,
-and fourth independent Re-Review all returned **FAIL — CORRECTION REQUIRED**.
+fourth independent Re-Review, and fifth independent Re-Review all returned
+**FAIL — CORRECTION REQUIRED**.
 The third correction separated succeeded `completed_at` from failed `failed_at`
 and corrected the asset sequence so private persistence precedes binary/image
-validation. The fourth correction aligns V01 with every B13 and candidate
-lifecycle predicate, including timeout-before-deadline and complete
-status/evidence contradictions. Corrected Draft PR #198 now requires another
-independent Re-Review, and the supplemental Owner-run preflights remain blocked
-until that Re-Review passes.
+validation. The fourth correction resolved timeout and status-evidence gaps.
+The fifth correction addresses the two remaining false-zero paths by extending
+V01 to every applicable Candidate/B13 Job invariant and deriving its actual
+candidate-added metadata set independently through verified Q02 baseline
+subtraction. Corrected Draft PR #198 now requires another independent Re-Review,
+and the supplemental Owner-run preflights remain blocked until that Re-Review
+passes.
 
 Required next sequence:
 

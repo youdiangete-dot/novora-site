@@ -32,9 +32,13 @@ correction adds the status-exclusive `failed_at` timestamp, updates every
 matching predicate and preflight, and restores persistence-before-validation
 ordering. The fourth independent Re-Review confirmed those two findings were
 resolved but returned **FAIL — CORRECTION REQUIRED** because V01 did not fully
-mirror B13 and the candidate lifecycle CHECKs. The fourth correction makes V01
-count timeout-before-deadline, start/deadline, staged, nonterminal, terminal,
-and reverse evidence-to-status contradictions with total NULL-safe predicates.
+mirror B13 and the candidate lifecycle CHECKs. The fourth correction closed the
+identified timeout and status-evidence gaps. The fifth independent Re-Review
+still returned **FAIL — CORRECTION REQUIRED** for two remaining false-zero
+paths: V01 omitted non-lifecycle Job invariants, and its metadata actual set was
+filtered through expected column names. This fifth correction gives V01 full
+Candidate/B13 Job-invariant coverage and derives candidate-added columns by
+subtracting the verified Q02 baseline from the current affected-table catalog.
 PR #198 must remain Draft until another independent Re-Review passes. All
 owner-run supplemental preflights remain blocked until that Re-Review passes.
 
@@ -951,7 +955,7 @@ FROM duplicates;
 
 Purpose: gate validation of the one exact staged `draft`, every non-staged
 identity/profile requirement, bidirectional status/timestamp evidence,
-purpose/attempt pairing, timing, retry, hash, cost, and the complete pinned
+purpose/attempt pairing, bounded lineage shape, timing, retry, hash, cost, and the complete pinned
 Provider profile. Pass: every count is zero. Fail closed: any nonzero count,
 including a terminal row with all identity/profile fields NULL, a staged row
 with started/terminal/Provider evidence, a partial Provider group, or any NULL
@@ -1010,6 +1014,43 @@ SELECT
                  AND attempt_number NOT BETWEEN 2 AND 3)
            ))
   ) AS invalid_attempt_policy_count,
+  count(*) FILTER (
+    WHERE ((
+      (status IS NOT DISTINCT FROM 'draft'
+       AND generation_purpose IS NULL
+       AND lineage_identity IS NULL
+       AND parent_job_id IS NULL
+       AND parent_generation_purpose IS NULL
+       AND parent_attempt_number IS NULL
+       AND source_output_id IS NULL)
+      OR (status IS DISTINCT FROM 'draft'
+          AND generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND attempt_number IS NOT DISTINCT FROM 1
+          AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
+          AND parent_job_id IS NULL
+          AND parent_generation_purpose IS NULL
+          AND parent_attempt_number IS NULL
+          AND source_output_id IS NULL)
+      OR (status IS DISTINCT FROM 'draft'
+          AND generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND attempt_number IS NOT DISTINCT FROM 2
+          AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
+          AND parent_job_id IS NOT NULL
+          AND parent_generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND parent_attempt_number IS NOT DISTINCT FROM 1
+          AND source_output_id IS NULL)
+      OR (status IS DISTINCT FROM 'draft'
+          AND generation_purpose IS NOT DISTINCT FROM 'feedback_regeneration'
+          AND attempt_number IS NOT NULL
+          AND attempt_number BETWEEN 2 AND 3
+          AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
+          AND parent_job_id IS NOT NULL
+          AND parent_generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND parent_attempt_number IS NOT NULL
+          AND attempt_number = parent_attempt_number + 1
+          AND source_output_id IS NOT NULL)
+    ) IS NOT TRUE)
+  ) AS invalid_lineage_shape_count,
   count(*) FILTER (
     WHERE (started_at IS NULL AND deadline_at IS NOT NULL)
        OR (started_at IS NOT NULL
@@ -2430,20 +2471,45 @@ Storage mutation is included.
 These are for a future owner-run verification only after separately authorized
 SQL execution.
 
-### V01 - Added columns and terminal lifecycle
+### V01 - Independent added-column diff and complete Job-invariant parity
 
-Purpose: verify exact types/nullability/defaults and complete post-execution
-parity with B13 and the candidate job lifecycle CHECKs. Pass: the reviewed
-candidate set appears exactly once with no unexpected default and every named
-lifecycle violation count, including the overall invalid-row count, is zero.
-Fail closed: any metadata mismatch, predicate-parity gap, or nonzero lifecycle
-count. The second SELECT is valid only after the additive job columns exist and
-returns aggregate counts only, never identities.
+Purpose: independently discover the candidate-added column set by subtracting
+the verified Q02 pre-candidate baseline from current metadata, compare expected
+and actual sets in both directions, and verify every applicable Candidate/B13
+Job invariant after execution. Pass: baseline drift, missing, unexpected,
+duplicate, type, nullability, default, invalid-shape, every named Job violation,
+and the overall invalid-Job-row counts are all zero; expected and actual-added
+totals are equal. Fail closed: any unresolved Q02 baseline drift, metadata
+mismatch, predicate-map gap, or nonzero Job violation count. Later known schema
+drift requires a separately reviewed Q02-baseline refresh and must never be
+silently absorbed. Both SELECTs are valid only after the additive columns exist
+and return aggregate metadata/counts only, never identities or business rows.
 
 OWNER-RUN SELECT-ONLY PREFLIGHT — DO NOT EXECUTE IN THIS AGENT
 
 ```sql
-WITH expected_added_columns(
+WITH verified_q02_baseline_columns(
+  table_name, column_name, data_type, udt_name, is_nullable, column_default
+) AS (
+  VALUES
+    ('ai_sketch_jobs', 'id', 'uuid', 'uuid', 'NO', 'gen_random_uuid()'),
+    ('ai_sketch_jobs', 'concept_brief_id', 'uuid', 'uuid', 'NO', NULL::text),
+    ('ai_sketch_jobs', 'status', 'text', 'text', 'NO', '''draft''::text'),
+    ('ai_sketch_jobs', 'prompt_version', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'prompt_payload', 'jsonb', 'jsonb', 'NO', '''{}''::jsonb'),
+    ('ai_sketch_jobs', 'model_name', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'error_message', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_jobs', 'created_at', 'timestamp with time zone', 'timestamptz', 'NO', 'now()'),
+    ('ai_sketch_jobs', 'updated_at', 'timestamp with time zone', 'timestamptz', 'NO', 'now()'),
+    ('ai_sketch_outputs', 'id', 'uuid', 'uuid', 'NO', 'gen_random_uuid()'),
+    ('ai_sketch_outputs', 'job_id', 'uuid', 'uuid', 'NO', NULL::text),
+    ('ai_sketch_outputs', 'concept_brief_id', 'uuid', 'uuid', 'NO', NULL::text),
+    ('ai_sketch_outputs', 'bucket_name', 'text', 'text', 'NO', '''novora-ai-sketches''::text'),
+    ('ai_sketch_outputs', 'object_path', 'text', 'text', 'YES', NULL::text),
+    ('ai_sketch_outputs', 'preview_status', 'text', 'text', 'NO', '''pending_review''::text'),
+    ('ai_sketch_outputs', 'metadata', 'jsonb', 'jsonb', 'NO', '''{}''::jsonb'),
+    ('ai_sketch_outputs', 'created_at', 'timestamp with time zone', 'timestamptz', 'NO', 'now()')
+), expected_added_columns(
   table_name, column_name, data_type, udt_name, is_nullable, column_default
 ) AS (
   VALUES
@@ -2499,28 +2565,85 @@ WITH expected_added_columns(
     ('ai_sketch_outputs', 'first_preview_ready_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
     ('ai_sketch_outputs', 'readiness_revoked_at', 'timestamp with time zone', 'timestamptz', 'YES', NULL::text),
     ('ai_sketch_outputs', 'is_current_customer_preview', 'boolean', 'bool', 'NO', 'false')
-), actual_added_columns AS (
+), current_actual_columns AS (
   SELECT table_name, column_name, data_type, udt_name, is_nullable,
          column_default
   FROM information_schema.columns
   WHERE table_schema = 'public'
     AND table_name IN ('ai_sketch_jobs', 'ai_sketch_outputs')
-    AND column_name IN (SELECT column_name FROM expected_added_columns)
+), actual_candidate_added_columns AS (
+  SELECT actual.*
+  FROM current_actual_columns actual
+  LEFT JOIN verified_q02_baseline_columns baseline
+    USING (table_name, column_name)
+  WHERE baseline.column_name IS NULL
+), duplicate_expected_definitions AS (
+  SELECT table_name, column_name
+  FROM expected_added_columns
+  GROUP BY table_name, column_name
+  HAVING count(*) > 1
+), duplicate_actual_identities AS (
+  SELECT table_name, column_name
+  FROM actual_candidate_added_columns
+  GROUP BY table_name, column_name
+  HAVING count(*) > 1
 )
 SELECT
+  (SELECT count(*) FROM verified_q02_baseline_columns)
+    AS verified_baseline_total,
+  (SELECT count(*)
+   FROM verified_q02_baseline_columns baseline
+   LEFT JOIN current_actual_columns actual
+     USING (table_name, column_name)
+   WHERE actual.column_name IS NULL) AS missing_baseline_column_count,
+  (SELECT count(*)
+   FROM verified_q02_baseline_columns baseline
+   JOIN current_actual_columns actual
+     USING (table_name, column_name)
+   WHERE actual.data_type IS DISTINCT FROM baseline.data_type
+      OR actual.udt_name IS DISTINCT FROM baseline.udt_name
+      OR actual.is_nullable IS DISTINCT FROM baseline.is_nullable
+      OR actual.column_default IS DISTINCT FROM baseline.column_default)
+    AS baseline_shape_mismatch_count,
+  (SELECT count(*) FROM expected_added_columns) AS expected_added_total,
+  (SELECT count(*) FROM actual_candidate_added_columns)
+    AS actual_candidate_added_total,
   (SELECT count(*)
    FROM expected_added_columns expected
-   LEFT JOIN actual_added_columns actual
+   LEFT JOIN actual_candidate_added_columns actual
      USING (table_name, column_name)
    WHERE actual.column_name IS NULL) AS missing_added_column_count,
   (SELECT count(*)
-   FROM actual_added_columns actual
+   FROM actual_candidate_added_columns actual
    LEFT JOIN expected_added_columns expected
      USING (table_name, column_name)
    WHERE expected.column_name IS NULL) AS unexpected_added_column_count,
+  (SELECT count(*) FROM duplicate_expected_definitions)
+    AS duplicate_expected_definition_count,
+  (SELECT count(*) FROM duplicate_actual_identities)
+    AS duplicate_actual_identity_count,
   (SELECT count(*)
    FROM expected_added_columns expected
-   JOIN actual_added_columns actual
+   JOIN actual_candidate_added_columns actual
+     USING (table_name, column_name)
+   WHERE actual.data_type IS DISTINCT FROM expected.data_type
+      OR actual.udt_name IS DISTINCT FROM expected.udt_name)
+    AS wrong_added_column_type_count,
+  (SELECT count(*)
+   FROM expected_added_columns expected
+   JOIN actual_candidate_added_columns actual
+     USING (table_name, column_name)
+   WHERE actual.is_nullable IS DISTINCT FROM expected.is_nullable)
+    AS wrong_added_column_nullability_count,
+  (SELECT count(*)
+   FROM expected_added_columns expected
+   JOIN actual_candidate_added_columns actual
+     USING (table_name, column_name)
+   WHERE actual.column_default IS DISTINCT FROM expected.column_default)
+    AS wrong_added_column_default_count,
+  (SELECT count(*)
+   FROM expected_added_columns expected
+   JOIN actual_candidate_added_columns actual
      USING (table_name, column_name)
    WHERE actual.data_type IS DISTINCT FROM expected.data_type
       OR actual.udt_name IS DISTINCT FROM expected.udt_name
@@ -2528,11 +2651,81 @@ SELECT
       OR actual.column_default IS DISTINCT FROM expected.column_default)
     AS invalid_added_column_shape_count;
 
-WITH lifecycle_parity AS (
+WITH job_invariant_flags AS (
   SELECT
     (status IS NULL OR status NOT IN (
       'draft', 'queued', 'processing', 'succeeded', 'failed', 'timed_out', 'cancelled'
     )) AS invalid_job_status,
+    (status IS NOT DISTINCT FROM 'draft'
+     AND num_nonnulls(
+       generation_purpose, attempt_number, idempotency_key, lineage_identity,
+       parent_job_id, parent_generation_purpose, parent_attempt_number,
+       source_output_id, design_spec_version, design_spec_hash,
+       hand_sketch_instruction_version, hand_sketch_instruction_hash,
+       provider_name, model_name, provider_endpoint, request_image_count,
+       request_streaming, request_partial_images, request_size, request_quality,
+       output_format, moderation_mode, provider_request_id, started_at,
+       deadline_at, completed_at, failed_at, cancelled_at, timed_out_at,
+       failure_category, retry_eligible, terminal_reason, error_message,
+       estimated_cost_micros, actual_cost_micros, cost_currency,
+       pricing_assumption_version
+     ) <> 0) AS invalid_staged_state,
+    (status IS DISTINCT FROM 'draft'
+     AND (
+       generation_purpose IS NULL OR attempt_number IS NULL
+       OR idempotency_key IS NULL OR lineage_identity IS NULL
+       OR design_spec_version IS NULL OR btrim(design_spec_version) = ''
+       OR design_spec_hash IS NULL
+       OR hand_sketch_instruction_version IS NULL
+       OR btrim(hand_sketch_instruction_version) = ''
+       OR hand_sketch_instruction_hash IS NULL
+     )) AS incomplete_nonstaged_identity,
+    ((status IS NOT DISTINCT FROM 'draft'
+      AND (generation_purpose IS NOT NULL OR attempt_number IS NOT NULL))
+     OR (status IS DISTINCT FROM 'draft' AND (
+       generation_purpose IS NULL OR attempt_number IS NULL
+       OR (generation_purpose IS DISTINCT FROM 'first_preview'
+           AND generation_purpose IS DISTINCT FROM 'feedback_regeneration')
+       OR (generation_purpose IS NOT DISTINCT FROM 'first_preview'
+           AND attempt_number NOT BETWEEN 1 AND 2)
+       OR (generation_purpose IS NOT DISTINCT FROM 'feedback_regeneration'
+           AND attempt_number NOT BETWEEN 2 AND 3)
+     ))) AS invalid_attempt_policy,
+    ((
+      (status IS NOT DISTINCT FROM 'draft'
+       AND generation_purpose IS NULL
+       AND lineage_identity IS NULL
+       AND parent_job_id IS NULL
+       AND parent_generation_purpose IS NULL
+       AND parent_attempt_number IS NULL
+       AND source_output_id IS NULL)
+      OR (status IS DISTINCT FROM 'draft'
+          AND generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND attempt_number IS NOT DISTINCT FROM 1
+          AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
+          AND parent_job_id IS NULL
+          AND parent_generation_purpose IS NULL
+          AND parent_attempt_number IS NULL
+          AND source_output_id IS NULL)
+      OR (status IS DISTINCT FROM 'draft'
+          AND generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND attempt_number IS NOT DISTINCT FROM 2
+          AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
+          AND parent_job_id IS NOT NULL
+          AND parent_generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND parent_attempt_number IS NOT DISTINCT FROM 1
+          AND source_output_id IS NULL)
+      OR (status IS DISTINCT FROM 'draft'
+          AND generation_purpose IS NOT DISTINCT FROM 'feedback_regeneration'
+          AND attempt_number IS NOT NULL
+          AND attempt_number BETWEEN 2 AND 3
+          AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
+          AND parent_job_id IS NOT NULL
+          AND parent_generation_purpose IS NOT DISTINCT FROM 'first_preview'
+          AND parent_attempt_number IS NOT NULL
+          AND attempt_number = parent_attempt_number + 1
+          AND source_output_id IS NOT NULL)
+    ) IS NOT TRUE) AS invalid_lineage_shape,
     ((started_at IS NULL AND deadline_at IS NOT NULL)
      OR (started_at IS NOT NULL
          AND (deadline_at IS NULL OR deadline_at <= started_at)))
@@ -2629,12 +2822,87 @@ WITH lifecycle_parity AS (
                 deadline_at IS NULL OR deadline_at <= started_at
                 OR cancelled_at < started_at
               ))
-        ))) AS invalid_terminal_status_evidence
+        ))) AS invalid_terminal_status_evidence,
+    ((design_spec_hash IS NOT NULL
+      AND design_spec_hash !~ '^[0-9a-f]{64}$')
+     OR (hand_sketch_instruction_hash IS NOT NULL
+         AND hand_sketch_instruction_hash !~ '^[0-9a-f]{64}$')
+     OR (idempotency_key IS NOT NULL
+         AND idempotency_key !~ '^[0-9a-f]{64}$')) AS invalid_hash_format,
+    (failure_category IS NOT NULL
+     AND failure_category NOT IN (
+       'configuration_missing', 'invalid_structured_input', 'precondition_failed',
+       'invalid_request', 'authentication_failed', 'permission_denied',
+       'moderation_blocked', 'rate_limited', 'provider_unavailable',
+       'network_failure', 'timeout', 'cancelled', 'invalid_provider_response',
+       'invalid_base64', 'invalid_image_format', 'invalid_image_dimensions',
+       'image_too_large', 'unsafe_output', 'privacy_failure', 'access_failure',
+       'storage_failure', 'lifecycle_conflict', 'budget_blocked',
+       'unexpected_provider_error'
+     )) AS invalid_failure_category,
+    (retry_eligible IS TRUE
+     AND failure_category IS DISTINCT FROM 'rate_limited'
+     AND failure_category IS DISTINCT FROM 'provider_unavailable'
+     AND failure_category IS DISTINCT FROM 'network_failure')
+      AS invalid_retry_eligibility,
+    (estimated_cost_micros < 0
+     OR actual_cost_micros < 0
+     OR (cost_currency IS NOT NULL AND cost_currency !~ '^[A-Z]{3}$')
+     OR (status IS NOT DISTINCT FROM 'draft' AND num_nonnulls(
+       estimated_cost_micros, actual_cost_micros, cost_currency,
+       pricing_assumption_version
+     ) <> 0)
+     OR (status IS DISTINCT FROM 'draft' AND (
+       (estimated_cost_micros IS NULL AND actual_cost_micros IS NULL
+        AND (cost_currency IS NOT NULL
+             OR pricing_assumption_version IS NOT NULL))
+       OR ((estimated_cost_micros IS NOT NULL
+            OR actual_cost_micros IS NOT NULL)
+           AND (cost_currency IS NULL OR cost_currency !~ '^[A-Z]{3}$'
+                OR pricing_assumption_version IS NULL
+                OR btrim(pricing_assumption_version) = ''))
+     ))) IS TRUE AS invalid_cost,
+    ((status IS NOT DISTINCT FROM 'draft' AND num_nonnulls(
+       provider_name, model_name, provider_endpoint, request_image_count,
+       request_streaming, request_partial_images, request_size,
+       request_quality, output_format, moderation_mode
+     ) <> 0)
+     OR (status IS DISTINCT FROM 'draft' AND num_nonnulls(
+       provider_name, model_name, provider_endpoint, request_image_count,
+       request_streaming, request_partial_images, request_size,
+       request_quality, output_format, moderation_mode
+     ) <> 10)) AS incomplete_request_profile,
+    (status IS DISTINCT FROM 'draft' AND (
+       provider_name IS DISTINCT FROM 'openai'
+       OR model_name IS DISTINCT FROM 'gpt-image-2-2026-04-21'
+       OR provider_endpoint IS DISTINCT FROM '/v1/images/generations'
+       OR request_image_count IS DISTINCT FROM 1
+       OR request_streaming IS DISTINCT FROM false
+       OR request_partial_images IS DISTINCT FROM 0
+       OR request_size IS DISTINCT FROM '1024x1024'
+       OR request_quality IS DISTINCT FROM 'medium'
+       OR output_format IS DISTINCT FROM 'png'
+       OR moderation_mode IS DISTINCT FROM 'auto'
+     )) AS mismatched_request_profile,
+    ((status IS NOT DISTINCT FROM 'draft' AND provider_request_id IS NOT NULL)
+     OR (status IS DISTINCT FROM 'draft'
+         AND provider_request_id IS NOT NULL
+         AND (provider_name IS DISTINCT FROM 'openai'
+              OR btrim(provider_request_id) = '')))
+      AS provider_request_without_profile
   FROM public.ai_sketch_jobs
 )
 SELECT
   count(*) FILTER (WHERE invalid_job_status)
     AS invalid_job_status_count,
+  count(*) FILTER (WHERE invalid_staged_state)
+    AS invalid_staged_state_count,
+  count(*) FILTER (WHERE incomplete_nonstaged_identity)
+    AS incomplete_nonstaged_identity_count,
+  count(*) FILTER (WHERE invalid_attempt_policy)
+    AS invalid_attempt_policy_count,
+  count(*) FILTER (WHERE invalid_lineage_shape)
+    AS invalid_lineage_shape_count,
   count(*) FILTER (WHERE invalid_start_deadline_pairing)
     AS invalid_start_deadline_pairing_count,
   count(*) FILTER (WHERE terminal_timestamp_before_start)
@@ -2653,8 +2921,26 @@ SELECT
     AS invalid_nonterminal_status_evidence_count,
   count(*) FILTER (WHERE invalid_terminal_status_evidence)
     AS invalid_terminal_status_evidence_count,
+  count(*) FILTER (WHERE invalid_hash_format)
+    AS invalid_hash_format_count,
+  count(*) FILTER (WHERE invalid_failure_category)
+    AS invalid_failure_category_count,
+  count(*) FILTER (WHERE invalid_retry_eligibility)
+    AS invalid_retry_eligibility_count,
+  count(*) FILTER (WHERE invalid_cost)
+    AS invalid_cost_count,
+  count(*) FILTER (WHERE incomplete_request_profile)
+    AS incomplete_request_profile_count,
+  count(*) FILTER (WHERE mismatched_request_profile)
+    AS mismatched_request_profile_count,
+  count(*) FILTER (WHERE provider_request_without_profile)
+    AS provider_request_without_profile_count,
   count(*) FILTER (
     WHERE invalid_job_status
+       OR invalid_staged_state
+       OR incomplete_nonstaged_identity
+       OR invalid_attempt_policy
+       OR invalid_lineage_shape
        OR invalid_start_deadline_pairing
        OR terminal_timestamp_before_start
        OR timeout_before_deadline
@@ -2664,46 +2950,126 @@ SELECT
        OR invalid_staged_terminal_evidence
        OR invalid_nonterminal_status_evidence
        OR invalid_terminal_status_evidence
-  ) AS invalid_lifecycle_row_count
-FROM lifecycle_parity;
+       OR invalid_hash_format
+       OR invalid_failure_category
+       OR invalid_retry_eligibility
+       OR invalid_cost
+       OR incomplete_request_profile
+       OR mismatched_request_profile
+       OR provider_request_without_profile
+  ) AS invalid_job_row_count
+FROM job_invariant_flags;
 ```
 
-#### V01 lifecycle predicate-parity map
+#### V01 independent metadata-diff review
 
-The candidate CHECKs and B13 remain the baseline. V01 splits some B13 aggregate
-groups into narrower named counts for diagnosis, but it does not omit any
-lifecycle rule.
+The verified Q02 baseline CTE is table-qualified and contains the 17 original
+columns on the two affected tables: nine on `ai_sketch_jobs` and eight on
+`ai_sketch_outputs`, including exact type, UDT, nullability, and default. The
+actual candidate-added set is `current_actual_columns MINUS
+verified_q02_baseline_columns` by table/column identity. It is never filtered
+through `expected_added_columns`, so a new name that is absent from the expected
+list remains visible and increments `unexpected_added_column_count`. Baseline
+absence or shape drift has its own nonzero fail-closed count; later verified
+drift requires a separately reviewed baseline refresh.
 
-| Lifecycle rule | Candidate CHECK | B13 preflight predicate | V01 predicate/count |
+The metadata comparator was evaluated in memory with **11 cases and zero
+comparison mismatches**. No catalog or Owner query was executed.
+
+| Metadata case | Expected result | Observed aggregate |
+| --- | --- | --- |
+| Exact 52-column candidate set | Pass | Every violation count zero; totals `52 = 52` |
+| One expected column missing | Fail | `missing_added_column_count > 0` |
+| One genuinely unexpected column name | Fail | `unexpected_added_column_count > 0` |
+| Wrong type/UDT | Fail | Type and invalid-shape counts nonzero |
+| Wrong nullability | Fail | Nullability and invalid-shape counts nonzero |
+| Wrong default | Fail | Default and invalid-shape counts nonzero |
+| Duplicate expected definition | Fail | `duplicate_expected_definition_count > 0` |
+| Duplicate actual table/column identity | Fail | `duplicate_actual_identity_count > 0` |
+| Baseline column incorrectly treated as candidate-added | Fail | Actual total/unexpected count nonzero in the injected faulty classifier |
+| Unexpected column on an affected table | Fail | `unexpected_added_column_count > 0` |
+| Unrelated table/column | Ignored | All candidate-added comparison counts remain zero |
+
+#### V01 Candidate/B13/verification predicate map
+
+Candidate CHECKs and B13 are the authoritative row-predicate baseline. V01
+uses total NULL-safe booleans and may split one B13 group into narrower counts,
+but every applicable Job predicate is included in `invalid_job_row_count`.
+Provider request ID remains optional for non-draft rows under the reviewed
+Candidate/B13 rule; if populated it must be nonblank and paired with the pinned
+Provider, while `draft` forbids it. This correction does not invent a stricter
+Provider lifecycle rule.
+
+| Job invariant | Candidate CHECK/invariant | B13 predicate | V01 predicate/count | Matching NULL behavior | Matching case |
+| --- | --- | --- | --- | --- | --- |
+| Legal status | `status_check` | `invalid_job_status_count` | Same named count | NULL is invalid | Invalid status / all valid controls |
+| Exact staged draft | `reserved_identity`, `lineage_shape`, `status_terminal`, request-profile, request-ID, cost CHECKs | `invalid_staged_state_count` plus group counts | `invalid_staged_state_count` | Any populated prohibited field invalidates draft | Draft with Provider profile/request/canonical identity |
+| Purpose/attempt pairing and vocabulary | `attempt_policy_check` | `invalid_attempt_policy_count` | Same named count | Both NULL only for draft; both required otherwise | Queued missing purpose or attempt |
+| Attempt progression | `attempt_policy_check`, `lineage_shape_check` | `invalid_attempt_policy_count`, `invalid_lineage_shape_count` | Same named counts | Missing parent snapshot fails child shape | Retry/regeneration controls and missing-lineage cases |
+| Parent/source lineage | `lineage_shape_check` | `invalid_lineage_shape_count` (B16 separately verifies referenced rows) | Same named count | Root forbids parent/source; retry requires parent; regeneration requires parent/source | Retry without parent; regeneration without source |
+| Canonical identity | `reserved_identity_completeness_check`, `hash_format_check` | Incomplete identity and hash counts | Same named counts | All NULL only in draft; complete/nonblank/hash-valid otherwise | Draft identity; queued missing identity |
+| Design Spec identity | `reserved_identity_completeness_check`, `hash_format_check` | Incomplete identity and hash counts | Same named counts | Version/hash both absent only in draft | Missing and partial Design Spec cases |
+| Hand Sketch Instruction identity | Same two CHECKs | Incomplete identity and hash counts | Same named counts | Version/hash both absent only in draft | Missing and partial instruction cases |
+| Pinned Provider profile | `first_preview_request_profile_check` | Incomplete and mismatched profile counts | Same named counts | All NULL only in draft; exactly ten pinned fields otherwise | Missing, partial, wrong-model, and valid-profile cases |
+| Provider request identity | `provider_request_identity_check`; uniqueness remains V05/B12 | `provider_request_without_profile_count` | Same named count | NULL allowed non-draft; populated must be nonblank/OpenAI; forbidden in draft | Draft request ID; queued blank request ID |
+| Start/deadline | `attempt_timing_check`, status consistency | Timing and status-evidence counts | Pairing and terminal-before-start counts | Half-pair invalid; processing/success/timeout require both | Queued timing and valid processing controls |
+| Terminal timestamp requirement | `status_terminal_consistency_check` | Missing-status-specific count | Same named count | Matching terminal timestamp required | Valid and invalid terminal controls |
+| Terminal exclusivity | `terminal_timestamp_check` | Conflicting timestamp count | Same named count | More than one populated is invalid | Failed with `completed_at` |
+| Timeout/deadline order | Timed-out status branch | Timed-out status-evidence branch | `timeout_before_deadline_count` | Missing deadline or timeout before it is invalid | Existing timeout counterexample |
+| Failure/retry/reason | Status consistency, failure-category, retry CHECKs | Status, category, retry counts | Same named/split counts | Required only in compatible terminal branches; forbidden elsewhere | Processing evidence; succeeded failure; timed-out retry |
+| Cost and error evidence | Cost and status-consistency CHECKs | `invalid_cost_count` and status-evidence count | Same named/split counts | Draft forbids; partial cost group and incompatible error evidence fail | Cost/error injected cases |
+| Reverse evidence implications | Status consistency and request CHECKs | Timestamp/status and status-evidence counts | Timestamp mismatch, staged/nonterminal/terminal, request counts | Evidence cannot float outside its compatible status | Deadline-only, terminal-on-nonterminal, draft request |
+| Overall invalid Job row | Combined Job CHECK predicates | Every applicable B13 Job predicate | `invalid_job_row_count` | Any TRUE constituent invalidates the row | All 34 parity cases |
+
+#### V01 expanded false-zero and valid-control review
+
+The 16 prior cases were retained and 18 purpose, identity, lineage, profile,
+request, retry, and regeneration cases were added. All **34 lifecycle parity
+cases** produced the same Candidate/B13/V01 decision, for **zero parity
+mismatches**. This was temporary in-memory evaluation only; no SQL was executed.
+
+| Case | Candidate | B13 | V01 |
 | --- | --- | --- | --- |
-| Exact legal status vocabulary | `ai_sketch_jobs_status_check` | `invalid_job_status_count` | `invalid_job_status_count` |
-| Start/deadline pairing and ordering | `ai_sketch_jobs_attempt_timing_check` | `invalid_attempt_timing_count` | `invalid_start_deadline_pairing_count` and `terminal_timestamp_before_start_count` |
-| At most one terminal timestamp | `ai_sketch_jobs_terminal_timestamp_check` | `conflicting_terminal_timestamp_count` | `conflicting_terminal_timestamp_count` |
-| Terminal status requires its own timestamp | `ai_sketch_jobs_status_terminal_consistency_check` | `missing_status_specific_terminal_timestamp_count` | Same named count |
-| Terminal timestamp implies its matching status | `ai_sketch_jobs_status_terminal_consistency_check` | `terminal_timestamp_status_mismatch_count` | Same named count |
-| Exact staged `draft` has no lifecycle evidence | `ai_sketch_jobs_status_terminal_consistency_check` | Lifecycle subset of `invalid_staged_state_count` | `invalid_staged_terminal_evidence_count` |
-| `queued` has no timing/terminal evidence; `processing` requires valid start/deadline and no terminal evidence | `ai_sketch_jobs_status_terminal_consistency_check` | Nonterminal branches of `invalid_status_timestamp_evidence_count` | `invalid_nonterminal_status_evidence_count` |
-| Terminal statuses have complete compatible evidence | `ai_sketch_jobs_status_terminal_consistency_check` | Terminal branches of `invalid_status_timestamp_evidence_count` | `invalid_terminal_status_evidence_count` |
-| Timeout occurs at or after its deadline and is not auto-retryable | `timed_out` branch of `ai_sketch_jobs_status_terminal_consistency_check` | `timed_out` branch of `invalid_status_timestamp_evidence_count` | `timeout_before_deadline_count` plus `invalid_terminal_status_evidence_count` |
-| No row violates any mapped lifecycle predicate | Combined lifecycle CHECKs | Every lifecycle violation count must be zero | `invalid_lifecycle_row_count` must be zero |
+| Timed out after start but before deadline | Reject | Count | Count |
+| Processing with failure/retry/reason evidence | Reject | Count | Count |
+| Queued with terminal reason | Reject | Count | Count |
+| Queued with start/deadline evidence | Reject | Count | Count |
+| Processing with `failed_at` | Reject | Count | Count |
+| Succeeded with failure category | Reject | Count | Count |
+| Failed with `completed_at` | Reject | Count | Count |
+| Timed out with `retry_eligible = true` | Reject | Count | Count |
+| Deadline without compatible start/status | Reject | Count | Count |
+| Valid draft | Accept | Zero | Zero |
+| Valid queued | Accept | Zero | Zero |
+| Valid processing | Accept | Zero | Zero |
+| Valid succeeded | Accept | Zero | Zero |
+| Valid failed | Accept | Zero | Zero |
+| Valid cancelled | Accept | Zero | Zero |
+| Valid timed out | Accept | Zero | Zero |
+| Draft with complete Provider profile | Reject | Count | Count |
+| Draft with `provider_request_id` | Reject | Count | Count |
+| Draft with canonical identity | Reject | Count | Count |
+| Queued missing purpose | Reject | Count | Count |
+| Queued missing attempt | Reject | Count | Count |
+| Queued missing canonical identity | Reject | Count | Count |
+| Queued missing Design Spec identity | Reject | Count | Count |
+| Queued missing Hand Sketch Instruction identity | Reject | Count | Count |
+| Queued missing Provider profile | Reject | Count | Count |
+| Queued with partial Provider profile | Reject | Count | Count |
+| Queued with wrong pinned model/profile | Reject | Count | Count |
+| First-preview retry without parent lineage | Reject | Count | Count |
+| Feedback regeneration without source output | Reject | Count | Count |
+| Non-draft partial Design Spec identity | Reject | Count | Count |
+| Non-draft partial Hand Sketch Instruction identity | Reject | Count | Count |
+| Queued with blank Provider request evidence | Reject | Count | Count |
+| Valid first-preview retry | Accept | Zero | Zero |
+| Valid feedback regeneration | Accept | Zero | Zero |
 
-#### V01 false-zero counterexample review
-
-The predicates were independently evaluated in memory; no SQL was executed.
-Every case below produced the same reject/count decision in the candidate CHECK,
-B13, and corrected V01, for **zero parity mismatches**.
-
-| Case | Candidate CHECK | B13 | Corrected V01 |
-| --- | --- | --- | --- |
-| `timed_out`, start < timeout < deadline, otherwise valid | Rejected | Counted | Counted by `timeout_before_deadline_count` and terminal evidence count |
-| `processing` with failure category, retry value, and terminal reason but no terminal timestamp | Rejected | Counted | Counted by `invalid_nonterminal_status_evidence_count` |
-| `queued` with terminal reason | Rejected | Counted | Counted by `invalid_nonterminal_status_evidence_count` |
-| `queued` with otherwise valid start/deadline evidence | Rejected | Counted | Counted by `invalid_nonterminal_status_evidence_count` |
-| `processing` with `failed_at` | Rejected | Counted | Counted by nonterminal and timestamp/status mismatch counts |
-| `succeeded` with failure category | Rejected | Counted | Counted by `invalid_terminal_status_evidence_count` |
-| `failed` with `completed_at` | Rejected | Counted | Counted by terminal evidence and timestamp/status mismatch counts |
-| `timed_out` with `retry_eligible = true` | Rejected | Counted | Counted by `invalid_terminal_status_evidence_count` |
-| `deadline_at` without compatible start/status evidence | Rejected | Counted | Counted by start/deadline, staged/nonterminal, or terminal evidence count as applicable |
+Durable verification rule: post-execution verification must mirror every
+applicable Candidate and preflight predicate, not only timestamps. Actual-set
+discovery must be independent of the expected set; expected-name filtering
+cannot prove that unexpected names are absent. Metadata subtraction must use a
+verified baseline and fail closed on unresolved schema drift.
 
 ### V02 - Added constraints and validation state
 
