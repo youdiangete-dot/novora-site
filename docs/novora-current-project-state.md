@@ -2217,6 +2217,24 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   occurred. Counts remain 30 Owner-run blocks, 7 candidate-only blocks, and 37
   SQL blocks total.
 
+- Agent 70B-3C / 70B-3D (2026-07-15): the Owner manually executed the approved
+  Stage A existing-table ACL correction in `novora-production`, Primary
+  Database, as `postgres`. Read-only reconciliation of the complete external
+  evidence passed Phase 1 and Phase 3, including a zero-row privilege mismatch
+  detector. `anon` and `authenticated` now have no DML or structural privileges
+  on the six approved tables. `service_role` retains SELECT/INSERT on
+  `admin_notes` and `concept_brief_reference_assets`, and SELECT/INSERT/DELETE
+  on `concept_briefs`; it now has SELECT/INSERT/UPDATE, but no DELETE, on
+  `ai_sketch_jobs`, `ai_sketch_outputs`, and `ai_sketch_reviews`. TRUNCATE,
+  MAINTAIN, REFERENCES, and TRIGGER are absent for all three roles on all six
+  tables. Ownership, RLS, FORCE RLS, policy counts, routines, and triggers were
+  preserved. No rollback occurred. Stages B, C, D, and E were not executed.
+  First Preview remains blocked by unexecuted schema work, missing jobs/outputs
+  persistence code, and the review create-path/output-linkage incompatibility.
+  The next recommended independent task is Stage B `postgres` future-table
+  default-privilege execution planning and approval; this documentation record
+  does not authorize Stage B or any SQL or Supabase action.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2303,6 +2321,26 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   explicitly approved.
 
 ## 10. Recommended Next Step
+
+As of 2026-07-15, Stage A existing-table ACL correction is complete and its
+immediate post-execution evidence passed. The next recommended independent task
+is Stage B planning and approval for `postgres` future-table default privileges.
+Stage B requires a separate evidence review, execution packet, explicit human
+approval, and post-execution verification. This documentation task does not
+authorize Stage B or any other SQL or Supabase action.
+
+Stages C and D remain blocked by `supabase_admin` execution authority and
+platform-compatibility review. Stage E remains unexecuted. First Preview remains
+blocked by the unexecuted additive schema work, missing jobs/outputs persistence
+writers, the `ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility,
+private generated-asset access, secure customer preview access, automatic
+readiness gates, route/UI wiring, and post-preview review linkage.
+
+### Historical pre-Stage-A context
+
+The following text preserves the prior planning context. Its former "required
+next sequence" is superseded by the dated recommendation above and does not
+authorize any operation.
 
 Agent 70B-1 / PR #197 is merged with normal merge commit
 `e77d2e6267f78ecf1109198ae100149eb8e466e4`. The owner-run Q01-Q11 evidence is
