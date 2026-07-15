@@ -74,9 +74,9 @@ must not be used as the current operating direction.
 - Domain: `novora.design` / `www.novora.design`
 - Hosting: Vercel project `project-dd34e`
 - Deployment baseline: the `main` branch deploys to Production
-- Verified GitHub `main` baseline at the start of Agent 70B-1: Agent 70A /
-  PR #196 normal merge commit
-  `68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`.
+- Verified GitHub `main` baseline at the start of Agent 70B-2: Agent 70B-1 /
+  PR #197 normal merge commit
+  `e77d2e6267f78ecf1109198ae100149eb8e466e4`.
 - GitHub `main` includes the Agent 68A provider-neutral, server-only first-preview
   runtime foundation, the Agent 69A First Preview Product Contract v1, and the
   Agent 69B reuse-first data-model and candidate SQL plan. It also includes the
@@ -2055,7 +2055,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Supabase or customer data, change Storage/RLS/environment configuration,
   activate customer preview visibility, deploy, or change Production.
 
-- Agent 70B-1: adds
+- Agent 70B-1 / PR #197 merged with normal merge commit
+  `e77d2e6267f78ecf1109198ae100149eb8e466e4` and adds
   `docs/novora-agent-70b1-first-preview-live-schema-preflight-v1.md`, a
   documentation-only, owner-run, SELECT-only metadata verification packet for
   `public.ai_sketch_jobs`, `public.ai_sketch_outputs`,
@@ -2069,8 +2070,152 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Supabase, execute SQL, inspect business/customer rows, change schema/RLS/
   policies/grants/triggers/Storage, modify app/runtime/test code, access a
   provider or key, generate an image, wire a route, change an environment,
-  deploy, or operate Production. Exact migration SQL remains blocked until all
-  required owner-run sanitized metadata results are returned and reviewed.
+  deploy, or operate Production. Exact migration SQL remained blocked until all
+  required owner-run sanitized metadata results were returned and reviewed.
+
+- Agent 70B-2 reviews the complete owner-run Q01-Q11 metadata evidence dated
+  2026-07-13 and adds
+  `docs/novora-agent-70b2-first-preview-live-schema-review-and-additive-sql-plan-v1.md`.
+  The validated row counts are Q01-Q11 = `6, 63, 9, 7, 14, 2, 0, 103, 5, 10,
+  9`; Q01 is complete CSV metadata evidence, while Q07 is owner-attested
+  screenshot evidence that visibly reports a successful complete zero-row
+  policy result. The evidence verifies six ordinary public tables with RLS
+  enabled and forced RLS false; the existing job -> output -> review relation
+  chain; the four exact review statuses with `pending` excluded; review
+  uniqueness by `concept_brief_id`; existing defaults, FKs, indexes, and update
+  triggers; zero visible explicit policies; and missing dedicated idempotency,
+  attempt, lineage, asset-integrity, automatic-readiness, cost, and
+  current-preview invariants. Q08 direct grants do not resolve ownership,
+  membership, BYPASSRLS, effective privileges, PostgREST behavior, or API
+  exploitability, so the effective access posture remains unresolved. Agent
+  70B-2 is documentation-only and prepares additive candidate SQL plus separate
+  owner-run metadata and aggregate compatibility preflights. No SQL was
+  executed, no Supabase connection was made by Codex, no business/customer rows
+  were inspected, and migration execution remains blocked pending formal review
+  and returned supplemental evidence. Private generated-asset Storage and
+  access, real Provider credentials/client/calls, confirmed-persistence route
+  wiring, automatic readiness implementation, customer First Preview UI,
+  deployment, and Production behavior remain unimplemented.
+
+  The first independent formal review of Draft PR #198 returned **FAIL —
+  CORRECTION REQUIRED**. Its six blocking categories were: (1) NULL-safe
+  readiness constraints and violation preflights; (2) ready/current separation;
+  (3) purpose/attempt and complete pinned Provider-profile NULL safety; (4)
+  enforceable same-brief lineage, source-output, and output/job consistency; (5)
+  complete versioned deterministic idempotency; and (6) private-asset/readiness/
+  revocation chronology. PR #198 remains Draft. The correction is
+  documentation-only; no SQL was executed and no Supabase connection occurred.
+  A second independent Re-Review must pass before the owner runs any supplemental
+  preflight. The corrected packet contains 30 owner-run SELECT-only preflight
+  blocks and 7 candidate-only SQL blocks; none was executed.
+
+  The corrected lifecycle keeps readiness output-bound and current selection
+  separate: a ready output may be non-current, while a current output must be
+  ready and at most one may be current per Concept Brief. A later writer must
+  switch current selection transactionally. `asset_created_at` is the
+  authoritative private-persistence timestamp, followed in order by
+  `asset_validated_at`, `automatic_gate_passed_at`, and
+  `first_preview_ready_at`; revocation retains prior ready evidence, occurs
+  later, and clears current selection. Composite unique/FK guards are planned
+  for same-brief parent/source lineage and output/job consistency, with strictly
+  increasing bounded attempts preventing cycles.
+
+  Canonical idempotency uses namespace
+  `novora:first-preview-idempotency:v1`: RFC 8785 canonical JSON containing the
+  internal Concept Brief UUID, purpose, Design Spec version/hash, Hand Sketch
+  Instruction version/hash, stable lineage identity, parent/source identity,
+  and attempt; UTF-8 without BOM; SHA-256; lowercase hexadecimal output; and
+  explicit JSON `null` only for non-applicable parent/source identities. Missing
+  identity fails before reservation, Provider invocation, or output persistence.
+
+  The second independent Re-Review of corrected Draft PR #198 also returned
+  **FAIL — CORRECTION REQUIRED**. It confirmed ready/current separation,
+  same-brief lineage, output/job consistency, cycle prevention, canonical
+  idempotency, review-state separation, access-evidence limits, and Product
+  boundaries, but found two remaining lifecycle defects. First, all-NULL job
+  identity and Provider-profile fields were not bound to one exact staged
+  status, and terminal timestamps were not bidirectionally bound to terminal
+  statuses. Second, asset validation and automatic-gate passed evidence were
+  not bidirectionally bound to their statuses and timestamps.
+
+  The second correction defines only `status = 'draft'` as the staged job state;
+  it carries no purpose, attempt, canonical identity, lineage, Provider profile,
+  Provider request, started/deadline, terminal, failure/retry, or cost evidence.
+  Every non-staged job requires complete canonical identity and the pinned
+  Provider profile, while job timestamps and terminal evidence imply compatible
+  statuses in both directions. Output planning now adds explicit
+  `asset_validation_status` and bounded `asset_validation_evidence`, binds passed
+  validation to complete persisted-asset and binary-integrity facts, and binds a
+  passed automatic gate to prior validation, policy, evidence, and pass time in
+  both directions. Ready/current separation remains unchanged.
+
+  PR #198 remains Draft. No supplemental Owner-run query may run until a third
+  independent Re-Review passes. This correction is documentation-only: no SQL
+  was executed, no Owner-run query was executed, and no Supabase connection
+  occurred. The packet still contains 30 Owner-run SELECT-only blocks and 7
+  candidate-only blocks, 37 SQL blocks total.
+
+  The third independent Re-Review returned **FAIL — CORRECTION REQUIRED** for
+  two remaining documentation defects. First, the candidate reused
+  `completed_at` for both succeeded and failed jobs, so a success timestamp did
+  not imply `status = 'succeeded'` and B13 could return a false zero. Second,
+  section 19 placed binary/image validation before private generated-asset
+  persistence even though the normative chronology requires persistence first.
+
+  The third correction adds nullable candidate column `failed_at timestamptz`
+  and makes all terminal timestamps status-exclusive: `completed_at` belongs
+  only to `succeeded`, `failed_at` only to `failed`, `cancelled_at` only to
+  `cancelled`, and `timed_out_at` only to `timed_out`. Terminal timestamps are
+  mutually exclusive, must follow `started_at` when it exists, and are forbidden
+  on staged or nonterminal jobs. B13 comprehensively counts missing, mismatched,
+  conflicting, out-of-order, staged, nonterminal, and terminal status/evidence
+  contradictions. The lifecycle sequence is corrected to persist the private
+  generated asset, record `asset_created_at`, and only then perform binary/image
+  validation.
+
+  The fourth independent Re-Review returned **FAIL — CORRECTION REQUIRED**. It
+  confirmed both third-correction findings were resolved, including `failed_at`
+  propagation and persistence-before-validation, but found one new blocking
+  verification gap: V01 did not fully mirror B13 and the candidate lifecycle
+  CHECKs. Specifically, V01 could return a false zero for timeout before
+  deadline and for processing rows carrying failure/retry/reason evidence.
+
+  The fourth correction makes V01 count exact status vocabulary,
+  start/deadline pairing, terminal-before-start, timeout-before-deadline,
+  terminal timestamp exclusivity, missing status-specific timestamps, reverse
+  timestamp-to-status mismatches, staged evidence, nonterminal terminal/failure/
+  retry evidence, and complete terminal status/evidence contradictions. It also
+  adds an explicit candidate/B13/V01 predicate map and in-memory counterexample
+  review with zero parity mismatches. No SQL or Owner-run query was executed and
+  no Supabase connection occurred.
+
+  The fifth independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+  It confirmed timeout-before-deadline and required status/timestamp/evidence
+  checks passed, while identifying two remaining blockers. First, V01 still
+  omitted Candidate/B13 Job invariants for staged/non-draft identity, purpose,
+  attempt, lineage, pinned Provider profile, Provider request, hash, cost, and
+  related evidence. Second, V01 built its metadata actual set by filtering live
+  columns through expected names, so a genuinely unexpected name could produce
+  a false-zero unexpected count.
+
+  The fifth correction extends V01 to every applicable Candidate/B13 Job
+  predicate, includes every named predicate in one overall invalid-Job-row
+  aggregate, and records 34 Candidate/B13/V01 lifecycle parity cases with zero
+  mismatches. It also
+  represents the verified Q02 pre-candidate baseline for the two affected
+  tables and independently derives candidate-added columns as current catalog
+  columns minus that baseline before comparing expected and actual sets in both
+  directions. Expected-name filtering is not used for actual-set discovery.
+  Baseline absence or shape drift fails closed and requires a separately
+  reviewed baseline refresh; 11 in-memory metadata cases produced zero
+  comparison mismatches. No SQL or Owner-run query was executed, no
+  Supabase connection occurred, and no customer data was inspected.
+
+  PR #198 remains Draft. No supplemental Owner-run query may run until another
+  independent Re-Review passes. This correction is documentation-only: no SQL
+  was executed, no Owner-run query was executed, and no Supabase connection
+  occurred. Counts remain 30 Owner-run blocks, 7 candidate-only blocks, and 37
+  SQL blocks total.
 
 ## 7. Current Non-Goals And Boundaries
 
@@ -2121,6 +2266,37 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - Read `docs/novora-codex-operating-mode.md` before changing workflow,
   branching, PR, deployment, permission, or agent-handoff rules.
 - Do not run `git add .` without explicit approval for that exact command.
+- Every proposed PostgreSQL `CHECK` involving nullable columns requires an
+  explicit NULL truth-table review because TRUE and NULL both satisfy a CHECK.
+  At minimum review all-null, controlling-status NULL, evidence NULL,
+  ready/current, ready/non-current, current/not-ready, revoked-after-ready,
+  revoked-without-ready, and out-of-order timestamp cases. Matching violation
+  preflights must explicitly count NULL-invalid combinations; NULL-result
+  acceptance is a blocking SQL-review defect.
+- Every lifecycle truth table must test both `status -> required evidence` and
+  `evidence/timestamp -> compatible status`. It must include the exact staged
+  state with started/terminal evidence, terminal status with missing identity,
+  terminal timestamps on nonterminal statuses, all-NULL and partial Provider
+  profiles, validation timestamps without complete integrity evidence, gate
+  pass timestamps with non-passed status, and all ready/current/revoked NULL
+  combinations. A one-way implication is incomplete.
+- Success, failure, cancellation, and timeout must use mutually exclusive,
+  status-specific terminal timestamps. `completed_at`, `failed_at`,
+  `cancelled_at`, and `timed_out_at` must each imply and be required by only
+  their matching terminal status, and every populated terminal timestamp must
+  satisfy the approved ordering rules.
+- Every post-execution lifecycle verification query must mirror every
+  corresponding preflight and candidate CHECK predicate. This includes
+  status-specific required evidence, evidence-to-status reverse implications,
+  start/deadline pairing, deadline-specific ordering, terminal timestamp
+  exclusivity, nonterminal evidence contradictions, and NULL/partial-population
+  cases. A reduced terminal-timestamp sample is a blocking false-zero risk.
+- Post-execution verification must mirror every applicable Candidate and
+  preflight predicate, not only lifecycle timestamps. Actual-set discovery must
+  be independent of the expected set because expected-name filtering cannot
+  prove the absence of unexpected names. Metadata subtraction must use a
+  verified, table-qualified baseline and fail closed on missing, changed, or
+  otherwise unresolved baseline schema until a separately reviewed refresh.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2128,27 +2304,40 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-Agent 70A / PR #196 is merged with normal merge commit
-`68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`. It is a server-only,
-dependency-injected adapter foundation. It does not construct a real OpenAI
-client, read or configure an API key, make a provider request, generate an
-image, persist output, operate private Storage, activate customer visibility,
-wire a route, deploy, or change Production.
+Agent 70B-1 / PR #197 is merged with normal merge commit
+`e77d2e6267f78ecf1109198ae100149eb8e466e4`. The owner-run Q01-Q11 evidence is
+complete, and Agent 70B-2 has prepared a documentation-only reuse-first review,
+supplemental preflights, and additive candidate SQL. No migration has been
+executed and effective access-control evidence remains incomplete. The first
+independent Review, second independent Re-Review, third independent Re-Review,
+fourth independent Re-Review, and fifth independent Re-Review all returned
+**FAIL — CORRECTION REQUIRED**.
+The third correction separated succeeded `completed_at` from failed `failed_at`
+and corrected the asset sequence so private persistence precedes binary/image
+validation. The fourth correction resolved timeout and status-evidence gaps.
+The fifth correction addresses the two remaining false-zero paths by extending
+V01 to every applicable Candidate/B13 Job invariant and deriving its actual
+candidate-added metadata set independently through verified Q02 baseline
+subtraction. Corrected Draft PR #198 now requires another independent Re-Review,
+and the supplemental Owner-run preflights remain blocked until that Re-Review
+passes.
 
 Required next sequence:
 
-1. Agent 70B-1 prepares the owner-run SELECT-only live-schema metadata packet.
-2. The owner manually executes the packet and returns sanitized metadata
-   results.
-3. A separately approved Agent reviews those results and prepares exact
-   additive migration SQL.
-4. A later separately approved SQL Agent performs any authorized SQL execution.
-5. A separate slice implements private generated-asset Storage and secure
+1. Another independent read-only formal Re-Review of corrected Draft PR #198.
+2. Only after that review passes, the owner manually executes the separately approved supplemental SELECT-only
+   metadata and aggregate compatibility preflights.
+3. A later documentation Agent reconciles supplemental results and regenerates
+   blocked predicates or statements when necessary.
+4. A separately approved SQL Agent performs only authorized additive SQL.
+5. Owner-run post-execution metadata and aggregate verification.
+6. A separate slice implements private generated-asset Storage and secure
    server-mediated or short-lived signed access.
-6. A separate provider/environment slice constructs the real provider client,
+7. A separate provider/environment slice constructs the real provider client,
    handles credentials, and enforces budget, limiter, and call authorization.
-7. Only after those boundaries pass may a separate implementation wire the
-   confirmed-persistence generation trigger and customer preview route.
+8. A separate implementation wires generation only after confirmed persistence.
+9. Separate implementations add trusted automatic readiness gates, customer
+   First Preview route/UI, and post-preview human review in that order.
 
 Do not claim those later steps are implemented, and do not combine their
 approval boundaries into one PR.

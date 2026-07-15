@@ -113,8 +113,8 @@ Future implementation should keep generation server-controlled:
 - Create a generation job record before calling any image provider so refresh,
   retry, redirect, or duplicate requests cannot create uncontrolled duplicate
   generations.
-- Use an idempotency key scoped to the Concept Brief, generation purpose, Design
-  Spec version, Hand Sketch Instruction version, and first-preview attempt.
+- Compute the complete versioned canonical idempotency identity described below
+  before reserving a job or calling the Provider.
 - Reuse or return the existing active or completed first-preview job when the
   customer refreshes or lands on the preview URL again.
 - Record prompt/spec/template version, provider, model, size, quality, cost
@@ -144,6 +144,32 @@ The pre-display decision is locked: the first preview does not wait for
 per-image human approval. Human correction remains available after preview,
 while formal downstream human approvals remain separate.
 
+### Canonical idempotency identity
+
+The normative namespace is `novora:first-preview-idempotency:v1`. Build a JSON
+object with exactly `version`, internal `concept_brief_id`,
+`generation_purpose`, `design_spec_version`, `design_spec_sha256`,
+`hand_sketch_instruction_version`, `hand_sketch_instruction_sha256`,
+`lineage_identity`, `parent_job_id`, `source_output_id`, and `attempt_number`.
+Serialize with RFC 8785 JSON Canonicalization Scheme rules, encode as UTF-8
+without a BOM, hash with SHA-256, and store lowercase 64-character hexadecimal.
+UUIDs are lowercase hyphenated strings; hashes are lowercase hexadecimal;
+attempt is a JSON integer; and non-applicable parent/source identities are
+explicit JSON `null`, never omitted. `version` is the exact namespace above and
+the bounded initial lineage identity is `first-preview:v1`.
+
+Any missing, blank, malformed, or omitted required component fails closed
+before job reservation, idempotency reservation, Provider invocation, or
+output persistence. The same complete identity produces the same key; changing
+purpose, either structured artifact version/hash, lineage, parent/source, or
+attempt produces a different identity. `publicReference` is not a substitute
+for the internal Concept Brief UUID.
+
+Database format/completeness CHECKs and uniqueness are defense in depth; they do
+not prove canonical derivation. The future server reservation boundary must
+canonicalize, hash, compare, and atomically persist the identity before any
+Provider or output action.
+
 ### Required automatic first-preview gates
 
 Before `first_preview_ready` becomes customer-visible, implementation must
@@ -164,25 +190,42 @@ pre-review.
 
 ## 6. Data model / storage planning
 
-Documented current and planned concepts:
+Verified current and planned concepts after Agent 70B-1 / PR #197 and the
+owner-run Q01-Q11 metadata collection dated 2026-07-13:
 
 - `concept_briefs`: existing submitted Concept Brief parent record.
 - `concept_brief_reference_assets`: existing reference image metadata linked to
   a Concept Brief.
 - `novora-ai-sketches`: documented Supabase Storage bucket for generated AI
   sketch outputs.
-- `ai_sketch_jobs`: an existing table according to earlier user-provided live
-  metadata. RLS is enabled and an `updated_at` trigger was recorded, but the
-  exact columns, status values, constraints, indexes, and current row shape
-  still require a separately approved fresh metadata verification.
-- `ai_sketch_outputs`: an existing table according to earlier user-provided
-  live metadata. RLS is enabled, and `ai_sketch_reviews` has a verified foreign
-  key to its `id`; the exact output, job, asset, and visibility fields still
-  require fresh metadata verification.
-- `ai_sketch_reviews`: the existing human review table. Prior user-run
-  verification records its four legal review statuses and
-  `UNIQUE (concept_brief_id)`. It remains a later human-review boundary and
-  must not be used as the initial automatic first-preview gate.
+- `ai_sketch_jobs`: verified ordinary public table with RLS enabled, forced RLS
+  false, primary key `id`, required Concept Brief FK with `ON DELETE CASCADE`,
+  `status text NOT NULL DEFAULT 'draft'`, `prompt_version`, `prompt_payload`,
+  `model_name`, `error_message`, creation/update timestamps, a
+  `concept_brief_id` index, and the live `set_ai_sketch_jobs_updated_at`
+  trigger. Current status row values remain unknown.
+- `ai_sketch_outputs`: verified ordinary public table with RLS enabled, forced
+  RLS false, primary key `id`, required `job_id` and `concept_brief_id` cascade
+  FKs, `bucket_name NOT NULL DEFAULT 'novora-ai-sketches'`, nullable
+  `object_path`, `preview_status NOT NULL DEFAULT 'pending_review'`, `metadata`,
+  and `created_at`. It has a Concept Brief index but no separate `job_id` index,
+  no one-output-per-job invariant, and no current-preview invariant. Current
+  `preview_status` row values and semantics remain unknown.
+- `ai_sketch_reviews`: verified ordinary human-review table with RLS enabled,
+  forced RLS false, `ai_sketch_output_id NOT NULL`, cascade FKs to output and
+  brief, and `UNIQUE (concept_brief_id)`. The exact legal review statuses remain
+  `internal_draft_not_generated`, `draft_generated_internal_only`,
+  `needs_revision`, and `approved_for_customer`; `pending` remains illegal.
+  Because output linkage is non-null, a review row cannot exist before a real
+  output. The relationship and statuses remain unchanged.
+
+All six approved public tables are verified ordinary tables with RLS enabled,
+forced RLS false, and no table comments. Q07 visibly reported a complete
+zero-row explicit-policy result, but it is screenshot evidence rather than a
+raw CSV. Q08 direct grants do not establish effective privileges, role
+membership, ownership, BYPASSRLS behavior, PostgREST behavior, or API
+exploitability. Effective access posture requires separate owner-run metadata
+preflights before access-control remediation or live wiring.
 
 Planned responsibilities:
 
@@ -197,27 +240,170 @@ Planned responsibilities:
   lineage, structured-input version/hash binding, timeout/cancellation,
   provider-neutral cost records, retry caps, and sanitized failure category
   when verified existing fields can safely support those responsibilities.
+- The only permitted staged/pre-reservation job state is the existing
+  `status = 'draft'`. It has NULL purpose, attempt, canonical identity, Design
+  Spec identity, Hand Sketch Instruction identity, lineage, Provider profile,
+  Provider request, started/deadline, terminal, failure/retry, and cost fields.
+  Every non-staged future job must have complete purpose/attempt, RFC 8785-based
+  canonical identity, structured-artifact version/hash fields, bounded lineage,
+  and the complete pinned OpenAI request profile before it is written.
+- Job lifecycle rules are bidirectional. `queued` carries no started or terminal
+  evidence; `processing` requires start/deadline and no terminal evidence;
+  `succeeded` requires success-only `completed_at` and no failure evidence;
+  `failed` requires failure-only `failed_at`; `timed_out` requires only
+  `timed_out_at`; and `cancelled` requires only `cancelled_at`, together with
+  their compatible category/retry decision and terminal reason. These four
+  terminal timestamps are mutually exclusive and imply their matching status in
+  both directions. A terminal timestamp cannot appear on a staged or nonterminal
+  job, and each populated terminal timestamp must be at or after `started_at`
+  when the attempt has started.
+- Every post-execution lifecycle verification must mirror the matching
+  preflight and candidate CHECK predicates, including status-specific evidence,
+  reverse evidence-to-status implications, start/deadline pairing,
+  timeout-before-deadline ordering, exclusivity, nonterminal contradictions,
+  and NULL/partial-population cases. A reduced timestamp-only verification is
+  incomplete even when its returned counts are zero.
+- Post-execution verification must cover every applicable Candidate/preflight
+  Job predicate, not only lifecycle timestamps. Metadata actual-set discovery
+  must be independent of expected names: subtract a verified, table-qualified
+  pre-candidate baseline from the current catalog, compare both directions, and
+  fail closed on unresolved baseline drift until a separately reviewed refresh.
 - `ai_sketch_outputs` should be reused for generated image metadata,
   controlled private object identity, automatic-gate evidence, the persisted
   output-bound `first_preview_ready` visibility decision, and lineage to the
   job and brief. Asset existence, object ID, or URL alone is never readiness.
+- A root First Preview job is attempt 1 with no parent/source. One eligible
+  automatic retry may be a child First Preview attempt 2. One later authorized
+  feedback regeneration extends the same lineage, increments its parent
+  attempt by one (bounded at 3), and names the exact prior parent output as its
+  source. Composite unique/FK guards must enforce same-brief parentage, exact
+  parent purpose/attempt, same-brief source output, and output/job brief
+  consistency; strictly increasing bounded attempts prevent cycles.
 - `ai_sketch_reviews` should remain human-review focused. Its
   `approved_for_customer` status is relevant to later formal human-approved
   material or downstream communication and is not required for the initial
   first preview.
 - `novora-ai-sketches` should stay private by default. Customer access should
-  use signed URLs or server-mediated access only after the future visibility
-  rules are satisfied.
+  use short-lived signed access or server-mediated access only after the future
+  visibility and independent request-access rules are satisfied. A permanent
+  public generated-asset URL is prohibited.
 
-Agent 69B records the reuse-first model and candidate SQL boundary in
+Verified additive gaps include deterministic idempotency, attempt numbering and
+lineage, structured Design Spec and Hand Sketch Instruction version/hash
+bindings, provider request identity, status-exclusive `completed_at`,
+`failed_at`, `cancelled_at`, and `timed_out_at`, normalized
+failure and retry evidence, cost fields, output MIME/size/dimensions/checksum,
+asset persistence time, asset-validation status/evidence/time,
+automatic-gate status/evidence/passed time,
+output-bound readiness, and a
+database invariant allowing at most one current customer preview per Concept
+Brief. Provider/model/request configuration belongs on the job; binary and
+asset-integrity evidence belongs on the output. Existing `model_name`,
+`prompt_version`, `error_message`, `bucket_name`, and `object_path` should be
+reused within their verified responsibilities instead of duplicated.
+
+`ai_sketch_jobs.status` is partially compatible and remains the generation-job
+lifecycle field, but no CHECK/default change is allowed until owner-run grouped
+status evidence passes. `ai_sketch_outputs.preview_status` remains a historical
+output-workflow field; its `pending_review` default must not be repurposed as
+automatic readiness without supplemental row evidence and repository-semantic
+review. `ai_sketch_reviews.review_status` remains unchanged and separate.
+Dedicated additive automatic-gate/readiness fields are required so provider
+success, output creation, an object path, `pending_review`, or human
+`approved_for_customer` cannot independently establish `first_preview_ready`.
+
+`asset_created_at` is the authoritative proof that private generated-asset
+persistence succeeded; an object path alone is not proof. The required order is
+`asset_created_at <= asset_validated_at <= automatic_gate_passed_at <=
+first_preview_ready_at`. Ready rows have no revocation timestamp. Revoked rows
+retain the prior ready timestamp/evidence, record `readiness_revoked_at >=
+first_preview_ready_at`, and are not current.
+
+The operational sequence receives Provider output, persists the private
+generated asset, records `asset_created_at`, validates the persisted binary and
+image, records `asset_validated_at`, runs and passes automatic gates, marks the
+output ready, and only then may select that ready output as current. Human
+review remains later and `approved_for_customer` is not the initial display
+gate.
+
+Asset and gate state is also bidirectional. A populated `asset_created_at`
+requires the private bucket/path locators. `asset_validation_status = 'passed'`
+requires bounded validation evidence, complete PNG MIME/size/dimension/checksum
+facts, and `asset_validated_at >= asset_created_at`; any validated-at timestamp
+requires that passed state. Pending validation has no evidence/pass timestamp,
+while failed validation may retain bounded failure evidence but no accepted
+binary facts or validated-at timestamp. A passed automatic gate requires prior
+passed validation, a nonblank policy version, bounded nonempty gate evidence,
+and `automatic_gate_passed_at >= asset_validated_at`; any gate-pass timestamp
+requires `automatic_gate_status = 'passed'`. A failed gate may retain bounded
+evaluation evidence but never a pass timestamp. Gate passage does not select the
+current preview and does not replace the readiness decision.
+
+Readiness and current selection are separate. `first_preview_ready` means one
+specific output passed all automatic display gates; it may be non-current.
+`is_current_customer_preview = true` selects one already-ready output, with at
+most one current output per Concept Brief. The later persistence writer must
+replace that pointer transactionally and preserve historical ready outputs.
+
+Agent 69B records the original reuse-first model and candidate SQL boundary in
 `docs/novora-first-preview-data-model-sql-plan-v1.md`. It does not add the old
 candidate preview-lifecycle table merely to duplicate jobs, outputs, and
 visibility. A separate append-only feedback table is only a gated candidate
 after live metadata proves no compatible feedback table already exists.
 
-Schema gaps remain future implementation requirements. This plan and Agent 69B
-do not execute SQL, create migrations, connect to Supabase, change RLS, grants,
-policies, Storage, or Production, or inspect customer data.
+Agent 70B-2 records the evidence-led inventory, aggregate/effective-privilege
+preflights, and exact additive candidate blocks in
+`docs/novora-agent-70b2-first-preview-live-schema-review-and-additive-sql-plan-v1.md`.
+The first independent review of Draft PR #198 returned **FAIL — CORRECTION
+REQUIRED** for six blocking categories: NULL safety; ready/current separation;
+purpose/attempt/Provider-profile completeness; enforceable lineage and
+cross-table consistency; canonical idempotency; and asset/readiness chronology.
+The second independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+It confirmed the previously resolved ready/current, lineage, composite
+consistency, cycle, idempotency, review, access-evidence, and Product boundaries,
+but found two remaining lifecycle defects: all-NULL job identity/profile was not
+bound to exact staged `draft`, and asset-validation/gate-passed evidence was not
+bidirectionally bound to its status and timestamp. This second correction closes
+those areas without changing ready/current or human-review separation.
+
+The third independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+It found that failed jobs still reused success-only `completed_at` and that one
+main-plan sequence placed validation before private persistence. The third
+correction adds nullable candidate `failed_at`, makes every terminal timestamp
+mutually exclusive and status-specific, updates B13 and V01, and restores the
+required persistence-before-validation order.
+
+The fourth independent Re-Review returned **FAIL — CORRECTION REQUIRED** after
+confirming both third-correction findings were resolved. Its one blocking
+finding was that V01 remained a reduced post-execution sample and could return
+false zero for timeout before deadline or processing rows carrying terminal
+failure/retry/reason evidence. The fourth correction closed those two named
+status/timestamp false-zero paths.
+
+The fifth independent Re-Review also returned **FAIL — CORRECTION REQUIRED**.
+It confirmed the timeout/status-evidence checks passed, but found that V01 still
+omitted purpose, attempt, identity, lineage, pinned Provider profile, Provider
+request, hash, cost, and related Job rules, and that expected-name filtering
+made its metadata actual set unable to see a genuinely unexpected name. The
+fifth correction gives V01 complete applicable Candidate/B13 Job-invariant
+coverage, a full predicate map and 34 in-memory lifecycle parity cases with
+zero mismatches, and an
+independent bidirectional metadata diff based on verified Q02 baseline
+subtraction. Expected-name filtering is prohibited for actual-set discovery,
+unresolved baseline drift fails closed, and 11 in-memory metadata cases have
+zero comparison mismatches.
+
+PR #198 remains Draft and requires another independent Re-Review before any
+Owner-run supplemental preflight. The corrected packet still contains 30
+Owner-run SELECT-only preflight blocks and 7 candidate-only SQL blocks, 37 SQL
+blocks total; none was executed.
+Every row-dependent CHECK, FK validation, `NOT NULL` hardening, and unique index
+remains blocked until its exact owner-run aggregate preflight passes. No SQL was
+executed, no migration was created, no Supabase connection was made by Codex,
+and no business/customer rows were inspected. Access-control remediation,
+Storage, Provider setup/calls, route wiring, automatic-gate implementation,
+customer preview behavior, deployment, and Production remain separate later
+approval slices.
 
 ## 7. Status model planning
 
@@ -462,23 +648,30 @@ normal merge commit `68c0042d1fec70cf07b87d47e6d8ef6f3b74e074`.
 Agent 70A did not construct a real OpenAI client, access or configure an API
 key, make a provider request, generate an image, persist output, change Storage,
 activate customer visibility, wire a route, deploy, or change Production.
+Agent 70B-1 / PR #197 then merged the owner-run SELECT-only metadata packet at
+normal merge commit `e77d2e6267f78ecf1109198ae100149eb8e466e4`. The owner
+completed Q01-Q11 on 2026-07-13, and Agent 70B-2 reviewed that evidence and
+prepared a documentation-only additive candidate plan without SQL execution or
+a Supabase connection.
 
 The required next sequence is explicit:
 
-1. Agent 70B-1 prepares the owner-run SELECT-only live-schema metadata packet.
-2. The owner manually executes the packet and returns sanitized metadata
-   results.
-3. A separately approved Agent reviews those results and prepares exact
-   additive migration SQL.
-4. A later separately approved SQL Agent performs any authorized SQL execution.
-5. A separate slice implements private generated-asset Storage and secure
+1. Another independent read-only formal Re-Review of corrected Draft PR #198.
+2. Only after that review passes, the owner manually executes separately approved supplemental SELECT-only
+   effective-privilege and aggregate compatibility preflights.
+3. A later documentation Agent reconciles supplemental results and regenerates
+   blocked SQL when needed.
+4. A separately approved SQL Agent performs only authorized additive SQL.
+5. Owner-run post-execution metadata and aggregate verification.
+6. A separate slice implements private generated-asset Storage and secure
    server-mediated or short-lived signed access.
-6. A separate provider/environment slice constructs the real provider client,
+7. A separate provider/environment slice constructs the real provider client,
    handles credentials, and enforces budget, limiter, and call authorization.
-7. Only after those boundaries pass may a separate implementation wire the
-   confirmed-persistence generation trigger and customer preview route.
+8. A separate implementation wires generation only after confirmed persistence.
+9. Separate implementations add trusted automatic readiness gates, customer
+   First Preview route/UI, and post-preview human review in that order.
 
-Agent 70B-1 is documentation-only. It does not connect to Supabase, execute
+Agent 70B-2 is documentation-only. It does not connect to Supabase, execute
 SQL, inspect business/customer rows, or implement any later sequence stage.
 
 Each phase should stay narrow. Do not combine UI, SQL, live provider calls,
