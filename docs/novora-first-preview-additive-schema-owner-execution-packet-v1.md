@@ -43,8 +43,9 @@ The only authoritative SQL source is:
   `a704c4c7adcb6989458691c1d80e7d6250a60ddc`
 - Git blob at the merge source:
   `714a30d16760dc98602dcbd8dc92d8785895811c`
-- Workspace-file SHA-256 at the verified `origin/main` baseline:
-  `1e39d3c0b8e2677c462def2f031f1f4a81a5d14d549cb5b61632010e20cedf31`
+- Raw Git-blob SHA-256 at the verified source identity (hash the exact blob
+  bytes; do not hash a working-tree file whose line endings may be converted):
+  `4763a425a9e22098a3dd43d3773c8352d83fd201b72d48dd116d7f9619cceecc`
 
 The verified repository baseline for this packet is `origin/main` at
 `57eab9a7320fe8cc5e309027e6c3af1d19de9d27`, the PR #199 merge commit.
