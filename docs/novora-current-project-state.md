@@ -2499,6 +2499,47 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   until Owner-run resume evidence proves completion. This record does not
   prove execution, and Codex did not connect to Supabase or execute SQL.
 
+- Agent 70B-14 (2026-07-16): the Owner began the separately approved Phase A
+  Resume Packet v1 under the confirmed quiet window and stopped correctly at
+  step 01 (`R01`) after the Supabase SQL Editor displayed
+  `Error: Failed to fetch (api.supabase.com)`. The selected external Phase 0
+  screenshot passes the visible `novora-production`, `main` / Production,
+  Primary Database, role `postgres`, row-limit `1000`, blank-editor, and
+  no-unrelated-content gates. The R01 artifact shows the same visible target
+  controls, `0 rows`, the exact transport/fetch error, and no PostgreSQL
+  SQLSTATE. This is recorded as an SQL Editor client/API transport or
+  result-fetch failure, not a proven database rejection. The screenshot does
+  not prove whether R01 reached or executed on the database server; its visible
+  SQL is incomplete, so the actual canonical SQL hash and equality remain
+  null. R01 is SELECT-only, and no database mutation was authorized or
+  observed.
+
+  External sanitized STOPPED Resume manifest
+  `novora-fp-phase-a-resume-69-manifest-v1.json` has SHA-256
+  `32bca453a5ee079b1d25e2bad4859bc4f2dcb7c35a4b3bc42b2bc257ee7961ee`.
+  It records Phase 0 as the last successful Resume item, R01 as ERROR, steps
+  02-68 `not_run`, Resume and Phase A `STOPPED`, and retry/rollback/cleanup/DDL/
+  DML/block 23.7 NOT EXECUTED. The selected Phase 0 artifact recomputes to
+  `5ca652dbed968c4295cbf9d5629d96db3fc2e644fbfa974e3b2aaad93e5b56fd`.
+  The selected R01 error artifact recomputes to
+  `c9879625400e37ba981fe82966ab04d98d942073735b431e7914f06b4f75ea5c`,
+  not the Owner-reported
+  `f27086133314e86c7bd5393511471aba96dbf8245bc0a73cb5923d10e9f674ae`;
+  no file in the evidence folder has the reported hash. The screenshot visibly
+  contains the reported error, but the cause of the hash difference is not
+  proven. No raw evidence is in Git.
+
+  The minimum immutable retry decision is frozen in
+  `docs/novora-first-preview-phase-a-r01-transport-retry-packet-v1.md`.
+  It permits no execution without a new exact Owner approval and freezes only
+  a fresh Phase 0 plus one manual execution of the exact SELECT-only R01
+  statement with canonical SHA-256
+  `ebae5e128fdb57e3e6426ddd9a7dd6419d47a907c2d1a4c2229199e2d27db6f8`.
+  It explicitly prohibits the prior generic `Retry` button, R02+, every other
+  SQL statement or mutation, Provider/Storage/environment/deployment/
+  application/customer-visible action, and branch/worktree/evidence deletion.
+  Merging the packet does not authorize execution.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2583,6 +2624,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   candidate DDL statement must be followed immediately by a separately frozen
   and approved metadata assertion that proves exact target identity and every
   expected catalog change before any dependent statement runs.
+- A Supabase SQL Editor `Failed to fetch` or API transport/result-fetch error is
+  not a PostgreSQL SQLSTATE and does not prove database receipt or execution.
+  Stop immediately, preserve the exact evidence, keep the actual submitted-SQL
+  hash null unless complete bytes are independently proven, and require a new
+  immutable retry packet plus separate exact approval; never authorize a
+  generic editor `Retry` click.
 - Every `pg_locks` audit that compares a relation OID must also constrain the
   current database OID because relation OIDs are database-local. Excluding the
   current backend must use `pid IS DISTINCT FROM pg_backend_pid()`, not `<>`,
@@ -2621,17 +2668,24 @@ additions with exact definitions and no dropped slots. The repair preserved the
 empty output table and its five existing healthy objects. Historical cause is
 still not proven, and Phase A remains STOPPED.
 
-The frozen Phase A Resume Packet v1 now has separate exact Owner approval for
-manual execution only. The current critical-path action is Phase 0 visual
-context and R01 execution-context/relation-identity evidence. Reconcile those
-artifacts before releasing R02. Continue one evidence-verified step at a time
-through the exact approved 68-statement order, including the immediate
-unfiltered R04 assertion after every candidate DDL, and STOP on every
-packet-defined mismatch. Codex remains prohibited from connecting to Supabase
-or executing SQL. Completed column statements `23.1-S01`/`23.2-S01`, block
-23.7, replacement/ad hoc SQL, retry, repair, rollback, cleanup, application
-rollout, Provider, Storage, environment, deployment, customer-data inspection
-beyond the exact aggregates, and customer-visible behavior remain excluded.
+The separately approved Phase A Resume Packet v1 is exhausted by the R01
+transport/fetch STOP. Phase 0 is the last successful Resume item; R01 is ERROR;
+steps 02-68 are `not_run`; Phase A Resume and Phase A remain STOPPED. Do not
+infer database rejection, receipt, or execution from the SQL Editor failure.
+
+The current critical-path artifact is the frozen minimum R01 Transport Retry
+Packet v1. It requires independent review, merge, and a new exact Owner
+approval before any execution. If separately approved, it permits only a fresh
+Phase 0 and one fresh manual execution of the exact frozen SELECT-only R01 in a
+blank editor under a fresh quiet window. It does not authorize the prior
+generic `Retry` button. R02 and every later Resume statement remain prohibited
+even if the fresh R01 passes, pending independent evidence reconciliation.
+Codex remains prohibited from connecting to Supabase or executing SQL.
+Completed column statements `23.1-S01`/`23.2-S01`, candidate DDL, block 23.7,
+replacement/ad hoc SQL, retry beyond the single separately approved R01
+attempt, repair, rollback, cleanup, application rollout, Provider, Storage,
+environment, deployment, customer-data inspection, and customer-visible
+behavior remain excluded.
 
 Only after separately approved resume evidence and successful Phase A
 completion evidence are reconciled may the next application slice address the
