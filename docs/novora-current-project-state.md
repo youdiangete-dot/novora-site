@@ -2463,6 +2463,42 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer-visible behavior remain excluded. The packet does not authorize
   execution and requires independent review plus a new exact Owner approval.
 
+- Agent 70B-13 (2026-07-16): the Owner separately approved manual execution of
+  the frozen Phase A Resume Packet v1 against `novora-production`, `main` /
+  Production, Primary Database (`postgres`), schema `public`, as current role
+  and session role `postgres`, with SQL Editor row limit at least `1000` and a
+  quiet window maintained from Phase 0 through V05. The immutable approval
+  point is merged `origin/main`
+  `52c26f818c89716ade4f1818d266cc2dd1fedb3e`, PR #209 reviewed head
+  `8294e54dac83caef688d51bd127621b160d27d07`, resume packet Git blob
+  `98e6b4a70fba66e317b57fd6f6bfc1bb3274bc85`, resume packet raw-file
+  SHA-256
+  `ad00c50a387c7f801585faca5e368f8b406322e70d73bbee2bb56f06e939dd64`,
+  and completed repair manifest
+  `novora-fp-phase-a-repair-09-manifest-v1.json` SHA-256
+  `cbffdbb90ada2f897fa7fe558add2e8a8f5a65bbf03e9ae780f7406832cf5575`.
+
+  Approval is limited to the new Phase 0 visual-context capture and the exact
+  68 individually ordered executable statements frozen in the immutable
+  packet. The Owner must execute each statement manually and individually,
+  using only the packet's incorporated SQL blocks, headings, source blobs,
+  canonical hashes, expected results, evidence filenames, immediate unfiltered
+  R04 assertion ordering, and universal fail-closed rules. Phase 0 and R01 are
+  the current Owner steps. R02 and every later instruction remain gated until
+  the immediately preceding evidence passes independent reconciliation.
+
+  The approval excludes `23.1-S01`/`23.2-S01` re-execution, stale direct B11
+  resume, block 23.7, constraint validation, replacement or ad hoc SQL, retry,
+  repair, compensation, backfill, data edits, DELETE, rollback, cleanup,
+  ACL/default-privilege/RLS/policy/trigger/function/Storage changes,
+  customer/business-row inspection beyond the exact approved aggregates,
+  Provider/generated-asset actions, environment changes, deployment,
+  application rollout, email, payment, customer-visible behavior, and any
+  Codex/MCP/CLI/script/automated database execution. After V05, all SQL must
+  stop pending independent evidence reconciliation. Phase A remains STOPPED
+  until Owner-run resume evidence proves completion. This record does not
+  prove execution, and Codex did not connect to Supabase or execute SQL.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2585,17 +2621,17 @@ additions with exact definitions and no dropped slots. The repair preserved the
 empty output table and its five existing healthy objects. Historical cause is
 still not proven, and Phase A remains STOPPED.
 
-The current critical-path artifact is the frozen Phase A Resume Packet v1. It
-starts at a new Phase 0 and R01, refreshes every required context, catalog,
-size/count, access, data-compatibility, candidate-object, and external-lock
-dependency, excludes both completed column statements, and then freezes only
-23.3-23.6 plus V01-V05. The packet requires independent review and one new
-exact Owner approval before any execution. Codex remains prohibited from
-connecting to Supabase or executing SQL. B11, B12+, candidate DDL, V01-V05,
-block 23.7, retry, repair, rollback, cleanup, application rollout, Provider,
-Storage, environment, deployment, customer-data inspection beyond the exact
-aggregates, and customer-visible behavior remain unapproved until the exact
-applicable gate is satisfied.
+The frozen Phase A Resume Packet v1 now has separate exact Owner approval for
+manual execution only. The current critical-path action is Phase 0 visual
+context and R01 execution-context/relation-identity evidence. Reconcile those
+artifacts before releasing R02. Continue one evidence-verified step at a time
+through the exact approved 68-statement order, including the immediate
+unfiltered R04 assertion after every candidate DDL, and STOP on every
+packet-defined mismatch. Codex remains prohibited from connecting to Supabase
+or executing SQL. Completed column statements `23.1-S01`/`23.2-S01`, block
+23.7, replacement/ad hoc SQL, retry, repair, rollback, cleanup, application
+rollout, Provider, Storage, environment, deployment, customer-data inspection
+beyond the exact aggregates, and customer-visible behavior remain excluded.
 
 Only after separately approved resume evidence and successful Phase A
 completion evidence are reconciled may the next application slice address the
