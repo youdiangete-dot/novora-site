@@ -2540,6 +2540,45 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   application/customer-visible action, and branch/worktree/evidence deletion.
   Merging the packet does not authorize execution.
 
+- Agent 70B-15 (2026-07-16): the Owner separately approved one fresh manual
+  Phase A R01 transport retry against `novora-production`, `main` / Production,
+  Primary Database (`postgres`), schema `public`, as current role and session
+  role `postgres`, with SQL Editor row limit at least `1000`. The immutable
+  approval point is merged `origin/main`
+  `390ac596258bba8e8cbe8ab2d4e2ec816c682e72`, PR #211 reviewed head
+  `46338826a7f444503371240a8c157caff3bc9b1f`, retry packet Git blob
+  `8cd978d6e58191dc34a3de6181e2a1fabd680c03` / blob-byte SHA-256
+  `6b29664b04df1a48183748445b93b1b3451848a7b5d1fea6b472c1d40368d2c6`,
+  frozen Resume Packet Git blob
+  `98e6b4a70fba66e317b57fd6f6bfc1bb3274bc85`, frozen R01 source Git blob
+  `e853e2992f4d556a1d41b089006bdd288aa2d7bc`, and STOPPED Resume manifest
+  `novora-fp-phase-a-resume-69-manifest-v1.json` SHA-256
+  `32bca453a5ee079b1d25e2bad4859bc4f2dcb7c35a4b3bc42b2bc257ee7961ee`.
+  The prior selected Phase 0 and R01 transport-error artifacts remain fixed at
+  SHA-256
+  `5ca652dbed968c4295cbf9d5629d96db3fc2e644fbfa974e3b2aaad93e5b56fd`
+  and `c9879625400e37ba981fe82966ab04d98d942073735b431e7914f06b4f75ea5c`;
+  neither may be reused as retry evidence.
+
+  Approval is limited to establishing a fresh quiet window, capturing fresh
+  blank-editor Phase 0 evidence as
+  `novora-fp-phase-a-resume-r01-retry-00-context.png`, and, only after Phase 0
+  passes, executing exactly once with the ordinary manual `Run` action the
+  frozen SELECT-only R01 statement with canonical SHA-256
+  `ebae5e128fdb57e3e6426ddd9a7dd6419d47a907c2d1a4c2229199e2d27db6f8`.
+  The mutually exclusive R01 evidence filenames are
+  `novora-fp-phase-a-resume-r01-retry-01-r01.csv` on PASS and
+  `novora-fp-phase-a-resume-r01-retry-01-r01-error.png` on ERROR. Any
+  packet-defined context, quiet-window, identity, hash, result, completeness,
+  warning, SQL, transport/fetch, export, filename, or expected-result mismatch
+  is an immediate STOP. The generic editor `Retry` button, automatic retry,
+  more than one R01 attempt, R02+, every other SQL statement or mutation,
+  Provider/Storage/environment/deployment/application/customer-visible action,
+  and branch/worktree/evidence deletion remain prohibited. Whether R01 passes
+  or fails, all SQL stops for independent evidence reconciliation before any
+  R02 decision. This record does not prove execution, and Codex did not connect
+  to Supabase or execute SQL.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2673,14 +2712,14 @@ transport/fetch STOP. Phase 0 is the last successful Resume item; R01 is ERROR;
 steps 02-68 are `not_run`; Phase A Resume and Phase A remain STOPPED. Do not
 infer database rejection, receipt, or execution from the SQL Editor failure.
 
-The current critical-path artifact is the frozen minimum R01 Transport Retry
-Packet v1. It requires independent review, merge, and a new exact Owner
-approval before any execution. If separately approved, it permits only a fresh
-Phase 0 and one fresh manual execution of the exact frozen SELECT-only R01 in a
-blank editor under a fresh quiet window. It does not authorize the prior
-generic `Retry` button. R02 and every later Resume statement remain prohibited
-even if the fresh R01 passes, pending independent evidence reconciliation.
-Codex remains prohibited from connecting to Supabase or executing SQL.
+The frozen minimum R01 Transport Retry Packet v1 now has separate exact Owner
+approval. The current critical-path action is a fresh quiet window and new
+blank-editor Phase 0 context capture, followed only after Phase 0 passes by one
+fresh manual execution of the exact frozen SELECT-only R01. It does not
+authorize the prior generic `Retry` button. R02 and every later Resume statement
+remain prohibited even if fresh R01 passes, pending independent evidence
+reconciliation. Codex remains prohibited from connecting to Supabase or
+executing SQL.
 Completed column statements `23.1-S01`/`23.2-S01`, candidate DDL, block 23.7,
 replacement/ad hoc SQL, retry beyond the single separately approved R01
 attempt, repair, rollback, cleanup, application rollout, Provider, Storage,
