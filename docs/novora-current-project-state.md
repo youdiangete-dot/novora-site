@@ -2305,6 +2305,32 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   record does not prove execution: Codex did not connect to Supabase, execute
   SQL, inspect customer/business rows, or perform any excluded action.
 
+- Agent 70B-8 (2026-07-16): Owner-run Phase A stopped correctly at step 25
+  (`B11`) with SQLSTATE `42703` because
+  `public.ai_sketch_outputs.is_current_customer_preview` did not exist. Step 24
+  (`B10`) is the exact last successful step; steps 26-53 were not run. Step 21
+  (`23.2-S01`) had visibly shown the exact frozen statement, including that
+  column, with editor-reported success, creating an unresolved evidence
+  contradiction. The Phase 0/steps 1-25 external set contains exactly 26 raw
+  artifacts; no raw evidence is in Git. Corrected sanitized manifest
+  `novora-fp-phase-a-54-manifest-v1.json` has SHA-256
+  `3551b06cc2ccfa75802177c05603cf9b8a1028637ab816977ab3e7d4bdbffe97`
+  and records 23 accepted PASS steps plus step 21's editor-reported PASS with
+  acceptance and catalog persistence unresolved, B11 ERROR, steps 26-53 `not_run`,
+  block 23.7/rollback/cleanup/retry/repair NOT EXECUTED, exact sanitized CSV
+  values, and the limits of reconstructing executed SQL from CSV exports. Its
+  audit trail supersedes preliminary manifest SHA-256
+  `977c1d68b6bc15340db5f429edc673ec5d124a8fd296fda972edd157c5674371`.
+  Available evidence does not determine whether 23.2 failed to persist, ran in
+  a different underlying context, was later changed, has incomplete/misleading
+  success evidence, or reflects another cause. The frozen SELECT-only recovery
+  packet is
+  `docs/novora-first-preview-phase-a-read-only-recovery-packet-v1.md`; its four
+  metadata statements have not been executed and require a new exact Owner
+  approval. No Supabase connection, B11/23.2 retry, B12+, repair, rollback,
+  cleanup, backfill, manual `ADD COLUMN`, Provider, Storage, deployment, or
+  customer-visible action occurred during reconciliation.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2385,6 +2411,10 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   prove the absence of unexpected names. Metadata subtraction must use a
   verified, table-qualified baseline and fail closed on missing, changed, or
   otherwise unresolved baseline schema until a separately reviewed refresh.
+- An editor-reported DDL success is not durable schema evidence. Every manual
+  candidate DDL statement must be followed immediately by a separately frozen
+  and approved metadata assertion that proves exact target identity and every
+  expected catalog change before any dependent statement runs.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2398,24 +2428,28 @@ post-execution evidence passed, and Stage B's corrected authoritative
 forbidden-default mismatch detector returned zero rows. Neither Stage A nor
 Stage B rollback was executed. Stages C, D, and E remain unexecuted.
 
-The reviewed additive First Preview Owner Execution Packet v1 and its final
-filename freeze are merged on `main`; the approved frozen point is
-`24c37f54173cf6e9cd82de7bf30b058d166adea4`, with PR #203 reviewed head
-`afc27974bed4f814da0a7888705315dfe228efab`. The Owner has now separately
-approved the packet's exact Phase A sequence against `novora-production`,
-Primary Database (`postgres`), schema `public`, executed as `postgres`. The
-next critical-path action is Owner-only manual execution from
-`docs/novora-first-preview-schema-phase-a-owner-manual-execution-sequence-v1.md`,
-followed by return of the sanitized manifest and evidence summary for
-independent reconciliation. Codex must not connect to Supabase or execute the
-SQL. Block 23.7, rollback, cleanup, application rollout, Provider, Storage,
-environment, deployment, customer-data inspection beyond the approved
-aggregates, and customer-visible behavior remain unapproved. Any identity,
-preflight, scope, hash, order, or result drift is a fail-closed stop and
-requires refreshed review before further execution.
+Owner-run Phase A is now STOPPED at step 25 (`B11`) with SQLSTATE `42703` for
+missing `public.ai_sketch_outputs.is_current_customer_preview`. Step 24 (`B10`)
+is the last successful step. Steps 26-53, block 23.7, rollback, cleanup, retry,
+and repair were not executed. The prior Phase A approval is exhausted by the
+STOP and must not be reused.
 
-After separately supplied successful Phase A evidence is reconciled, the next
-application slice may address the
+The next critical-path action is independent review and separate exact Owner
+approval of
+`docs/novora-first-preview-phase-a-read-only-recovery-packet-v1.md`. That
+packet is limited to fresh visual context plus four exact SELECT-only metadata
+statements establishing SQL session/relation identity, complete public jobs/
+outputs attributes including dropped slots, cross-schema 23.2 candidate-column
+locations, and the unfiltered constraint/index catalog. None has been executed.
+The resulting current-state evidence may narrow the contradiction but cannot by
+itself prove historical cause. No B11/23.2 retry, B12+, DDL, DML, repair,
+rollback, cleanup, application rollout, Provider, Storage, environment,
+deployment, customer-data inspection, or customer-visible behavior is
+authorized.
+
+Only after separately approved recovery evidence, a separately reviewed and
+approved repair-or-resume decision, and successful Phase A completion evidence
+are reconciled may the next application slice address the
 `ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility and then
 the server-only jobs/outputs/review-linkage persistence work. First Preview
 also remains blocked by private generated-asset access, secure customer preview
