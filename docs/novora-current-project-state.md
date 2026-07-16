@@ -2283,6 +2283,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Provider, Storage, deployment, application rollout, or customer-visible
   behavior.
 
+- Agent 70B-7 (2026-07-16): the Owner explicitly approved manual Phase A
+  execution against `novora-production`, Primary Database (`postgres`), schema
+  `public`, as role `postgres`, at `origin/main`
+  `24c37f54173cf6e9cd82de7bf30b058d166adea4`, PR #203 reviewed head
+  `afc27974bed4f814da0a7888705315dfe228efab`, packet blob
+  `d347663d740cc766eb07c9c93b9130d16fc9f51f` / raw-byte SHA-256
+  `4d36aaba11391eb1aa37a259027d8f50cc63723807755f3c0e1d3d2e832e3b04`,
+  and source blob `714a30d16760dc98602dcbd8dc92d8785895811c` /
+  raw-byte SHA-256
+  `4763a425a9e22098a3dd43d3773c8352d83fd201b72d48dd116d7f9619cceecc`.
+  The approval is limited to Phase 0, C01-C04, M01-M06, B01-B19 in the
+  packet's exact staged order, candidate blocks 23.1-23.6 with all 18 frozen
+  canonical statement hashes, and V01-V05. The complete Owner-only manual run
+  sheet is
+  `docs/novora-first-preview-schema-phase-a-owner-manual-execution-sequence-v1.md`.
+  Block 23.7, rollback, cleanup, data edits, DELETE, backfill,
+  ACL/default-privilege/RLS/policy/Storage changes, Provider calls,
+  application rollout, deployment, customer-data inspection beyond the
+  approved aggregates, and customer-visible behavior remain unapproved. This
+  record does not prove execution: Codex did not connect to Supabase, execute
+  SQL, inspect customer/business rows, or perform any excluded action.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2376,17 +2398,21 @@ post-execution evidence passed, and Stage B's corrected authoritative
 forbidden-default mismatch detector returned zero rows. Neither Stage A nor
 Stage B rollback was executed. Stages C, D, and E remain unexecuted.
 
-The reviewed additive First Preview Owner Execution Packet v1 is merged on
-`main` through PR #201 merge commit
-`a3682ba33acfc716af7e7e50a99f156e390b0972`. The next critical-path action is
-the separate consolidated Owner approval for the packet's exact Phase A
-sequence against `novora-production`, Primary Database (`postgres`), executed
-as `postgres`. Merging the packet or this ledger record does not approve SQL,
-connect Codex to Supabase, authorize block 23.7, or authorize rollback,
-cleanup, application rollout, Provider, Storage, environment, deployment,
-customer-data inspection, or customer-visible behavior. Any identity,
-preflight, scope, or result drift is a fail-closed stop and requires refreshed
-review before execution.
+The reviewed additive First Preview Owner Execution Packet v1 and its final
+filename freeze are merged on `main`; the approved frozen point is
+`24c37f54173cf6e9cd82de7bf30b058d166adea4`, with PR #203 reviewed head
+`afc27974bed4f814da0a7888705315dfe228efab`. The Owner has now separately
+approved the packet's exact Phase A sequence against `novora-production`,
+Primary Database (`postgres`), schema `public`, executed as `postgres`. The
+next critical-path action is Owner-only manual execution from
+`docs/novora-first-preview-schema-phase-a-owner-manual-execution-sequence-v1.md`,
+followed by return of the sanitized manifest and evidence summary for
+independent reconciliation. Codex must not connect to Supabase or execute the
+SQL. Block 23.7, rollback, cleanup, application rollout, Provider, Storage,
+environment, deployment, customer-data inspection beyond the approved
+aggregates, and customer-visible behavior remain unapproved. Any identity,
+preflight, scope, hash, order, or result drift is a fail-closed stop and
+requires refreshed review before further execution.
 
 After separately supplied successful Phase A evidence is reconciled, the next
 application slice may address the
