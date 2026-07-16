@@ -2235,6 +2235,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   default-privilege execution planning and approval; this documentation record
   does not authorize Stage B or any SQL or Supabase action.
 
+- Agent 70B-4A / 70B-4B (2026-07-15): the Owner manually executed Stage B in
+  `novora-production` as `postgres`. Phase 1 and immediate Phase 3 evidence
+  passed, and the corrected authoritative forbidden-default mismatch detector
+  returned zero rows. Future public tables created by `postgres` now grant
+  default table privileges only to `postgres`, which retains all eight owner
+  privileges; `anon`, `authenticated`, `service_role`, and `PUBLIC` have no
+  postgres/public future-table default row, and no grant option exists. The
+  existing six-table Stage A privileges, `postgres` function defaults, and
+  `supabase_admin` table/function defaults were preserved. Rollback was not
+  executed. Stages C, D, and E were not executed. First Preview remains blocked
+  by the remaining schema migration, jobs/outputs persistence code, review
+  output-linkage, private asset access, automatic gates, and customer route/UI
+  work. The next independent task is not automatically authorized.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2322,19 +2336,21 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-As of 2026-07-15, Stage A existing-table ACL correction is complete and its
-immediate post-execution evidence passed. The next recommended independent task
-is Stage B planning and approval for `postgres` future-table default privileges.
-Stage B requires a separate evidence review, execution packet, explicit human
-approval, and post-execution verification. This documentation task does not
-authorize Stage B or any other SQL or Supabase action.
+As of 2026-07-15, Stage A existing-table ACL correction and Stage B `postgres`
+future-public-table default-privilege correction are complete. Their immediate
+post-execution evidence passed, and Stage B's corrected authoritative
+forbidden-default mismatch detector returned zero rows. Stage B rollback was
+not executed.
 
-Stages C and D remain blocked by `supabase_admin` execution authority and
-platform-compatibility review. Stage E remains unexecuted. First Preview remains
-blocked by the unexecuted additive schema work, missing jobs/outputs persistence
-writers, the `ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility,
-private generated-asset access, secure customer preview access, automatic
-readiness gates, route/UI wiring, and post-preview review linkage.
+The next independent planning task should decide between resolving Stage C/D
+`supabase_admin` execution authority and platform compatibility, or proceeding
+with the remaining Agent 70B-2 additive schema execution preparation if all of
+its prerequisite gates are otherwise satisfied. This ledger does not authorize
+either path. Stage E remains unexecuted. First Preview remains blocked by the
+remaining schema migration, jobs/outputs persistence writers, the
+`ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility, private
+generated-asset access, secure customer preview access, automatic readiness
+gates, route/UI wiring, and post-preview review linkage.
 
 ### Historical pre-Stage-A context
 
