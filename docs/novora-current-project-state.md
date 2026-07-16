@@ -2403,20 +2403,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   exact statements executed manually and individually in order: P01
   `97cf7ea0096f9174a221c3721adda70f2e71770feba64cc8fb3cb8d9445f17cc`,
   P02 `fe3836aef8be4018ef5c57e9df6501b2a96950c152c4f168779211a82814ef61`,
-  P03/A02
+  P03
   `8f1ebe8fce37d43575720a3c36ee6caa67b8fcf7cf59f38a71a443ca2e0edfd8`,
-  P04/A03
+  P04
   `a2dc7a910de636525babd97545f7f1b3c9fc6c7dba023a6df04bcd8d862a135d`,
   X01/exact frozen `23.2-S01`
   `4db11692e2e0147e23772f6649d6250786bf23fcaa2542d48d1d001f3e6561b4`,
-  and A01
-  `0b5f78c75deb40de15700bffcb6866424d5ea5ffd8caccb5bb0b2976087d2cf0`.
+  A01 `0b5f78c75deb40de15700bffcb6866424d5ea5ffd8caccb5bb0b2976087d2cf0`,
+  A02 `8f1ebe8fce37d43575720a3c36ee6caa67b8fcf7cf59f38a71a443ca2e0edfd8`,
+  and A03
+  `a2dc7a910de636525babd97545f7f1b3c9fc6c7dba023a6df04bcd8d862a135d`.
   Execution remains one evidence-verified step at a time under the packet's
   quiet-window, evidence, and fail-closed rules. Phase 0 and P01 are the
-  current Owner step; P02-X01-A01-A03 instructions remain gated until the
-  returned Phase 0/P01 evidence passes reconciliation. Any packet-defined
-  context, hash, result, identity, duplicate, row-limit, evidence, warning,
-  error, lock, or completeness mismatch is an immediate STOP. Codex is not
+  current Owner step; P02-P04, X01, and A01-A03 instructions remain gated
+  until the returned Phase 0/P01 evidence passes reconciliation. Any
+  packet-defined context, hash, result, identity, duplicate, row-limit,
+  evidence, warning, error, lock, or completeness mismatch is an immediate
+  STOP. Codex is not
   authorized to connect to Supabase or execute SQL. No B11, B12+, `23.1-S01`
   retry, block 23.7, backfill, replacement SQL, other DDL/DML, rollback,
   cleanup, ACL/default-privilege/RLS/policy/Storage change, Provider action,
