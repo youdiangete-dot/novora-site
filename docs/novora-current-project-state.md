@@ -2331,6 +2331,35 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   cleanup, backfill, manual `ADD COLUMN`, Provider, Storage, deployment, or
   customer-visible action occurred during reconciliation.
 
+- Agent 70B-9 (2026-07-16): the Owner separately approved manual execution of
+  the frozen Phase A STOPPED read-only recovery packet against
+  `novora-production`, Primary Database (`postgres`), schema `public`, as role
+  `postgres`, with SQL Editor row limit at least `1000`. The immutable approval
+  point is merged `origin/main`
+  `a7c466d40e6ba553f9686c814e43ec04aa76a1a7`, PR #205 reviewed head
+  `a65e8cc0a9b64eadf4dd0e36eb7de48c02de29ba`, recovery packet Git blob
+  `e853e2992f4d556a1d41b089006bdd288aa2d7bc`, and STOPPED Phase A manifest
+  SHA-256
+  `3551b06cc2ccfa75802177c05603cf9b8a1028637ab816977ab3e7d4bdbffe97`.
+  Approval is limited to Phase 0 visual context and the exact SELECT-only R01,
+  R02, R03, and R04 statements, executed manually and individually in order;
+  their canonical SHA-256 values are respectively
+  `ebae5e128fdb57e3e6426ddd9a7dd6419d47a907c2d1a4c2229199e2d27db6f8`,
+  `9d71ada08b5eb39137545921f3b7034c3ebe3bc37475e53809ab73c3983a158f`,
+  `6e74dede3b24d6324123a2290cb90450bc79c49d126e360d71ab4e5d11f48559`,
+  and `2526d2aea62509ceb89ffc95dfd9b383aa302b4c91f9b58d5a0bf95454403d09`.
+  Execution remains one evidence-verified query at a time: Phase 0 and R01 are
+  the current Owner step, and R02 instructions remain gated until their
+  returned evidence passes independent reconciliation. Any project, database,
+  schema, role, row-limit, SQL-hash, SQL error, warning, missing-table,
+  truncated-result, duplicate-identity, or incomplete-evidence condition is an
+  immediate STOP. Codex is not authorized to connect to Supabase or execute
+  SQL. No B11/23.2 retry, B12+, DDL, DML, repair, manual `ADD COLUMN`,
+  replacement SQL, backfill, block 23.7, rollback, cleanup,
+  ACL/default-privilege/RLS/policy/Storage change, Provider action, application
+  rollout, deployment, customer-data inspection, or customer-visible behavior
+  is approved.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2434,18 +2463,17 @@ is the last successful step. Steps 26-53, block 23.7, rollback, cleanup, retry,
 and repair were not executed. The prior Phase A approval is exhausted by the
 STOP and must not be reused.
 
-The next critical-path action is independent review and separate exact Owner
-approval of
-`docs/novora-first-preview-phase-a-read-only-recovery-packet-v1.md`. That
-packet is limited to fresh visual context plus four exact SELECT-only metadata
-statements establishing SQL session/relation identity, complete public jobs/
-outputs attributes including dropped slots, cross-schema 23.2 candidate-column
-locations, and the unfiltered constraint/index catalog. None has been executed.
-The resulting current-state evidence may narrow the contradiction but cannot by
-itself prove historical cause. No B11/23.2 retry, B12+, DDL, DML, repair,
-rollback, cleanup, application rollout, Provider, Storage, environment,
-deployment, customer-data inspection, or customer-visible behavior is
-authorized.
+The Owner has now separately approved the immutable read-only recovery packet.
+The next critical-path action is Owner-only Phase 0 visual-context capture and
+manual execution of exact SELECT-only R01 from
+`docs/novora-first-preview-phase-a-read-only-recovery-packet-v1.md`, followed by
+return of its external sanitized evidence for independent reconciliation.
+Codex must not connect to Supabase or execute the query. R02 instructions remain
+gated until Phase 0 and R01 evidence passes. The eventual current-state evidence
+may narrow the contradiction but cannot by itself prove historical cause. No
+B11/23.2 retry, B12+, DDL, DML, repair, rollback, cleanup, application rollout,
+Provider, Storage, environment, deployment, customer-data inspection, or
+customer-visible behavior is authorized.
 
 Only after separately approved recovery evidence, a separately reviewed and
 approved repair-or-resume decision, and successful Phase A completion evidence
