@@ -2427,6 +2427,42 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   customer-visible behavior is approved. Even if the repair passes, Phase A
   remains STOPPED pending a separately reviewed and approved resume packet.
 
+- Agent 70B-12 (2026-07-16): the Owner manually completed the exact approved
+  Phase A STOPPED Repair Packet v1 under the confirmed quiet window. External
+  sanitized manifest `novora-fp-phase-a-repair-09-manifest-v1.json` has
+  SHA-256
+  `cbffdbb90ada2f897fa7fe558add2e8a8f5a65bbf03e9ae780f7406832cf5575`.
+  Independent read-only review obtained matching start/end hashes for all ten
+  exact external originals and passed every screenshot, CSV, catalog,
+  statement-identity, execution-order, ancestry, and sanitization check.
+  Repair status is COMPLETE; Phase A remains STOPPED; historical cause remains
+  NOT PROVEN. X01 visibly contained the complete frozen `23.2-S01` statement
+  and editor success, while A01 separately proved durable persistence of all
+  17 additions: `ai_sketch_outputs` now has exactly 25 live attributes, no
+  dropped slots, and no missing, mismatched, or unexpected attribute. The
+  output table remained empty, and its exact three validated constraints and
+  two valid/ready/live indexes were preserved with zero external or waiting
+  locks. The Owner-reported Phase 0 artifact hash did not match the selected
+  file; repeated in-place hashing produced
+  `01c551e5970f938a7f664424dfe53479af3af57cd15059aba5e089d4a88b06dd`.
+  The screenshot itself passed the exact context gate, and the manifest
+  transparently preserves the mismatch as a corrected reported-hash error.
+  No raw evidence is in Git.
+
+  The frozen resume decision starts at a new Phase 0 and fresh R01, not B11.
+  `docs/novora-first-preview-phase-a-resume-packet-v1.md` freezes 68 manual,
+  individually executed statements: fresh context/catalog/size/access/data
+  preflights; a new database-scoped candidate-object and external-lock
+  assertion; only the remaining candidate blocks 23.3-23.6 with a separately
+  frozen unfiltered R04 catalog assertion immediately after every DDL; and
+  V01-V05.
+  Completed `23.1-S01` and `23.2-S01` are explicitly excluded. Block 23.7,
+  retry, repair, replacement SQL, backfill, rollback, cleanup,
+  ACL/default-privilege/RLS/policy/Storage changes, Provider, deployment,
+  application rollout, customer-data inspection beyond exact aggregates, and
+  customer-visible behavior remain excluded. The packet does not authorize
+  execution and requires independent review plus a new exact Owner approval.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2519,6 +2555,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   result null whenever the selected artifact cannot prove the complete submitted
   statement bytes. Never copy the expected hash into an actual-hash field by
   inference; record the exact proof basis separately.
+- An independent review of external evidence must obtain matching start and end
+  hashes from the same reviewer context and exact original paths. A reviewer
+  access/sandbox failure must fail closed for that reviewer but must not be
+  reported as deletion or mutation unless the host-visible filesystem evidence
+  independently proves that change.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2538,25 +2579,26 @@ is the last successful step. Steps 26-53, block 23.7, rollback, cleanup, retry,
 and repair were not executed. The prior Phase A approval is exhausted by the
 STOP and must not be reused.
 
-The approved read-only recovery is COMPLETE. Current live evidence proves the
-full `23.1-S01` job additions and complete absence of all `23.2-S01` output
-additions, with no dropped slots, but does not prove historical cause. Phase A
-remains STOPPED.
+The approved recovery and repair are COMPLETE. Current live evidence proves all
+35 frozen `23.1-S01` job additions and all 17 frozen `23.2-S01` output
+additions with exact definitions and no dropped slots. The repair preserved the
+empty output table and its five existing healthy objects. Historical cause is
+still not proven, and Phase A remains STOPPED.
 
-The Phase A STOPPED Repair Packet v1 now has separate exact Owner approval for
-manual execution only. The current critical-path action is Phase 0 visual
-context and P01 execution-context/relation-identity evidence. Reconcile those
-artifacts before releasing P02. Continue one evidence-verified step at a time
-through the exact approved order, and STOP on every packet-defined mismatch.
-Codex remains prohibited from connecting to Supabase or executing SQL. Even
-successful repair evidence would not authorize B11, B12+, blocks 23.3-23.7,
-V01-V05, application rollout, Provider, Storage, environment, deployment,
-customer-data inspection, or customer-visible behavior. A separately reviewed
-and approved resume packet would still be required.
+The current critical-path artifact is the frozen Phase A Resume Packet v1. It
+starts at a new Phase 0 and R01, refreshes every required context, catalog,
+size/count, access, data-compatibility, candidate-object, and external-lock
+dependency, excludes both completed column statements, and then freezes only
+23.3-23.6 plus V01-V05. The packet requires independent review and one new
+exact Owner approval before any execution. Codex remains prohibited from
+connecting to Supabase or executing SQL. B11, B12+, candidate DDL, V01-V05,
+block 23.7, retry, repair, rollback, cleanup, application rollout, Provider,
+Storage, environment, deployment, customer-data inspection beyond the exact
+aggregates, and customer-visible behavior remain unapproved until the exact
+applicable gate is satisfied.
 
-Only after separately approved recovery evidence, a separately reviewed and
-approved repair-or-resume decision, and successful Phase A completion evidence
-are reconciled may the next application slice address the
+Only after separately approved resume evidence and successful Phase A
+completion evidence are reconciled may the next application slice address the
 `ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility and then
 the server-only jobs/outputs/review-linkage persistence work. First Preview
 also remains blocked by private generated-asset access, secure customer preview
