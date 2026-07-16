@@ -2360,6 +2360,34 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   rollout, deployment, customer-data inspection, or customer-visible behavior
   is approved.
 
+- Agent 70B-10 (2026-07-16): the Owner manually completed the approved
+  SELECT-only Phase A STOPPED recovery sequence. All five raw artifacts were
+  read and hashed in place and remain external. Sanitized recovery manifest
+  `novora-fp-phase-a-recovery-05-manifest-v1.json` has SHA-256
+  `43916fa5dad233c15aad2865c602ccbe75fbe28380440bfd51077ac29f1cba5d`.
+  R01 passed with exactly the three approved public AI relations and coherent
+  `postgres`/`public`/`postgres` context. R02 is a FINDING: relation OID 17602
+  has all 44 live job attributes, including all 35 frozen `23.1-S01`
+  additions, while relation OID 17619 has only its original 8 output
+  attributes and no dropped slots. R03 is a FINDING: all 17 frozen
+  `23.2-S01` attributes are absent across every non-system-schema same-name
+  output relation. R04 passed with 16 complete catalog objects, every
+  constraint validated and every index valid, ready, and live. Recovery status
+  is COMPLETE; Phase A remains STOPPED; historical cause remains NOT PROVEN.
+  The minimum repair prerequisite is the exact frozen atomic `23.2-S01`
+  statement only; reapplying `23.1-S01` or directly resuming B11 is unsafe.
+  The frozen repair decision packet is
+  `docs/novora-first-preview-phase-a-repair-decision-packet-v1.md`. It contains
+  P01 `97cf7ea0096f9174a221c3721adda70f2e71770feba64cc8fb3cb8d9445f17cc`,
+  P02 `fe3836aef8be4018ef5c57e9df6501b2a96950c152c4f168779211a82814ef61`,
+  P03/A02 `8f1ebe8fce37d43575720a3c36ee6caa67b8fcf7cf59f38a71a443ca2e0edfd8`,
+  P04/A03 `a2dc7a910de636525babd97545f7f1b3c9fc6c7dba023a6df04bcd8d862a135d`,
+  X01/frozen `23.2-S01`
+  `4db11692e2e0147e23772f6649d6250786bf23fcaa2542d48d1d001f3e6561b4`,
+  and A01 `0b5f78c75deb40de15700bffcb6866424d5ea5ffd8caccb5bb0b2976087d2cf0`.
+  Nothing in this record authorizes execution, repair, retry, rollback, B11,
+  B12+, Phase A resume, Provider, Storage, deployment, or application work.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2444,6 +2472,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   candidate DDL statement must be followed immediately by a separately frozen
   and approved metadata assertion that proves exact target identity and every
   expected catalog change before any dependent statement runs.
+- Every `pg_locks` audit that compares a relation OID must also constrain the
+  current database OID because relation OIDs are database-local. Excluding the
+  current backend must use `pid IS DISTINCT FROM pg_backend_pid()`, not `<>`,
+  so NULL-PID prepared-transaction locks remain visible and fail closed.
+- Evidence manifests must keep the actual canonical SQL hash and hash-equality
+  result null whenever the selected artifact cannot prove the complete submitted
+  statement bytes. Never copy the expected hash into an actual-hash field by
+  inference; record the exact proof basis separately.
 - Stop before app code, SQL, Supabase, Vercel, Resend, Cloudflare, real email,
   secrets, retry/resend behavior, payment, auth, CAD, order, AI generation,
   force push, PR merge, or Production deploy unless that specific action is
@@ -2463,17 +2499,21 @@ is the last successful step. Steps 26-53, block 23.7, rollback, cleanup, retry,
 and repair were not executed. The prior Phase A approval is exhausted by the
 STOP and must not be reused.
 
-The Owner has now separately approved the immutable read-only recovery packet.
-The next critical-path action is Owner-only Phase 0 visual-context capture and
-manual execution of exact SELECT-only R01 from
-`docs/novora-first-preview-phase-a-read-only-recovery-packet-v1.md`, followed by
-return of its external sanitized evidence for independent reconciliation.
-Codex must not connect to Supabase or execute the query. R02 instructions remain
-gated until Phase 0 and R01 evidence passes. The eventual current-state evidence
-may narrow the contradiction but cannot by itself prove historical cause. No
-B11/23.2 retry, B12+, DDL, DML, repair, rollback, cleanup, application rollout,
-Provider, Storage, environment, deployment, customer-data inspection, or
-customer-visible behavior is authorized.
+The approved read-only recovery is COMPLETE. Current live evidence proves the
+full `23.1-S01` job additions and complete absence of all `23.2-S01` output
+additions, with no dropped slots, but does not prove historical cause. Phase A
+remains STOPPED.
+
+The next critical-path action is independent review and separate exact Owner
+approval of
+`docs/novora-first-preview-phase-a-repair-decision-packet-v1.md`. That packet
+permits no execution by Codex and proposes only fresh context/catalog/
+empty-table/lock preflights, the exact atomic frozen `23.2-S01` statement, and
+immediate post-execution assertions. Even successful repair evidence would not
+authorize B11, B12+, blocks 23.3-23.7, V01-V05, application rollout, Provider,
+Storage, environment, deployment, customer-data inspection, or customer-visible
+behavior. A separately reviewed and approved resume packet would still be
+required.
 
 Only after separately approved recovery evidence, a separately reviewed and
 approved repair-or-resume decision, and successful Phase A completion evidence
