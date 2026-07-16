@@ -2249,6 +2249,28 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   output-linkage, private asset access, automatic gates, and customer route/UI
   work. The next independent task is not automatically authorized.
 
+- Agent 70B-5 / PR #201 (2026-07-16): PR #200 merged unchanged with normal
+  merge commit `eabfa35990d27f8a18b3dc779dc536e7df9b13c9`. PR #201 then
+  completed its documentation-only lifecycle at reviewed head
+  `ea2c34f3a89ee6fd09623fcb7f4ce29da3a0cf01` and merged with normal merge
+  commit `a3682ba33acfc716af7e7e50a99f156e390b0972`. It adds
+  `docs/novora-first-preview-additive-schema-owner-execution-packet-v1.md`.
+  The packet's Git-blob SHA-256 is
+  `9df1c2d542b6554b10d6e34690b558b4ed1351e77b68ae46064f2826ca6468ed`.
+  Its frozen Agent 70B-2 source blob is
+  `714a30d16760dc98602dcbd8dc92d8785895811c`, whose raw-byte SHA-256 is
+  `4763a425a9e22098a3dd43d3773c8352d83fd201b72d48dd116d7f9619cceecc`.
+  Independent verification found all 18 canonical statement hashes for
+  candidate blocks 23.1-23.6 matched, both PR checks passed, the only review
+  finding was corrected, and zero unresolved review threads remained before
+  merge. The packet is fail-closed and does not authorize SQL. Its initial
+  Phase A excludes block 23.7, rollback, cleanup, Provider calls, application
+  rollout, Storage, deployment, customer-visible behavior, and schema actions
+  outside its exact separately approved sequence. Stage A and Stage B remain
+  complete; neither rollback was executed. Stages C, D, and E remain
+  unexecuted. No SQL or Supabase connection occurred while preparing,
+  reviewing, correcting, merging, or recording the packet.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2336,21 +2358,31 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-As of 2026-07-15, Stage A existing-table ACL correction and Stage B `postgres`
+As of 2026-07-16, Stage A existing-table ACL correction and Stage B `postgres`
 future-public-table default-privilege correction are complete. Their immediate
 post-execution evidence passed, and Stage B's corrected authoritative
-forbidden-default mismatch detector returned zero rows. Stage B rollback was
-not executed.
+forbidden-default mismatch detector returned zero rows. Neither Stage A nor
+Stage B rollback was executed. Stages C, D, and E remain unexecuted.
 
-The next independent planning task should decide between resolving Stage C/D
-`supabase_admin` execution authority and platform compatibility, or proceeding
-with the remaining Agent 70B-2 additive schema execution preparation if all of
-its prerequisite gates are otherwise satisfied. This ledger does not authorize
-either path. Stage E remains unexecuted. First Preview remains blocked by the
-remaining schema migration, jobs/outputs persistence writers, the
-`ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility, private
-generated-asset access, secure customer preview access, automatic readiness
-gates, route/UI wiring, and post-preview review linkage.
+The reviewed additive First Preview Owner Execution Packet v1 is merged on
+`main` through PR #201 merge commit
+`a3682ba33acfc716af7e7e50a99f156e390b0972`. The next critical-path action is
+the separate consolidated Owner approval for the packet's exact Phase A
+sequence against `novora-production`, Primary Database (`postgres`), executed
+as `postgres`. Merging the packet or this ledger record does not approve SQL,
+connect Codex to Supabase, authorize block 23.7, or authorize rollback,
+cleanup, application rollout, Provider, Storage, environment, deployment,
+customer-data inspection, or customer-visible behavior. Any identity,
+preflight, scope, or result drift is a fail-closed stop and requires refreshed
+review before execution.
+
+After separately supplied successful Phase A evidence is reconciled, the next
+application slice may address the
+`ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility and then
+the server-only jobs/outputs/review-linkage persistence work. First Preview
+also remains blocked by private generated-asset access, secure customer preview
+access, automatic readiness gates, route/UI wiring, and post-preview review
+linkage.
 
 ### Historical pre-Stage-A context
 
