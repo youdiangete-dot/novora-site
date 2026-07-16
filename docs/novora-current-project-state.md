@@ -2388,6 +2388,42 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Nothing in this record authorizes execution, repair, retry, rollback, B11,
   B12+, Phase A resume, Provider, Storage, deployment, or application work.
 
+- Agent 70B-11 (2026-07-16): the Owner separately approved manual execution of
+  the frozen Phase A STOPPED Repair Packet v1 against `novora-production`,
+  Primary Database (`postgres`), schema `public`, as role `postgres`, with SQL
+  Editor row limit at least `1000`. The immutable approval point is merged
+  `origin/main` `9064821e0f1a366494f42b19ca21b2d89301d971`, PR #207 reviewed
+  head `3b7cb61afbf53f63a698279ba704632d50ff8131`, repair packet Git blob
+  `98017d94ec4711ed673cde9c75a9e8f0947850dc`, repair packet raw-file
+  SHA-256
+  `8f63c74c5a11a8c90c44f6d8ed9be956d00e95c6a8595d4083bd0c5979a27acd`,
+  and recovery manifest SHA-256
+  `43916fa5dad233c15aad2865c602ccbe75fbe28380440bfd51077ac29f1cba5d`.
+  Approval is limited to the frozen Phase 0 visual-context capture and the
+  exact statements executed manually and individually in order: P01
+  `97cf7ea0096f9174a221c3721adda70f2e71770feba64cc8fb3cb8d9445f17cc`,
+  P02 `fe3836aef8be4018ef5c57e9df6501b2a96950c152c4f168779211a82814ef61`,
+  P03/A02
+  `8f1ebe8fce37d43575720a3c36ee6caa67b8fcf7cf59f38a71a443ca2e0edfd8`,
+  P04/A03
+  `a2dc7a910de636525babd97545f7f1b3c9fc6c7dba023a6df04bcd8d862a135d`,
+  X01/exact frozen `23.2-S01`
+  `4db11692e2e0147e23772f6649d6250786bf23fcaa2542d48d1d001f3e6561b4`,
+  and A01
+  `0b5f78c75deb40de15700bffcb6866424d5ea5ffd8caccb5bb0b2976087d2cf0`.
+  Execution remains one evidence-verified step at a time under the packet's
+  quiet-window, evidence, and fail-closed rules. Phase 0 and P01 are the
+  current Owner step; P02-X01-A01-A03 instructions remain gated until the
+  returned Phase 0/P01 evidence passes reconciliation. Any packet-defined
+  context, hash, result, identity, duplicate, row-limit, evidence, warning,
+  error, lock, or completeness mismatch is an immediate STOP. Codex is not
+  authorized to connect to Supabase or execute SQL. No B11, B12+, `23.1-S01`
+  retry, block 23.7, backfill, replacement SQL, other DDL/DML, rollback,
+  cleanup, ACL/default-privilege/RLS/policy/Storage change, Provider action,
+  deployment, application rollout, customer-data inspection, or
+  customer-visible behavior is approved. Even if the repair passes, Phase A
+  remains STOPPED pending a separately reviewed and approved resume packet.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2504,16 +2540,16 @@ full `23.1-S01` job additions and complete absence of all `23.2-S01` output
 additions, with no dropped slots, but does not prove historical cause. Phase A
 remains STOPPED.
 
-The next critical-path action is independent review and separate exact Owner
-approval of
-`docs/novora-first-preview-phase-a-repair-decision-packet-v1.md`. That packet
-permits no execution by Codex and proposes only fresh context/catalog/
-empty-table/lock preflights, the exact atomic frozen `23.2-S01` statement, and
-immediate post-execution assertions. Even successful repair evidence would not
-authorize B11, B12+, blocks 23.3-23.7, V01-V05, application rollout, Provider,
-Storage, environment, deployment, customer-data inspection, or customer-visible
-behavior. A separately reviewed and approved resume packet would still be
-required.
+The Phase A STOPPED Repair Packet v1 now has separate exact Owner approval for
+manual execution only. The current critical-path action is Phase 0 visual
+context and P01 execution-context/relation-identity evidence. Reconcile those
+artifacts before releasing P02. Continue one evidence-verified step at a time
+through the exact approved order, and STOP on every packet-defined mismatch.
+Codex remains prohibited from connecting to Supabase or executing SQL. Even
+successful repair evidence would not authorize B11, B12+, blocks 23.3-23.7,
+V01-V05, application rollout, Provider, Storage, environment, deployment,
+customer-data inspection, or customer-visible behavior. A separately reviewed
+and approved resume packet would still be required.
 
 Only after separately approved recovery evidence, a separately reviewed and
 approved repair-or-resume decision, and successful Phase A completion evidence
