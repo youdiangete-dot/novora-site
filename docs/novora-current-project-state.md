@@ -2271,6 +2271,18 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   unexecuted. No SQL or Supabase connection occurred while preparing,
   reviewing, correcting, merging, or recording the packet.
 
+- Agent 70B-6 (2026-07-16): the final documentation-only Phase A freeze adds
+  exact external evidence filenames `novora-fp-phase-a-00-context.png` through
+  `novora-fp-phase-a-54-manifest-v1.json`, including deterministic zero-row and
+  error alternatives for SELECT evidence. The current packet Git-blob SHA-256
+  is `4d36aaba11391eb1aa37a259027d8f50cc63723807755f3c0e1d3d2e832e3b04`.
+  The frozen Agent 70B-2 source identity, all 18 canonical candidate statement
+  hashes, execution order, PASS/STOP rules, and Phase A exclusions remain
+  unchanged. This filename freeze does not authorize or execute SQL, connect
+  to Supabase, inspect business rows, or approve block 23.7, rollback, cleanup,
+  Provider, Storage, deployment, application rollout, or customer-visible
+  behavior.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
