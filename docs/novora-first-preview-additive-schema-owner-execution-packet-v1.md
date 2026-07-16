@@ -479,6 +479,74 @@ clarified before execution.
 
 Return a sanitized manifest containing:
 
+Use these exact evidence filenames outside the repository. A SELECT result uses
+its listed `.csv` name when the SQL Editor can export the complete result,
+including headers for a legitimate zero-row result. If a complete zero-row CSV
+cannot be exported, use the same filename stem with the exact `-zero.png`
+suffix instead. If a SELECT errors, use the same stem with the exact
+`-error.png` suffix instead and stop. Each DDL `.png` captures that individual
+statement's success or sanitized error result. The manifest must name exactly
+one selected artifact for each attempted step and mark every later unattempted
+filename `not_run`; do not create placeholder or fabricated evidence.
+
+```text
+novora-fp-phase-a-00-context.png
+novora-fp-phase-a-01-c01.csv
+novora-fp-phase-a-02-c02.csv
+novora-fp-phase-a-03-c03.csv
+novora-fp-phase-a-04-m01.csv
+novora-fp-phase-a-05-m02.csv
+novora-fp-phase-a-06-m03.csv
+novora-fp-phase-a-07-m04.csv
+novora-fp-phase-a-08-m05.csv
+novora-fp-phase-a-09-m06.csv
+novora-fp-phase-a-10-b01.csv
+novora-fp-phase-a-11-b02.csv
+novora-fp-phase-a-12-b03.csv
+novora-fp-phase-a-13-b04.csv
+novora-fp-phase-a-14-b05.csv
+novora-fp-phase-a-15-b06.csv
+novora-fp-phase-a-16-b07.csv
+novora-fp-phase-a-17-b15.csv
+novora-fp-phase-a-18-b17.csv
+novora-fp-phase-a-19-c04.csv
+novora-fp-phase-a-20-23.1-s01.png
+novora-fp-phase-a-21-23.2-s01.png
+novora-fp-phase-a-22-b08.csv
+novora-fp-phase-a-23-b09.csv
+novora-fp-phase-a-24-b10.csv
+novora-fp-phase-a-25-b11.csv
+novora-fp-phase-a-26-b12.csv
+novora-fp-phase-a-27-b13.csv
+novora-fp-phase-a-28-b14.csv
+novora-fp-phase-a-29-b16.csv
+novora-fp-phase-a-30-b18.csv
+novora-fp-phase-a-31-b19.csv
+novora-fp-phase-a-32-23.3-s01.png
+novora-fp-phase-a-33-23.4-s01.png
+novora-fp-phase-a-34-23.5-s01.png
+novora-fp-phase-a-35-23.5-s02.png
+novora-fp-phase-a-36-23.5-s03.png
+novora-fp-phase-a-37-23.5-s04.png
+novora-fp-phase-a-38-23.5-s05.png
+novora-fp-phase-a-39-23.6-s01.png
+novora-fp-phase-a-40-23.6-s02.png
+novora-fp-phase-a-41-23.6-s03.png
+novora-fp-phase-a-42-23.6-s04.png
+novora-fp-phase-a-43-23.6-s05.png
+novora-fp-phase-a-44-23.6-s06.png
+novora-fp-phase-a-45-23.6-s07.png
+novora-fp-phase-a-46-23.6-s08.png
+novora-fp-phase-a-47-23.6-s09.png
+novora-fp-phase-a-48-v01-a.csv
+novora-fp-phase-a-49-v01-b.csv
+novora-fp-phase-a-50-v02.csv
+novora-fp-phase-a-51-v03.csv
+novora-fp-phase-a-52-v04.csv
+novora-fp-phase-a-53-v05.csv
+novora-fp-phase-a-54-manifest-v1.json
+```
+
 - Packet commit and frozen Agent 70B-2 source identities.
 - Phase 0 screenshot filename and SHA-256.
 - One filename, format, row count, duplicate count, and SHA-256 for every
