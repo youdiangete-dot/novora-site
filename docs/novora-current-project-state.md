@@ -2580,7 +2580,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   to Supabase or execute SQL.
 
 - Agent 70B-16 (2026-07-17): the Owner completed the separately approved R01
-  Transport Retry Packet v1 under a newly confirmed quiet window. The fresh
+  Transport Retry Packet v1 under a newly Owner-attested quiet window. The
+  quiet-window status was not independently database-verified. The fresh
   Phase 0 artifact
   `novora-fp-phase-a-resume-r01-retry-00-context.png` is `92070` bytes with
   SHA-256

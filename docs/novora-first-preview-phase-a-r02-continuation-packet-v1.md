@@ -90,8 +90,10 @@ capture. STOP before the context gate if the quiet window cannot be confirmed.
 
 The fresh visual gate independently re-proves only the visible project,
 `main` / Production environment, Primary Database selection, selected current
-role `postgres`, row limit, blank editor, and quiet-window context. The exact
-R02 predicate and result constrain the catalog target to schema `public`.
+role `postgres`, row limit, and blank editor. The quiet-window status is
+Owner-attested and is not independently proved by the visual artifact or by a
+database query. The exact R02 predicate and result constrain the catalog target
+to schema `public`.
 
 The successful fresh R01 CSV and corrected retry supplement are the last SQL
 evidence for `current_schema = public`, `session_role = postgres`, and
@@ -187,9 +189,12 @@ branch/environment, Primary Database, role `postgres`, and row limit of at least
 `1000`. The editor must not display unrelated SQL/history, customer content,
 secrets, or environment-variable values.
 
-Before capture, record the Owner attestation required by the context-proof
-boundary and confirm acceptance of its explicitly limited proof basis. STOP if
-either statement cannot be made exactly.
+Before capture, the Owner must attest that the fresh quiet window is active and
+that no visible project, environment, database, role, or target control changed
+after the accepted R01 evidence. The quiet-window statement is Owner-attested,
+not independently verified by the screenshot or a database query. The Owner
+must also confirm acceptance of the context-proof boundary's explicitly limited
+proof basis. STOP if any statement cannot be made exactly.
 
 On PASS, capture exactly:
 
@@ -243,8 +248,9 @@ The next read-only reconciliation must create the sanitized external supplement:
 
 It must bind the exact approval, packet, source, R01 retry supplement, R02
 canonical-hash, and selected-artifact identities; record the fresh quiet-window
-confirmation; record the context-proof boundary, Owner attestation, approval
-acceptance, and the fields not freshly re-proven; list exactly one selected
+confirmation as Owner-attested and not independently database-verified; record
+the context-proof boundary, Owner attestation, approval acceptance, and the
+fields not freshly re-proven; list exactly one selected
 Phase 0 artifact and, only if R02 was attempted, exactly one selected R02
 artifact; record actual file bytes and
 SHA-256 values, headers, row/duplicate/table counts, exact sanitized metadata,
