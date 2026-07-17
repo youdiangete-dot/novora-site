@@ -3072,6 +3072,36 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   `88079b80be9b150a3313d152aaf4da5dc328c0448bfc3d2322757aeac7348191`.
   Merging that documentation does not authorize Step 08.
 
+- Agent 70B-26 (2026-07-17): Phase A's remaining execution strategy is now
+  frozen as the documentation-only Accelerated Batch Resume Plan v2. It
+  preserves the independently reconciled PASS evidence for Resume Steps 01-07
+  and maps every remaining Step 08-68 exactly once, in frozen order, across
+  eight separately approved fail-closed batches. The planned batch counts are
+  `3 + 9 + 11 + 4 + 10 + 10 + 8 + 6 = 61`, exactly covering the inclusive
+  61-step range 08-68 with no omission or duplication.
+
+  Batch 01 covers only SELECT-only Steps 08/M04, 09/M05, and 10/M06. It retains
+  MANUAL source blob `1d7ee46755254e6c01ac125793ecbd9bf3451204`,
+  headings `07 - M04`, `08 - M05`, and `09 - M06`, canonical byte lengths
+  `842`, `531`, and `1037`, and SHA-256 values
+  `88079b80be9b150a3313d152aaf4da5dc328c0448bfc3d2322757aeac7348191`,
+  `6716fd72b1392be20d03404839c9becf656dc438a60822e4dbcb5bd0e4761109`,
+  and `a7282515ace0354f60a24ae403603c6333312e48f929a8695caab7c255ba73c7`.
+  A single separately approved Batch 01 quiet window and visual context gate may
+  support those three individually executed statements only while every
+  packet-defined context and fail-closed gate remains satisfied. One combined
+  external manifest, independent evidence review, ledger update, and docs-only
+  PR follow batch completion or STOP; there is no reconciliation cycle between
+  M04, M05, and M06.
+
+  The earlier single-step Step-08/M04 Packet v1 at Git blob
+  `8798f99fb50ed57e951a92ddd4f53704e6e178fa` remains immutable historical
+  documentation and was never approved or executed. It is superseded for
+  future execution only after the accelerated plan and Batch 01 packet are
+  independently reviewed, merged, and separately approved. Merging either new
+  document authorizes no SQL. Steps 08-68 remain `not_run`; Phase A Resume and
+  Phase A remain `STOPPED`.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -3228,20 +3258,23 @@ limitations remain unchanged, and actual submitted-SQL hash and equality
 remain null.
 
 Phase A Resume and Phase A remain STOPPED. Resume Steps 08-68 remain `not_run`.
-The current critical-path gate is separate exact Owner approval of the frozen
-Resume Step 08 (`M04`) Continuation Packet v1. That packet permits, only after
-approval, a fresh quiet-window/context gate and one Owner-run SELECT-only M04
-attempt from MANUAL blob `1d7ee46755254e6c01ac125793ecbd9bf3451204`,
-heading `07 - M04`, canonical byte length `842`, and SHA-256
-`88079b80be9b150a3313d152aaf4da5dc328c0448bfc3d2322757aeac7348191`.
-PASS requires exactly the frozen 18-row effective DML matrix for `anon`,
-`authenticated`, and `service_role` across the six approved tables. Merging the
-packet authorizes no SQL. Codex remains prohibited from connecting to Supabase
-or executing SQL. Step 08 and later Resume statements, role/membership/grant/
-privilege changes, candidate DDL, block 23.7, replacement/ad hoc SQL, retry,
-repair, rollback, cleanup, application rollout, Provider, Storage, environment,
-deployment, application-user/auth-user/customer-data inspection, and
-customer-visible behavior remain excluded.
+The remaining sequence is now frozen into eight accelerated batches under
+`docs/novora-first-preview-phase-a-accelerated-batch-resume-plan-v2.md`. The
+current critical-path gate is separate exact Owner approval of Batch 01 under
+`docs/novora-first-preview-phase-a-batch-01-m04-m06-continuation-packet-v2.md`.
+Batch 01 covers only Steps 08/M04, 09/M05, and 10/M06, each exact SELECT run
+manually and individually in sequence, with one fresh quiet-window/context gate
+and immediate fail-closed STOP behavior. It does not release Step 11.
+
+The single-step Step-08/M04 Packet v1 remains immutable, historical,
+unapproved, and unexecuted; it is not execution authority. Merging the
+accelerated plan or Batch 01 packet authorizes no SQL. Codex remains prohibited
+from connecting to Supabase or executing SQL. Role/membership/grant/privilege
+changes, candidate DDL without its separately approved batch, block 23.7,
+replacement/ad hoc SQL, retry, repair, rollback, cleanup, application rollout,
+Provider, Storage, Production/environment changes, deployment,
+application-user/auth-user/customer-data inspection, customer-visible behavior,
+and deletion remain excluded.
 
 Only after separately approved resume evidence and successful Phase A
 completion evidence are reconciled may the next application slice address the
