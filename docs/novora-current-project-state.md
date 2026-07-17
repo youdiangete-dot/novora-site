@@ -2760,6 +2760,61 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Merging the packet authorizes no SQL. Whether Step 03 passes or fails, all SQL
   stops for independent reconciliation; Steps 04-68 remain prohibited.
 
+- Agent 70B-19 (2026-07-17): the Owner separately approved the frozen Phase A
+  Resume Step 03 (`R04`) Continuation Packet v1 for one manual SELECT-only
+  attempt against `novora-production`, `main` / Production, Primary Database
+  (`postgres`), target schema `public`, selected current and session role
+  `postgres`, and SQL Editor row limit at least `1000`. The immutable approval
+  point is merged `origin/main`
+  `4f0d07362c32a1a2917dc3df7a911aa737025a68`, PR #215 reviewed head
+  `8719c3457b0809c69ec764a6cfc21743ae655fc9`, continuation packet Git blob
+  `82e0ae19ec240017efdf19cf52e4f98e99466ed5`, completed R02 continuation
+  supplement `novora-fp-phase-a-resume-r02-continuation-03-manifest-v1.json`
+  SHA-256
+  `fbb4a105aca1f7cd92eb034fc7d65eaaa84edb99b19283f0407dff60e98e26ce`,
+  frozen Resume Packet Git blob
+  `98e6b4a70fba66e317b57fd6f6bfc1bb3274bc85`, authoritative Recovery source
+  Git blob `e853e2992f4d556a1d41b089006bdd288aa2d7bc`, sequence Step `03`, label `R04`,
+  source section `10`, exact heading
+  `## 10. R04 - unfiltered current constraint and index catalog`, canonical
+  byte length `1800`, and canonical SHA-256
+  `2526d2aea62509ceb89ffc95dfd9b383aa302b4c91f9b58d5a0bf95454403d09`.
+
+  The Owner explicitly accepted the packet's bounded context-proof basis. The
+  fresh visual gate independently proves only the visible project, environment,
+  Primary Database selection, selected current role, row limit, and blank
+  editor. It does not freshly prove `current_schema = public`,
+  `session_role = postgres`, recovery false, the quiet window, or reuse of one
+  database backend session. The approval accepts bounded reliance on the fresh
+  R01 evidence for the three session values and Owner attestation for the quiet
+  window and no-visible-control-change statement.
+
+  Approval is limited to establishing that fresh quiet window, capturing
+  exactly one context artifact as
+  `novora-fp-phase-a-resume-step-03-r04-continuation-00-context.png` on PASS or
+  `novora-fp-phase-a-resume-step-03-r04-continuation-00-context-error.png` on
+  ERROR, and, only after context PASS, manually executing the exact frozen
+  SELECT-only Resume Step 03 (`R04`) statement once with ordinary `Run`.
+  Mutually exclusive result filenames are
+  `novora-fp-phase-a-resume-03-r04.csv` on PASS and
+  `novora-fp-phase-a-resume-03-r04-error.png` on ERROR. PASS requires the exact
+  complete untruncated 16-row, 14-header packet-defined catalog with zero
+  duplicate object identities and exact relation/object OIDs, names,
+  definitions, validation, deferrability, uniqueness, validity, readiness,
+  liveness, and table totals. Any packet-defined mismatch is an immediate STOP.
+
+  Whether Step 03 passes or fails, all SQL stops for independent evidence
+  reconciliation and the sanitized external supplement
+  `novora-fp-phase-a-resume-step-03-r04-continuation-04-manifest-v1.json`.
+  The separate Recovery statement labeled `R03`, retries, more than one Step 03
+  attempt, Resume Steps 04-68, earlier Resume statements, candidate DDL, block
+  23.7, constraint validation, replacement/ad hoc SQL, DML, repair, rollback,
+  cleanup, access-control/Storage changes, customer/business-row inspection,
+  Provider/application/deployment/customer actions, automated Supabase
+  execution, and branch/worktree/evidence deletion remain prohibited. This
+  record does not prove execution, and Codex did not connect to Supabase or
+  execute SQL.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2902,21 +2957,19 @@ with exact definitions and zero dropped slots. It correctly does not prove the
 submitted SQL bytes; actual SQL hash and equality remain null. Phase A Resume
 and Phase A remain STOPPED, and Resume Steps 03-68 remain `not_run`.
 
-The frozen minimum next decision is Resume Step 03, label `R04`, not the
-separate Recovery query labeled `R03`. The exact Step-03-only continuation is
-in `docs/novora-first-preview-phase-a-r03-continuation-packet-v1.md`. Merging
-that document authorizes nothing. A separate exact Owner approval must bind its
-post-merge `origin/main`, reviewed PR head, packet Git blob, completed R02
-supplement, frozen Resume Packet and Recovery source blobs, exact sequence
-label, canonical byte length `1800`, and canonical SHA-256
-`2526d2aea62509ceb89ffc95dfd9b383aa302b4c91f9b58d5a0bf95454403d09`,
-while explicitly accepting the packet's bounded context-proof.
+The frozen Resume Step 03 (`R04`) Continuation Packet v1 now has separate exact
+Owner approval. The current critical-path action is the Owner-run fresh quiet
+window and visual context gate, followed only after PASS by one manual
+ordinary-Run execution of the frozen SELECT-only Step 03 (`R04`) statement with
+canonical SHA-256
+`2526d2aea62509ceb89ffc95dfd9b383aa302b4c91f9b58d5a0bf95454403d09`.
+The approval accepts that the visual gate and Step 03 do not freshly re-prove
+`current_schema`, `session_role`, recovery state, quiet-window truth, or backend
+session reuse and instead use the bounded proof basis frozen in the packet.
 
-Only after such approval may the Owner perform a fresh quiet-window/context
-gate and one manual SELECT-only Resume Step 03 (`R04`) attempt. Whether it
-passes or fails, all SQL stops for independent reconciliation. Resume Steps
-04-68 remain prohibited. Codex remains prohibited from connecting to Supabase
-or executing SQL.
+Whether Step 03 passes or fails, all SQL stops for independent evidence
+reconciliation. Resume Steps 04-68 remain prohibited. Codex remains prohibited
+from connecting to Supabase or executing SQL.
 Completed column statements `23.1-S01`/`23.2-S01`, candidate DDL, block 23.7,
 replacement/ad hoc SQL, retry beyond the single separately approved R01
 attempt, repair, rollback, cleanup, application rollout, Provider, Storage,
