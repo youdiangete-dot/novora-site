@@ -2640,6 +2640,75 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   Owner's no-visible-context-change attestation, or STOP for a separately
   reviewed context-preflight decision.
 
+- Agent 70B-17 (2026-07-17): the Owner separately approved the frozen Phase A
+  R02 Continuation Packet v1 for one manual SELECT-only R02 attempt against
+  `novora-production`, `main` / Production, Primary Database (`postgres`),
+  target schema `public`, selected current role `postgres`, and SQL Editor row
+  limit at least `1000`. The immutable approval point is merged `origin/main`
+  `2b545efc2e75135c534319bbefef09c4223def81`, PR #213 reviewed head
+  `e2b2a6b3baedf4e1731720d71a990f86692d37c8`, continuation packet Git blob
+  `e59bb48d28819d211cb31a0ed4d50755761d83b7`, corrected R01 retry supplement
+  `novora-fp-phase-a-resume-r01-retry-02-manifest-v1.json` SHA-256
+  `ee8612c0ac60e96b190b994dcaab8df3a0c55bf44ecc9eeed308e4dd66555646`,
+  frozen Resume Packet Git blob
+  `98e6b4a70fba66e317b57fd6f6bfc1bb3274bc85`, frozen R02 source Git blob
+  `e853e2992f4d556a1d41b089006bdd288aa2d7bc`, exact source section `8` and
+  heading
+  `## 8. R02 - complete public target attribute catalog, including dropped slots`,
+  canonical byte length `1399`, and R02 canonical SHA-256
+  `9d71ada08b5eb39137545921f3b7034c3ebe3bc37475e53809ab73c3983a158f`.
+
+  The Owner explicitly accepted the packet's bounded context-proof basis for
+  this one SELECT-only attempt. The fresh visual gate independently re-proves
+  only visible project, environment, Primary Database selection, selected
+  current role, row limit, and blank editor. It does not freshly prove
+  `current_schema = public`, `session_role = postgres`, or
+  `server_is_in_recovery = false`; the approval accepts bounded reliance on the
+  successful fresh R01 evidence and corrected retry supplement for those
+  values. The Owner attests that no visible project, environment, database,
+  role, or target control changed after the accepted R01 evidence and before
+  R02, while acknowledging that this does not prove reuse of one database
+  backend session. The fresh quiet window is likewise Owner-attested, not
+  independently database-verified.
+
+  Approval is limited to establishing that fresh quiet window, capturing
+  exactly one new blank-editor visual artifact, and, only after the visual gate
+  passes, manually executing the exact frozen R02 statement once with the
+  ordinary `Run` action. The mutually exclusive visual filenames are
+  `novora-fp-phase-a-resume-r02-continuation-00-context.png` on PASS and
+  `novora-fp-phase-a-resume-r02-continuation-00-context-error.png` on ERROR.
+  The mutually exclusive R02 filenames are
+  `novora-fp-phase-a-resume-02-r02.csv` on PASS and
+  `novora-fp-phase-a-resume-02-r02-error.png` on ERROR. The required later
+  read-only reconciliation supplement filename is
+  `novora-fp-phase-a-resume-r02-continuation-03-manifest-v1.json`; its creation
+  does not authorize R03 or any further SQL.
+
+  R02 PASS requires exactly 69 complete positive-attribute rows: 44 for
+  `public.ai_sketch_jobs` OID `17602` and 25 for
+  `public.ai_sketch_outputs` OID `17619`; unique table/ordinal identities; zero
+  dropped slots; exact reviewed names, types, nullability, defaults, identity,
+  and generated-field metadata; and no missing, duplicate, partial,
+  additional, or unexpected positive attribute. Every packet-defined context,
+  attestation, bounded-reliance, identity, blob, heading, canonical hash,
+  canonical byte length, catalog, completeness,
+  warning, SQL, transport/fetch, export, filename, or expected-result mismatch
+  is an immediate STOP.
+
+  This approval does not permit more than one R02 attempt, any Retry button or
+  automatic retry, R01, R03+, any other Resume statement, `23.1-S01` or
+  `23.2-S01`, candidate DDL, block 23.7, constraint validation, replacement or
+  ad hoc SQL, DML, repair, compensation, backfill, data edits, DELETE,
+  rollback, cleanup, ACL, default-privilege, RLS, policy, trigger, function, or
+  Storage changes, customer or business-row
+  inspection, Provider/generated-asset actions, environment changes,
+  deployment, application rollout, email, payment, customer-visible behavior,
+  Codex, MCP, CLI, script, or other automated Supabase connection or SQL
+  execution, or branch/worktree/evidence deletion. Whether
+  R02 passes or fails, all SQL stops for independent evidence reconciliation;
+  R03 remains prohibited. This record does not prove execution, and Codex did
+  not connect to Supabase or execute SQL.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2782,16 +2851,16 @@ but correctly does not prove submitted SQL bytes; its actual SQL hash and
 equality remain null. R02 and steps 03-68 remain `not_run`, and Phase A Resume
 and Phase A remain STOPPED.
 
-The current critical-path gate is separate exact Owner approval of the frozen
-minimum R02 Continuation Packet v1. Merging that packet does not authorize
-execution. If separately approved against its exact post-merge identities, it
-permits only a fresh visual context gate and one manual execution of the frozen
-SELECT-only R02 statement with canonical SHA-256
+The frozen minimum R02 Continuation Packet v1 now has separate exact Owner
+approval. The current critical-path action is the Owner-run fresh quiet window
+and visual context gate, followed only after PASS by one manual ordinary-Run
+execution of the frozen SELECT-only R02 statement with canonical SHA-256
 `9d71ada08b5eb39137545921f3b7034c3ebe3bc37475e53809ab73c3983a158f`.
-The approval must explicitly accept that this visual gate and R02 do not
-freshly re-prove `current_schema`, `session_role`, or recovery state and instead
-use the bounded proof basis frozen in the packet. If that bounded reliance is
-not accepted, R02 remains blocked pending a separate context-preflight packet.
+The approval accepts that this visual gate and R02 do not freshly re-prove
+`current_schema`, `session_role`, or recovery state and instead use the bounded
+proof basis frozen in the packet. It also records the fresh quiet window and
+no-visible-control-change status as Owner-attested, not independently
+database-verified.
 Whether R02 passes or fails, all SQL stops for independent evidence
 reconciliation. R03 and every later Resume statement remain prohibited. Codex
 remains prohibited from connecting to Supabase or executing SQL.
