@@ -2910,6 +2910,54 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   `03ad56a7e1c7f965f7972f84595df18da8fb0a58fa5988906a2f842894d814d5`.
   Merging that documentation does not authorize Step 05.
 
+- Agent 70B-22 (2026-07-17): the exact external two-artifact audit and a
+  separate independent read-only review passed for Owner-run Resume Step 05
+  (`M01`). The authoritative context artifact
+  `novora-fp-phase-a-resume-step-05-m01-continuation-00-context.png` is `91657`
+  bytes with SHA-256
+  `ca74318d260a1b6edb4d6ff16854cbec70587b8033b1927cc57e95abdd0b348c`.
+  It visibly proves only `novora-production`, `main` / Production, Primary
+  Database, selected role `postgres`, row limit `1000`, and a fresh blank
+  editor/result pane without stale SQL, a warning, error, or sensitive content.
+  It does not freshly prove `current_schema`, session role, recovery state,
+  backend-session reuse, or the quiet window. Those limits retain the accepted
+  R01 reliance and Owner attestations.
+
+  The exact result artifact `novora-fp-phase-a-resume-05-m01.csv` is `246`
+  bytes with SHA-256
+  `7fa29da59e354086f823335a2bdca24dff654700638867f5f3e19c8ba7f311eb`.
+  It has the exact headers `table_schema`, `table_name`, and `table_owner`; six
+  complete rows in the required order; zero full-row duplicates; and zero
+  duplicate table identities. `admin_notes`, `ai_sketch_jobs`,
+  `ai_sketch_outputs`, `ai_sketch_reviews`,
+  `concept_brief_reference_assets`, and `concept_briefs` are each in schema
+  `public` and owned by `postgres`. These are sanitized catalog results only
+  and contain no business-row or customer identity or value.
+
+  The sanitized external supplement
+  `novora-fp-phase-a-resume-step-05-m01-continuation-06-manifest-v1.json` is
+  `10687` bytes with SHA-256
+  `86cedd25177a5e5a0797f8f290c615c20530fa0a23376243d539896b6d6ae68e`.
+  It binds the exact Owner approval and immutable packet/source identities,
+  selects exactly two PASS artifacts and zero error artifacts, records the
+  exact sanitized six-row ownership result, and keeps
+  `actual_canonical_sql_sha256` and `canonical_hash_equality` null because the
+  CSV does not prove the SQL Editor input bytes. Matching reviewer start/end
+  hashes independently confirmed that the PNG, CSV, and supplement remained
+  unchanged.
+
+  Resume Step 05 (`M01`) is `PASS`, but Phase A Resume and Phase A remain
+  `STOPPED`; Steps 06-68 remain `not_run`. No Retry, Step 06, automated
+  Supabase connection/SQL, later SQL, application, Provider, Storage,
+  environment, deployment, customer action, cleanup, branch/worktree deletion,
+  or evidence deletion occurred. The minimum next decision is frozen in
+  `docs/novora-first-preview-phase-a-step-06-m02-continuation-packet-v1.md`.
+  It covers only Resume Step 06 (`M02`) from MANUAL source blob
+  `1d7ee46755254e6c01ac125793ecbd9bf3451204`, heading `05 - M02`, canonical
+  byte length `188`, and SHA-256
+  `70eebd62612586e6e76338a1e9c75268d01021f6e8e2ba20e37a44d15aa9a010`.
+  Merging that documentation does not authorize Step 06.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -3052,34 +3100,34 @@ with exact definitions and zero dropped slots. It correctly does not prove the
 submitted SQL bytes; actual SQL hash and equality remain null. Phase A Resume
 and Phase A remain STOPPED, and Resume Steps 03-68 remain `not_run`.
 
-Resume Steps 03 (`R04`) and 04 (`C03`) are now COMPLETE with independently
-reconciled PASS evidence. For Step 04, the authoritative context artifact is
-`90845` bytes / SHA-256
-`42d055cce0124ed76526136e4c8b56def1ac0cc069e59157ed5b39526f209207`;
-the three-row result artifact is `125` bytes / SHA-256
-`a5cb4bde4e073bad6f2bf6d55d9ebb560ed506a8ed1eb86dba40ac3e02b9186d`;
-and the completed external supplement is `10620` bytes / SHA-256
-`040c0b5e7c1c303e0e00917c7f003f347b33835a41c56197711f910a2f230afd`.
-Every one of `ai_sketch_jobs`, `ai_sketch_outputs`, and `ai_sketch_reviews`
-has total size `24576` bytes and exact row count `0`. The bounded context
-limitations remain unchanged, and actual submitted-SQL hash and equality remain
-null.
+Resume Steps 03 (`R04`), 04 (`C03`), and 05 (`M01`) are now COMPLETE with
+independently reconciled PASS evidence. For Step 05, the authoritative context
+artifact is `91657` bytes / SHA-256
+`ca74318d260a1b6edb4d6ff16854cbec70587b8033b1927cc57e95abdd0b348c`;
+the six-row result artifact is `246` bytes / SHA-256
+`7fa29da59e354086f823335a2bdca24dff654700638867f5f3e19c8ba7f311eb`;
+and the completed external supplement is `10687` bytes / SHA-256
+`86cedd25177a5e5a0797f8f290c615c20530fa0a23376243d539896b6d6ae68e`.
+The result proves exactly the six approved `public` tables are owned by
+`postgres`. The bounded context limitations remain unchanged, and actual
+submitted-SQL hash and equality remain null.
 
-Phase A Resume and Phase A remain STOPPED. Resume Steps 05-68 remain `not_run`.
+Phase A Resume and Phase A remain STOPPED. Resume Steps 06-68 remain `not_run`.
 The current critical-path gate is separate exact Owner approval of the frozen
-Resume Step 05 (`M01`) Continuation Packet v1. That packet permits, only after
-approval, a fresh quiet-window/context gate and one Owner-run SELECT-only M01
+Resume Step 06 (`M02`) Continuation Packet v1. That packet permits, only after
+approval, a fresh quiet-window/context gate and one Owner-run SELECT-only M02
 attempt from MANUAL blob `1d7ee46755254e6c01ac125793ecbd9bf3451204`,
-heading `04 - M01`, canonical byte length `431`, and SHA-256
-`03ad56a7e1c7f965f7972f84595df18da8fb0a58fa5988906a2f842894d814d5`.
-PASS requires exactly six `public` table-ownership rows: `admin_notes`,
-`ai_sketch_jobs`, `ai_sketch_outputs`, `ai_sketch_reviews`,
-`concept_brief_reference_assets`, and `concept_briefs`, each owned by
-`postgres`. Merging the packet authorizes no SQL. Codex remains prohibited from
-connecting to Supabase or executing SQL. Step 06 and later Resume statements,
-candidate DDL, block 23.7, replacement/ad hoc SQL, retry, repair, rollback,
-cleanup, application rollout, Provider, Storage, environment, deployment,
-customer-data inspection, and customer-visible behavior remain excluded.
+heading `05 - M02`, canonical byte length `188`, and SHA-256
+`70eebd62612586e6e76338a1e9c75268d01021f6e8e2ba20e37a44d15aa9a010`.
+PASS requires exactly four role rows: `anon` and `authenticated` are
+`rolsuper=false`, `rolinherit=true`, `rolcanlogin=false`,
+`rolbypassrls=false`; `postgres` is `false`, `true`, `true`, `true`; and
+`service_role` is `false`, `true`, `false`, `true` in the same field order.
+Merging the packet authorizes no SQL. Codex remains prohibited from connecting
+to Supabase or executing SQL. Step 07 and later Resume statements, candidate
+DDL, block 23.7, replacement/ad hoc SQL, retry, repair, rollback, cleanup,
+application rollout, Provider, Storage, environment, deployment, customer-data
+inspection, and customer-visible behavior remain excluded.
 
 Only after separately approved resume evidence and successful Phase A
 completion evidence are reconciled may the next application slice address the
