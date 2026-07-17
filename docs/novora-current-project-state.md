@@ -2709,6 +2709,57 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   R03 remains prohibited. This record does not prove execution, and Codex did
   not connect to Supabase or execute SQL.
 
+- Agent 70B-18 (2026-07-17): the Owner manually completed the separately
+  approved R02 Continuation Packet v1 under the accepted bounded context-proof
+  and a newly Owner-attested quiet window. The quiet-window status and
+  no-visible-control-change statement were not independently database-verified.
+  The fresh visual artifact
+  `novora-fp-phase-a-resume-r02-continuation-00-context.png` is `91603` bytes
+  with SHA-256
+  `7e82b02dbe975a4a30be7cbe8a0e3293d002a5052ac6543547c5a3cd68eeb4a2`.
+  It visibly proves only `novora-production`, `main` / Production, Primary
+  Database, selected current role `postgres`, row limit `1000`, and a blank
+  editor. It does not freshly prove `current_schema = public`,
+  `session_role = postgres`, recovery false, reuse of one backend session, or
+  the quiet window.
+
+  The single Owner-attested ordinary-Run R02 attempt passed and was exported as
+  `novora-fp-phase-a-resume-02-r02.csv`, `6020` bytes, SHA-256
+  `01619c87bec0666a8965ffb6769e0683955178b039ada3611b5b3fe811ee15b6`.
+  It has the exact 12 headers and 69 complete rows, with zero duplicate full
+  rows, zero duplicate table/ordinal identities, and zero dropped slots. All 44
+  `public.ai_sketch_jobs` rows use relation OID `17602` and exactly match the
+  completed Recovery R02 baseline. All 25 `public.ai_sketch_outputs` rows use
+  relation OID `17619` and exactly match completed Repair A01, including all 17
+  frozen `23.2-S01` additions. No definition mismatch or unexpected live
+  attribute was found.
+
+  The sanitized external supplement
+  `novora-fp-phase-a-resume-r02-continuation-03-manifest-v1.json` is `19731`
+  bytes with SHA-256
+  `fbb4a105aca1f7cd92eb034fc7d65eaaa84edb99b19283f0407dff60e98e26ce`.
+  It binds the exact approval, packet, source, Resume Packet, R01 supplement,
+  baselines, and two selected artifacts; records every exact sanitized
+  attribute definition; preserves the bounded context-proof; and keeps actual
+  submitted-SQL hash and hash equality null because the CSV does not prove the
+  SQL Editor input bytes. It records R02 `PASS`, but Phase A Resume and Phase A
+  remain `STOPPED`; Resume Steps 03-68 remain `not_run`, and no unapproved
+  action occurred.
+
+  The minimum next decision is frozen in
+  `docs/novora-first-preview-phase-a-r03-continuation-packet-v1.md`, Git blob
+  `82e0ae19ec240017efdf19cf52e4f98e99466ed5`. The authoritative Resume Packet's
+  next item is **Step 03, label `R04`**. The packet explicitly distinguishes
+  that item from the separate Recovery query labeled `R03`, which is not in the
+  68-step Resume sequence and is not authorized. The only candidate next
+  action, after separate exact Owner approval, is a fresh visual context gate
+  followed by one manual SELECT-only execution of Resume Step 03 (`R04`) from
+  source blob `e853e2992f4d556a1d41b089006bdd288aa2d7bc`, section `10`, canonical byte
+  length `1800`, and canonical SHA-256
+  `2526d2aea62509ceb89ffc95dfd9b383aa302b4c91f9b58d5a0bf95454403d09`.
+  Merging the packet authorizes no SQL. Whether Step 03 passes or fails, all SQL
+  stops for independent reconciliation; Steps 04-68 remain prohibited.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2841,29 +2892,31 @@ additions with exact definitions and no dropped slots. The repair preserved the
 empty output table and its five existing healthy objects. Historical cause is
 still not proven, and Phase A remains STOPPED.
 
-The original Phase A Resume Packet attempt stopped on the R01 transport/fetch
-failure. The later separately approved R01 Transport Retry Packet is now
-COMPLETE: fresh Phase 0 and R01 passed, and the corrected external supplement
-has SHA-256
-`ee8612c0ac60e96b190b994dcaab8df3a0c55bf44ecc9eeed308e4dd66555646`.
-The R01 CSV proves the exact approved context and three relation identities,
-but correctly does not prove submitted SQL bytes; its actual SQL hash and
-equality remain null. R02 and steps 03-68 remain `not_run`, and Phase A Resume
-and Phase A remain STOPPED.
+The original Phase A Resume R01 attempt stopped on a transport/fetch failure;
+the separately approved R01 retry and R02 continuation are now COMPLETE. Fresh
+R01 and R02 evidence passed, and the completed R02 external supplement has
+SHA-256
+`fbb4a105aca1f7cd92eb034fc7d65eaaa84edb99b19283f0407dff60e98e26ce`.
+R02 proves the complete expected 44-Job/25-Output positive-attribute catalog
+with exact definitions and zero dropped slots. It correctly does not prove the
+submitted SQL bytes; actual SQL hash and equality remain null. Phase A Resume
+and Phase A remain STOPPED, and Resume Steps 03-68 remain `not_run`.
 
-The frozen minimum R02 Continuation Packet v1 now has separate exact Owner
-approval. The current critical-path action is the Owner-run fresh quiet window
-and visual context gate, followed only after PASS by one manual ordinary-Run
-execution of the frozen SELECT-only R02 statement with canonical SHA-256
-`9d71ada08b5eb39137545921f3b7034c3ebe3bc37475e53809ab73c3983a158f`.
-The approval accepts that this visual gate and R02 do not freshly re-prove
-`current_schema`, `session_role`, or recovery state and instead use the bounded
-proof basis frozen in the packet. It also records the fresh quiet window and
-no-visible-control-change status as Owner-attested, not independently
-database-verified.
-Whether R02 passes or fails, all SQL stops for independent evidence
-reconciliation. R03 and every later Resume statement remain prohibited. Codex
-remains prohibited from connecting to Supabase or executing SQL.
+The frozen minimum next decision is Resume Step 03, label `R04`, not the
+separate Recovery query labeled `R03`. The exact Step-03-only continuation is
+in `docs/novora-first-preview-phase-a-r03-continuation-packet-v1.md`. Merging
+that document authorizes nothing. A separate exact Owner approval must bind its
+post-merge `origin/main`, reviewed PR head, packet Git blob, completed R02
+supplement, frozen Resume Packet and Recovery source blobs, exact sequence
+label, canonical byte length `1800`, and canonical SHA-256
+`2526d2aea62509ceb89ffc95dfd9b383aa302b4c91f9b58d5a0bf95454403d09`,
+while explicitly accepting the packet's bounded context-proof.
+
+Only after such approval may the Owner perform a fresh quiet-window/context
+gate and one manual SELECT-only Resume Step 03 (`R04`) attempt. Whether it
+passes or fails, all SQL stops for independent reconciliation. Resume Steps
+04-68 remain prohibited. Codex remains prohibited from connecting to Supabase
+or executing SQL.
 Completed column statements `23.1-S01`/`23.2-S01`, candidate DDL, block 23.7,
 replacement/ad hoc SQL, retry beyond the single separately approved R01
 attempt, repair, rollback, cleanup, application rollout, Provider, Storage,
