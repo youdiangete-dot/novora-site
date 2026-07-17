@@ -3010,6 +3010,68 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   `fdc2eecd481f69deb262eb35390495ed90a383a7d208131909b2c9566b8dd74c`.
   Merging that documentation does not authorize Step 07.
 
+- Agent 70B-24 (2026-07-17): the exact external two-artifact audit and a
+  separate independent read-only review passed for Owner-run Resume Step 07
+  (`M03`). The authoritative context artifact
+  `novora-fp-phase-a-resume-step-07-m03-continuation-00-context.png` is `91121`
+  bytes with SHA-256
+  `ea6f2e7c262768afb529e3a08f62c6a4920cfd9e6f909475717cdebf8186d5a0`.
+  It visibly proves only `novora-production`, `main` / Production, Primary
+  Database, selected role `postgres`, row limit `1000`, and a fresh blank SQL
+  editor with a blank or non-stale result pane and no warning, error, or
+  sensitive content. It does not freshly prove `current_schema`, session role,
+  recovery state, backend-session reuse, or the quiet window. Those limits
+  retain the accepted R01 reliance and Owner attestations.
+
+  The exact result artifact `novora-fp-phase-a-resume-07-m03.csv` is `601`
+  bytes with SHA-256
+  `9c128badda0467a599866f0c6f0d1e4ecacf2933b4b7233d0a4729dc8579e72a`.
+  It has the exact headers `granted_role`, `member_role`, `grantor_role`, and
+  `admin_option`; 12 complete rows in the required order; zero full-row
+  duplicates; and zero duplicate membership tuples. The sanitized result is:
+
+  - `anon,authenticator,supabase_admin,false`
+  - `anon,postgres,supabase_admin,true`
+  - `authenticated,authenticator,supabase_admin,false`
+  - `authenticated,postgres,supabase_admin,true`
+  - `authenticator,postgres,supabase_admin,true`
+  - `pg_create_subscription,postgres,supabase_admin,true`
+  - `pg_monitor,postgres,supabase_admin,true`
+  - `pg_read_all_data,postgres,supabase_admin,true`
+  - `pg_signal_backend,postgres,supabase_admin,true`
+  - `service_role,authenticator,supabase_admin,false`
+  - `service_role,postgres,supabase_admin,true`
+  - `supabase_privileged_role,postgres,supabase_admin,false`
+
+  These are approved catalog membership identities only and contain no
+  application-user, auth-user, business-row, or customer identity or value.
+
+  The sanitized external supplement
+  `novora-fp-phase-a-resume-step-07-m03-continuation-08-manifest-v1.json` is
+  `12025` bytes with SHA-256
+  `b1b9161bc89704ee97eac7ba93aa6d403b21f2fc18bc7854514a5d0ab8a61381`.
+  It binds the exact Owner approval and immutable packet/source identities,
+  selects exactly two PASS artifacts and zero error artifacts, records the
+  exact sanitized 12-row membership result, and keeps
+  `actual_canonical_sql_sha256` and `canonical_hash_equality` null because the
+  CSV does not prove the SQL Editor input bytes. Matching reviewer start/end
+  hashes independently confirmed that the PNG, CSV, and supplement remained
+  unchanged.
+
+  Resume Step 07 (`M03`) is `PASS`, but Phase A Resume and Phase A remain
+  `STOPPED`; Steps 08-68 remain `not_run`. No Retry, Step 08, automated
+  Supabase connection/SQL, role/membership/grant/privilege change,
+  application-user or auth-user inspection, customer or business-row
+  inspection, application, Provider, Storage, environment, deployment,
+  customer-visible action, cleanup, branch/worktree deletion, or evidence
+  deletion occurred. The minimum next decision is frozen in
+  `docs/novora-first-preview-phase-a-step-08-m04-continuation-packet-v1.md`.
+  It covers only Resume Step 08 (`M04`) from MANUAL source blob
+  `1d7ee46755254e6c01ac125793ecbd9bf3451204`, heading `07 - M04`, canonical
+  byte length `842`, and SHA-256
+  `88079b80be9b150a3313d152aaf4da5dc328c0448bfc3d2322757aeac7348191`.
+  Merging that documentation does not authorize Step 08.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -3152,33 +3214,34 @@ with exact definitions and zero dropped slots. It correctly does not prove the
 submitted SQL bytes; actual SQL hash and equality remain null. Phase A Resume
 and Phase A remain STOPPED, and Resume Steps 03-68 remain `not_run`.
 
-Resume Steps 03 (`R04`), 04 (`C03`), 05 (`M01`), and 06 (`M02`) are now
-COMPLETE with independently reconciled PASS evidence. For Step 06, the
-authoritative context artifact is `91167` bytes / SHA-256
-`a5e057d87c9193221d40e30855d52901e07eb630613db1afb8d9cb9f6a6f7d9a`;
-the four-row result artifact is `186` bytes / SHA-256
-`2bb7414ac2388bbf56c16ad329a3bdc094400b608d61609d937f8efb2dca2b40`;
-and the completed external supplement is `10867` bytes / SHA-256
-`3fbf130c64f0f2a1089adddb88aa8123bd40f3d40ba0e784f48493941eed35a1`.
-The result proves the exact approved catalog attributes for `anon`,
-`authenticated`, `postgres`, and `service_role`. The bounded context
+Resume Steps 03 (`R04`), 04 (`C03`), 05 (`M01`), 06 (`M02`), and 07 (`M03`)
+are now COMPLETE with independently reconciled PASS evidence. For Step 07, the
+authoritative context artifact is `91121` bytes / SHA-256
+`ea6f2e7c262768afb529e3a08f62c6a4920cfd9e6f909475717cdebf8186d5a0`;
+the 12-row result artifact is `601` bytes / SHA-256
+`9c128badda0467a599866f0c6f0d1e4ecacf2933b4b7233d0a4729dc8579e72a`;
+and the completed external supplement is `12025` bytes / SHA-256
+`b1b9161bc89704ee97eac7ba93aa6d403b21f2fc18bc7854514a5d0ab8a61381`.
+The result proves the exact frozen Stage A membership baseline with no
+additional or unreviewed inherited privilege path. The bounded context
 limitations remain unchanged, and actual submitted-SQL hash and equality
 remain null.
 
-Phase A Resume and Phase A remain STOPPED. Resume Steps 07-68 remain `not_run`.
+Phase A Resume and Phase A remain STOPPED. Resume Steps 08-68 remain `not_run`.
 The current critical-path gate is separate exact Owner approval of the frozen
-Resume Step 07 (`M03`) Continuation Packet v1. That packet permits, only after
-approval, a fresh quiet-window/context gate and one Owner-run SELECT-only M03
+Resume Step 08 (`M04`) Continuation Packet v1. That packet permits, only after
+approval, a fresh quiet-window/context gate and one Owner-run SELECT-only M04
 attempt from MANUAL blob `1d7ee46755254e6c01ac125793ecbd9bf3451204`,
-heading `06 - M03`, canonical byte length `581`, and SHA-256
-`fdc2eecd481f69deb262eb35390495ed90a383a7d208131909b2c9566b8dd74c`.
-PASS requires exactly the frozen 12 unique role-membership tuples with no
-unreviewed inherited privilege path. Merging the packet authorizes no SQL.
-Codex remains prohibited from connecting to Supabase or executing SQL. Step 07
-and later Resume statements, candidate DDL, block 23.7, replacement/ad hoc SQL,
-retry, repair, rollback, cleanup, application rollout, Provider, Storage,
-environment, deployment, application-user/auth-user/customer-data inspection,
-and customer-visible behavior remain excluded.
+heading `07 - M04`, canonical byte length `842`, and SHA-256
+`88079b80be9b150a3313d152aaf4da5dc328c0448bfc3d2322757aeac7348191`.
+PASS requires exactly the frozen 18-row effective DML matrix for `anon`,
+`authenticated`, and `service_role` across the six approved tables. Merging the
+packet authorizes no SQL. Codex remains prohibited from connecting to Supabase
+or executing SQL. Step 08 and later Resume statements, role/membership/grant/
+privilege changes, candidate DDL, block 23.7, replacement/ad hoc SQL, retry,
+repair, rollback, cleanup, application rollout, Provider, Storage, environment,
+deployment, application-user/auth-user/customer-data inspection, and
+customer-visible behavior remain excluded.
 
 Only after separately approved resume evidence and successful Phase A
 completion evidence are reconciled may the next application slice address the
