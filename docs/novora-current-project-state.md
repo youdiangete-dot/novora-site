@@ -3102,6 +3102,49 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   document authorizes no SQL. Steps 08-68 remain `not_run`; Phase A Resume and
   Phase A remain `STOPPED`.
 
+- Agent 70B-27 (2026-07-17): Phase A Resume Batch 01 completed with one
+  combined evidence reconciliation and a separate independent read-only review
+  PASS. The selected external evidence remained stable at review start and end:
+  context PNG `90845` bytes / SHA-256
+  `acfcb59cab07d6646483eafbdb6a6c10498b05e355feec569378ee13a02b67d3`,
+  M04 CSV `1017` bytes /
+  `68bbca02efc314e3c76a7e94bb45201e5c03ab9cdf250a93dce1fd0dd0fec4ff`,
+  M05 CSV `678` bytes /
+  `9f25d826a1e318a6e4a43e0472291c7036f8ed03600a5cdbc275631d4ee2b99d`,
+  and M06 CSV `1230` bytes /
+  `22950f5f1f71c833594d66142a88d58481035d312681f551cda2c55ee6bb6b5d`.
+
+  The visual context independently proves only `novora-production`, `main` /
+  Production, Primary Database, selected role `postgres`, row limit `1000`, and
+  a fresh blank editor/result pane with no visible warning, error, or sensitive
+  content. It does not freshly prove current schema, session role, recovery
+  state, backend-session reuse, or quiet-window truth; the accepted bounded
+  reliance and Owner attestations remain explicit.
+
+  M04 has the exact six headers and 18 ordered effective-DML rows; M05 has the
+  exact three headers and 18 ordered all-false TRUNCATE rows; and M06 has the
+  exact eight headers and 18 ordered role/schema/ownership/RLS/policy rows.
+  Every file has zero full-row and `(role_name, table_name)` duplicates, no
+  missing/additional/malformed/truncated value, and no protected data. The
+  selected CSVs prove returned results but not SQL Editor input bytes, so every
+  `actual_canonical_sql_sha256` and `canonical_hash_equality` remains null.
+
+  The external combined manifest
+  `novora-fp-phase-a-resume-batch-01-m04-m06-11-manifest-v2.json` is `23043`
+  bytes with SHA-256
+  `f04d60c5f1e86def72a9a5b6cef56788fd1668a9dc7475a81678cffeab88feef`.
+  It selects exactly one context plus three PASS CSVs and zero error artifacts;
+  records Steps 08/M04, 09/M05, and 10/M06 PASS; identifies M06 as the last
+  successful item; records no Retry and no error; and preserves Steps 11-68 as
+  `not_run`, Phase A Resume `STOPPED`, and Phase A `STOPPED`.
+
+  The next combined decision is frozen only in
+  `docs/novora-first-preview-phase-a-batch-02-b01-b17-continuation-packet-v2.md`.
+  It covers the exact ordered SELECT-only sequence 11/B01, 12/B02, 13/B03,
+  14/B04, 15/B05, 16/B06, 17/B07, 18/B15, and 19/B17. Merging the packet does
+  not authorize SQL, Step 11 has not been executed, and Step 20 remains outside
+  Batch 02.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -3257,24 +3300,23 @@ additional or unreviewed inherited privilege path. The bounded context
 limitations remain unchanged, and actual submitted-SQL hash and equality
 remain null.
 
-Phase A Resume and Phase A remain STOPPED. Resume Steps 08-68 remain `not_run`.
-The remaining sequence is now frozen into eight accelerated batches under
-`docs/novora-first-preview-phase-a-accelerated-batch-resume-plan-v2.md`. The
-current critical-path gate is separate exact Owner approval of Batch 01 under
-`docs/novora-first-preview-phase-a-batch-01-m04-m06-continuation-packet-v2.md`.
-Batch 01 covers only Steps 08/M04, 09/M05, and 10/M06, each exact SELECT run
-manually and individually in sequence, with one fresh quiet-window/context gate
-and immediate fail-closed STOP behavior. It does not release Step 11.
+Phase A Resume and Phase A remain STOPPED. Resume Steps 08/M04, 09/M05, and
+10/M06 are independently reconciled PASS. Resume Steps 11-68 remain `not_run`.
+The current critical-path gate is separate exact Owner approval of
+`docs/novora-first-preview-phase-a-batch-02-b01-b17-continuation-packet-v2.md`.
+Batch 02 covers only the nine ordered SELECT-only steps 11/B01, 12/B02, 13/B03,
+14/B04, 15/B05, 16/B06, 17/B07, 18/B15, and 19/B17, under one fresh
+quiet-window/context gate and fail-closed sequential evidence rules. It does not
+release Step 20.
 
-The single-step Step-08/M04 Packet v1 remains immutable, historical,
-unapproved, and unexecuted; it is not execution authority. Merging the
-accelerated plan or Batch 01 packet authorizes no SQL. Codex remains prohibited
-from connecting to Supabase or executing SQL. Role/membership/grant/privilege
-changes, candidate DDL without its separately approved batch, block 23.7,
-replacement/ad hoc SQL, retry, repair, rollback, cleanup, application rollout,
-Provider, Storage, Production/environment changes, deployment,
-application-user/auth-user/customer-data inspection, customer-visible behavior,
-and deletion remain excluded.
+The combined Batch 01 manifest is `23043` bytes / SHA-256
+`f04d60c5f1e86def72a9a5b6cef56788fd1668a9dc7475a81678cffeab88feef`.
+Merging the Batch 02 packet authorizes no SQL. Codex remains prohibited from
+connecting to Supabase or executing SQL. Candidate DDL, block 23.7,
+replacement/ad hoc SQL, retry, repair, rollback, cleanup, access-control or
+Storage changes, application rollout, Provider, Production/environment changes,
+deployment, protected-row inspection beyond the exact approved aggregates,
+customer-visible behavior, and deletion remain excluded.
 
 Only after separately approved resume evidence and successful Phase A
 completion evidence are reconciled may the next application slice address the
