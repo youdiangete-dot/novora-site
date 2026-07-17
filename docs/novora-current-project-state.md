@@ -2815,6 +2815,55 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   record does not prove execution, and Codex did not connect to Supabase or
   execute SQL.
 
+- Agent 70B-20 (2026-07-17): the corrected two-artifact audit and separate
+  independent read-only review passed for Owner-run Resume Step 03 (`R04`). The
+  authoritative external context artifact
+  `novora-fp-phase-a-resume-step-03-r04-continuation-00-context.png` is `92026`
+  bytes with SHA-256
+  `a01ca9b42d390e829f54044e599d9514a307f201a32c7f270c4de567b63f4e69`.
+  The earlier `124741`-byte / `ff45b8...` identity described a byte-distinct
+  conversation-transport copy and is superseded; no artifact was replaced,
+  rewritten, renamed, regenerated, or deleted. The authoritative PNG visibly
+  proves only `novora-production`, `main` / Production, Primary Database,
+  selected role `postgres`, row limit `1000`, and a fresh blank editor/result
+  pane without a warning, error, or sensitive content. It does not freshly
+  prove `current_schema`, session role, recovery state, backend-session reuse,
+  or the quiet window. Those limits retain the accepted R01 reliance and Owner
+  attestations.
+
+  The exact result artifact `novora-fp-phase-a-resume-03-r04.csv` is `3181`
+  bytes with SHA-256
+  `92142e7e71f210bed22cb31b852354f1d93d80d7ea36e36602f47941ee0b6c3f`.
+  It has the exact 14 headers, 16 complete rows, zero full-row duplicates, and
+  zero duplicate object identities. Relation OIDs remain jobs `17602`, outputs
+  `17619`, and reviews `17641`; table totals are 4, 5, and 7 objects. All exact
+  object OIDs, names, definitions, constraint states, index uniqueness values,
+  and index validity/readiness/liveness match the frozen packet and Recovery /
+  Repair A03 baselines. The result is byte-identical to Recovery R04.
+
+  The sanitized external supplement
+  `novora-fp-phase-a-resume-step-03-r04-continuation-04-manifest-v1.json` is
+  `19931` bytes with SHA-256
+  `6de9b72dfdfb81253f33b6ccdb21246b6ce2e9443558ed282562835b5f023ca9`.
+  It binds the exact Owner approval and immutable packet/source identities,
+  selects exactly two PASS artifacts and zero error artifacts, records the
+  exact sanitized 16-object catalog, and keeps
+  `actual_canonical_sql_sha256` and `canonical_hash_equality` null because the
+  CSV does not prove the SQL Editor input bytes. Matching reviewer start/end
+  hashes independently confirmed the evidence set remained unchanged.
+
+  Resume Step 03 (`R04`) is `PASS`, but Phase A Resume and Phase A remain
+  `STOPPED`; Steps 04-68 remain `not_run`. No Retry, Step 04, automated
+  Supabase connection/SQL, later SQL, application, Provider, Storage,
+  deployment, customer action, cleanup, branch/worktree deletion, or evidence
+  deletion occurred. The minimum next decision is frozen in
+  `docs/novora-first-preview-phase-a-step-04-c03-continuation-packet-v1.md`.
+  It covers only Resume Step 04 (`C03`) from MANUAL source blob
+  `1d7ee46755254e6c01ac125793ecbd9bf3451204`, heading `03 - C03`, canonical
+  byte length `874`, and SHA-256
+  `b962dd936744916de446cbf28a1583769c863d309c2fed35098021f5f639ca9b`.
+  Merging that documentation does not authorize Step 04.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2957,24 +3006,30 @@ with exact definitions and zero dropped slots. It correctly does not prove the
 submitted SQL bytes; actual SQL hash and equality remain null. Phase A Resume
 and Phase A remain STOPPED, and Resume Steps 03-68 remain `not_run`.
 
-The frozen Resume Step 03 (`R04`) Continuation Packet v1 now has separate exact
-Owner approval. The current critical-path action is the Owner-run fresh quiet
-window and visual context gate, followed only after PASS by one manual
-ordinary-Run execution of the frozen SELECT-only Step 03 (`R04`) statement with
-canonical SHA-256
-`2526d2aea62509ceb89ffc95dfd9b383aa302b4c91f9b58d5a0bf95454403d09`.
-The approval accepts that the visual gate and Step 03 do not freshly re-prove
-`current_schema`, `session_role`, recovery state, quiet-window truth, or backend
-session reuse and instead use the bounded proof basis frozen in the packet.
+Resume Step 03 (`R04`) is now COMPLETE with independently reconciled PASS
+evidence. The authoritative context artifact is `92026` bytes / SHA-256
+`a01ca9b42d390e829f54044e599d9514a307f201a32c7f270c4de567b63f4e69`;
+the 16-row result artifact is `3181` bytes / SHA-256
+`92142e7e71f210bed22cb31b852354f1d93d80d7ea36e36602f47941ee0b6c3f`;
+and the completed external supplement is `19931` bytes / SHA-256
+`6de9b72dfdfb81253f33b6ccdb21246b6ce2e9443558ed282562835b5f023ca9`.
+The bounded context limitations remain unchanged, and actual submitted-SQL hash
+and equality remain null.
 
-Whether Step 03 passes or fails, all SQL stops for independent evidence
-reconciliation. Resume Steps 04-68 remain prohibited. Codex remains prohibited
-from connecting to Supabase or executing SQL.
-Completed column statements `23.1-S01`/`23.2-S01`, candidate DDL, block 23.7,
-replacement/ad hoc SQL, retry beyond the single separately approved R01
-attempt, repair, rollback, cleanup, application rollout, Provider, Storage,
-environment, deployment, customer-data inspection, and customer-visible
-behavior remain excluded.
+Phase A Resume and Phase A remain STOPPED. Resume Steps 04-68 remain `not_run`.
+The current critical-path gate is separate exact Owner approval of the frozen
+Resume Step 04 (`C03`) Continuation Packet v1. That packet permits, only after
+approval, a fresh quiet-window/context gate and one Owner-run SELECT-only C03
+attempt from MANUAL blob `1d7ee46755254e6c01ac125793ecbd9bf3451204`,
+heading `03 - C03`, canonical byte length `874`, and SHA-256
+`b962dd936744916de446cbf28a1583769c863d309c2fed35098021f5f639ca9b`.
+It returns only three table-name/total-size/exact-count aggregate rows; each
+size must be at most `67108864` bytes and each count at most `10000`. Merging
+the packet authorizes no SQL. Codex remains prohibited from connecting to
+Supabase or executing SQL. Step 05 and later Resume statements, candidate DDL,
+block 23.7, replacement/ad hoc SQL, retry, repair, rollback, cleanup,
+application rollout, Provider, Storage, environment, deployment, customer-data
+inspection, and customer-visible behavior remain excluded.
 
 Only after separately approved resume evidence and successful Phase A
 completion evidence are reconciled may the next application slice address the
