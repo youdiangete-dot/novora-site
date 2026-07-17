@@ -2579,6 +2579,66 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   R02 decision. This record does not prove execution, and Codex did not connect
   to Supabase or execute SQL.
 
+- Agent 70B-16 (2026-07-17): the Owner completed the separately approved R01
+  Transport Retry Packet v1 under a newly confirmed quiet window. The fresh
+  Phase 0 artifact
+  `novora-fp-phase-a-resume-r01-retry-00-context.png` is `92070` bytes with
+  SHA-256
+  `4d6eca956ec2a838ee2f8eec3faa60afba2da81542a156d0fba200e74e9aef15`.
+  It visibly shows `novora-production`, `main` / Production, Primary Database,
+  role `postgres`, row limit `1000`, a blank editor, and an unexecuted result
+  pane without stale SQL or sensitive content.
+
+  The single fresh ordinary-Run R01 attempt passed and was exported as
+  `novora-fp-phase-a-resume-r01-retry-01-r01.csv`, `529` bytes, SHA-256
+  `d00b5c59d1d297040c851d589e488d59e39cdc06089da3cd4e5df45595d6e442`.
+  It has the exact 13 headers and exactly three complete rows, with zero
+  duplicate rows, zero duplicate relation identities, and zero same-name
+  nonapproved-schema relations. Every row proves database `postgres`, current
+  schema `public`, current and session role `postgres`, recovery false, owner
+  `postgres`, relkind `r`, persistence `p`, and approved schema true. The exact
+  relations remain `public.ai_sketch_jobs` OID `17602`,
+  `public.ai_sketch_outputs` OID `17619`, and `public.ai_sketch_reviews` OID
+  `17641`.
+
+  The fresh CSV bytes match the earlier recovery R01 CSV. Identical sanitized
+  catalog results may export identically, so byte identity alone neither proves
+  nor disproves a fresh execution. The exact fresh filename, fresh Phase 0
+  artifact, and Owner attestation are the evidence basis for freshness.
+
+  The corrected sanitized retry supplement
+  `novora-fp-phase-a-resume-r01-retry-02-manifest-v1.json` is `8572` bytes with
+  SHA-256
+  `ee8612c0ac60e96b190b994dcaab8df3a0c55bf44ecc9eeed308e4dd66555646`.
+  It binds the retry packet Git blob and independently recomputed raw SHA-256
+  `6b29664b04df1a48183748445b93b1b3451848a7b5d1fea6b472c1d40368d2c6`,
+  approval-record identities, frozen Resume/R01 sources, prior STOPPED Resume
+  manifest, exact artifacts, and expected R01 canonical SHA-256. Its actual
+  submitted-SQL hash and hash equality correctly remain null because the CSV
+  does not prove submitted SQL bytes. It records retry `COMPLETE`, fresh Phase
+  0 and R01 `PASS`, but Phase A Resume and Phase A remain `STOPPED`; steps 02-68
+  remain `not_run`, and no unapproved action occurred. A separate read-only
+  re-audit recomputed matching start/end hashes for all three exact original
+  artifacts and passed every evidence-contract and sanitization check with no
+  remaining finding.
+
+  The minimum next decision is frozen in
+  `docs/novora-first-preview-phase-a-r02-continuation-packet-v1.md`. It permits
+  no execution merely by merging. A separate exact Owner approval must bind the
+  post-merge `origin/main`, reviewed PR head, packet Git blob, corrected retry
+  supplement SHA-256, Resume Packet blob
+  `98e6b4a70fba66e317b57fd6f6bfc1bb3274bc85`, R02 source blob
+  `e853e2992f4d556a1d41b089006bdd288aa2d7bc`, and R02 canonical SHA-256
+  `9d71ada08b5eb39137545921f3b7034c3ebe3bc37475e53809ab73c3983a158f`.
+  If separately approved, it releases only a fresh visual context gate and one
+  manual execution of SELECT-only R02. All SQL then stops for independent
+  reconciliation; R03 and every later statement remain prohibited. The packet
+  explicitly records that the visual gate and R02 do not freshly re-prove
+  `current_schema`, `session_role`, or recovery state. Any future exact approval
+  must accept its bounded reliance on the last successful R01 evidence and the
+  Owner's no-visible-context-change attestation, or STOP for a separately
+  reviewed context-preflight decision.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -2677,6 +2737,10 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   result null whenever the selected artifact cannot prove the complete submitted
   statement bytes. Never copy the expected hash into an actual-hash field by
   inference; record the exact proof basis separately.
+- Before freezing an evidence manifest, validate its identity fields one by one
+  against every requirement in the governing packet, including both Git blob
+  and raw-file SHA-256 when the packet requires both. A valid JSON parse and
+  artifact-hash match do not prove identity-contract completeness.
 - An independent review of external evidence must obtain matching start and end
   hashes from the same reviewer context and exact original paths. A reviewer
   access/sandbox failure must fail closed for that reviewer but must not be
@@ -2689,7 +2753,7 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-As of 2026-07-16, Stage A existing-table ACL correction and Stage B `postgres`
+As of 2026-07-17, Stage A existing-table ACL correction and Stage B `postgres`
 future-public-table default-privilege correction are complete. Their immediate
 post-execution evidence passed, and Stage B's corrected authoritative
 forbidden-default mismatch detector returned zero rows. Neither Stage A nor
@@ -2707,19 +2771,29 @@ additions with exact definitions and no dropped slots. The repair preserved the
 empty output table and its five existing healthy objects. Historical cause is
 still not proven, and Phase A remains STOPPED.
 
-The separately approved Phase A Resume Packet v1 is exhausted by the R01
-transport/fetch STOP. Phase 0 is the last successful Resume item; R01 is ERROR;
-steps 02-68 are `not_run`; Phase A Resume and Phase A remain STOPPED. Do not
-infer database rejection, receipt, or execution from the SQL Editor failure.
+The original Phase A Resume Packet attempt stopped on the R01 transport/fetch
+failure. The later separately approved R01 Transport Retry Packet is now
+COMPLETE: fresh Phase 0 and R01 passed, and the corrected external supplement
+has SHA-256
+`ee8612c0ac60e96b190b994dcaab8df3a0c55bf44ecc9eeed308e4dd66555646`.
+The R01 CSV proves the exact approved context and three relation identities,
+but correctly does not prove submitted SQL bytes; its actual SQL hash and
+equality remain null. R02 and steps 03-68 remain `not_run`, and Phase A Resume
+and Phase A remain STOPPED.
 
-The frozen minimum R01 Transport Retry Packet v1 now has separate exact Owner
-approval. The current critical-path action is a fresh quiet window and new
-blank-editor Phase 0 context capture, followed only after Phase 0 passes by one
-fresh manual execution of the exact frozen SELECT-only R01. It does not
-authorize the prior generic `Retry` button. R02 and every later Resume statement
-remain prohibited even if fresh R01 passes, pending independent evidence
-reconciliation. Codex remains prohibited from connecting to Supabase or
-executing SQL.
+The current critical-path gate is separate exact Owner approval of the frozen
+minimum R02 Continuation Packet v1. Merging that packet does not authorize
+execution. If separately approved against its exact post-merge identities, it
+permits only a fresh visual context gate and one manual execution of the frozen
+SELECT-only R02 statement with canonical SHA-256
+`9d71ada08b5eb39137545921f3b7034c3ebe3bc37475e53809ab73c3983a158f`.
+The approval must explicitly accept that this visual gate and R02 do not
+freshly re-prove `current_schema`, `session_role`, or recovery state and instead
+use the bounded proof basis frozen in the packet. If that bounded reliance is
+not accepted, R02 remains blocked pending a separate context-preflight packet.
+Whether R02 passes or fails, all SQL stops for independent evidence
+reconciliation. R03 and every later Resume statement remain prohibited. Codex
+remains prohibited from connecting to Supabase or executing SQL.
 Completed column statements `23.1-S01`/`23.2-S01`, candidate DDL, block 23.7,
 replacement/ad hoc SQL, retry beyond the single separately approved R01
 attempt, repair, rollback, cleanup, application rollout, Provider, Storage,
