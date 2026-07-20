@@ -3561,6 +3561,47 @@ and post-preview review linkage remain incomplete.
   Owner approval to prepare and independently review one immutable
   `MVP-CORE-2` packet; execution requires a later exact packet-bound approval.
 
+- Agent 70B-34 (2026-07-20): one immutable documentation-only
+  `MVP-CORE-2` L01-Core plus Core DDL Packet v1 is frozen at
+  `docs/novora-first-preview-mvp-core-2-l01-core-ddl-packet-v1.md`, Git blob
+  `839bbd3f6f6e49b631b0faf163cbe7b27f734cd1`. It is derived from merged
+  Critical Path Cutline v3 and the independently reconciled `MVP-CORE-1` PASS;
+  it does not reuse the superseded Batch 03 packet/mapping/approval, old L01,
+  old evidence, candidate SQL, block 23.7, or any prior execution approval.
+
+  The packet freezes one fresh Phase 0 visual gate and exactly 36 individually
+  ordered executable statements: one SELECT-only `L01-CORE`; 17 one-object DDL
+  statements; one unfiltered full-catalog SELECT assertion immediately after
+  every DDL; and one bounded final SELECT result gate. `L01-CORE` must run
+  immediately before the first DDL in one uninterrupted quiet window, with no
+  export, refresh, reconnection, reconciliation, approval boundary, or delay
+  between its PASS and that DDL. Every executable statement has an exact LF
+  canonical byte length and SHA-256, a unique deterministic PASS/ERROR evidence
+  filename, exact result requirements, and fail-closed STOP/`not_run` behavior.
+
+  The limited-beta Core creates only seven `NOT VALID` constraints and ten
+  indexes required for Job status and complete non-draft first-preview
+  identity, Output readiness/current-marker consistency, idempotency, one
+  active purpose per Brief, one Output per Job, one current preview per Brief,
+  exact Job/Output/Review/Brief foreign-key consistency, and the actual Core
+  read/write paths. Every DDL is followed immediately by an unfiltered catalog
+  assertion that requires the accepted 16-object baseline plus the exact
+  cumulative Core objects and detects missing, additional, differently defined,
+  invalid, unready, or non-live objects. The final gate requires exactly all 33
+  accepted objects and the bounded zero-mismatch summary.
+
+  Constraint validation remains exclusively `MVP-CORE-3`. Feedback attempt
+  2-3 lineage, extended parent/source chains, Provider request and cost/pricing
+  enforcement, full revocation chronology, unused support indexes, and all
+  other `POST_MVP_HARDENING` remain excluded. No Supabase connection or SQL,
+  DDL, DML, retry, repair, rollback, cleanup, Storage, Provider, credential or
+  environment change, deployment, application rollout, customer-row inspection,
+  or customer-visible action was performed. `MVP-CORE-2` remains
+  `NOT_EXECUTED` pending a separate exact Owner execution approval. Exactly two
+  database human execution gates remain: `MVP-CORE-2` execution/evidence, then
+  `MVP-CORE-3` validation/final verification. After Core verification passes,
+  no additional planning-only loop may block application implementation.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
