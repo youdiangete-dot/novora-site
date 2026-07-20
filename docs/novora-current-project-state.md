@@ -3433,6 +3433,29 @@ Storage or environment values, or deploy. Private generated-asset access,
 secure customer preview access, automatic readiness gates, route/UI wiring,
 and post-preview review linkage remain incomplete.
 
+- Agent 70B-30 (2026-07-20): the fake-only First Preview persistence foundation
+  now defines a server-only repository contract, a deterministic in-memory
+  implementation, and an explicitly unavailable default Production binding.
+  The fake reserves one idempotent First Preview Job identity, rejects a
+  conflicting concurrent active Job, enforces the bounded attempt-1/attempt-2
+  parent shape, persists at most one asset-backed Output per Job as
+  `not_ready`, verifies Job/Output/Brief linkage, and exposes an Output to its
+  customer-ready reader only after Job success and every required automatic
+  gate is true. Missing persistence, mismatched identity, failed gates, and
+  unavailable Production persistence all fail closed without fabricating an
+  Output or ready state. There is no delete method.
+
+  Focused fake tests cover reservation, identical and conflicting idempotency,
+  concurrent reservation denial, asset-backed Output persistence, idempotent
+  Output persistence, ready/not-ready decisions, missing-asset and wrong-brief
+  denial, safe terminal failure, and unavailable Production behavior. Existing
+  provider-neutral First Preview runtime tests and the local Production build
+  remain green. This foundation performs no Supabase, Storage, Provider,
+  credential, environment, customer-row, deployment, or customer-visible
+  action. A real Supabase repository, private generated-asset persistence,
+  automatic gate evidence persistence/revocation, route/UI integration, and
+  complete E2E remain future separately gated work.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
