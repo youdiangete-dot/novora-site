@@ -3348,6 +3348,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   result null whenever the selected artifact cannot prove the complete submitted
   statement bytes. Never copy the expected hash into an actual-hash field by
   inference; record the exact proof basis separately.
+- When a supplied evidence size or hash conflicts with a fresh computation from
+  the exact authorized external file, preserve both identities, treat the
+  external file computation as authoritative, and document the discrepancy.
+  Never replace or normalize the external artifact to make it match a transported
+  copy or supplied identity.
+- Derive evidence-manifest exclusion fields one-for-one from the governing
+  packet's explicit exclusions and independently compare both lists before
+  freeze. Broad umbrella fields do not replace an explicitly named exclusion.
 - Before freezing an evidence manifest, validate its identity fields one by one
   against every requirement in the governing packet, including both Git blob
   and raw-file SHA-256 when the packet requires both. A valid JSON parse and
@@ -3418,12 +3426,13 @@ Batch Resume Plan v2 incorrectly separates Step 30/L01 from Step 31/23.3-S01
 with a reconciliation, PR, and approval boundary even though the frozen Resume
 Packet requires L01 immediately before 23.3-S01. Critical Path Cutline v3
 supersedes only the unexecuted future Batch 03-08 mapping and is the
-authoritative future database cutline. Exactly
-three database human execution gates remain: Core preflight, uninterrupted
-L01-Core plus Core DDL, and Core validation/final verification. The immediate
-next database documentation action is preparation and independent review of one
-immutable `MVP-CORE-1` SELECT-only packet. The former Batch 03 packet/mapping or
-approval must not be reused, and this cutline authorizes no SQL.
+authoritative future database cutline. `MVP-CORE-1` has now passed independently
+reconciled evidence. Exactly two database human execution gates remain:
+uninterrupted `MVP-CORE-2` L01-Core plus Core DDL, followed by `MVP-CORE-3` Core
+validation/final verification. The immediate next database documentation action
+is preparation and independent review of one immutable `MVP-CORE-2` packet. No
+`MVP-CORE-2` SQL is yet frozen or authorized. The former Batch 03 packet/mapping
+or approval must not be reused, and this cutline authorizes no SQL.
 
 In parallel after the cutline merge, a separate low-risk application slice may
 add a server-only persistence/repository interface, an in-memory fake, and
@@ -3513,6 +3522,44 @@ and post-preview review linkage remain incomplete.
   Supabase connection, SQL, DDL, DML, Retry, repair, rollback, cleanup,
   Storage, Provider, environment, deployment, application, customer-row, or
   customer-visible action was performed.
+
+- Agent 70B-33 (2026-07-20): the separately approved `MVP-CORE-1` Phase-0
+  retry/continuation sequence is independently reconciled `PASS`. The fresh
+  Phase 0 visual gate and `CORE1-01` through `CORE1-07` all passed; the Owner
+  performed exactly seven manual SELECT-only executions in frozen order, the
+  last PASS was `CORE1-07`, and there was no failed item. No retry, rerun,
+  repair, compensation, backfill, rollback, cleanup, SQL substitution, later
+  SQL, DDL, DML, Storage, Provider, credential/environment, deployment,
+  application-rollout, customer-row, or customer-visible action occurred.
+
+  All seven selected CSV artifacts match their supplied byte sizes and SHA-256
+  identities. Their exact headers, row counts, ordering, uniqueness, frozen
+  relation/object identities, aggregate invariants, definitions, validation,
+  readiness, and liveness passed independent review. The result proves the
+  exact three-relation context; all 37 Core columns; zero Job, Output, linkage,
+  or compatibility violations; the exact healthy 16-object baseline; and the
+  absence of all 17 proposed Core objects. Because result CSVs do not prove the
+  complete submitted statement bytes, every actual canonical SQL hash and
+  hash-equality value remains null.
+
+  The authoritative external fresh Phase 0 artifact is `96632` bytes / SHA-256
+  `f831b3f8b91fb1d73f906db478e385113ee2341bbebfd2e107de5fbbf4c0da49`,
+  not the supplied transported identity of `152666` bytes / SHA-256
+  `044ef31ff1f85378d5888b2d3016526f7a272ff28d8be715799b85c1e7f52c7c`.
+  The discrepancy is preserved; the actual external file was not replaced or
+  normalized, and independent visual inspection still passed every frozen
+  context control. The original STOP manifest and ERROR artifact remain
+  unchanged. The excluded post-STOP corrected recapture was not selected,
+  inspected, hashed, copied, or reused.
+
+  The external sanitized retry supplement is
+  `novora-fp-mvp-core-1-phase0-retry-continuation-09-manifest-v1.json`, `14358`
+  bytes / SHA-256
+  `706bd6597700e5e5844f87fcd1ad1b8d10a3d7cdb9c88474f561d4bd16325b9f`.
+  `MVP-CORE-1 = PASS`; Phase A Resume and historical Phase A remain `STOPPED`.
+  `MVP-CORE-2` has not started and is not authorized. The next gate is separate
+  Owner approval to prepare and independently review one immutable
+  `MVP-CORE-2` packet; execution requires a later exact packet-bound approval.
 
 ### Historical pre-Stage-A context
 
