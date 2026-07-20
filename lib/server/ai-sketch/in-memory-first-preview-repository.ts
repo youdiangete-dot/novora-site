@@ -2,6 +2,8 @@
 // It has no Supabase, Storage, Provider, environment, or network dependency.
 
 import {
+  deriveFirstPreviewIdempotencyKey,
+  FIRST_PREVIEW_LINEAGE_IDENTITY,
   type FirstPreviewAutomaticGateEvidence,
   type FirstPreviewFailureCategory,
   type FirstPreviewJobRecord,
@@ -12,9 +14,10 @@ import {
   type FirstPreviewRepositoryResult,
   type MarkFirstPreviewReadyInput,
   type PersistFirstPreviewOutputInput,
+  type RecordFirstPreviewJobFailureInput,
   type ReserveFirstPreviewJobInput,
   type ReserveFirstPreviewJobResult,
-} from "./first-preview-persistence";
+} from "./first-preview-persistence-contract";
 
 type Clock = () => string;
 
@@ -54,17 +57,12 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
   constructor(private readonly clock: Clock = () => new Date().toISOString()) {}
 
   async reserveJob(input: ReserveFirstPreviewJobInput): Promise<ReserveFirstPreviewJobResult> {
-    if (
-      !isNonblank(input.jobId) ||
-      !isNonblank(input.conceptBriefId) ||
-      !isNonblank(input.idempotencyKey) ||
-      (input.attemptNumber !== 1 && input.attemptNumber !== 2) ||
-      (input.attemptNumber === 1 && input.parentJobId !== null)
-    ) {
+    const idempotencyKey = deriveFirstPreviewIdempotencyKey(input);
+    if (!idempotencyKey) {
       return failure("invalid_input");
     }
 
-    const existingId = this.jobIdByIdempotencyKey.get(input.idempotencyKey);
+    const existingId = this.jobIdByIdempotencyKey.get(idempotencyKey);
     if (existingId) {
       const existing = this.jobsById.get(existingId);
       if (!existing) {
@@ -72,10 +70,15 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       }
 
       const identityMatches =
-        existing.id === input.jobId &&
         existing.conceptBriefId === input.conceptBriefId &&
         existing.attemptNumber === input.attemptNumber &&
-        existing.parentJobId === input.parentJobId;
+        existing.parentJobId === input.parentJobId &&
+        existing.designSpecVersion === input.designSpecVersion &&
+        existing.designSpecSha256 === input.designSpecSha256 &&
+        existing.handSketchInstructionVersion ===
+          input.handSketchInstructionVersion &&
+        existing.handSketchInstructionSha256 ===
+          input.handSketchInstructionSha256;
 
       return identityMatches
         ? { ok: true, value: { disposition: "existing", job: copyJob(existing) } }
@@ -115,6 +118,9 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       ) {
         return failure("parent_job_invalid");
       }
+      if (parent.status !== "failed" || parent.retryEligible !== true) {
+        return failure("retry_not_eligible");
+      }
     }
 
     const now = this.clock();
@@ -123,10 +129,17 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       conceptBriefId: input.conceptBriefId,
       generationPurpose: "first_preview",
       attemptNumber: input.attemptNumber,
-      idempotencyKey: input.idempotencyKey,
+      idempotencyKey,
+      lineageIdentity: FIRST_PREVIEW_LINEAGE_IDENTITY,
       parentJobId: input.parentJobId,
+      sourceOutputId: null,
+      designSpecVersion: input.designSpecVersion,
+      designSpecSha256: input.designSpecSha256,
+      handSketchInstructionVersion: input.handSketchInstructionVersion,
+      handSketchInstructionSha256: input.handSketchInstructionSha256,
       status: "queued",
       failureCategory: null,
+      retryEligible: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -140,7 +153,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
   async startJob(
     jobId: string,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
-    return this.transitionJob(jobId, "processing", null, new Set(["queued"]));
+    return this.transitionJob(jobId, "processing", null, null, new Set(["queued"]));
   }
 
   async recordJobSucceeded(
@@ -149,13 +162,23 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     if (!this.outputIdByJobId.has(jobId)) {
       return failure("output_not_found");
     }
-    return this.transitionJob(jobId, "succeeded", null, new Set(["processing"]));
+    return this.transitionJob(
+      jobId,
+      "succeeded",
+      null,
+      false,
+      new Set(["processing"]),
+    );
   }
 
   async recordJobFailure(
     jobId: string,
-    category: FirstPreviewFailureCategory,
+    failureInput: RecordFirstPreviewJobFailureInput,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
+    const { category, retryEligible } = failureInput;
+    if ((category === "timeout" || category === "cancelled") && retryEligible) {
+      return failure("invalid_input");
+    }
     const status =
       category === "timeout"
         ? "timed_out"
@@ -166,6 +189,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       jobId,
       status,
       category,
+      status === "failed" ? retryEligible : false,
       new Set(["queued", "processing"]),
     );
   }
@@ -302,6 +326,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     jobId: string,
     status: FirstPreviewJobStatus,
     failureCategory: FirstPreviewFailureCategory | null,
+    retryEligible: boolean | null,
     allowedFrom: ReadonlySet<FirstPreviewJobStatus>,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
     const job = this.jobsById.get(jobId);
@@ -316,6 +341,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       ...job,
       status,
       failureCategory,
+      retryEligible,
       updatedAt: this.clock(),
     };
     this.jobsById.set(jobId, updated);

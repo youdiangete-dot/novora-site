@@ -3436,19 +3436,27 @@ and post-preview review linkage remain incomplete.
 - Agent 70B-30 (2026-07-20): the fake-only First Preview persistence foundation
   now defines a server-only repository contract, a deterministic in-memory
   implementation, and an explicitly unavailable default Production binding.
-  The fake reserves one idempotent First Preview Job identity, rejects a
-  conflicting concurrent active Job, enforces the bounded attempt-1/attempt-2
-  parent shape, persists at most one asset-backed Output per Job as
+  The Production facade has a mechanical `server-only` import. Reservation
+  derives the exact `novora:first-preview-idempotency:v1` lowercase SHA-256 from
+  the complete RFC 8785 canonical identity; an identical semantic replay with
+  a fresh proposed Job UUID returns the original active or completed Job. The
+  fake rejects a conflicting concurrent active Job, enforces the bounded
+  attempt-1/attempt-2 parent shape, permits attempt 2 only after an explicitly
+  eligible failed attempt 1, and denies retry after success, timeout,
+  cancellation, or a non-retryable failure. It persists at most one
+  asset-backed Output per Job as
   `not_ready`, verifies Job/Output/Brief linkage, and exposes an Output to its
   customer-ready reader only after Job success and every required automatic
   gate is true. Missing persistence, mismatched identity, failed gates, and
   unavailable Production persistence all fail closed without fabricating an
   Output or ready state. There is no delete method.
 
-  Focused fake tests cover reservation, identical and conflicting idempotency,
-  concurrent reservation denial, asset-backed Output persistence, idempotent
-  Output persistence, ready/not-ready decisions, missing-asset and wrong-brief
-  denial, safe terminal failure, and unavailable Production behavior. Existing
+  Focused fake tests cover canonical identity/hash derivation, malformed
+  identity denial, semantic idempotent replay, concurrent reservation denial,
+  eligible one-time retry and ineligible retry denial, asset-backed Output
+  persistence, idempotent Output persistence, ready/not-ready decisions,
+  missing-asset and wrong-brief denial, safe terminal failure, and unavailable
+  Production behavior. Existing
   provider-neutral First Preview runtime tests and the local Production build
   remain green. This foundation performs no Supabase, Storage, Provider,
   credential, environment, customer-row, deployment, or customer-visible
