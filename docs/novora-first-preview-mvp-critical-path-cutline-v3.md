@@ -148,19 +148,28 @@ Freeze new Core-only Job CHECK statements for:
    - `attempt_number` limited to `1` or `2` for `first_preview` only;
    - non-null idempotency key and `first-preview:v1` lineage identity;
    - nonblank Design Spec and Hand Sketch Instruction versions;
-   - valid Design Spec, instruction, and idempotency hashes.
+   - valid Design Spec, instruction, and idempotency hashes;
+   - attempt 1 is the root: `parent_job_id`, parent-purpose and parent-attempt
+     snapshots, and `source_output_id` are all null; and
+   - attempt 2 is the single bounded retry: `parent_job_id` is non-null, its
+     parent-purpose and parent-attempt snapshots are exactly `first_preview`
+     and `1`, and `source_output_id` is null.
 3. Legacy `draft` rows remain allowed only with the frozen nullable identity
    posture required by the current empty-table baseline.
 
 The immutable packet must preserve that exact `first_preview` attempt range and
-must not reintroduce feedback-regeneration attempts 2-3 or extended
-parent/source chains.
+bounded root/retry lineage. It must not reintroduce feedback-regeneration
+attempts 2-3 or source-output chains.
 
 ### 5.2 Idempotency and active-job uniqueness
 
 Retain:
 
 - `ai_sketch_jobs_idempotency_key_uidx` on non-null `idempotency_key`.
+- `ai_sketch_jobs_attempt_identity_uidx` on
+  `(concept_brief_id, attempt_number)` where `attempt_number` is non-null. Core
+  permits only `first_preview`, so this prevents duplicate
+  `(concept_brief_id, generation_purpose, attempt_number)` identities.
 - `ai_sketch_jobs_one_active_purpose_uidx` on
   `(concept_brief_id, generation_purpose)` for only `queued` and `processing`.
 
@@ -173,6 +182,14 @@ brief/purpose. Completed rows remain queryable and are never directly deleted.
 Retain or add:
 
 - `ai_sketch_jobs_id_brief_uidx` on `(id, concept_brief_id)`.
+- `ai_sketch_jobs_parent_lineage_target_uidx` on
+  `(id, concept_brief_id, generation_purpose, attempt_number)`.
+- A new Core-only composite parent-lineage FK that requires an attempt-2 Job's
+  parent to be the same brief's exact `first_preview` attempt 1. The old grouped
+  parent/source statement must not be reused because source-output lineage is
+  deferred.
+- `ai_sketch_jobs_parent_job_id_idx` for the bounded retry lookup and parent-FK
+  child-side path.
 - `ai_sketch_outputs_job_brief_fkey` from `(job_id, concept_brief_id)` to Jobs.
 - A new unique target index on Outputs `(id, concept_brief_id)`.
 - A new composite Review FK from
@@ -221,6 +238,8 @@ not attempt to enforce every intermediate non-ready lifecycle state.
 | --- | --- |
 | Reserve or fetch by deterministic idempotency | `ai_sketch_jobs_idempotency_key_uidx` |
 | Reject a concurrent active First Preview job | `ai_sketch_jobs_one_active_purpose_uidx` |
+| Reject a duplicate brief/attempt reservation | `ai_sketch_jobs_attempt_identity_uidx` |
+| Resolve and enforce the bounded attempt-2 parent | parent lineage target/FK plus `ai_sketch_jobs_parent_job_id_idx` |
 | Persist exactly one output per job | `ai_sketch_outputs_one_per_job_uidx` |
 | Resolve the single current preview for a brief | `ai_sketch_outputs_one_current_customer_preview_uidx` |
 | Enforce and query Review-to-Output linkage | composite Review FK plus `ai_sketch_reviews_ai_sketch_output_id_idx` |
@@ -237,13 +256,10 @@ remain valid future design work, not MVP database exit blockers.
 ### 6.1 Feedback and extended lineage
 
 - Feedback-regeneration attempts 2-3.
-- First Preview retry rows that require extended parent/source chains rather
-  than the bounded Core reservation model.
-- `ai_sketch_jobs_lineage_shape_check` future branches.
-- `ai_sketch_jobs_parent_lineage_target_uidx`.
+- `ai_sketch_jobs_lineage_shape_check` branches beyond the bounded Core
+  attempt-1 root and attempt-2 retry posture.
 - `ai_sketch_outputs_source_target_uidx` where used only by lineage.
-- Parent-lineage and source-output-lineage foreign keys.
-- `ai_sketch_jobs_parent_job_id_idx`.
+- Source-output-lineage foreign keys.
 - Recursive cycle and extended-lineage preflights.
 
 ### 6.2 Provider, pricing, and extended job lifecycle enforcement
@@ -251,7 +267,6 @@ remain valid future design work, not MVP database exit blockers.
 - Cost/pricing constraints and pricing-assumption enforcement.
 - Provider-request uniqueness and Provider-request identity CHECKs.
 - Pinned request-profile CHECK enforcement beyond the server-only adapter.
-- Attempt-identity uniqueness not required by the chosen Core reservation key.
 - Full attempt timing, terminal timestamp exclusivity, failure category,
   retry-eligibility, and complete status/timestamp chronology CHECKs.
 
@@ -285,6 +300,8 @@ The new immutable packet must contain the minimum SELECT-only checks for:
 
 - nullable legacy/core identity posture;
 - idempotency duplicates;
+- attempt-identity duplicates;
+- bounded root/retry shape and same-brief parent mismatch counts;
 - current-preview duplicates;
 - Core-only Job CHECK predicates;
 - Core-only ready/current Output predicates;
@@ -294,9 +311,9 @@ The new immutable packet must contain the minimum SELECT-only checks for:
 - exact composite target/FK compatibility; and
 - absence of every proposed Core object before execution.
 
-Do not let attempt-identity, Provider-request, feedback-lineage, pricing,
-extended lifecycle, full revocation chronology, or unused-index checks block
-Core. Gate 1 is SELECT-only and ends with one reconciliation lifecycle.
+Do not let Provider-request, feedback-regeneration/source-output lineage,
+pricing, extended lifecycle, full revocation chronology, or unused-index checks
+block Core. Gate 1 is SELECT-only and ends with one reconciliation lifecycle.
 
 ### Gate MVP-CORE-2 - L01-Core plus Core DDL
 

@@ -3225,21 +3225,23 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   L01-Core PASS and the first dependent DDL.
 
   `MVP_CORE_REQUIRED` is limited to valid Job status and complete non-draft
-  First Preview identity; idempotency and one-active-job uniqueness; one output
-  per job; one current preview per brief; Job/Output/Review/Brief composite FK
-  consistency; complete `first_preview_ready` evidence and bidirectional
-  ready/current-marker consistency; and indexes used by real MVP reservation,
-  output, current-preview, and review-linkage paths. The old grouped
+  First Preview identity, including an attempt-1 root, one bounded attempt-2
+  same-brief retry, parent consistency, and attempt uniqueness; idempotency and
+  one-active-job uniqueness; one output per job; one current preview per brief;
+  Job/Output/Review/Brief composite FK consistency; complete
+  `first_preview_ready` evidence and bidirectional ready/current-marker
+  consistency; and indexes used by real MVP reservation, retry, output,
+  current-preview, and review-linkage paths. The old grouped
   `23.3-S01`, `23.4-S01`, cumulative assertions, and final object sets cannot be
   reused unchanged; new immutable Core-only statements and hashes are required.
 
   `POST_MVP_HARDENING` defers feedback-regeneration attempts 2-3, extended
-  parent/source lineage and recursive-cycle enforcement, cost/pricing and
-  Provider-request enforcement, full non-ready lifecycle and revocation
-  chronology, attempt/provider uniqueness outside the Core reservation key,
-  and unused support indexes until after the first limited beta. Deferral never
-  permits an output without complete private-asset validation and automatic
-  gate evidence to become `first_preview_ready`.
+  source-output lineage and recursive-cycle enforcement beyond the bounded Core
+  retry, cost/pricing and Provider-request enforcement, full non-ready lifecycle
+  and revocation chronology, Provider uniqueness outside the Core reservation
+  key, and unused support indexes until after the first limited beta. Deferral
+  never permits an output without complete private-asset validation and
+  automatic gate evidence to become `first_preview_ready`.
 
   Database exit requires all three gates to pass, all Core CHECKs/FKs to be
   validated, all Core indexes healthy, every Core violation count zero,
