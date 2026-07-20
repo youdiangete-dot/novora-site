@@ -3464,6 +3464,29 @@ and post-preview review linkage remain incomplete.
   automatic gate evidence persistence/revocation, route/UI integration, and
   complete E2E remain future separately gated work.
 
+- Agent 70B-31 (2026-07-20): Critical Path Cutline v3 Gate `MVP-CORE-1` now has
+  one new immutable SELECT-only preflight packet prepared from merged main.
+  The packet does not reuse the superseded Batch 03 mapping, approval, L01, or
+  candidate SQL. It freezes one Phase 0 context capture and seven individually
+  ordered manual SELECT statements: exact session/relation identity; exact
+  Core column posture; Job Core identity/duplicate/bounded-parent aggregates;
+  Output Core readiness/current/evidence/duplicate aggregates; exact
+  Job/Output/Review/Brief composite compatibility; the complete accepted
+  16-object baseline catalog; and absence of all 17 proposed Core objects.
+  Every statement has an exact canonical byte length and SHA-256, deterministic
+  PASS/ERROR filenames, result gates, universal STOP rules, and an external
+  sanitized manifest contract.
+
+  The packet keeps feedback/source-output lineage, Provider-request and
+  pricing enforcement, extended lifecycle and revocation chronology, unused
+  indexes, and all other `POST_MVP_HARDENING` outside the limited-beta Core
+  gate. It authorizes no Supabase connection, SQL, DDL, DML, retry, repair,
+  rollback, cleanup, Storage, Provider, environment, deployment, customer-row,
+  or customer-visible action. `MVP-CORE-1`, Phase A Resume, and historical
+  Phase A remain `NOT_EXECUTED`/`STOPPED`. After exact-head independent review
+  and docs-only merge, the next boundary is a separate exact Owner approval for
+  only the frozen Phase 0 and seven-statement manual SELECT sequence.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
