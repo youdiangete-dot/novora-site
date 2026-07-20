@@ -3487,6 +3487,33 @@ and post-preview review linkage remain incomplete.
   and docs-only merge, the next boundary is a separate exact Owner approval for
   only the frozen Phase 0 and seven-statement manual SELECT sequence.
 
+- Agent 70B-32 (2026-07-20): the first approved `MVP-CORE-1` Phase 0 context
+  gate failed closed before SQL execution because the selected SQL Editor row
+  limit was visibly `100`, below the required minimum `1000`. The authoritative
+  evidence set contains exactly
+  `novora-fp-mvp-core-1-00-context-error.png`, `95950` bytes / SHA-256
+  `c8b9043605f71486bca81c9d6f7fae4942cf6d92463c94cc7d896cdddd87a952`.
+  Phase 0 is `ERROR`; `CORE1-01` through `CORE1-07` are `not_run`; SQL
+  executions are `0`; retry was not performed; and `MVP-CORE-1` is `STOPPED`.
+  The later corrected `1000 rows` recapture occurred after STOP and remains
+  outside the authoritative evidence set; it was not selected, inspected,
+  hashed, copied, modified, or used.
+
+  The external sanitized STOP manifest is
+  `novora-fp-mvp-core-1-08-manifest-v1.json`, `7500` bytes / SHA-256
+  `52aef1416726db16e3dd0db02fbe74335e57c87ef5b1f867cfa85ea9bed24729`.
+  One minimal immutable Phase-0 retry/continuation packet now permits, only
+  after separate exact approval, one new fresh Phase 0 context capture and,
+  only after exact context PASS, continuation into the original packet's
+  unchanged `CORE1-01` through `CORE1-07` sequence. It incorporates the seven
+  SQL blocks only by reference to original packet Git blob
+  `eb3cac28bdf5b52b9a2ebcf5a0f6b2d440c66163`; it does not reproduce, change,
+  regenerate, substitute, broaden, or re-freeze their SQL, hashes, expected
+  results, statement evidence filenames, STOP rules, or exclusions. No
+  Supabase connection, SQL, DDL, DML, Retry, repair, rollback, cleanup,
+  Storage, Provider, environment, deployment, application, customer-row, or
+  customer-visible action was performed.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
