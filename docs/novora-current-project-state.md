@@ -3145,6 +3145,70 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   not authorize SQL, Step 11 has not been executed, and Step 20 remains outside
   Batch 02.
 
+- Agent 70B-28 (2026-07-20): Phase A Resume Batch 02 completed with one
+  combined evidence reconciliation and a separate independent read-only review
+  PASS with no findings. The external combined manifest
+  `novora-fp-phase-a-resume-batch-02-b01-b17-20-manifest-v2.json` is `21342`
+  bytes with SHA-256
+  `08cce41ec14d7c91730ce2d3ad2a513c7a50079786327d525ee5cf750a69c7dc`.
+  The manifest and all ten selected artifacts remained byte-for-byte stable at
+  independent review start and end, and no competing PASS, zero-row, or ERROR
+  artifact was present.
+
+  The selected context PNG is `91119` bytes / SHA-256
+  `6abb93ade460db7a2933082ca3191d46bb5f139a64746529c3fa50c0fb58b09b`.
+  It independently proves only the visible `novora-production`, `main` /
+  Production, Primary Database, selected role `postgres`, row limit `1000`,
+  fresh blank editor/result pane, and absence of a visible warning, error, or
+  sensitive value. It does not freshly prove current schema, session role,
+  recovery state, backend-session reuse, or quiet-window truth; the accepted
+  bounded reliance and Owner attestations remain explicit.
+
+  B01, B02, B04, B05, and B17 returned the packet-authorized empty-table PASS
+  result. Their selected zero-row screenshots are respectively `98701` bytes /
+  `613be6cdba13392621989fc604a4063f241fcfdd16f184317091f710b77bcc42`,
+  `100364` bytes /
+  `c22d737c00dc09a39c13ac86fa6e66598eb0e3beff1ff775cf345fbbe0d93486`,
+  `102567` bytes /
+  `22cdbb67c310b8ec751045e82484b0591a373dccb7cceca7a2c6727adb183179`,
+  `103655` bytes /
+  `5773b62419fc4850cccf594a5fd2455498eee8eee75e33032f201be60928a748`,
+  and `106181` bytes /
+  `bec30b9314ac559bdf6e0a3a619b9e621759167a4d8f2ad9d1da5c75eb0975dc`.
+  Every screenshot visibly contains its complete frozen statement, unchanged
+  target controls, successful zero-row result, and no warning or error.
+
+  B03, B06, B07, and B15 returned one complete aggregate row each with all
+  required counts exactly zero. Their CSVs are respectively `74` bytes /
+  `8f6842912f6af481e0279c35b0e3f72fb7ec9daed092bd6c7130512b50f4991d`,
+  `128` bytes /
+  `cd30551086f7b2568b077d292fea061e9c487e34a8f2d5988a100b7cde8b9204`,
+  `30` bytes /
+  `07cc4236bb6989f62773fa94fb6b80e04652c650ef2803c238365761c89e3a57`,
+  and `25` bytes /
+  `17b9703126a3033c7036fa0ed6c8abdfce04de5e7bfa34eb9cda3ddaf63e0b79`.
+  Exact headers, row counts, arithmetic and zero-count invariants, duplicate
+  counts, completeness, and privacy checks passed. All nine frozen SQL blocks
+  independently recomputed to their exact canonical byte lengths and hashes.
+  Selected result evidence does not prove submitted SQL bytes, so every
+  `actual_canonical_sql_sha256` and `canonical_hash_equality` remains null.
+
+  Resume Steps 11/B01 through 19/B17 are PASS, B17 is the last successful
+  item, Steps 20-68 remain `not_run`, no Retry or error occurred, and neither
+  Step 20 nor any unapproved action was executed. Phase A Resume and Phase A
+  remain `STOPPED`.
+
+  A planning defect was identified before any future Batch 03 packet was
+  frozen or released: Accelerated Batch Resume Plan v2 assigns Step 30/L01 to
+  Batch 03 and Step 31/23.3-S01 to Batch 04 even though the frozen Resume Packet
+  requires L01 to run immediately before 23.3-S01. The intervening Batch 03
+  reconciliation, PR, separate approval gate, or other delay could invalidate
+  the temporal preflight. The former future Batch 03-08 mapping must not be used
+  for execution. The next documentation milestone is one independently
+  reviewed Critical Path Cutline v3 that preserves completed evidence, repairs
+  L01/DDL adjacency, separates MVP-core database work from post-beta hardening,
+  and defines a finite database exit. This ledger entry authorizes no SQL.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -3300,31 +3364,33 @@ additional or unreviewed inherited privilege path. The bounded context
 limitations remain unchanged, and actual submitted-SQL hash and equality
 remain null.
 
-Phase A Resume and Phase A remain STOPPED. Resume Steps 08/M04, 09/M05, and
-10/M06 are independently reconciled PASS. Resume Steps 11-68 remain `not_run`.
-The current critical-path gate is separate exact Owner approval of
-`docs/novora-first-preview-phase-a-batch-02-b01-b17-continuation-packet-v2.md`.
-Batch 02 covers only the nine ordered SELECT-only steps 11/B01, 12/B02, 13/B03,
-14/B04, 15/B05, 16/B06, 17/B07, 18/B15, and 19/B17, under one fresh
-quiet-window/context gate and fail-closed sequential evidence rules. It does not
-release Step 20.
-
-The combined Batch 01 manifest is `23043` bytes / SHA-256
+Phase A Resume and Phase A remain STOPPED. Resume Steps 08/M04 through 19/B17
+are independently reconciled PASS. The combined Batch 01 manifest is `23043`
+bytes / SHA-256
 `f04d60c5f1e86def72a9a5b6cef56788fd1668a9dc7475a81678cffeab88feef`.
-Merging the Batch 02 packet authorizes no SQL. Codex remains prohibited from
-connecting to Supabase or executing SQL. Candidate DDL, block 23.7,
-replacement/ad hoc SQL, retry, repair, rollback, cleanup, access-control or
-Storage changes, application rollout, Provider, Production/environment changes,
-deployment, protected-row inspection beyond the exact approved aggregates,
-customer-visible behavior, and deletion remain excluded.
+The combined Batch 02 manifest is `21342` bytes / SHA-256
+`08cce41ec14d7c91730ce2d3ad2a513c7a50079786327d525ee5cf750a69c7dc`.
+Resume Steps 20-68 remain `not_run`.
 
-Only after separately approved resume evidence and successful Phase A
-completion evidence are reconciled may the next application slice address the
-`ai_sketch_reviews.ai_sketch_output_id` create-path incompatibility and then
-the server-only jobs/outputs/review-linkage persistence work. First Preview
-also remains blocked by private generated-asset access, secure customer preview
-access, automatic readiness gates, route/UI wiring, and post-preview review
-linkage.
+Do not freeze, approve, or execute the former Batch 03 mapping. Accelerated
+Batch Resume Plan v2 incorrectly separates Step 30/L01 from Step 31/23.3-S01
+with a reconciliation, PR, and approval boundary even though the frozen Resume
+Packet requires L01 immediately before 23.3-S01. The current critical-path
+documentation task is Critical Path Cutline v3. It must preserve completed
+evidence, supersede only the future Batch 03-08 mapping, place L01 at the start
+of the same uninterrupted execution batch as its first candidate DDL, separate
+MVP-core database requirements from post-beta hardening, use no more than three
+remaining database execution gates, and define a real database-phase exit that
+cannot be followed by another planning-only implementation blocker.
+
+In parallel only after that cutline is independently reviewed and merged, a
+separate low-risk application slice may add a server-only persistence/repository
+interface, an in-memory fake, and focused tests while keeping Production
+fail-closed. That slice must not connect to Supabase, call a real Provider, use
+credentials, inspect customer data, change Storage or environment values, or
+deploy. Private generated-asset access, secure customer preview access,
+automatic readiness gates, route/UI wiring, and post-preview review linkage
+remain incomplete.
 
 ### Historical pre-Stage-A context
 
