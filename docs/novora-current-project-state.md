@@ -3353,6 +3353,9 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   external file computation as authoritative, and document the discrepancy.
   Never replace or normalize the external artifact to make it match a transported
   copy or supplied identity.
+- Derive evidence-manifest exclusion fields one-for-one from the governing
+  packet's explicit exclusions and independently compare both lists before
+  freeze. Broad umbrella fields do not replace an explicitly named exclusion.
 - Before freezing an evidence manifest, validate its identity fields one by one
   against every requirement in the governing packet, including both Git blob
   and raw-file SHA-256 when the packet requires both. A valid JSON parse and
@@ -3550,9 +3553,9 @@ and post-preview review linkage remain incomplete.
   inspected, hashed, copied, or reused.
 
   The external sanitized retry supplement is
-  `novora-fp-mvp-core-1-phase0-retry-continuation-09-manifest-v1.json`, `12389`
+  `novora-fp-mvp-core-1-phase0-retry-continuation-09-manifest-v1.json`, `14358`
   bytes / SHA-256
-  `abd04de2ebd134b4697140f7c4f263efae175e8fabd2db5f3b0685b142e49a22`.
+  `706bd6597700e5e5844f87fcd1ad1b8d10a3d7cdb9c88474f561d4bd16325b9f`.
   `MVP-CORE-1 = PASS`; Phase A Resume and historical Phase A remain `STOPPED`.
   `MVP-CORE-2` has not started and is not authorized. The next gate is separate
   Owner approval to prepare and independently review one immutable
