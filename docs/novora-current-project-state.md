@@ -3209,6 +3209,47 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   L01/DDL adjacency, separates MVP-core database work from post-beta hardening,
   and defines a finite database exit. This ledger entry authorizes no SQL.
 
+- Agent 70B-29 (2026-07-20): Critical Path Cutline v3 supersedes only the
+  unexecuted future Accelerated Batch Resume Plan v2 Batch 03-08 mapping. It
+  preserves all completed evidence through Batch 02 and records the exact
+  temporal defect: Plan v2 separated Step 30/L01 from its Step
+  31/`23.3-S01` dependent DDL with a reconciliation, PR, and approval boundary,
+  making the point-in-time lock/candidate-object preflight stale by design.
+
+  The replacement path has exactly three remaining database human execution
+  gates: `MVP-CORE-1` Core-only SELECT preflight; `MVP-CORE-2` L01-Core
+  immediately followed by Core DDL and per-DDL catalog assertions under one
+  uninterrupted quiet window; and `MVP-CORE-3` Core-only validation plus final
+  database-exit verification. No reconciliation, manifest, PR, approval gate,
+  refresh, reconnection, context switch, or long delay may occur between
+  L01-Core PASS and the first dependent DDL.
+
+  `MVP_CORE_REQUIRED` is limited to valid Job status and complete non-draft
+  First Preview identity, including an attempt-1 root, one bounded attempt-2
+  same-brief retry, parent consistency, and attempt uniqueness; idempotency and
+  one-active-job uniqueness; one output per job; one current preview per brief;
+  Job/Output/Review/Brief composite FK consistency; complete
+  `first_preview_ready` evidence and bidirectional ready/current-marker
+  consistency; and indexes used by real MVP reservation, retry, output,
+  current-preview, and review-linkage paths. The old grouped
+  `23.3-S01`, `23.4-S01`, cumulative assertions, and final object sets cannot be
+  reused unchanged; new immutable Core-only statements and hashes are required.
+
+  `POST_MVP_HARDENING` defers feedback-regeneration attempts 2-3, extended
+  source-output lineage and recursive-cycle enforcement beyond the bounded Core
+  retry, cost/pricing and Provider-request enforcement, full non-ready lifecycle
+  and revocation chronology, Provider uniqueness outside the Core reservation
+  key, and unused support indexes until after the first limited beta. Deferral
+  never permits an output without complete private-asset validation and
+  automatic gate evidence to become `first_preview_ready`.
+
+  Database exit requires all three gates to pass, all Core CHECKs/FKs to be
+  validated, all Core indexes healthy, every Core violation count zero,
+  baseline access/RLS/object posture unchanged, stable independent evidence
+  review, and durable ledger merge. At exit, record MVP database Core complete
+  and post-MVP hardening deferred/not executed. No later planning-only loop may
+  block real repository integration. This documentation authorizes no SQL.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -3375,22 +3416,22 @@ Resume Steps 20-68 remain `not_run`.
 Do not freeze, approve, or execute the former Batch 03 mapping. Accelerated
 Batch Resume Plan v2 incorrectly separates Step 30/L01 from Step 31/23.3-S01
 with a reconciliation, PR, and approval boundary even though the frozen Resume
-Packet requires L01 immediately before 23.3-S01. The current critical-path
-documentation task is Critical Path Cutline v3. It must preserve completed
-evidence, supersede only the future Batch 03-08 mapping, place L01 at the start
-of the same uninterrupted execution batch as its first candidate DDL, separate
-MVP-core database requirements from post-beta hardening, use no more than three
-remaining database execution gates, and define a real database-phase exit that
-cannot be followed by another planning-only implementation blocker.
+Packet requires L01 immediately before 23.3-S01. Critical Path Cutline v3
+supersedes only the unexecuted future Batch 03-08 mapping and is the
+authoritative future database cutline. Exactly
+three database human execution gates remain: Core preflight, uninterrupted
+L01-Core plus Core DDL, and Core validation/final verification. The immediate
+next database documentation action is preparation and independent review of one
+immutable `MVP-CORE-1` SELECT-only packet. The former Batch 03 packet/mapping or
+approval must not be reused, and this cutline authorizes no SQL.
 
-In parallel only after that cutline is independently reviewed and merged, a
-separate low-risk application slice may add a server-only persistence/repository
-interface, an in-memory fake, and focused tests while keeping Production
-fail-closed. That slice must not connect to Supabase, call a real Provider, use
-credentials, inspect customer data, change Storage or environment values, or
-deploy. Private generated-asset access, secure customer preview access,
-automatic readiness gates, route/UI wiring, and post-preview review linkage
-remain incomplete.
+In parallel after the cutline merge, a separate low-risk application slice may
+add a server-only persistence/repository interface, an in-memory fake, and
+focused tests while keeping Production fail-closed. It must not connect to
+Supabase, call a real Provider, use credentials, inspect customer data, change
+Storage or environment values, or deploy. Private generated-asset access,
+secure customer preview access, automatic readiness gates, route/UI wiring,
+and post-preview review linkage remain incomplete.
 
 ### Historical pre-Stage-A context
 
