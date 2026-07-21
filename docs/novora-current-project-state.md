@@ -3602,6 +3602,44 @@ and post-preview review linkage remain incomplete.
   `MVP-CORE-3` validation/final verification. After Core verification passes,
   no additional planning-only loop may block application implementation.
 
+- Agent 70B-35 (2026-07-21): the first approved `MVP-CORE-2` attempt stopped
+  before SQL because the packet's immediate L01-to-D01 temporal release rule
+  was incompatible with the Owner's required one-statement-at-a-time workflow.
+  The accepted Phase 0 artifact remains
+  `novora-fp-mvp-core-2-00-context.png`, `96355` bytes / SHA-256
+  `59f95c6904b09ba9d6bab78749dc523490895e35cf4baf1e2aadcd2ad21cec38`.
+  Phase 0 is `PASS`; L01 through `CORE2-FINAL` remain `not_run`; Owner SQL and
+  DDL execution counts are zero; no retry or rerun occurred; and Production was
+  not modified.
+
+  One minimal immutable superseding continuation packet at
+  `docs/novora-first-preview-mvp-core-2-one-statement-at-a-time-superseding-continuation-packet-v1.md`
+  (Git blob `a0f7d094fb823befbe518b6b9ab5c78cfae1c5ff`) now changes only
+  the temporal release cadence. It contains zero SQL fences and incorporates
+  all 36
+  statements solely by exact reference to original packet Git blob
+  `839bbd3f6f6e49b631b0faf163cbe7b27f734cd1`; every SQL byte, hash, sequence,
+  expected result, evidence filename, non-temporal original STOP rule,
+  exclusion, and manifest identity remains unchanged. Temporal adjacency STOP
+  behavior is superseded only as specified, with new release-gate STOP rules
+  added. The new workflow releases exactly one statement, permits exactly one
+  Owner execution, requires independent evidence reconciliation, and releases
+  the next statement only after exact PASS.
+
+  Reconciliation gaps are now expressly permitted while the original quiet
+  window remains Owner-attested. Phase 0 and L01 remain point-in-time evidence;
+  neither independently proves catalog stability during a gap. Every release
+  gate therefore requires a renewed Owner attestation that the quiet window and
+  target controls remain unchanged. Any missing attestation, reconnect, refresh,
+  target change, unexpected actor, mismatch, error, or second attempt stops the
+  sequence with all later statements `not_run`.
+
+  The earlier execution approval does not authorize this superseding cadence.
+  No SQL may be released until the superseding packet is independently reviewed,
+  merged, and bound by a new exact Owner approval. No Supabase connection, SQL,
+  DDL/DML, Storage, Provider, credential/environment, deployment, application,
+  customer-row, cleanup, or deletion action was performed.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
