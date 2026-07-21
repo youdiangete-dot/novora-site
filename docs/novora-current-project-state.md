@@ -3674,8 +3674,8 @@ and post-preview review linkage remain incomplete.
   `STOPPED`; no additional planning-only loop may block application
   implementation after the Core database verification passes. No Supabase
   connection or SQL, constraint validation, application code, Provider,
-  Storage, credential/environment, deployment, customer-row, cleanup, or
-  deletion action was performed during reconciliation.
+  Storage, credential/environment, Production deployment, customer-row,
+  cleanup, or deletion action was performed during reconciliation.
 
 ### Historical pre-Stage-A context
 
