@@ -3649,8 +3649,8 @@ and post-preview review linkage remain incomplete.
   rollback, cleanup, SQL substitution, later SQL, or Codex-performed SQL.
 
   The external sanitized evidence manifest is
-  `novora-fp-mvp-core-2-37-manifest-v1.json`, `59419` bytes, SHA-256
-  `6532fc922c6e4faf332ef164d0a440352e8f3d2bd882a1544047f845f421d462`.
+  `novora-fp-mvp-core-2-37-manifest-v1.json`, `60664` bytes, SHA-256
+  `46365ed82097203daec9496607d3c793a8f85d2dbc8614555b685c38a1054864`.
   All 37 selected artifacts were rehashed and inspected in place. The manifest
   distinguishes independently verified artifact/catalog facts from the
   Owner's quiet-window, unchanged-target-context, manual-execution-count, and
