@@ -3640,6 +3640,43 @@ and post-preview review linkage remain incomplete.
   DDL/DML, Storage, Provider, credential/environment, deployment, application,
   customer-row, cleanup, or deletion action was performed.
 
+- Agent 70B-36 (2026-07-21): the separately approved, Owner-performed
+  `MVP-CORE-2` one-statement-at-a-time sequence is independently reconciled
+  `PASS`. The accepted Phase 0 visual context, `L01-CORE`, D01-D17, A01-A17,
+  and `CORE2-FINAL` all passed. The Owner performed exactly 36 manual SQL
+  executions: 19 SELECT-only statements and 17 Core DDL statements. The last
+  PASS was `CORE2-FINAL`; there was no failed item, retry, rerun, repair,
+  rollback, cleanup, SQL substitution, later SQL, or Codex-performed SQL.
+
+  The external sanitized evidence manifest is
+  `novora-fp-mvp-core-2-37-manifest-v1.json`, `59419` bytes, SHA-256
+  `6532fc922c6e4faf332ef164d0a440352e8f3d2bd882a1544047f845f421d462`.
+  All 37 selected artifacts were rehashed and inspected in place. The manifest
+  distinguishes independently verified artifact/catalog facts from the
+  Owner's quiet-window, unchanged-target-context, manual-execution-count, and
+  no-refresh/reconnect attestations. Because the result artifacts do not prove
+  complete submitted SQL bytes, every `actual_canonical_sql_sha256` and
+  `canonical_hash_equality` value is null. No raw evidence is in Git.
+
+  The catalog progression is exact: A01-A17 grow from 17 to 33 unfiltered
+  target objects by one frozen Core object per step, with zero full-row or
+  object-identity duplicates, no removed object, and no changed prior-object
+  state. `CORE2-FINAL` contains all 17 expected Core identities with stable,
+  unique, non-null object OIDs and the exact zero-mismatch summary
+  `33, 33, 0, 0, 0`. All seven Core constraints remain intentionally
+  unvalidated, non-deferrable, and not initially deferred; all ten Core indexes
+  have the required uniqueness posture and are valid, ready, and live.
+
+  `MVP-CORE-2 = PASS`. Exactly one database human execution gate remains:
+  separately reviewed and separately approved `MVP-CORE-3` Core constraint
+  validation and final database-exit verification. `MVP-CORE-3` has not started
+  and is not authorized. Phase A Resume and historical Phase A remain
+  `STOPPED`; no additional planning-only loop may block application
+  implementation after the Core database verification passes. No Supabase
+  connection or SQL, constraint validation, application code, Provider,
+  Storage, credential/environment, deployment, customer-row, cleanup, or
+  deletion action was performed during reconciliation.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
