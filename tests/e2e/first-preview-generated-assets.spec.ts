@@ -158,6 +158,18 @@ test.describe("server-only private First Preview generated assets", () => {
       createSyntheticFirstPreviewPng(1024, 1024, [
         { type: "tEXt", data: "internal metadata" },
       ]),
+      createSyntheticFirstPreviewPng(1024, 1024, [], {
+        rawIdat: new Uint8Array(),
+      }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], {
+        rawIdat: new Uint8Array([1, 2, 3, 4]),
+      }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], { bitDepth: 3 }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], { compressionMethod: 1 }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], { filterMethod: 1 }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], { interlaceMethod: 1 }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], { firstScanlineFilter: 5 }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], { truncateScanlines: true }),
     ]) {
       const { storage, store } = harness();
       const result = await store.persistValidatedPng(input({ imageBytes }));
@@ -218,6 +230,33 @@ test.describe("server-only private First Preview generated assets", () => {
         ok: false,
         code: "storage_unavailable",
       });
+    }
+  });
+
+  test("normalizes thrown Storage exceptions for persistence and authorized reads", async () => {
+    for (const operation of [
+      "inspectBucket",
+      "uploadObject",
+      "downloadObject",
+      "inspectObject",
+    ] as const) {
+      const { storage, store } = harness();
+      storage.throwNext(operation);
+      await expect(store.persistValidatedPng(input())).resolves.toEqual({
+        ok: false,
+        code: "storage_unavailable",
+      });
+    }
+
+    for (const operation of ["inspectBucket", "downloadObject"] as const) {
+      const { storage, authorizer, store } = harness();
+      storage.seedObject(ASSET_ID, VALID_PNG);
+      storage.throwNext(operation);
+      authorizer.result = { authorized: true, descriptor: descriptor() };
+      await expect(store.readAuthorizedPng({
+        publicReference: PUBLIC_REFERENCE,
+        outputId: OUTPUT_ID,
+      })).resolves.toEqual({ ok: false, code: "storage_unavailable" });
     }
   });
 

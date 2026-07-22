@@ -3795,8 +3795,11 @@ and post-preview review linkage remain incomplete.
   The adapter verifies the configured bucket identity and that the live bucket
   is non-public before every write or read. It persists the object before
   validating the stored binary, then re-downloads the object and verifies its
-  SHA-256, size, PNG structure, chunk CRCs, 1024-by-1024 dimensions, safe
-  metadata posture, and Storage metadata. Invalid or conflicting objects remain
+  SHA-256, size, legal PNG header semantics, chunk CRCs, zlib image data,
+  complete scanlines and filters, 1024-by-1024 dimensions, safe metadata
+  posture, and Storage metadata. Returned Storage errors and thrown
+  network/client exceptions are both normalized to fail-closed results. Invalid
+  or conflicting objects remain
   private and cannot become ready; this slice defines no delete or cleanup
   method. Returned persistence metadata is bounded to the private object
   identity, MIME type, size, dimensions, hashes, and timestamps and contains no

@@ -50,20 +50,38 @@ export function createSyntheticFirstPreviewPng(
   width = 1024,
   height = 1024,
   extraChunks: ReadonlyArray<Readonly<{ type: string; data: string }>> = [],
+  options: Readonly<{
+    bitDepth?: number;
+    colorType?: number;
+    compressionMethod?: number;
+    filterMethod?: number;
+    interlaceMethod?: number;
+    rawIdat?: Uint8Array;
+    firstScanlineFilter?: number;
+    truncateScanlines?: boolean;
+  }> = {},
 ): Uint8Array {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
+  ihdr[8] = options.bitDepth ?? 8;
+  ihdr[9] = options.colorType ?? 6;
+  ihdr[10] = options.compressionMethod ?? 0;
+  ihdr[11] = options.filterMethod ?? 0;
+  ihdr[12] = options.interlaceMethod ?? 0;
   const rowLength = 1 + width * 4;
-  const pixels = Buffer.alloc(rowLength * height);
+  let pixels = Buffer.alloc(rowLength * height);
+  pixels[0] = options.firstScanlineFilter ?? 0;
+  if (options.truncateScanlines) pixels = pixels.subarray(0, pixels.length - 1);
+  const idat = Object.prototype.hasOwnProperty.call(options, "rawIdat")
+    ? Buffer.from(options.rawIdat ?? new Uint8Array())
+    : deflateSync(pixels);
 
   return new Uint8Array(Buffer.concat([
     PNG_SIGNATURE,
     createChunk("IHDR", ihdr),
     ...extraChunks.map((chunk) => createChunk(chunk.type, Buffer.from(chunk.data, "utf8"))),
-    createChunk("IDAT", deflateSync(pixels)),
+    createChunk("IDAT", idat),
     createChunk("IEND", Buffer.alloc(0)),
   ]));
 }
@@ -82,9 +100,14 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
   bucketIsPublic = false;
   createdAt = "2026-07-22T12:00:00.000Z";
   private readonly failures = new Set<StorageOperation>();
+  private readonly throws = new Set<StorageOperation>();
 
   failNext(operation: StorageOperation): void {
     this.failures.add(operation);
+  }
+
+  throwNext(operation: StorageOperation): void {
+    this.throws.add(operation);
   }
 
   seedObject(
@@ -115,6 +138,7 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
 
   async inspectBucket(bucketName: string) {
     this.operations.push("inspectBucket");
+    this.throwIfRequested("inspectBucket");
     if (this.failed("inspectBucket")) {
       return { data: null, error: { kind: "unavailable" as const } };
     }
@@ -132,6 +156,7 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
     upsert: false;
   }) {
     this.operations.push("uploadObject");
+    this.throwIfRequested("uploadObject");
     this.uploads.push({ ...input, body: new Uint8Array(input.body) });
     if (this.failed("uploadObject")) {
       return { data: null, error: { kind: "unavailable" as const } };
@@ -156,6 +181,7 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
 
   async downloadObject(bucketName: string, objectPath: string) {
     this.operations.push("downloadObject");
+    this.throwIfRequested("downloadObject");
     if (this.failed("downloadObject")) {
       return { data: null, error: { kind: "unavailable" as const } };
     }
@@ -167,6 +193,7 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
 
   async inspectObject(bucketName: string, objectPath: string) {
     this.operations.push("inspectObject");
+    this.throwIfRequested("inspectObject");
     if (this.failed("inspectObject")) {
       return { data: null, error: { kind: "unavailable" as const } };
     }
@@ -180,6 +207,12 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
     if (!this.failures.has(operation)) return false;
     this.failures.delete(operation);
     return true;
+  }
+
+  private throwIfRequested(operation: StorageOperation): void {
+    if (!this.throws.has(operation)) return;
+    this.throws.delete(operation);
+    throw new Error("synthetic Storage exception must not escape");
   }
 
   private key(bucketName: string, objectPath: string): string {

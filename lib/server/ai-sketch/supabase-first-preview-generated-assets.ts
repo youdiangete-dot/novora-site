@@ -1,6 +1,8 @@
 // Dependency-injected generated-asset core. The Production facade that creates
 // a privileged Supabase client is mechanically server-only.
 
+import { inflateSync } from "node:zlib";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -152,6 +154,11 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
   let chunkIndex = 0;
   let sawIdat = false;
   let sawIend = false;
+  let sawPlte = false;
+  let sawChunkAfterIdat = false;
+  let pngColorType: number | null = null;
+  let expectedScanlineLength: number | null = null;
+  const idatChunks: Buffer[] = [];
 
   while (offset < buffer.length) {
     if (offset + 12 > buffer.length) return false;
@@ -172,6 +179,36 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
       if (type !== "IHDR" || length !== 13) return false;
       if (buffer.readUInt32BE(dataStart) !== 1024) return false;
       if (buffer.readUInt32BE(dataStart + 4) !== 1024) return false;
+      const bitDepth = buffer[dataStart + 8];
+      const colorType = buffer[dataStart + 9];
+      pngColorType = colorType;
+      const compressionMethod = buffer[dataStart + 10];
+      const filterMethod = buffer[dataStart + 11];
+      const interlaceMethod = buffer[dataStart + 12];
+      const channels = new Map([
+        [0, 1],
+        [2, 3],
+        [3, 1],
+        [4, 2],
+        [6, 4],
+      ]).get(colorType);
+      const legalDepths = new Map<number, readonly number[]>([
+        [0, [1, 2, 4, 8, 16]],
+        [2, [8, 16]],
+        [3, [1, 2, 4, 8]],
+        [4, [8, 16]],
+        [6, [8, 16]],
+      ]).get(colorType);
+      if (
+        !channels ||
+        !legalDepths?.includes(bitDepth) ||
+        compressionMethod !== 0 ||
+        filterMethod !== 0 ||
+        interlaceMethod !== 0
+      ) {
+        return false;
+      }
+      expectedScanlineLength = 1 + Math.ceil((1024 * channels * bitDepth) / 8);
     } else if (type === "IHDR") {
       return false;
     }
@@ -179,7 +216,28 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
     if (UNSAFE_METADATA_CHUNKS.has(type) || ANIMATION_CHUNKS.has(type)) {
       return false;
     }
-    if (type === "IDAT") sawIdat = true;
+    if (type === "PLTE") {
+      if (
+        sawPlte ||
+        sawIdat ||
+        pngColorType === 0 ||
+        pngColorType === 4 ||
+        length === 0 ||
+        length > 768 ||
+        length % 3 !== 0
+      ) {
+        return false;
+      }
+      sawPlte = true;
+    }
+    if (type === "IDAT") {
+      if (sawChunkAfterIdat) return false;
+      if (pngColorType === 3 && !sawPlte) return false;
+      sawIdat = true;
+      idatChunks.push(buffer.subarray(dataStart, dataEnd));
+    } else if (sawIdat && type !== "IEND") {
+      sawChunkAfterIdat = true;
+    }
     if (type === "IEND") {
       if (length !== 0 || sawIend || chunkEnd !== buffer.length) return false;
       sawIend = true;
@@ -189,7 +247,23 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
     chunkIndex += 1;
   }
 
-  return sawIdat && sawIend;
+  if (!sawIdat || !sawIend || expectedScanlineLength === null) return false;
+  const compressed = Buffer.concat(idatChunks);
+  if (compressed.length === 0) return false;
+  const expectedInflatedLength = expectedScanlineLength * 1024;
+
+  try {
+    const inflated = inflateSync(compressed, {
+      maxOutputLength: expectedInflatedLength + 1,
+    });
+    if (inflated.length !== expectedInflatedLength) return false;
+    for (let row = 0; row < 1024; row += 1) {
+      if (inflated[row * expectedScanlineLength] > 4) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function splitObjectPath(objectPath: string): { folder: string; filename: string } | null {
@@ -206,43 +280,51 @@ export function createFirstPreviewStorageClient(
 ): FirstPreviewStorageClient {
   return {
     async inspectBucket(bucketName) {
-      const { data, error } = await supabase.storage.getBucket(bucketName);
-      if (error || !data) {
+      try {
+        const { data, error } = await supabase.storage.getBucket(bucketName);
+        if (error || !data) {
+          return { data: null, error: { kind: "unavailable" } };
+        }
+        return {
+          data: { name: data.name, isPublic: data.public === true },
+          error: null,
+        };
+      } catch {
         return { data: null, error: { kind: "unavailable" } };
       }
-      return {
-        data: { name: data.name, isPublic: data.public === true },
-        error: null,
-      };
     },
 
     async uploadObject(input) {
-      const { error } = await supabase.storage
-        .from(input.bucketName)
-        .upload(input.objectPath, Buffer.from(input.body), {
-          contentType: input.contentType,
-          upsert: false,
-        });
-      if (!error) {
-        return { data: { disposition: "created" }, error: null };
+      try {
+        const { error } = await supabase.storage
+          .from(input.bucketName)
+          .upload(input.objectPath, Buffer.from(input.body), {
+            contentType: input.contentType,
+            upsert: false,
+          });
+        if (!error) {
+          return { data: { disposition: "created" }, error: null };
+        }
+        if (readStatusCode(error) === "409") {
+          return { data: { disposition: "existing" }, error: null };
+        }
+        return { data: null, error: { kind: "unavailable" } };
+      } catch {
+        return { data: null, error: { kind: "unavailable" } };
       }
-      if (readStatusCode(error) === "409") {
-        return { data: { disposition: "existing" }, error: null };
-      }
-      return { data: null, error: { kind: "unavailable" } };
     },
 
     async downloadObject(bucketName, objectPath) {
-      const { data, error } = await supabase.storage
-        .from(bucketName)
-        .download(objectPath);
-      if (error || !data) {
-        return {
-          data: null,
-          error: { kind: readStatusCode(error) === "404" ? "not_found" : "unavailable" },
-        };
-      }
       try {
+        const { data, error } = await supabase.storage
+          .from(bucketName)
+          .download(objectPath);
+        if (error || !data) {
+          return {
+            data: null,
+            error: { kind: readStatusCode(error) === "404" ? "not_found" : "unavailable" },
+          };
+        }
         return {
           data: new Uint8Array(await data.arrayBuffer()),
           error: null,
@@ -255,24 +337,28 @@ export function createFirstPreviewStorageClient(
     async inspectObject(bucketName, objectPath) {
       const split = splitObjectPath(objectPath);
       if (!split) return { data: null, error: { kind: "unavailable" } };
-      const { data, error } = await supabase.storage.from(bucketName).list(split.folder, {
-        limit: 100,
-        search: split.filename,
-      });
-      if (error || !data) {
+      try {
+        const { data, error } = await supabase.storage.from(bucketName).list(split.folder, {
+          limit: 100,
+          search: split.filename,
+        });
+        if (error || !data) {
+          return { data: null, error: { kind: "unavailable" } };
+        }
+        const exact = data.find((item) => item.name === split.filename);
+        if (!exact) return { data: null, error: { kind: "not_found" } };
+        const byteSize = readSafeInteger(exact.metadata?.size);
+        const mimeType = readMimeType(exact.metadata);
+        if (!isIsoTimestamp(exact.created_at) || byteSize === null || !mimeType) {
+          return { data: null, error: { kind: "unavailable" } };
+        }
+        return {
+          data: { createdAt: exact.created_at, byteSize, mimeType },
+          error: null,
+        };
+      } catch {
         return { data: null, error: { kind: "unavailable" } };
       }
-      const exact = data.find((item) => item.name === split.filename);
-      if (!exact) return { data: null, error: { kind: "not_found" } };
-      const byteSize = readSafeInteger(exact.metadata?.size);
-      const mimeType = readMimeType(exact.metadata);
-      if (!isIsoTimestamp(exact.created_at) || byteSize === null || !mimeType) {
-        return { data: null, error: { kind: "unavailable" } };
-      }
-      return {
-        data: { createdAt: exact.created_at, byteSize, mimeType },
-        error: null,
-      };
     },
   };
 }
@@ -329,7 +415,12 @@ export class SupabaseFirstPreviewGeneratedAssetStore
   private async requirePrivateBucket(): Promise<
     FirstPreviewGeneratedAssetResult<true>
   > {
-    const result = await this.storage.inspectBucket(FIRST_PREVIEW_ASSET_BUCKET);
+    let result;
+    try {
+      result = await this.storage.inspectBucket(FIRST_PREVIEW_ASSET_BUCKET);
+    } catch {
+      return failure("storage_unavailable");
+    }
     if (result.error || !result.data) return failure("storage_unavailable");
     if (
       result.data.name !== FIRST_PREVIEW_ASSET_BUCKET ||
@@ -349,19 +440,29 @@ export class SupabaseFirstPreviewGeneratedAssetStore
     if (privateBucket.ok === false) return privateBucket;
 
     const expectedHash = sha256FirstPreviewAsset(input.imageBytes);
-    const upload = await this.storage.uploadObject({
-      bucketName: FIRST_PREVIEW_ASSET_BUCKET,
-      objectPath,
-      body: input.imageBytes,
-      contentType: "image/png",
-      upsert: false,
-    });
+    let upload;
+    try {
+      upload = await this.storage.uploadObject({
+        bucketName: FIRST_PREVIEW_ASSET_BUCKET,
+        objectPath,
+        body: input.imageBytes,
+        contentType: "image/png",
+        upsert: false,
+      });
+    } catch {
+      return failure("storage_unavailable");
+    }
     if (upload.error || !upload.data) return failure("storage_unavailable");
 
-    const persisted = await this.storage.downloadObject(
-      FIRST_PREVIEW_ASSET_BUCKET,
-      objectPath,
-    );
+    let persisted;
+    try {
+      persisted = await this.storage.downloadObject(
+        FIRST_PREVIEW_ASSET_BUCKET,
+        objectPath,
+      );
+    } catch {
+      return failure("storage_unavailable");
+    }
     if (persisted.error || !persisted.data) {
       return persisted.error?.kind === "not_found"
         ? failure("asset_integrity_failure")
@@ -378,10 +479,15 @@ export class SupabaseFirstPreviewGeneratedAssetStore
       return failure("invalid_persisted_png");
     }
 
-    const object = await this.storage.inspectObject(
-      FIRST_PREVIEW_ASSET_BUCKET,
-      objectPath,
-    );
+    let object;
+    try {
+      object = await this.storage.inspectObject(
+        FIRST_PREVIEW_ASSET_BUCKET,
+        objectPath,
+      );
+    } catch {
+      return failure("storage_unavailable");
+    }
     if (object.error || !object.data) {
       return object.error?.kind === "not_found"
         ? failure("asset_integrity_failure")
@@ -444,10 +550,15 @@ export class SupabaseFirstPreviewGeneratedAssetStore
     const privateBucket = await this.requirePrivateBucket();
     if (privateBucket.ok === false) return privateBucket;
     const asset = authorization.descriptor.asset;
-    const download = await this.storage.downloadObject(
-      FIRST_PREVIEW_ASSET_BUCKET,
-      asset.assetId,
-    );
+    let download;
+    try {
+      download = await this.storage.downloadObject(
+        FIRST_PREVIEW_ASSET_BUCKET,
+        asset.assetId,
+      );
+    } catch {
+      return failure("storage_unavailable");
+    }
     if (download.error || !download.data) {
       return download.error?.kind === "not_found"
         ? failure("asset_not_found")
