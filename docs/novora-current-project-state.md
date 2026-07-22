@@ -3712,6 +3712,45 @@ and post-preview review linkage remain incomplete.
   successful Core-3 execution and evidence reconciliation; after that PASS no
   additional planning-only database loop may block implementation.
 
+- Agent 70B-38 (2026-07-22): the Owner-performed `MVP-CORE-3` sequence has
+  been independently reconciled against the immutable packet. The fresh Phase
+  0 artifact and all 26 ordered statement artifacts were rehashed and inspected
+  in place. The seven named Core constraints transitioned from unvalidated to
+  validated in their frozen order; all 17 Core object identities remained
+  complete and stable; all 10 Core indexes remained valid, ready, and live; and
+  the eight preservation checks retained the accepted privilege, default
+  privilege, RLS/policy, routine, event-trigger, and table-trigger posture. The
+  final database-exit result contains one complete 19-column row with three
+  target relations, 33 target objects, seven validated Core constraints, 10
+  healthy Core indexes, zero target-table rows, zero privilege or RLS/policy
+  mismatches, preserved routine/event-trigger/table-trigger counts of `2/1/2`,
+  and zero other-backend target locks.
+
+  The sanitized external-only reconciliation manifest is
+  `novora-fp-mvp-core-3-27-manifest-v1.json` (`130717` bytes / SHA-256
+  `576a3301eafc089329b21e5380214655e156ff770634d9187a71e777a319faac`).
+  It records exactly 26 Owner-performed manual SQL executions, zero automated
+  SQL executions, no failed item, and no retry, rerun, replacement evidence,
+  repair, rollback, cleanup, or later SQL. Because the result artifacts do not
+  establish the complete submitted SQL bytes,
+  `actual_canonical_sql_sha256` and `canonical_hash_equality` remain `null`.
+  Raw evidence was not copied into Git. Quiet-window continuity and unchanged
+  target context remain explicitly Owner-attested rather than independently
+  database-proven.
+
+  Durable status is now `MVP-CORE-3 = PASS`,
+  `FIRST_PREVIEW_MVP_DATABASE_CORE = COMPLETE`, and
+  `POST_MVP_DATABASE_HARDENING = DEFERRED_NOT_EXECUTED`. No database human
+  execution gate remains on the MVP Core path, and no additional planning-only
+  database loop may block application implementation. No Supabase connection,
+  SQL, constraint or index change, application change, Storage or Provider
+  action, environment change, deployment, customer-data inspection, cleanup,
+  or deletion was performed during reconciliation. The next separately approved
+  slice is the first server-only application-integration implementation against
+  the completed Core schema, with Production behavior remaining fail-closed and
+  without a real Supabase connection, Provider call, Storage action, deployment,
+  or customer-row inspection.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
