@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import {
   FIRST_PREVIEW_GENERATED_ASSET_CACHE_CONTROL,
   FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES,
@@ -12,6 +14,7 @@ import {
 import { FIRST_PREVIEW_ASSET_BUCKET } from "../../lib/server/ai-sketch/first-preview-persistence-contract";
 import {
   createFirstPreviewGeneratedAssetStoreBinding,
+  createFirstPreviewStorageClient,
   createSupabaseFirstPreviewGeneratedAssetStore,
 } from "../../lib/server/ai-sketch/supabase-first-preview-generated-assets";
 import {
@@ -31,6 +34,7 @@ const ASSET_ID = deriveFirstPreviewGeneratedAssetId({
   outputId: OUTPUT_ID,
 })!;
 const VALID_PNG = createSyntheticFirstPreviewPng();
+const CREATED_AT = "2026-07-22T12:00:00.000Z";
 const VALIDATED_AT = "2026-07-22T12:00:01.000Z";
 
 function input(
@@ -84,6 +88,135 @@ function descriptor(
     readinessStatus: "first_preview_ready",
     isCurrentCustomerPreview: true,
   };
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function addHighBitAliasToChunkName(
+  imageBytes: Uint8Array,
+  byteIndex: 0 | 1 | 2 | 3,
+): Uint8Array {
+  const buffer = Buffer.from(imageBytes);
+  let offset = 8;
+
+  while (offset + 12 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const typeStart = offset + 4;
+    const dataEnd = offset + 8 + length;
+    if (buffer.toString("ascii", typeStart, typeStart + 4) === "sRGB") {
+      buffer[typeStart + byteIndex] |= 0x80;
+      buffer.writeUInt32BE(
+        crc32(buffer.subarray(typeStart, dataEnd)),
+        dataEnd,
+      );
+      return new Uint8Array(buffer);
+    }
+    offset = dataEnd + 4;
+  }
+
+  throw new Error("synthetic sRGB chunk not found");
+}
+
+async function expectPngRejectedByPersistenceAndRead(
+  imageBytes: Uint8Array,
+): Promise<void> {
+  const persisted = harness();
+  expect(await persisted.store.persistValidatedPng(input({ imageBytes }))).toEqual({
+    ok: false,
+    code: "invalid_persisted_png",
+  });
+
+  const authorizedRead = harness();
+  authorizedRead.storage.seedObject(ASSET_ID, imageBytes);
+  authorizedRead.authorizer.result = {
+    authorized: true,
+    descriptor: descriptor(metadata({
+      byteSize: imageBytes.byteLength,
+      contentSha256: sha256FirstPreviewAsset(imageBytes),
+    })),
+  };
+  expect(await authorizedRead.store.readAuthorizedPng({
+    publicReference: PUBLIC_REFERENCE,
+    outputId: OUTPUT_ID,
+  })).toEqual({ ok: false, code: "asset_integrity_failure" });
+}
+
+type RawBucketInspection = Readonly<{
+  data: unknown;
+  error: unknown;
+}>;
+
+function actualAdapterHarness(
+  inspectBucket: () => Promise<RawBucketInspection>,
+) {
+  const objects = new Map<string, Uint8Array>();
+  const supabase = {
+    storage: {
+      getBucket: inspectBucket,
+      from(bucketName: string) {
+        return {
+          async upload(
+            objectPath: string,
+            body: Uint8Array,
+            options: { contentType: string; upsert: boolean },
+          ) {
+            const key = `${bucketName}\n${objectPath}`;
+            if (objects.has(key)) {
+              return { data: null, error: { statusCode: "409" } };
+            }
+            objects.set(key, new Uint8Array(body));
+            return {
+              data: { path: objectPath, contentType: options.contentType },
+              error: null,
+            };
+          },
+          async download(objectPath: string) {
+            const body = objects.get(`${bucketName}\n${objectPath}`);
+            return body
+              ? {
+                  data: {
+                    arrayBuffer: async () => new Uint8Array(body).buffer,
+                  },
+                  error: null,
+                }
+              : { data: null, error: { statusCode: "404" } };
+          },
+          async list(folder: string, options: { search: string }) {
+            const objectPath = `${folder}/${options.search}`;
+            const body = objects.get(`${bucketName}\n${objectPath}`);
+            return {
+              data: body
+                ? [{
+                    name: options.search,
+                    created_at: CREATED_AT,
+                    metadata: {
+                      size: body.byteLength,
+                      mimetype: "image/png",
+                    },
+                  }]
+                : [],
+              error: null,
+            };
+          },
+        };
+      },
+    },
+  } as unknown as SupabaseClient;
+  const storage = createFirstPreviewStorageClient(supabase);
+  const authorizer = new FakeFirstPreviewAssetAuthorizer();
+  const store = createSupabaseFirstPreviewGeneratedAssetStore(storage, authorizer, {
+    clock: () => VALIDATED_AT,
+  });
+  return { objects, authorizer, store };
 }
 
 test.describe("server-only private First Preview generated assets", () => {
@@ -204,6 +337,47 @@ test.describe("server-only private First Preview generated assets", () => {
     }
   });
 
+  test("rejects high-bit aliases in every raw PNG chunk-name byte on persistence and authorized read", async () => {
+    const base = createSyntheticFirstPreviewPng(1024, 1024, [
+      { type: "sRGB", data: "\0" },
+    ]);
+
+    for (const byteIndex of [0, 1, 2, 3] as const) {
+      await test.step(`chunk-name byte ${byteIndex + 1}`, async () => {
+        await expectPngRejectedByPersistenceAndRead(
+          addHighBitAliasToChunkName(base, byteIndex),
+        );
+      });
+    }
+  });
+
+  test("rejects the explicit unsafe PNG corpus on persistence and authorized read", async () => {
+    const incorrectSignature = new Uint8Array(VALID_PNG);
+    incorrectSignature[0] ^= 0x01;
+
+    const corruptChunkCrc = new Uint8Array(VALID_PNG);
+    corruptChunkCrc[32] ^= 0x01;
+
+    const cases = [
+      { name: "full-length incorrect signature", bytes: incorrectSignature },
+      { name: "corrupt chunk CRC", bytes: corruptChunkCrc },
+      {
+        name: "illegal color type",
+        bytes: createSyntheticFirstPreviewPng(1024, 1024, [], { colorType: 1 }),
+      },
+      {
+        name: "bytes following IEND",
+        bytes: new Uint8Array(Buffer.concat([Buffer.from(VALID_PNG), Buffer.from([0x00])])),
+      },
+    ];
+
+    for (const unsafePng of cases) {
+      await test.step(unsafePng.name, async () => {
+        await expectPngRejectedByPersistenceAndRead(unsafePng.bytes);
+      });
+    }
+  });
+
   test("rejects missing, oversized, or malformed identity input before Storage access", async () => {
     for (const invalidInput of [
       input({ outputId: "not-a-uuid" }),
@@ -235,6 +409,93 @@ test.describe("server-only private First Preview generated assets", () => {
       code: "privacy_failure",
     });
     expect(mismatched.storage.uploads).toEqual([]);
+  });
+
+  test("actual adapter permits persistence and authorized read only for literal public false", async () => {
+    const actual = actualAdapterHarness(async () => ({
+      data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: false },
+      error: null,
+    }));
+    const persisted = await actual.store.persistValidatedPng(input());
+    expect(persisted).toMatchObject({
+      ok: true,
+      value: { disposition: "created" },
+    });
+    if (!persisted.ok) throw new Error("literal public false should permit persistence");
+
+    actual.authorizer.result = {
+      authorized: true,
+      descriptor: descriptor(persisted.value.asset),
+    };
+    expect(await actual.store.readAuthorizedPng({
+      publicReference: PUBLIC_REFERENCE,
+      outputId: OUTPUT_ID,
+    })).toMatchObject({ ok: true });
+  });
+
+  test("actual adapter rejects every non-false or unknown bucket privacy value", async () => {
+    const unsafeBucketData = [
+      { name: "public true", data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: true } },
+      { name: "public undefined", data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: undefined } },
+      { name: "public null", data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: null } },
+      { name: "missing public", data: { name: FIRST_PREVIEW_ASSET_BUCKET } },
+      { name: "string public", data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: "false" } },
+      { name: "numeric public", data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: 0 } },
+      { name: "object public", data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: {} } },
+    ];
+
+    for (const scenario of unsafeBucketData) {
+      await test.step(scenario.name, async () => {
+        const actual = actualAdapterHarness(async () => ({
+          data: scenario.data,
+          error: null,
+        }));
+        expect(await actual.store.persistValidatedPng(input())).toEqual({
+          ok: false,
+          code: "privacy_failure",
+        });
+
+        actual.objects.set(`${FIRST_PREVIEW_ASSET_BUCKET}\n${ASSET_ID}`, VALID_PNG);
+        actual.authorizer.result = { authorized: true, descriptor: descriptor() };
+        expect(await actual.store.readAuthorizedPng({
+          publicReference: PUBLIC_REFERENCE,
+          outputId: OUTPUT_ID,
+        })).toEqual({ ok: false, code: "privacy_failure" });
+      });
+    }
+  });
+
+  test("actual adapter rejects returned bucket-inspection errors for persistence and authorized read", async () => {
+    const actual = actualAdapterHarness(async () => ({
+      data: { name: FIRST_PREVIEW_ASSET_BUCKET, public: false },
+      error: { message: "synthetic bucket inspection error" },
+    }));
+    expect(await actual.store.persistValidatedPng(input())).toEqual({
+      ok: false,
+      code: "storage_unavailable",
+    });
+
+    actual.authorizer.result = { authorized: true, descriptor: descriptor() };
+    expect(await actual.store.readAuthorizedPng({
+      publicReference: PUBLIC_REFERENCE,
+      outputId: OUTPUT_ID,
+    })).toEqual({ ok: false, code: "storage_unavailable" });
+  });
+
+  test("actual adapter rejects thrown bucket-inspection errors for persistence and authorized read", async () => {
+    const actual = actualAdapterHarness(async () => {
+      throw new Error("synthetic bucket inspection exception");
+    });
+    expect(await actual.store.persistValidatedPng(input())).toEqual({
+      ok: false,
+      code: "storage_unavailable",
+    });
+
+    actual.authorizer.result = { authorized: true, descriptor: descriptor() };
+    expect(await actual.store.readAuthorizedPng({
+      publicReference: PUBLIC_REFERENCE,
+      outputId: OUTPUT_ID,
+    })).toEqual({ ok: false, code: "storage_unavailable" });
   });
 
   test("normalizes Storage failures without exposing raw details", async () => {

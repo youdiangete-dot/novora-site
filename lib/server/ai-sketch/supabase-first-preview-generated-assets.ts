@@ -170,13 +170,21 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
     const chunkEnd = dataEnd + 4;
     if (chunkEnd > buffer.length) return false;
 
-    const type = buffer.toString("ascii", offset + 4, offset + 8);
-    if (!/^[A-Za-z]{4}$/.test(type)) return false;
-    if (type[2] !== type[2].toUpperCase()) return false;
+    const typeBytes = buffer.subarray(offset + 4, offset + 8);
     if (
-      type[0] === type[0].toUpperCase() &&
-      !KNOWN_CRITICAL_CHUNKS.has(type)
+      !typeBytes.every(
+        (byte) =>
+          (byte >= 0x41 && byte <= 0x5a) ||
+          (byte >= 0x61 && byte <= 0x7a),
+      )
     ) {
+      return false;
+    }
+    const isCritical = (typeBytes[0] & 0x20) === 0;
+    const reservedBitSet = (typeBytes[2] & 0x20) !== 0;
+    const type = typeBytes.toString("ascii");
+    if (reservedBitSet) return false;
+    if (isCritical && !KNOWN_CRITICAL_CHUNKS.has(type)) {
       return false;
     }
     const expectedCrc = buffer.readUInt32BE(dataEnd);
@@ -302,7 +310,7 @@ export function createFirstPreviewStorageClient(
           return { data: null, error: { kind: "unavailable" } };
         }
         return {
-          data: { name: data.name, isPublic: data.public === true },
+          data: { name: data.name, isPublic: data.public !== false },
           error: null,
         };
       } catch {
