@@ -108,8 +108,8 @@ table after independent review.
 | 22 | `CORE3-F05-UNRELATED-DEFAULTS` | 8.5 | `2109` | `2a71a633e2435ec1891b4afd2d61a54040e00cc34467809513d6abf45ec1edb4` | `novora-fp-mvp-core-3-22-unrelated-defaults.csv` | `novora-fp-mvp-core-3-22-unrelated-defaults-error.png` |
 | 23 | `CORE3-F06-ROUTINES` | 8.6 | `935` | `33a7bff092fe1c355a674bfb1a137ac22b0d483a68740d2bdc23d6bd5ac26f9f` | `novora-fp-mvp-core-3-23-routines.csv` | `novora-fp-mvp-core-3-23-routines-error.png` |
 | 24 | `CORE3-F07-EVENT-TRIGGER` | 8.7 | `454` | `d0ecb6156f5d14c5f251714c611264c64c08955469ca3b1e7339a2d84f912739` | `novora-fp-mvp-core-3-24-event-trigger.csv` | `novora-fp-mvp-core-3-24-event-trigger-error.png` |
-| 25 | `CORE3-F08-TABLE-TRIGGERS` | 8.8 | `972` | `e3ae3a30e49bf569c38bc64ceaba4e2d18e9beb993f45a6c55bca87808ec7a18` | `novora-fp-mvp-core-3-25-table-triggers.csv` | `novora-fp-mvp-core-3-25-table-triggers-error.png` |
-| 26 | `CORE3-FINAL-DATABASE-EXIT` | 9.1 | `8178` | `e7eeedf7ca9e8b87f04da69927c0f283df56490e54014f8bf890cda034a08747` | `novora-fp-mvp-core-3-26-final-database-exit.csv` | `novora-fp-mvp-core-3-26-final-database-exit-error.png` |
+| 25 | `CORE3-F08-TABLE-TRIGGERS` | 8.8 | `1528` | `8647394e3df2cbc8a8ab95e8a4f7e004e8da1d14e5bed082d8b8995682954ba4` | `novora-fp-mvp-core-3-25-table-triggers.csv` | `novora-fp-mvp-core-3-25-table-triggers-error.png` |
+| 26 | `CORE3-FINAL-DATABASE-EXIT` | 9.1 | `8162` | `0c7373c04cec036becb1676b4fed16f0dc6bd72a74a16b08ba78db32c48a3415` | `novora-fp-mvp-core-3-26-final-database-exit.csv` | `novora-fp-mvp-core-3-26-final-database-exit-error.png` |
 
 After Step 26 PASS or any earlier STOP, execute no more SQL pending independent
 reconciliation and creation of external sanitized manifest
@@ -565,30 +565,49 @@ PASS is the exact single enabled `ensure_rls` row previously hashed
 
 ```sql
 SELECT
-  'trigger_on_target_table'::text AS edge_type,
-  routine_schema.nspname AS source_schema,
-  routine.proname AS source_name,
-  pg_catalog.pg_get_userbyid(routine.proowner) AS source_owner,
-  routine.prosecdef AS security_definer,
-  table_schema.nspname AS target_schema,
-  target_table.relname AS target_name,
-  target_table.relkind AS target_kind
-FROM pg_catalog.pg_trigger trigger_row
-JOIN pg_catalog.pg_class target_table ON target_table.oid = trigger_row.tgrelid
-JOIN pg_catalog.pg_namespace table_schema ON table_schema.oid = target_table.relnamespace
-JOIN pg_catalog.pg_proc routine ON routine.oid = trigger_row.tgfoid
-JOIN pg_catalog.pg_namespace routine_schema ON routine_schema.oid = routine.pronamespace
-WHERE NOT trigger_row.tgisinternal
-  AND table_schema.nspname = 'public'
-  AND target_table.relname IN ('ai_sketch_jobs', 'concept_briefs')
-  AND routine_schema.nspname = 'public'
-  AND routine.proname = 'set_updated_at'
-ORDER BY target_table.relname;
+  table_ns.nspname AS table_schema,
+  table_rel.relname AS table_name,
+  trig.tgname AS trigger_name,
+  CASE
+    WHEN (trig.tgtype & 64) = 64 THEN 'instead_of'
+    WHEN (trig.tgtype & 2) = 2 THEN 'before'
+    ELSE 'after'
+  END AS timing,
+  (trig.tgtype & 1) = 1 AS row_level,
+  (trig.tgtype & 4) = 4 AS fires_on_row_add,
+  (trig.tgtype & 16) = 16 AS fires_on_row_change,
+  (trig.tgtype & 8) = 8 AS fires_on_row_remove,
+  (trig.tgtype & 32) = 32 AS fires_on_statement_clear,
+  CASE trig.tgenabled
+    WHEN 'O' THEN 'origin_and_local'
+    WHEN 'D' THEN 'disabled'
+    WHEN 'R' THEN 'replica'
+    WHEN 'A' THEN 'always'
+    ELSE trig.tgenabled::text
+  END AS enabled_state,
+  function_ns.nspname AS function_schema,
+  proc.proname AS function_name,
+  pg_catalog.pg_get_function_identity_arguments(proc.oid) AS function_arguments,
+  proc.prosecdef AS function_runs_with_owner_privilege,
+  pg_catalog.pg_get_triggerdef(trig.oid, true) AS exact_definition
+FROM pg_catalog.pg_trigger trig
+JOIN pg_catalog.pg_class table_rel ON table_rel.oid = trig.tgrelid
+JOIN pg_catalog.pg_namespace table_ns ON table_ns.oid = table_rel.relnamespace
+JOIN pg_catalog.pg_proc proc ON proc.oid = trig.tgfoid
+JOIN pg_catalog.pg_namespace function_ns ON function_ns.oid = proc.pronamespace
+WHERE table_ns.nspname = 'public'
+  AND table_rel.relname IN ('ai_sketch_jobs', 'ai_sketch_outputs', 'ai_sketch_reviews', 'concept_briefs', 'concept_brief_reference_assets', 'admin_notes')
+  AND NOT trig.tgisinternal
+ORDER BY table_rel.relname, trig.tgname;
 ```
 
-PASS is the exact two accepted `set_updated_at` edges to `ai_sketch_jobs` and
-`concept_briefs`, previously hashed
-`3d7082f9e47ffa2b9c8869900ca57973ababe017137a8c39208f74990f6b14a0`.
+PASS is the exact unfiltered two-row accepted trigger inventory: enabled
+before-update row triggers `set_ai_sketch_jobs_updated_at` and
+`set_concept_briefs_updated_at`, both invoking the invoker-security
+`public.set_updated_at()` function with the accepted exact definitions. There
+must be no additional non-internal trigger on any of the six approved tables.
+The accepted deterministic inventory was previously hashed
+`9a543349165874c89e3043cd0c97ac23e42740f7f2f4f87f96813ebe37588307`.
 
 ## 9. Final database-exit SQL
 
@@ -666,7 +685,7 @@ SELECT
   (SELECT count(*) FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE namespace.nspname = 'public' AND relation.relname IN ('admin_notes', 'ai_sketch_jobs', 'ai_sketch_outputs', 'ai_sketch_reviews', 'concept_brief_reference_assets', 'concept_briefs') AND (pg_catalog.pg_get_userbyid(relation.relowner) <> 'postgres' OR relation.relrowsecurity IS NOT TRUE OR relation.relforcerowsecurity IS NOT FALSE OR EXISTS (SELECT 1 FROM pg_catalog.pg_policy policy WHERE policy.polrelid = relation.oid))) AS rls_policy_mismatch_count,
   (SELECT count(*) FROM pg_catalog.pg_proc routine JOIN pg_catalog.pg_namespace namespace ON namespace.oid = routine.pronamespace WHERE namespace.nspname = 'public' AND routine.proname IN ('rls_auto_enable', 'set_updated_at')) AS preserved_routine_count,
   (SELECT count(*) FROM pg_catalog.pg_event_trigger event_trigger WHERE event_trigger.evtname = 'ensure_rls') AS preserved_event_trigger_count,
-  (SELECT count(*) FROM pg_catalog.pg_trigger trigger_row JOIN pg_catalog.pg_class target ON target.oid = trigger_row.tgrelid JOIN pg_catalog.pg_namespace namespace ON namespace.oid = target.relnamespace JOIN pg_catalog.pg_proc routine ON routine.oid = trigger_row.tgfoid WHERE NOT trigger_row.tgisinternal AND namespace.nspname = 'public' AND target.relname IN ('ai_sketch_jobs', 'concept_briefs') AND routine.proname = 'set_updated_at') AS preserved_table_trigger_count,
+  (SELECT count(*) FROM pg_catalog.pg_trigger trigger_row JOIN pg_catalog.pg_class target ON target.oid = trigger_row.tgrelid JOIN pg_catalog.pg_namespace namespace ON namespace.oid = target.relnamespace WHERE NOT trigger_row.tgisinternal AND namespace.nspname = 'public' AND target.relname IN ('admin_notes', 'ai_sketch_jobs', 'ai_sketch_outputs', 'ai_sketch_reviews', 'concept_brief_reference_assets', 'concept_briefs')) AS preserved_table_trigger_count,
   (SELECT count(*) FROM pg_catalog.pg_locks lock_object WHERE lock_object.locktype = 'relation' AND lock_object.relation IN (SELECT relation_oid FROM target_relations) AND lock_object.pid IS DISTINCT FROM pg_catalog.pg_backend_pid()) AS other_backend_target_lock_count;
 ```
 
