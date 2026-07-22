@@ -103,7 +103,11 @@ export type FirstPreviewOutputRecord = Readonly<{
 export type FirstPreviewReviewRecord = Readonly<{
   outputId: string;
   conceptBriefId: string;
-  reviewStatus: "draft_generated_internal_only";
+  reviewStatus:
+    | "internal_draft_not_generated"
+    | "draft_generated_internal_only"
+    | "needs_revision"
+    | "approved_for_customer";
   createdAt: string;
 }>;
 

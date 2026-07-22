@@ -280,6 +280,24 @@ test.describe("Supabase-backed First Preview repository", () => {
       outputId: OUTPUT_ID,
       reviewStatus: "draft_generated_internal_only",
     });
+
+    client.reviews.set(BRIEF_ID, {
+      ...client.reviews.get(BRIEF_ID)!,
+      review_status: "needs_revision",
+    });
+    expect(
+      await repository.markOutputReady({
+        outputId: OUTPUT_ID,
+        jobId: JOB_ID,
+        conceptBriefId: BRIEF_ID,
+        gates: PASSING_GATES,
+        automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { readinessStatus: "first_preview_ready" },
+    });
+    expect(client.insertedReviewRows).toHaveLength(1);
   });
 
   test("does not create a review or ready state when any automatic gate fails", async () => {

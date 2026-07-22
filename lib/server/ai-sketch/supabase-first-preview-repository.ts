@@ -264,6 +264,12 @@ const FAILURE_CATEGORIES = new Set<FirstPreviewFailureCategory>([
 const JOB_STATUSES = new Set<FirstPreviewJobStatus>([
   "queued", "processing", "succeeded", "failed", "timed_out", "cancelled",
 ]);
+const REVIEW_STATUSES = new Set<FirstPreviewReviewRecord["reviewStatus"]>([
+  "internal_draft_not_generated",
+  "draft_generated_internal_only",
+  "needs_revision",
+  "approved_for_customer",
+]);
 const RETRYABLE_FAILURES = new Set<FirstPreviewFailureCategory>([
   "rate_limited", "provider_unavailable", "network_failure",
 ]);
@@ -416,7 +422,7 @@ function mapReview(row: FirstPreviewReviewRow | null): FirstPreviewReviewRecord 
   if (
     !row || !UUID_PATTERN.test(row.ai_sketch_output_id) ||
     !UUID_PATTERN.test(row.concept_brief_id) ||
-    row.review_status !== "draft_generated_internal_only" ||
+    !REVIEW_STATUSES.has(row.review_status as FirstPreviewReviewRecord["reviewStatus"]) ||
     !isIsoTimestamp(row.created_at)
   ) {
     return null;
@@ -424,7 +430,7 @@ function mapReview(row: FirstPreviewReviewRow | null): FirstPreviewReviewRecord 
   return {
     outputId: row.ai_sketch_output_id,
     conceptBriefId: row.concept_brief_id,
-    reviewStatus: "draft_generated_internal_only",
+    reviewStatus: row.review_status as FirstPreviewReviewRecord["reviewStatus"],
     createdAt: row.created_at,
   };
 }
