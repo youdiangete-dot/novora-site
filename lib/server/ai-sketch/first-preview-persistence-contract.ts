@@ -17,12 +17,35 @@ export type FirstPreviewJobStatus =
 export type FirstPreviewAttemptNumber = 1 | 2;
 
 export type FirstPreviewFailureCategory =
-  | "provider_failure"
-  | "invalid_output"
-  | "asset_persistence_failure"
-  | "automatic_gate_failure"
+  | "rate_limited"
+  | "provider_unavailable"
+  | "network_failure"
+  | "invalid_provider_response"
+  | "storage_failure"
+  | "privacy_failure"
+  | "access_failure"
+  | "lifecycle_conflict"
   | "timeout"
   | "cancelled";
+
+export const FIRST_PREVIEW_PROVIDER_PROFILE = {
+  providerName: "openai",
+  modelName: "gpt-image-2-2026-04-21",
+  providerEndpoint: "/v1/images/generations",
+  requestImageCount: 1,
+  requestStreaming: false,
+  requestPartialImages: 0,
+  requestSize: "1024x1024",
+  requestQuality: "medium",
+  outputFormat: "png",
+  moderationMode: "auto",
+} as const;
+
+export const FIRST_PREVIEW_ASSET_BUCKET = "novora-ai-sketches" as const;
+export const FIRST_PREVIEW_ASSET_VALIDATOR_VERSION =
+  "novora_first_preview_asset_validator_v1" as const;
+export const FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION =
+  "novora_first_preview_automatic_gates_v1" as const;
 
 export type FirstPreviewJobRecord = Readonly<{
   id: string;
@@ -37,9 +60,21 @@ export type FirstPreviewJobRecord = Readonly<{
   designSpecSha256: string;
   handSketchInstructionVersion: string;
   handSketchInstructionSha256: string;
+  providerName: typeof FIRST_PREVIEW_PROVIDER_PROFILE.providerName;
+  providerRequestId: string | null;
+  estimatedCostMicros: number;
+  actualCostMicros: number | null;
+  costCurrency: "USD";
+  pricingAssumptionVersion: string;
   status: FirstPreviewJobStatus;
   failureCategory: FirstPreviewFailureCategory | null;
   retryEligible: boolean | null;
+  startedAt: string | null;
+  deadlineAt: string | null;
+  completedAt: string | null;
+  failedAt: string | null;
+  cancelledAt: string | null;
+  timedOutAt: string | null;
   createdAt: string;
   updatedAt: string;
 }>;
@@ -50,10 +85,26 @@ export type FirstPreviewOutputRecord = Readonly<{
   conceptBriefId: string;
   assetId: string;
   assetPersisted: true;
-  readinessStatus: "not_ready" | "first_preview_ready";
+  bucketName: typeof FIRST_PREVIEW_ASSET_BUCKET;
+  mimeType: "image/png";
+  byteSize: number;
+  widthPx: 1024;
+  heightPx: 1024;
+  contentSha256: string;
+  assetCreatedAt: string;
+  assetValidatedAt: string;
+  readinessStatus: "not_ready" | "first_preview_ready" | "revoked";
   isCurrentCustomerPreview: boolean;
   createdAt: string;
   readyAt: string | null;
+  revokedAt: string | null;
+}>;
+
+export type FirstPreviewReviewRecord = Readonly<{
+  outputId: string;
+  conceptBriefId: string;
+  reviewStatus: "draft_generated_internal_only";
+  createdAt: string;
 }>;
 
 export type FirstPreviewRepositoryFailureCode =
@@ -68,6 +119,7 @@ export type FirstPreviewRepositoryFailureCode =
   | "retry_not_eligible"
   | "output_not_found"
   | "output_already_exists"
+  | "review_linkage_conflict"
   | "linkage_mismatch"
   | "asset_not_persisted"
   | "automatic_gates_not_passed";
@@ -95,6 +147,9 @@ export type ReserveFirstPreviewJobInput = Readonly<{
   designSpecSha256: string;
   handSketchInstructionVersion: string;
   handSketchInstructionSha256: string;
+  estimatedCostMicros: number;
+  costCurrency: "USD";
+  pricingAssumptionVersion: string;
 }>;
 
 export type FirstPreviewCanonicalIdentity = Readonly<{
@@ -124,6 +179,14 @@ export type PersistFirstPreviewOutputInput = Readonly<{
   conceptBriefId: string;
   assetId: string;
   assetPersisted: boolean;
+  bucketName: typeof FIRST_PREVIEW_ASSET_BUCKET;
+  mimeType: "image/png";
+  byteSize: number;
+  widthPx: 1024;
+  heightPx: 1024;
+  contentSha256: string;
+  assetCreatedAt: string;
+  assetValidatedAt: string;
 }>;
 
 export type FirstPreviewAutomaticGateEvidence = Readonly<{
@@ -140,15 +203,31 @@ export type MarkFirstPreviewReadyInput = Readonly<{
   jobId: string;
   conceptBriefId: string;
   gates: FirstPreviewAutomaticGateEvidence;
+  automaticGatePolicyVersion: typeof FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION;
+}>;
+
+export type RecordFirstPreviewProviderRequestInput = Readonly<{
+  providerRequestId: string;
+}>;
+
+export type RecordFirstPreviewJobSuccessInput = Readonly<{
+  actualCostMicros: number;
 }>;
 
 export type RecordFirstPreviewJobFailureInput = Readonly<{
   category: FirstPreviewFailureCategory;
   retryEligible: boolean;
+  actualCostMicros: number | null;
+}>;
+
+export type RevokeFirstPreviewOutputInput = Readonly<{
+  outputId: string;
+  jobId: string;
+  conceptBriefId: string;
 }>;
 
 export interface FirstPreviewRepository {
-  readonly kind: "unavailable" | "memory_fake";
+  readonly kind: "unavailable" | "memory_fake" | "supabase";
 
   reserveJob(input: ReserveFirstPreviewJobInput): Promise<ReserveFirstPreviewJobResult>;
 
@@ -156,8 +235,14 @@ export interface FirstPreviewRepository {
     jobId: string,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>>;
 
+  recordProviderRequest(
+    jobId: string,
+    request: RecordFirstPreviewProviderRequestInput,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>>;
+
   recordJobSucceeded(
     jobId: string,
+    success: RecordFirstPreviewJobSuccessInput,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>>;
 
   recordJobFailure(
@@ -173,9 +258,17 @@ export interface FirstPreviewRepository {
     input: MarkFirstPreviewReadyInput,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>>;
 
+  revokeOutput(
+    input: RevokeFirstPreviewOutputInput,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>>;
+
   findJobByIdempotencyKey(idempotencyKey: string): Promise<FirstPreviewJobRecord | null>;
 
   findCustomerReadyOutput(conceptBriefId: string): Promise<FirstPreviewOutputRecord | null>;
+
+  findReviewByConceptBriefId(
+    conceptBriefId: string,
+  ): Promise<FirstPreviewReviewRecord | null>;
 }
 
 const UUID_PATTERN =
@@ -198,6 +291,10 @@ export function isValidFirstPreviewReservationIdentity(
     SHA256_PATTERN.test(input.designSpecSha256) &&
     isTrimmedSystemIdentifier(input.handSketchInstructionVersion) &&
     SHA256_PATTERN.test(input.handSketchInstructionSha256) &&
+    Number.isSafeInteger(input.estimatedCostMicros) &&
+    input.estimatedCostMicros >= 0 &&
+    input.costCurrency === "USD" &&
+    isTrimmedSystemIdentifier(input.pricingAssumptionVersion) &&
     (input.attemptNumber === 1
       ? input.parentJobId === null
       : input.parentJobId !== null)
@@ -258,6 +355,10 @@ class UnavailableFirstPreviewRepository implements FirstPreviewRepository {
     return unavailable();
   }
 
+  recordProviderRequest(): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
+    return unavailable();
+  }
+
   recordJobFailure(): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
     return unavailable();
   }
@@ -270,11 +371,19 @@ class UnavailableFirstPreviewRepository implements FirstPreviewRepository {
     return unavailable();
   }
 
+  revokeOutput(): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    return unavailable();
+  }
+
   findJobByIdempotencyKey(): Promise<null> {
     return Promise.resolve(null);
   }
 
   findCustomerReadyOutput(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
+  findReviewByConceptBriefId(): Promise<null> {
     return Promise.resolve(null);
   }
 }

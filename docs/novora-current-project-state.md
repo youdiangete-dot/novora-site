@@ -3751,6 +3751,39 @@ and post-preview review linkage remain incomplete.
   without a real Supabase connection, Provider call, Storage action, deployment,
   or customer-row inspection.
 
+- Agent 70B-39 (2026-07-22): the first server-only application-integration
+  slice adds a production-capable, dependency-injected Supabase repository for
+  the existing First Preview persistence contract. The Production facade keeps
+  a mechanical `server-only` boundary, creates no client when the reviewed
+  service-role configuration is unavailable, and has no current route caller;
+  therefore this slice changes no customer-visible behavior and performs no
+  automatic Production query by itself.
+
+  The repository maps only to `ai_sketch_jobs`, `ai_sketch_outputs`, and
+  `ai_sketch_reviews`. It preserves the frozen deterministic idempotency
+  identity, bounded attempt-1/attempt-2 lineage, one active/completed identity,
+  pinned OpenAI generation profile, nonnegative USD cost metadata, Provider
+  request identity, guarded queued/processing/terminal transitions, and
+  idempotent output persistence. Output writes require prior private-asset
+  persistence plus complete validated PNG metadata and remain `not_ready`.
+  Readiness requires every automatic gate, a fixed policy version, a succeeded
+  linked Job, and an internal Review linked to the exact Output and Concept
+  Brief. The Review is created as `draft_generated_internal_only`; no `pending`
+  state or human approval is introduced for initial First Preview readiness.
+  Revocation clears the current marker while preserving Output and Review
+  history. No delete method exists.
+
+  Focused dependency-injected fake-client and in-memory tests cover reservation,
+  replay, concurrency and retry boundaries, Provider request identity, cost
+  metadata, asset validation metadata, output idempotency, safe database
+  failure, ready/not-ready behavior, exact Review linkage, review-link conflict,
+  and readiness revocation. Type checking, the focused server persistence suite,
+  and the Production build pass without a Supabase connection, real Provider,
+  Storage operation, credentials, environment change, deployment, customer-row
+  inspection, or route/UI change. Private Storage writes and access, orchestration
+  wiring, secure customer access, real-provider configuration/calls, and complete
+  customer E2E remain separately gated future slices.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
