@@ -80,7 +80,7 @@ function harness() {
   return { client, repository };
 }
 
-async function reserveAndStart() {
+async function reserveStartedJob() {
   const state = harness();
   expect(await state.repository.reserveJob(reservation())).toMatchObject({
     ok: true,
@@ -90,6 +90,11 @@ async function reserveAndStart() {
     ok: true,
     value: { status: "processing" },
   });
+  return state;
+}
+
+async function reserveAndStart() {
+  const state = await reserveStartedJob();
   expect(
     await state.repository.recordProviderRequest(JOB_ID, {
       providerRequestId: "openai-request-001",
@@ -154,7 +159,7 @@ test.describe("Supabase-backed First Preview repository", () => {
     });
   });
 
-  test("persists a unique Provider request identity only while processing", async () => {
+  test("persists an immutable per-job Provider request identity only while processing", async () => {
     const { client, repository } = await reserveAndStart();
     const recorded = await repository.recordProviderRequest(JOB_ID, {
       providerRequestId: "openai-request-001",
@@ -173,6 +178,25 @@ test.describe("Supabase-backed First Preview repository", () => {
     expect(replay).toEqual(recorded);
     expect(conflictingReplacement).toEqual({ ok: false, code: "idempotency_conflict" });
     expect(client.jobs.get(JOB_ID)?.provider_request_id).toBe("openai-request-001");
+  });
+
+  test("atomically rejects a concurrent Provider request identity replacement", async () => {
+    const { client, repository } = await reserveStartedJob();
+    const results = await Promise.all([
+      repository.recordProviderRequest(JOB_ID, { providerRequestId: "openai-request-race-a" }),
+      repository.recordProviderRequest(JOB_ID, { providerRequestId: "openai-request-race-b" }),
+    ]);
+
+    const successes = results.filter((result) => result.ok);
+    const failureCodes = results.flatMap((result) => result.ok === false ? [result.code] : []);
+    const persistedRequestId = client.jobs.get(JOB_ID)?.provider_request_id;
+    expect(successes).toHaveLength(1);
+    expect(failureCodes).toEqual(["idempotency_conflict"]);
+    expect(["openai-request-race-a", "openai-request-race-b"]).toContain(persistedRequestId);
+    expect(results).toContainEqual(expect.objectContaining({
+      ok: true,
+      value: expect.objectContaining({ providerRequestId: persistedRequestId }),
+    }));
   });
 
   test("uses database uniqueness plus bounded parent rules for one eligible retry", async () => {
@@ -241,9 +265,20 @@ test.describe("Supabase-backed First Preview repository", () => {
     expect(
       await repository.persistOutput(output({ conceptBriefId: OTHER_BRIEF_ID })),
     ).toEqual({ ok: false, code: "linkage_mismatch" });
-    expect(
-      await repository.persistOutput(output({ assetId: "https://provider.invalid/temporary.png" })),
-    ).toEqual({ ok: false, code: "invalid_input" });
+    for (const assetId of [
+      "https://provider.invalid/temporary.png",
+      "https:provider.invalid/temporary.png",
+      "data:image/png;base64,temporary",
+      "first-preview\\123e4567\\output.png",
+      "first-preview/123e4567/../output.png",
+      "first-preview/123e4567/output.png?token=temporary",
+      "first-preview/123e4567/output.png#fragment",
+    ]) {
+      expect(await repository.persistOutput(output({ assetId }))).toEqual({
+        ok: false,
+        code: "invalid_input",
+      });
+    }
     expect(client.outputs.size).toBe(0);
   });
 

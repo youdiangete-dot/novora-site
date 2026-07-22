@@ -113,6 +113,11 @@ export interface FirstPreviewDatabaseClient {
     allowedStatuses: readonly FirstPreviewJobStatus[],
     patch: RowPatch,
   ): DatabaseResult<FirstPreviewJobRow>;
+  claimProviderRequestIdentity(
+    id: string,
+    requestId: string,
+    updatedAt: string,
+  ): DatabaseResult<FirstPreviewJobRow>;
   insertOutput(row: RowPatch): DatabaseResult<FirstPreviewOutputRow>;
   findOutputById(id: string): DatabaseResult<FirstPreviewOutputRow>;
   findOutputByJobId(jobId: string): DatabaseResult<FirstPreviewOutputRow>;
@@ -199,6 +204,16 @@ export function createFirstPreviewDatabaseClient(
         .update(patch)
         .eq("id", id)
         .in("status", [...allowedStatuses])
+        .select(JOB_COLUMNS)
+        .maybeSingle();
+    },
+    async claimProviderRequestIdentity(id, requestId, updatedAt) {
+      return supabase
+        .from("ai_sketch_jobs")
+        .update({ provider_request_id: requestId, updated_at: updatedAt })
+        .eq("id", id)
+        .eq("status", "processing")
+        .is("provider_request_id", null)
         .select(JOB_COLUMNS)
         .maybeSingle();
     },
@@ -315,9 +330,7 @@ function isSafeAssetPath(value: string): boolean {
   return (
     isNonblank(value) &&
     value.length <= 512 &&
-    !value.includes("://") &&
-    !value.startsWith("/") &&
-    !value.split("/").includes("..")
+    /^first-preview\/(?:[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/)*[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.png$/.test(value)
   );
 }
 
@@ -581,9 +594,29 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     if (duplicateResult.data && !duplicate) return failure("repository_unavailable");
     if (duplicate && duplicate.id !== jobId) return failure("idempotency_conflict");
     if (duplicate?.id === jobId) return { ok: true, value: duplicate };
-    return this.updateJob(jobId, ["processing"], {
-      provider_request_id: request.providerRequestId,
-    });
+    const claimResult = await this.database.claimProviderRequestIdentity(
+      jobId,
+      request.providerRequestId,
+      this.clock(),
+    );
+    if (claimResult.error) return failure("repository_unavailable");
+    const claimed = mapJob(claimResult.data);
+    if (claimed) return { ok: true, value: claimed };
+    if (claimResult.data) return failure("repository_unavailable");
+
+    const winnerResult = await this.database.findJobById(jobId);
+    if (winnerResult.error) return failure("repository_unavailable");
+    const winner = mapJob(winnerResult.data);
+    if (!winner) return winnerResult.data
+      ? failure("repository_unavailable")
+      : failure("job_not_found");
+    if (winner.status !== "processing") return failure("job_not_active");
+    if (winner.providerRequestId === request.providerRequestId) {
+      return { ok: true, value: winner };
+    }
+    return winner.providerRequestId === null
+      ? failure("repository_unavailable")
+      : failure("idempotency_conflict");
   }
 
   async recordJobSucceeded(

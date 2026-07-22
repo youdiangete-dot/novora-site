@@ -3774,7 +3774,7 @@ and post-preview review linkage remain incomplete.
   history. No delete method exists.
 
   Focused dependency-injected fake-client and in-memory tests cover reservation,
-  replay, concurrency and retry boundaries, Provider request identity, cost
+  replay, concurrency and retry boundaries, immutable per-job Provider request identity, cost
   metadata, asset validation metadata, output idempotency, safe database
   failure, ready/not-ready behavior, exact Review linkage, review-link conflict,
   and readiness revocation. Type checking, the focused server persistence suite,
