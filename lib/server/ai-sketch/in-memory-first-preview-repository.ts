@@ -3,18 +3,25 @@
 
 import {
   deriveFirstPreviewIdempotencyKey,
+  FIRST_PREVIEW_ASSET_BUCKET,
+  FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   FIRST_PREVIEW_LINEAGE_IDENTITY,
+  FIRST_PREVIEW_PROVIDER_PROFILE,
   type FirstPreviewAutomaticGateEvidence,
   type FirstPreviewFailureCategory,
   type FirstPreviewJobRecord,
   type FirstPreviewJobStatus,
   type FirstPreviewOutputRecord,
+  type FirstPreviewReviewRecord,
   type FirstPreviewRepository,
   type FirstPreviewRepositoryFailure,
   type FirstPreviewRepositoryResult,
   type MarkFirstPreviewReadyInput,
   type PersistFirstPreviewOutputInput,
   type RecordFirstPreviewJobFailureInput,
+  type RecordFirstPreviewJobSuccessInput,
+  type RecordFirstPreviewProviderRequestInput,
+  type RevokeFirstPreviewOutputInput,
   type ReserveFirstPreviewJobInput,
   type ReserveFirstPreviewJobResult,
 } from "./first-preview-persistence-contract";
@@ -46,6 +53,18 @@ function copyOutput(output: FirstPreviewOutputRecord): FirstPreviewOutputRecord 
   return { ...output };
 }
 
+function copyReview(review: FirstPreviewReviewRecord): FirstPreviewReviewRecord {
+  return { ...review };
+}
+
+function addSeconds(value: string, seconds: number): string {
+  return new Date(new Date(value).getTime() + seconds * 1000).toISOString();
+}
+
+function isValidCost(value: number | null): boolean {
+  return value === null || (Number.isSafeInteger(value) && value >= 0);
+}
+
 export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
   readonly kind = "memory_fake" as const;
 
@@ -53,6 +72,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
   private readonly jobIdByIdempotencyKey = new Map<string, string>();
   private readonly outputsById = new Map<string, FirstPreviewOutputRecord>();
   private readonly outputIdByJobId = new Map<string, string>();
+  private readonly reviewsByConceptBriefId = new Map<string, FirstPreviewReviewRecord>();
 
   constructor(private readonly clock: Clock = () => new Date().toISOString()) {}
 
@@ -137,9 +157,21 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       designSpecSha256: input.designSpecSha256,
       handSketchInstructionVersion: input.handSketchInstructionVersion,
       handSketchInstructionSha256: input.handSketchInstructionSha256,
+      providerName: FIRST_PREVIEW_PROVIDER_PROFILE.providerName,
+      providerRequestId: null,
+      estimatedCostMicros: input.estimatedCostMicros,
+      actualCostMicros: null,
+      costCurrency: input.costCurrency,
+      pricingAssumptionVersion: input.pricingAssumptionVersion,
       status: "queued",
       failureCategory: null,
       retryEligible: null,
+      startedAt: null,
+      deadlineAt: null,
+      completedAt: null,
+      failedAt: null,
+      cancelledAt: null,
+      timedOutAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -153,22 +185,69 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
   async startJob(
     jobId: string,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
-    return this.transitionJob(jobId, "processing", null, null, new Set(["queued"]));
+    const now = this.clock();
+    return this.transitionJob(
+      jobId,
+      new Set(["queued"]),
+      {
+        status: "processing",
+        startedAt: now,
+        deadlineAt: addSeconds(now, 30),
+      },
+    );
+  }
+
+  async recordProviderRequest(
+    jobId: string,
+    request: RecordFirstPreviewProviderRequestInput,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
+    if (!isNonblank(request.providerRequestId)) {
+      return failure("invalid_input");
+    }
+    const current = this.jobsById.get(jobId);
+    if (!current) {
+      return failure("job_not_found");
+    }
+    if (current.status !== "processing") {
+      return failure("job_not_active");
+    }
+    if (current.providerRequestId === request.providerRequestId) {
+      return { ok: true, value: copyJob(current) };
+    }
+    if (current.providerRequestId !== null) {
+      return failure("idempotency_conflict");
+    }
+    const duplicate = [...this.jobsById.values()].some(
+      (job) =>
+        job.id !== jobId &&
+        job.providerName === FIRST_PREVIEW_PROVIDER_PROFILE.providerName &&
+        job.providerRequestId === request.providerRequestId,
+    );
+    if (duplicate) {
+      return failure("idempotency_conflict");
+    }
+    return this.transitionJob(jobId, new Set(["processing"]), {
+      providerRequestId: request.providerRequestId,
+    });
   }
 
   async recordJobSucceeded(
     jobId: string,
+    success: RecordFirstPreviewJobSuccessInput,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
     if (!this.outputIdByJobId.has(jobId)) {
       return failure("output_not_found");
     }
-    return this.transitionJob(
-      jobId,
-      "succeeded",
-      null,
-      false,
-      new Set(["processing"]),
-    );
+    if (!isValidCost(success.actualCostMicros)) {
+      return failure("invalid_input");
+    }
+    return this.transitionJob(jobId, new Set(["processing"]), {
+      status: "succeeded",
+      failureCategory: null,
+      retryEligible: null,
+      actualCostMicros: success.actualCostMicros,
+      completedAt: this.clock(),
+    });
   }
 
   async recordJobFailure(
@@ -176,7 +255,15 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     failureInput: RecordFirstPreviewJobFailureInput,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
     const { category, retryEligible } = failureInput;
-    if ((category === "timeout" || category === "cancelled") && retryEligible) {
+    const retryableCategory =
+      category === "rate_limited" ||
+      category === "provider_unavailable" ||
+      category === "network_failure";
+    if (
+      ((category === "timeout" || category === "cancelled") && retryEligible) ||
+      (retryEligible && !retryableCategory) ||
+      !isValidCost(failureInput.actualCostMicros)
+    ) {
       return failure("invalid_input");
     }
     const status =
@@ -185,13 +272,21 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         : category === "cancelled"
           ? "cancelled"
           : "failed";
-    return this.transitionJob(
-      jobId,
+    const job = this.jobsById.get(jobId);
+    const now = this.clock();
+    const terminalAt =
+      status === "timed_out" && job?.deadlineAt && now < job.deadlineAt
+        ? job.deadlineAt
+        : now;
+    return this.transitionJob(jobId, new Set(["queued", "processing"]), {
       status,
-      category,
-      status === "failed" ? retryEligible : false,
-      new Set(["queued", "processing"]),
-    );
+      failureCategory: category,
+      retryEligible: status === "failed" ? retryEligible : false,
+      actualCostMicros: failureInput.actualCostMicros,
+      failedAt: status === "failed" ? terminalAt : null,
+      cancelledAt: status === "cancelled" ? terminalAt : null,
+      timedOutAt: status === "timed_out" ? terminalAt : null,
+    });
   }
 
   async persistOutput(
@@ -201,7 +296,18 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       !isNonblank(input.outputId) ||
       !isNonblank(input.jobId) ||
       !isNonblank(input.conceptBriefId) ||
-      !isNonblank(input.assetId)
+      !isNonblank(input.assetId) ||
+      input.bucketName !== FIRST_PREVIEW_ASSET_BUCKET ||
+      input.mimeType !== "image/png" ||
+      !Number.isSafeInteger(input.byteSize) ||
+      input.byteSize < 1 ||
+      input.byteSize > 16_777_216 ||
+      input.widthPx !== 1024 ||
+      input.heightPx !== 1024 ||
+      !/^[0-9a-f]{64}$/.test(input.contentSha256) ||
+      !Number.isFinite(Date.parse(input.assetCreatedAt)) ||
+      !Number.isFinite(Date.parse(input.assetValidatedAt)) ||
+      input.assetValidatedAt < input.assetCreatedAt
     ) {
       return failure("invalid_input");
     }
@@ -219,6 +325,9 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     if (job.status !== "processing") {
       return failure("job_not_active");
     }
+    if (!isNonblank(job.providerRequestId ?? "")) {
+      return failure("invalid_input");
+    }
     const existingById = this.outputsById.get(input.outputId);
     const existingForJobId = this.outputIdByJobId.get(input.jobId);
     if (existingById || existingForJobId) {
@@ -227,7 +336,8 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         existing?.id === input.outputId &&
         existing.jobId === input.jobId &&
         existing.conceptBriefId === input.conceptBriefId &&
-        existing.assetId === input.assetId;
+        existing.assetId === input.assetId &&
+        existing.contentSha256 === input.contentSha256;
       return identityMatches && existing
         ? { ok: true, value: copyOutput(existing) }
         : failure("output_already_exists");
@@ -239,10 +349,19 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       conceptBriefId: input.conceptBriefId,
       assetId: input.assetId,
       assetPersisted: true,
+      bucketName: input.bucketName,
+      mimeType: input.mimeType,
+      byteSize: input.byteSize,
+      widthPx: input.widthPx,
+      heightPx: input.heightPx,
+      contentSha256: input.contentSha256,
+      assetCreatedAt: input.assetCreatedAt,
+      assetValidatedAt: input.assetValidatedAt,
       readinessStatus: "not_ready",
       isCurrentCustomerPreview: false,
       createdAt: this.clock(),
       readyAt: null,
+      revokedAt: null,
     };
 
     this.outputsById.set(output.id, output);
@@ -266,6 +385,12 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     if (!gatesPassed(input.gates)) {
       return failure("automatic_gates_not_passed");
     }
+    if (
+      input.automaticGatePolicyVersion !==
+      FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION
+    ) {
+      return failure("invalid_input");
+    }
 
     const job = this.jobsById.get(output.jobId);
     if (!job || job.status !== "succeeded") {
@@ -282,14 +407,63 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       return failure("attempt_identity_conflict");
     }
 
+    const existingReview = this.reviewsByConceptBriefId.get(input.conceptBriefId);
+    if (existingReview && existingReview.outputId !== input.outputId) {
+      return failure("review_linkage_conflict");
+    }
+    if (!existingReview) {
+      this.reviewsByConceptBriefId.set(input.conceptBriefId, {
+        outputId: input.outputId,
+        conceptBriefId: input.conceptBriefId,
+        reviewStatus: "draft_generated_internal_only",
+        createdAt: this.clock(),
+      });
+    }
+
+    const now = this.clock();
+    const readyAt = now >= output.assetValidatedAt ? now : output.assetValidatedAt;
     const ready: FirstPreviewOutputRecord = {
       ...output,
       readinessStatus: "first_preview_ready",
       isCurrentCustomerPreview: true,
-      readyAt: this.clock(),
+      readyAt,
+      revokedAt: null,
     };
     this.outputsById.set(ready.id, ready);
     return { ok: true, value: copyOutput(ready) };
+  }
+
+  async revokeOutput(
+    input: RevokeFirstPreviewOutputInput,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    const output = this.outputsById.get(input.outputId);
+    if (!output) {
+      return failure("output_not_found");
+    }
+    if (
+      output.jobId !== input.jobId ||
+      output.conceptBriefId !== input.conceptBriefId
+    ) {
+      return failure("linkage_mismatch");
+    }
+    if (
+      output.readinessStatus !== "first_preview_ready" ||
+      !output.isCurrentCustomerPreview
+    ) {
+      return failure("job_not_active");
+    }
+    const revokedNow = this.clock();
+    const revoked: FirstPreviewOutputRecord = {
+      ...output,
+      readinessStatus: "revoked",
+      isCurrentCustomerPreview: false,
+      revokedAt:
+        output.readyAt && revokedNow < output.readyAt
+          ? output.readyAt
+          : revokedNow,
+    };
+    this.outputsById.set(revoked.id, revoked);
+    return { ok: true, value: copyOutput(revoked) };
   }
 
   async findJobByIdempotencyKey(
@@ -312,22 +486,29 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     return output ? copyOutput(output) : null;
   }
 
+  async findReviewByConceptBriefId(
+    conceptBriefId: string,
+  ): Promise<FirstPreviewReviewRecord | null> {
+    const review = this.reviewsByConceptBriefId.get(conceptBriefId);
+    return review ? copyReview(review) : null;
+  }
+
   snapshot(): Readonly<{
     jobs: FirstPreviewJobRecord[];
     outputs: FirstPreviewOutputRecord[];
+    reviews: FirstPreviewReviewRecord[];
   }> {
     return {
       jobs: [...this.jobsById.values()].map(copyJob),
       outputs: [...this.outputsById.values()].map(copyOutput),
+      reviews: [...this.reviewsByConceptBriefId.values()].map(copyReview),
     };
   }
 
   private async transitionJob(
     jobId: string,
-    status: FirstPreviewJobStatus,
-    failureCategory: FirstPreviewFailureCategory | null,
-    retryEligible: boolean | null,
     allowedFrom: ReadonlySet<FirstPreviewJobStatus>,
+    patch: Partial<FirstPreviewJobRecord>,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
     const job = this.jobsById.get(jobId);
     if (!job) {
@@ -339,9 +520,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
 
     const updated: FirstPreviewJobRecord = {
       ...job,
-      status,
-      failureCategory,
-      retryEligible,
+      ...patch,
       updatedAt: this.clock(),
     };
     this.jobsById.set(jobId, updated);

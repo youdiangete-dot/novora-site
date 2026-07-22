@@ -7,6 +7,8 @@ import {
   deriveFirstPreviewIdempotencyKey,
   FIRST_PREVIEW_IDEMPOTENCY_VERSION,
   FIRST_PREVIEW_LINEAGE_IDENTITY,
+  FIRST_PREVIEW_ASSET_BUCKET,
+  FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   type FirstPreviewAutomaticGateEvidence,
   type FirstPreviewFailureCategory,
   type ReserveFirstPreviewJobInput,
@@ -20,6 +22,7 @@ const JOB_3_ID = "523e4567-e89b-42d3-a456-426614174000";
 const OUTPUT_1_ID = "623e4567-e89b-42d3-a456-426614174000";
 const DESIGN_SPEC_SHA256 = "a".repeat(64);
 const INSTRUCTION_SHA256 = "b".repeat(64);
+const CONTENT_SHA256 = "c".repeat(64);
 
 const PASSING_GATES: FirstPreviewAutomaticGateEvidence = {
   outputValid: true,
@@ -49,6 +52,28 @@ function reservationInput(
     designSpecSha256: DESIGN_SPEC_SHA256,
     handSketchInstructionVersion: "novora_hand_sketch_instruction_v1",
     handSketchInstructionSha256: INSTRUCTION_SHA256,
+    estimatedCostMicros: 42_000,
+    costCurrency: "USD",
+    pricingAssumptionVersion: "openai-gpt-image-2-v1",
+    ...overrides,
+  };
+}
+
+function outputInput(overrides = {}) {
+  return {
+    outputId: OUTPUT_1_ID,
+    jobId: JOB_1_ID,
+    conceptBriefId: BRIEF_ID,
+    assetId: "first-preview/brief/output.png",
+    assetPersisted: true,
+    bucketName: FIRST_PREVIEW_ASSET_BUCKET,
+    mimeType: "image/png" as const,
+    byteSize: 12_345,
+    widthPx: 1024 as const,
+    heightPx: 1024 as const,
+    contentSha256: CONTENT_SHA256,
+    assetCreatedAt: "2026-07-20T00:00:10.000Z",
+    assetValidatedAt: "2026-07-20T00:00:11.000Z",
     ...overrides,
   };
 }
@@ -58,18 +83,18 @@ async function reserveAndStart(repository: InMemoryFirstPreviewRepository) {
   expect(reservation.ok).toBe(true);
   const started = await repository.startJob(JOB_1_ID);
   expect(started.ok).toBe(true);
+  const providerRequest = await repository.recordProviderRequest(JOB_1_ID, {
+    providerRequestId: "fake-provider-request-001",
+  });
+  expect(providerRequest.ok).toBe(true);
 }
 
 async function persistAndComplete(repository: InMemoryFirstPreviewRepository) {
-  const persisted = await repository.persistOutput({
-    outputId: OUTPUT_1_ID,
-    jobId: JOB_1_ID,
-    conceptBriefId: BRIEF_ID,
-    assetId: "preview_asset_fake_001",
-    assetPersisted: true,
-  });
+  const persisted = await repository.persistOutput(outputInput());
   expect(persisted.ok).toBe(true);
-  const completed = await repository.recordJobSucceeded(JOB_1_ID);
+  const completed = await repository.recordJobSucceeded(JOB_1_ID, {
+    actualCostMicros: 41_000,
+  });
   expect(completed.ok).toBe(true);
 }
 
@@ -186,8 +211,9 @@ test.describe("server-only First Preview persistence foundation", () => {
     const repository = createRepository();
     await reserveAndStart(repository);
     await repository.recordJobFailure(JOB_1_ID, {
-      category: "provider_failure",
+      category: "provider_unavailable",
       retryEligible: true,
+      actualCostMicros: null,
     });
 
     const retry = await reserveAttemptTwo(repository);
@@ -218,7 +244,7 @@ test.describe("server-only First Preview persistence foundation", () => {
   });
 
   for (const scenario of [
-    { name: "non-retryable failure", category: "provider_failure", retry: false },
+    { name: "non-retryable failure", category: "invalid_provider_response", retry: false },
     { name: "timeout", category: "timeout", retry: false },
     { name: "cancellation", category: "cancelled", retry: false },
   ] as const satisfies ReadonlyArray<{
@@ -232,6 +258,7 @@ test.describe("server-only First Preview persistence foundation", () => {
       await repository.recordJobFailure(JOB_1_ID, {
         category: scenario.category,
         retryEligible: scenario.retry,
+        actualCostMicros: null,
       });
 
       expect(await reserveAttemptTwo(repository)).toEqual({
@@ -260,6 +287,7 @@ test.describe("server-only First Preview persistence foundation", () => {
       await repository.recordJobFailure(JOB_1_ID, {
         category: "timeout",
         retryEligible: true,
+        actualCostMicros: null,
       }),
     ).toEqual({ ok: false, code: "invalid_input" });
   });
@@ -268,13 +296,7 @@ test.describe("server-only First Preview persistence foundation", () => {
     const repository = createRepository();
     await reserveAndStart(repository);
 
-    const output = await repository.persistOutput({
-      outputId: OUTPUT_1_ID,
-      jobId: JOB_1_ID,
-      conceptBriefId: BRIEF_ID,
-      assetId: "preview_asset_fake_001",
-      assetPersisted: true,
-    });
+    const output = await repository.persistOutput(outputInput());
 
     expect(output).toMatchObject({
       ok: true,
@@ -290,13 +312,7 @@ test.describe("server-only First Preview persistence foundation", () => {
   test("makes an identical output-persistence retry idempotent", async () => {
     const repository = createRepository();
     await reserveAndStart(repository);
-    const input = {
-      outputId: OUTPUT_1_ID,
-      jobId: JOB_1_ID,
-      conceptBriefId: BRIEF_ID,
-      assetId: "preview_asset_fake_001",
-      assetPersisted: true,
-    };
+    const input = outputInput();
 
     const first = await repository.persistOutput(input);
     const repeated = await repository.persistOutput(input);
@@ -315,6 +331,7 @@ test.describe("server-only First Preview persistence foundation", () => {
       jobId: JOB_1_ID,
       conceptBriefId: BRIEF_ID,
       gates: PASSING_GATES,
+      automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
     });
 
     expect(ready).toMatchObject({
@@ -340,6 +357,7 @@ test.describe("server-only First Preview persistence foundation", () => {
       jobId: JOB_1_ID,
       conceptBriefId: BRIEF_ID,
       gates: { ...PASSING_GATES, privacyPassed: false },
+      automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
     });
 
     expect(denied).toEqual({ ok: false, code: "automatic_gates_not_passed" });
@@ -355,20 +373,12 @@ test.describe("server-only First Preview persistence foundation", () => {
     const repository = createRepository();
     await reserveAndStart(repository);
 
-    const missingAsset = await repository.persistOutput({
-      outputId: OUTPUT_1_ID,
-      jobId: JOB_1_ID,
-      conceptBriefId: BRIEF_ID,
-      assetId: "preview_asset_fake_001",
-      assetPersisted: false,
-    });
-    const wrongBrief = await repository.persistOutput({
-      outputId: OUTPUT_1_ID,
-      jobId: JOB_1_ID,
-      conceptBriefId: OTHER_BRIEF_ID,
-      assetId: "preview_asset_fake_001",
-      assetPersisted: true,
-    });
+    const missingAsset = await repository.persistOutput(
+      outputInput({ assetPersisted: false }),
+    );
+    const wrongBrief = await repository.persistOutput(
+      outputInput({ conceptBriefId: OTHER_BRIEF_ID }),
+    );
 
     expect(missingAsset).toEqual({ ok: false, code: "asset_not_persisted" });
     expect(wrongBrief).toEqual({ ok: false, code: "linkage_mismatch" });
@@ -380,15 +390,16 @@ test.describe("server-only First Preview persistence foundation", () => {
     await reserveAndStart(repository);
 
     const failed = await repository.recordJobFailure(JOB_1_ID, {
-      category: "provider_failure",
+      category: "invalid_provider_response",
       retryEligible: false,
+      actualCostMicros: 10_000,
     });
 
     expect(failed).toMatchObject({
       ok: true,
       value: {
         status: "failed",
-        failureCategory: "provider_failure",
+        failureCategory: "invalid_provider_response",
         retryEligible: false,
       },
     });
