@@ -109,7 +109,7 @@ table after independent review.
 | 23 | `CORE3-F06-ROUTINES` | 8.6 | `935` | `33a7bff092fe1c355a674bfb1a137ac22b0d483a68740d2bdc23d6bd5ac26f9f` | `novora-fp-mvp-core-3-23-routines.csv` | `novora-fp-mvp-core-3-23-routines-error.png` |
 | 24 | `CORE3-F07-EVENT-TRIGGER` | 8.7 | `454` | `d0ecb6156f5d14c5f251714c611264c64c08955469ca3b1e7339a2d84f912739` | `novora-fp-mvp-core-3-24-event-trigger.csv` | `novora-fp-mvp-core-3-24-event-trigger-error.png` |
 | 25 | `CORE3-F08-TABLE-TRIGGERS` | 8.8 | `1528` | `8647394e3df2cbc8a8ab95e8a4f7e004e8da1d14e5bed082d8b8995682954ba4` | `novora-fp-mvp-core-3-25-table-triggers.csv` | `novora-fp-mvp-core-3-25-table-triggers-error.png` |
-| 26 | `CORE3-FINAL-DATABASE-EXIT` | 9.1 | `8162` | `0c7373c04cec036becb1676b4fed16f0dc6bd72a74a16b08ba78db32c48a3415` | `novora-fp-mvp-core-3-26-final-database-exit.csv` | `novora-fp-mvp-core-3-26-final-database-exit-error.png` |
+| 26 | `CORE3-FINAL-DATABASE-EXIT` | 9.1 | `8332` | `2adf195b4631899fbf0f747ff2bfb17866326f01e3a1953d16f3e914d539df71` | `novora-fp-mvp-core-3-26-final-database-exit.csv` | `novora-fp-mvp-core-3-26-final-database-exit-error.png` |
 
 After Step 26 PASS or any earlier STOP, execute no more SQL pending independent
 reconciliation and creation of external sanitized manifest
@@ -686,7 +686,7 @@ SELECT
   (SELECT count(*) FROM pg_catalog.pg_proc routine JOIN pg_catalog.pg_namespace namespace ON namespace.oid = routine.pronamespace WHERE namespace.nspname = 'public' AND routine.proname IN ('rls_auto_enable', 'set_updated_at')) AS preserved_routine_count,
   (SELECT count(*) FROM pg_catalog.pg_event_trigger event_trigger WHERE event_trigger.evtname = 'ensure_rls') AS preserved_event_trigger_count,
   (SELECT count(*) FROM pg_catalog.pg_trigger trigger_row JOIN pg_catalog.pg_class target ON target.oid = trigger_row.tgrelid JOIN pg_catalog.pg_namespace namespace ON namespace.oid = target.relnamespace WHERE NOT trigger_row.tgisinternal AND namespace.nspname = 'public' AND target.relname IN ('admin_notes', 'ai_sketch_jobs', 'ai_sketch_outputs', 'ai_sketch_reviews', 'concept_brief_reference_assets', 'concept_briefs')) AS preserved_table_trigger_count,
-  (SELECT count(*) FROM pg_catalog.pg_locks lock_object WHERE lock_object.locktype = 'relation' AND lock_object.relation IN (SELECT relation_oid FROM target_relations) AND lock_object.pid IS DISTINCT FROM pg_catalog.pg_backend_pid()) AS other_backend_target_lock_count;
+  (SELECT count(*) FROM pg_catalog.pg_locks lock_object WHERE lock_object.locktype = 'relation' AND lock_object.database IS NOT DISTINCT FROM (SELECT database_object.oid FROM pg_catalog.pg_database database_object WHERE database_object.datname = current_database()) AND lock_object.relation IN (SELECT relation_oid FROM target_relations) AND lock_object.pid IS DISTINCT FROM pg_catalog.pg_backend_pid()) AS other_backend_target_lock_count;
 ```
 
 PASS is exactly one complete row:
