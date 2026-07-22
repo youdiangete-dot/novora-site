@@ -3784,6 +3784,46 @@ and post-preview review linkage remain incomplete.
   wiring, secure customer access, real-provider configuration/calls, and complete
   customer E2E remain separately gated future slices.
 
+- Agent 70B-40 (2026-07-22): the server-only private generated-asset
+  integration slice adds a production-capable, dependency-injected Supabase
+  Storage adapter for First Preview PNG assets. Object identity is deterministic
+  from the exact Concept Brief, Job, and Output UUIDs under the fixed private
+  `novora-ai-sketches` bucket. Uploads always use `upsert: false`; an exact
+  duplicate is accepted only after the stored bytes are downloaded and matched,
+  while different bytes at the same identity fail closed without overwrite.
+
+  The adapter verifies the configured bucket identity and that the live bucket
+  is non-public before every write or read. It persists the object before
+  validating the stored binary, then re-downloads the object and verifies its
+  SHA-256, size, PNG structure, chunk CRCs, 1024-by-1024 dimensions, safe
+  metadata posture, and Storage metadata. Invalid or conflicting objects remain
+  private and cannot become ready; this slice defines no delete or cleanup
+  method. Returned persistence metadata is bounded to the private object
+  identity, MIME type, size, dimensions, hashes, and timestamps and contains no
+  Provider URL, prompt, notes, credential, or raw Provider response.
+
+  Customer asset access is server-mediated and returns verified binary bytes,
+  never a public or signed URL. The read path requires an injected authorizer to
+  return an exact ready/current Output descriptor bound to the requested Output,
+  Job, Concept Brief, private bucket, deterministic object identity, and stored
+  hash. Missing authorization, revoked/non-current state, wrong linkage, a
+  public bucket, a missing object, or an integrity mismatch fails closed before
+  customer-visible delivery. The Production facade is unavailable unless the
+  reviewed admin client, exact server-only bucket value, and an explicit
+  authorizer are all present; no route currently constructs it.
+
+  Focused fake-client tests cover deterministic writes, duplicate and concurrent
+  idempotency, conflicting content, persistence-before-validation, invalid PNG
+  and metadata rejection, public/mismatched buckets, normalized Storage
+  failures, authorized reads, revoked/wrong-link denial, missing/tampered
+  objects, no URL/delete surface, and fail-closed binding. This slice performs
+  no Supabase connection, real Storage read/write/delete, SQL, schema or access
+  change, credential/environment change, Provider call, route/UI change,
+  deployment, customer-row inspection, cleanup, or customer-visible action.
+  Orchestration wiring, the concrete customer-access authorizer/route, automatic
+  application workflow, real-provider configuration/calls, and complete
+  customer E2E remain separately gated future slices.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
