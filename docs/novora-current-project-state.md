@@ -3677,6 +3677,41 @@ and post-preview review linkage remain incomplete.
   Storage, credential/environment, Production deployment, customer-row,
   cleanup, or deletion action was performed during reconciliation.
 
+- Agent 70B-37 (2026-07-22): one immutable documentation-only
+  `MVP-CORE-3` constraint-validation and final database-exit packet is frozen
+  at
+  `docs/novora-first-preview-mvp-core-3-constraint-validation-final-database-exit-packet-v1.md`.
+  It is based on merged `origin/main`
+  `02b94e06c1ff8f0f381ea2c09e1536785cdda644`, the independently reconciled
+  `MVP-CORE-2 = PASS`, and external manifest
+  `novora-fp-mvp-core-2-37-manifest-v1.json` (`60664` bytes / SHA-256
+  `46365ed82097203daec9496607d3c793a8f85d2dbc8614555b685c38a1054864`).
+
+  The packet defines one fresh Phase 0 visual gate and exactly 26
+  one-statement-at-a-time SQL steps: three fail-closed read-only preflights;
+  seven individually ordered `VALIDATE CONSTRAINT` statements, each followed
+  by the same unfiltered 33-object catalog assertion; eight exact preservation
+  queries for existing-table privileges, direct ACLs, ownership/RLS/policies,
+  `postgres` future-table defaults, unrelated defaults, routines, the event
+  trigger, and table-trigger edges; and one final database-exit summary. Every
+  unique SQL fence has an exact LF canonical byte length and SHA-256; every
+  execution step has a deterministic PASS/ERROR evidence filename, exact
+  result requirements, and fail-closed STOP behavior. The workflow requires
+  independent evidence reconciliation after every individual statement and
+  allows exactly one Owner attempt per statement.
+
+  Validation is limited to the seven Core constraints created by
+  `MVP-CORE-2`. The packet does not create, change, replace, or remove any
+  object and excludes block 23.7, all other validation, DML, repair, retry,
+  rollback, cleanup, ACL/default-privilege/RLS/policy/routine/trigger/Storage
+  changes, Provider or deployment actions, customer-row inspection, and all
+  `POST_MVP_HARDENING`. No Supabase connection or SQL was performed while
+  preparing the packet. `MVP-CORE-3` remains `NOT_EXECUTED` and requires a
+  separate exact Owner execution approval bound to the independently reviewed
+  and merged packet identity. Application integration remains blocked only on
+  successful Core-3 execution and evidence reconciliation; after that PASS no
+  additional planning-only database loop may block implementation.
+
 ### Historical pre-Stage-A context
 
 The following text preserves the prior planning context. Its former "required
