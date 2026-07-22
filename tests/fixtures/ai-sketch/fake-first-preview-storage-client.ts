@@ -57,6 +57,7 @@ export function createSyntheticFirstPreviewPng(
     filterMethod?: number;
     interlaceMethod?: number;
     rawIdat?: Uint8Array;
+    trailingIdatBytes?: Uint8Array;
     firstScanlineFilter?: number;
     truncateScanlines?: boolean;
   }> = {},
@@ -64,18 +65,31 @@ export function createSyntheticFirstPreviewPng(
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = options.bitDepth ?? 8;
-  ihdr[9] = options.colorType ?? 6;
+  const bitDepth = options.bitDepth ?? 8;
+  const colorType = options.colorType ?? 6;
+  ihdr[8] = bitDepth;
+  ihdr[9] = colorType;
   ihdr[10] = options.compressionMethod ?? 0;
   ihdr[11] = options.filterMethod ?? 0;
   ihdr[12] = options.interlaceMethod ?? 0;
-  const rowLength = 1 + width * 4;
+  const channels = new Map([
+    [0, 1],
+    [2, 3],
+    [3, 1],
+    [4, 2],
+    [6, 4],
+  ]).get(colorType) ?? 4;
+  const rowLength = 1 + Math.ceil((width * channels * bitDepth) / 8);
   let pixels = Buffer.alloc(rowLength * height);
   pixels[0] = options.firstScanlineFilter ?? 0;
   if (options.truncateScanlines) pixels = pixels.subarray(0, pixels.length - 1);
-  const idat = Object.prototype.hasOwnProperty.call(options, "rawIdat")
+  const compressed = Object.prototype.hasOwnProperty.call(options, "rawIdat")
     ? Buffer.from(options.rawIdat ?? new Uint8Array())
     : deflateSync(pixels);
+  const idat = Buffer.concat([
+    compressed,
+    Buffer.from(options.trailingIdatBytes ?? new Uint8Array()),
+  ]);
 
   return new Uint8Array(Buffer.concat([
     PNG_SIGNATURE,

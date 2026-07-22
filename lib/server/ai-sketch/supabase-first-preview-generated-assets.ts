@@ -86,6 +86,7 @@ const PNG_SIGNATURE = Buffer.from([
 ]);
 const UNSAFE_METADATA_CHUNKS = new Set(["tEXt", "zTXt", "iTXt", "eXIf"]);
 const ANIMATION_CHUNKS = new Set(["acTL", "fcTL", "fdAT"]);
+const KNOWN_CRITICAL_CHUNKS = new Set(["IHDR", "PLTE", "IDAT", "IEND"]);
 
 function failure<T>(
   code: FirstPreviewGeneratedAssetFailureCode,
@@ -157,6 +158,7 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
   let sawPlte = false;
   let sawChunkAfterIdat = false;
   let pngColorType: number | null = null;
+  let pngBitDepth: number | null = null;
   let expectedScanlineLength: number | null = null;
   const idatChunks: Buffer[] = [];
 
@@ -170,6 +172,13 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
 
     const type = buffer.toString("ascii", offset + 4, offset + 8);
     if (!/^[A-Za-z]{4}$/.test(type)) return false;
+    if (type[2] !== type[2].toUpperCase()) return false;
+    if (
+      type[0] === type[0].toUpperCase() &&
+      !KNOWN_CRITICAL_CHUNKS.has(type)
+    ) {
+      return false;
+    }
     const expectedCrc = buffer.readUInt32BE(dataEnd);
     if (crc32(buffer.subarray(offset + 4, dataEnd)) !== expectedCrc) {
       return false;
@@ -180,6 +189,7 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
       if (buffer.readUInt32BE(dataStart) !== 1024) return false;
       if (buffer.readUInt32BE(dataStart + 4) !== 1024) return false;
       const bitDepth = buffer[dataStart + 8];
+      pngBitDepth = bitDepth;
       const colorType = buffer[dataStart + 9];
       pngColorType = colorType;
       const compressionMethod = buffer[dataStart + 10];
@@ -224,7 +234,10 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
         pngColorType === 4 ||
         length === 0 ||
         length > 768 ||
-        length % 3 !== 0
+        length % 3 !== 0 ||
+        (pngColorType === 3 &&
+          pngBitDepth !== null &&
+          length / 3 > 2 ** pngBitDepth)
       ) {
         return false;
       }
@@ -253,9 +266,12 @@ function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
   const expectedInflatedLength = expectedScanlineLength * 1024;
 
   try {
-    const inflated = inflateSync(compressed, {
+    const inflatedResult = inflateSync(compressed, {
       maxOutputLength: expectedInflatedLength + 1,
-    });
+      info: true,
+    }) as unknown as { buffer: Buffer; engine: { bytesWritten: number } };
+    if (inflatedResult.engine.bytesWritten !== compressed.length) return false;
+    const inflated = inflatedResult.buffer;
     if (inflated.length !== expectedInflatedLength) return false;
     for (let row = 0; row < 1024; row += 1) {
       if (inflated[row * expectedScanlineLength] > 4) return false;

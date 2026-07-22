@@ -116,6 +116,14 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(JSON.stringify(result)).not.toContain("provider");
     expect(store).not.toHaveProperty("delete");
     expect(store).not.toHaveProperty("createSignedUrl");
+
+    const indexedHarness = harness();
+    const legalIndexedPng = createSyntheticFirstPreviewPng(1024, 1024, [
+      { type: "PLTE", data: "abcdef" },
+    ], { bitDepth: 1, colorType: 3 });
+    expect(await indexedHarness.store.persistValidatedPng(input({
+      imageBytes: legalIndexedPng,
+    }))).toMatchObject({ ok: true, value: { disposition: "created" } });
   });
 
   test("makes duplicate and concurrent writes idempotent without overwriting", async () => {
@@ -170,6 +178,18 @@ test.describe("server-only private First Preview generated assets", () => {
       createSyntheticFirstPreviewPng(1024, 1024, [], { interlaceMethod: 1 }),
       createSyntheticFirstPreviewPng(1024, 1024, [], { firstScanlineFilter: 5 }),
       createSyntheticFirstPreviewPng(1024, 1024, [], { truncateScanlines: true }),
+      createSyntheticFirstPreviewPng(1024, 1024, [
+        { type: "ABCD", data: "unknown critical chunk" },
+      ]),
+      createSyntheticFirstPreviewPng(1024, 1024, [
+        { type: "abca", data: "lowercase reserved bit" },
+      ]),
+      createSyntheticFirstPreviewPng(1024, 1024, [
+        { type: "PLTE", data: "abcdefghi" },
+      ], { bitDepth: 1, colorType: 3 }),
+      createSyntheticFirstPreviewPng(1024, 1024, [], {
+        trailingIdatBytes: new Uint8Array([1, 2, 3]),
+      }),
     ]) {
       const { storage, store } = harness();
       const result = await store.persistValidatedPng(input({ imageBytes }));
