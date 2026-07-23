@@ -398,11 +398,12 @@ function isValidPersistInput(input: PersistFirstPreviewGeneratedAssetInput): boo
 }
 
 function descriptorIsAuthorizedAndConsistent(
-  request: { outputId: string },
+  request: { publicReference: string; outputId: string },
   descriptor: FirstPreviewAuthorizedAssetDescriptor,
 ): boolean {
   const expectedAssetId = deriveFirstPreviewGeneratedAssetId(descriptor);
   return (
+    descriptor.publicReference === request.publicReference &&
     descriptor.outputId === request.outputId &&
     descriptor.readinessStatus === "first_preview_ready" &&
     descriptor.isCurrentCustomerPreview === true &&
@@ -419,6 +420,30 @@ function descriptorIsAuthorizedAndConsistent(
     isValidFirstPreviewContentSha256(descriptor.asset.contentSha256) &&
     isIsoTimestamp(descriptor.asset.assetCreatedAt) &&
     isIsoTimestamp(descriptor.asset.assetValidatedAt)
+  );
+}
+
+function descriptorsMatch(
+  first: FirstPreviewAuthorizedAssetDescriptor,
+  second: FirstPreviewAuthorizedAssetDescriptor,
+): boolean {
+  return (
+    first.publicReference === second.publicReference &&
+    first.conceptBriefId === second.conceptBriefId &&
+    first.jobId === second.jobId &&
+    first.outputId === second.outputId &&
+    first.readinessStatus === second.readinessStatus &&
+    first.isCurrentCustomerPreview === second.isCurrentCustomerPreview &&
+    first.asset.assetId === second.asset.assetId &&
+    first.asset.assetPersisted === second.asset.assetPersisted &&
+    first.asset.bucketName === second.asset.bucketName &&
+    first.asset.mimeType === second.asset.mimeType &&
+    first.asset.byteSize === second.asset.byteSize &&
+    first.asset.widthPx === second.asset.widthPx &&
+    first.asset.heightPx === second.asset.heightPx &&
+    first.asset.contentSha256 === second.asset.contentSha256 &&
+    first.asset.assetCreatedAt === second.asset.assetCreatedAt &&
+    first.asset.assetValidatedAt === second.asset.assetValidatedAt
   );
 }
 
@@ -549,7 +574,11 @@ export class SupabaseFirstPreviewGeneratedAssetStore
   }
 
   async readAuthorizedPng(
-    request: { publicReference: string; outputId: string },
+    request: {
+      publicReference: string;
+      outputId: string;
+      accessProof: string;
+    },
   ): Promise<ReadFirstPreviewGeneratedAssetResult> {
     if (
       !isValidFirstPreviewPublicReference(request.publicReference) ||
@@ -594,6 +623,49 @@ export class SupabaseFirstPreviewGeneratedAssetStore
       !isValidatedFirstPreviewPng(download.data)
     ) {
       return failure("asset_integrity_failure");
+    }
+
+    let object;
+    try {
+      object = await this.storage.inspectObject(
+        FIRST_PREVIEW_ASSET_BUCKET,
+        asset.assetId,
+      );
+    } catch {
+      return failure("storage_unavailable");
+    }
+    if (object.error || !object.data) {
+      return object.error?.kind === "not_found"
+        ? failure("asset_not_found")
+        : failure("storage_unavailable");
+    }
+    if (
+      object.data.byteSize !== download.data.byteLength ||
+      object.data.mimeType !== "image/png" ||
+      object.data.createdAt !== asset.assetCreatedAt ||
+      !isIsoTimestamp(object.data.createdAt)
+    ) {
+      return failure("asset_integrity_failure");
+    }
+
+    let finalAuthorization;
+    try {
+      finalAuthorization = await this.authorizer.authorize(request);
+    } catch {
+      return failure("access_denied");
+    }
+    if (
+      !finalAuthorization.authorized ||
+      !descriptorIsAuthorizedAndConsistent(
+        request,
+        finalAuthorization.descriptor,
+      ) ||
+      !descriptorsMatch(
+        authorization.descriptor,
+        finalAuthorization.descriptor,
+      )
+    ) {
+      return failure("access_denied");
     }
 
     return {

@@ -113,6 +113,7 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
   bucketName = "novora-ai-sketches";
   bucketIsPublic = false;
   createdAt = "2026-07-22T12:00:00.000Z";
+  afterDownload: (() => void) | null = null;
   private readonly failures = new Set<StorageOperation>();
   private readonly throws = new Set<StorageOperation>();
 
@@ -200,6 +201,7 @@ export class FakeFirstPreviewStorageClient implements FirstPreviewStorageClient 
       return { data: null, error: { kind: "unavailable" as const } };
     }
     const object = this.objects.get(this.key(bucketName, objectPath));
+    this.afterDownload?.();
     return object
       ? { data: new Uint8Array(object.body), error: null }
       : { data: null, error: { kind: "not_found" as const } };
@@ -239,6 +241,7 @@ export class FakeFirstPreviewAssetAuthorizer
 {
   readonly requests: FirstPreviewGeneratedAssetAccessRequest[] = [];
   result: FirstPreviewAssetAuthorizationResult = { authorized: false };
+  results: FirstPreviewAssetAuthorizationResult[] = [];
   shouldThrow = false;
 
   async authorize(
@@ -246,6 +249,6 @@ export class FakeFirstPreviewAssetAuthorizer
   ): Promise<FirstPreviewAssetAuthorizationResult> {
     this.requests.push({ ...request });
     if (this.shouldThrow) throw new Error("synthetic authorization failure");
-    return this.result;
+    return this.results.length > 0 ? this.results.shift()! : this.result;
   }
 }

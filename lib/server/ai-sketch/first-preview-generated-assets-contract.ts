@@ -32,9 +32,11 @@ export type PersistFirstPreviewGeneratedAssetInput = Readonly<{
 export type FirstPreviewGeneratedAssetAccessRequest = Readonly<{
   publicReference: string;
   outputId: string;
+  accessProof: string;
 }>;
 
 export type FirstPreviewAuthorizedAssetDescriptor = Readonly<{
+  publicReference: string;
   conceptBriefId: string;
   jobId: string;
   outputId: string;
