@@ -4,6 +4,8 @@ import Module, { createRequire } from "node:module";
 import path from "node:path";
 
 import type {
+  InstantPreviewAgentReviewInput,
+  InstantPreviewAgentReviewer,
   InstantPreviewAgentStructuredInput,
   StructureConceptBriefForInstantPreviewResult,
 } from "../../lib/server/ai-sketch/instant-preview-agent-core";
@@ -42,6 +44,7 @@ const testRequire = createRequire(
 );
 const {
   INSTANT_PREVIEW_AGENT_LIMITS,
+  reviewInstantPreviewCandidate,
   structureConceptBriefForInstantPreview,
 } = testRequire(
   "../../lib/server/ai-sketch/instant-preview-agent-core",
@@ -496,4 +499,328 @@ test("module exposes no network or client construction surface", () => {
   expect(source).not.toMatch(/\bfetch\s*\(/);
   expect(source).not.toMatch(/\bnew\s+(OpenAI|Supabase|Storage|HttpClient)\b/);
   expect(source).not.toMatch(/createClient\s*\(/);
+});
+
+function validReviewInput(): InstantPreviewAgentReviewInput {
+  const structuredIntent = expectSuccess(
+    structureConceptBriefForInstantPreview(validBrief()),
+  );
+
+  return {
+    structuredIntent,
+    designSpecRequirements: [
+      "Preserve the ring piece type and the pear center-stone direction.",
+    ],
+    handSketchInstructionRequirements: [
+      "Use a clear front view, side profile, and setting detail.",
+    ],
+    candidateObservations: [
+      "The center stone appears rotated between the front and detail views.",
+    ],
+    structuralReviewRequirements: [...structuredIntent.reviewRequirements],
+    metadata: {
+      purpose: "first_preview_automatic_review",
+      candidateSequence: 1,
+    },
+  };
+}
+
+class FakeInstantPreviewAgentReviewer implements InstantPreviewAgentReviewer {
+  callCount = 0;
+  lastInput: InstantPreviewAgentReviewInput | null = null;
+
+  constructor(
+    private readonly response:
+      | unknown
+      | ((input: InstantPreviewAgentReviewInput) => unknown | Promise<unknown>),
+  ) {}
+
+  async reviewCandidate(input: InstantPreviewAgentReviewInput): Promise<unknown> {
+    this.callCount += 1;
+    this.lastInput = input;
+    return typeof this.response === "function"
+      ? this.response(input)
+      : this.response;
+  }
+}
+
+async function reviewWith(response: ConstructorParameters<typeof FakeInstantPreviewAgentReviewer>[0]) {
+  const reviewer = new FakeInstantPreviewAgentReviewer(response);
+  const input = validReviewInput();
+  const result = await reviewInstantPreviewCandidate(reviewer, input);
+  return { reviewer, input, result };
+}
+
+function expectSafeReviewFailure(
+  result: Awaited<ReturnType<typeof reviewInstantPreviewCandidate>>,
+  reason?: string,
+) {
+  expect(result.outcome).toBe("FAIL_SAFE");
+  if (result.outcome === "FAIL_SAFE" && reason) {
+    expect(result.reason).toBe(reason);
+  }
+}
+
+test("accepts a valid PASS review", async () => {
+  const { reviewer, input, result } = await reviewWith({
+    outcome: "PASS",
+    quality: "STRONG",
+  });
+  expect(result).toEqual({ outcome: "PASS", quality: "strong" });
+  expect(reviewer.callCount).toBe(1);
+  expect(reviewer.lastInput).not.toBe(input);
+  expect(reviewer.lastInput?.structuredIntent).not.toBe(input.structuredIntent);
+});
+
+test("accepts a valid bounded REGENERATE review", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Align the pear center-stone table orientation across front and detail views.",
+      "Correct prong placement so the ring shank remains structurally explainable.",
+    ],
+  });
+  expect(result).toEqual({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Align the pear center-stone table orientation across front and detail views.",
+      "Correct prong placement so the ring shank remains structurally explainable.",
+    ],
+  });
+});
+
+test("accepts a valid bounded FAIL_SAFE review", async () => {
+  const { result } = await reviewWith({
+    outcome: "FAIL_SAFE",
+    reason: "candidate_invalid",
+  });
+  expect(result).toEqual({
+    outcome: "FAIL_SAFE",
+    reason: "candidate_invalid",
+  });
+});
+
+test("converts a thrown reviewer exception to FAIL_SAFE", async () => {
+  const { result } = await reviewWith(() => {
+    throw new Error("private reviewer diagnostic");
+  });
+  expect(result).toEqual({
+    outcome: "FAIL_SAFE",
+    reason: "reviewer_unavailable",
+  });
+});
+
+test("converts a primitive reviewer result to FAIL_SAFE", async () => {
+  const { result } = await reviewWith("PASS");
+  expectSafeReviewFailure(result, "malformed_review");
+});
+
+test("converts an array reviewer result to FAIL_SAFE", async () => {
+  const { result } = await reviewWith([{ outcome: "PASS" }]);
+  expectSafeReviewFailure(result, "malformed_review");
+});
+
+test("converts a missing outcome to FAIL_SAFE", async () => {
+  const { result } = await reviewWith({ quality: "strong" });
+  expectSafeReviewFailure(result, "malformed_review");
+});
+
+test("converts an unsupported outcome to FAIL_SAFE", async () => {
+  const { result } = await reviewWith({ outcome: "APPROVE" });
+  expectSafeReviewFailure(result, "malformed_review");
+});
+
+test("rejects extra unsafe reviewer fields under the exact schema", async () => {
+  const { result } = await reviewWith({
+    outcome: "PASS",
+    rawProviderResponse: { private: true },
+  });
+  expectSafeReviewFailure(result, "malformed_review");
+  expect(JSON.stringify(result)).not.toContain("rawProviderResponse");
+});
+
+test("rejects an oversized revision instruction", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      `Correct the ring stone orientation ${"x".repeat(
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructionLength,
+      )}`,
+    ],
+  });
+  expectSafeReviewFailure(result, "malformed_review");
+});
+
+test("rejects too many revision instructions", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: Array.from(
+      {
+        length:
+          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructions + 1,
+      },
+      (_, index) => `Correct stone orientation in detail view ${index}.`,
+    ),
+  });
+  expectSafeReviewFailure(result, "malformed_review");
+});
+
+test("rejects a URL-containing revision instruction", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Correct stone orientation using https://private.invalid/reference.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects a credential-like revision instruction", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Correct prong placement using API key private-value.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects a SQL revision instruction", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Correct stone table orientation, then SELECT * FROM private_records.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects shell or PowerShell revision instructions", async () => {
+  const shell = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: ["Run a shell command to correct stone orientation."],
+  });
+  const powershell = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: ["Use PowerShell to correct ring composition."],
+  });
+  expectSafeReviewFailure(shell.result, "unsafe_review");
+  expectSafeReviewFailure(powershell.result, "unsafe_review");
+});
+
+test("rejects a tool-execution revision instruction", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: ["Execute a tool to correct stone orientation."],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects a file-path revision instruction", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Read C:\\private\\design.png to correct ring composition.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects payment or order revision instructions", async () => {
+  const payment = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: ["Correct the stone setting after payment."],
+  });
+  const order = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: ["Correct the ring composition for the order."],
+  });
+  expectSafeReviewFailure(payment.result, "unsafe_review");
+  expectSafeReviewFailure(order.result, "unsafe_review");
+});
+
+test("rejects a CAD-complete claim", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Mark CAD complete after correcting the ring shank.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects a production-approved claim", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Mark production approved after correcting the ring.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects a guaranteed-manufacturability claim", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Guarantee manufacturability after correcting the ring structure.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+});
+
+test("rejects a customer-contact revision instruction", async () => {
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "Email address customer@example.invalid after correcting the ring.",
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
+
+  const reviewer = new FakeInstantPreviewAgentReviewer({ outcome: "PASS" });
+  const unsafeInput = validReviewInput();
+  unsafeInput.candidateObservations = [
+    "Correct ring structure for customer@example.invalid.",
+  ];
+  const unsafeInputResult = await reviewInstantPreviewCandidate(
+    reviewer,
+    unsafeInput,
+  );
+  expectSafeReviewFailure(unsafeInputResult, "unsafe_review");
+  expect(reviewer.callCount).toBe(0);
+});
+
+test("rejects UUID, publicReference, and private-path instructions", async () => {
+  const unsafeInstructions = [
+    "Correct ring structure for 123e4567-e89b-42d3-a456-426614174000.",
+    "Correct ring structure for NOVORA-CB-20260723-TEST.",
+    "Correct ring structure using private path private/output/design.png.",
+  ];
+  for (const instruction of unsafeInstructions) {
+    const { result } = await reviewWith({
+      outcome: "REGENERATE",
+      revisionInstructions: [instruction],
+    });
+    expectSafeReviewFailure(result, "unsafe_review");
+  }
+});
+
+test("never exposes a raw reviewer exception message", async () => {
+  const marker = "RAW_REVIEWER_EXCEPTION_MUST_NOT_ESCAPE";
+  const { result } = await reviewWith(() => {
+    throw new Error(marker);
+  });
+  expect(JSON.stringify(result)).not.toContain(marker);
+});
+
+test("never exposes raw malformed reviewer content", async () => {
+  const marker = "RAW_MALFORMED_REVIEW_MUST_NOT_ESCAPE";
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [marker],
+    rawDiagnostic: marker,
+  });
+  expectSafeReviewFailure(result);
+  expect(JSON.stringify(result)).not.toContain(marker);
 });

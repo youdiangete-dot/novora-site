@@ -18,6 +18,13 @@ export const INSTANT_PREVIEW_AGENT_LIMITS = {
   maximumInputNodes: 300,
   maximumInputStringCharacters: 10_000,
   maximumStructuredOutputCharacters: 24_000,
+  maximumDesignSpecReviewRequirements: 12,
+  maximumHandSketchReviewRequirements: 12,
+  maximumCandidateObservations: 12,
+  maximumStructuralReviewRequirements: 16,
+  maximumRevisionInstructions: 8,
+  maximumRevisionInstructionLength: 300,
+  maximumRevisionPayloadCharacters: 1_200,
 } as const;
 
 export type InstantPreviewAgentFailureCategory =
@@ -650,5 +657,613 @@ export function structureConceptBriefForInstantPreview(
     return failure(
       error instanceof ParseFailure ? error.category : "internal_failure",
     );
+  }
+}
+
+export type InstantPreviewAgentReviewInput = {
+  structuredIntent: InstantPreviewAgentStructuredInput;
+  designSpecRequirements: string[];
+  handSketchInstructionRequirements: string[];
+  candidateObservations: string[];
+  structuralReviewRequirements: string[];
+  metadata: {
+    purpose: "first_preview_automatic_review";
+    candidateSequence: number;
+  };
+};
+
+export interface InstantPreviewAgentReviewer {
+  reviewCandidate(input: InstantPreviewAgentReviewInput): Promise<unknown>;
+}
+
+export type InstantPreviewAgentPassQuality = "acceptable" | "strong";
+
+export type InstantPreviewAgentFailSafeReason =
+  | "candidate_invalid"
+  | "quality_below_threshold"
+  | "reviewer_unavailable"
+  | "malformed_review"
+  | "unsafe_review"
+  | "internal_failure";
+
+export type InstantPreviewAgentAutomaticReviewResult =
+  | {
+      outcome: "PASS";
+      quality?: InstantPreviewAgentPassQuality;
+    }
+  | {
+      outcome: "REGENERATE";
+      revisionInstructions: string[];
+    }
+  | {
+      outcome: "FAIL_SAFE";
+      reason: InstantPreviewAgentFailSafeReason;
+    };
+
+const REVIEW_INPUT_KEYS = new Set([
+  "structuredIntent",
+  "designSpecRequirements",
+  "handSketchInstructionRequirements",
+  "candidateObservations",
+  "structuralReviewRequirements",
+  "metadata",
+]);
+const REVIEW_METADATA_KEYS = new Set(["purpose", "candidateSequence"]);
+const PASS_RESULT_KEYS = new Set(["outcome", "quality"]);
+const REGENERATE_RESULT_KEYS = new Set([
+  "outcome",
+  "revisionInstructions",
+]);
+const FAIL_SAFE_RESULT_KEYS = new Set(["outcome", "reason"]);
+const REVIEWER_FAIL_SAFE_REASONS = new Set([
+  "candidate_invalid",
+  "quality_below_threshold",
+]);
+const PASS_QUALITIES = new Set(["acceptable", "strong"]);
+const ALLOWED_REVISION_LANGUAGE =
+  /\b(jewel(?:ry)?|design|composition|stone|gem|center|accent|orientation|table|prong|setting|ring|shank|stacked|collision|motif|view|overall|detail|sketch|presentation|structure|profile|front|side|placement|proportion|silhouette|bail|clasp|hinge|support|alignment)\b/i;
+const UNSAFE_REVISION_PATTERNS = [
+  /https?:\/\//i,
+  /file:\/\//i,
+  /\b[A-Z]:[\\/]/i,
+  /(?:^|[\s"'(])(?:\\\\|\.{1,2}[\\/]|\/(?:etc|home|users|var|tmp|network)[\\/])/i,
+  /\b(process\.env|environment variable|\$env:|OPENAI_API_KEY|SUPABASE_[A-Z_]+|API_KEY)\b/i,
+  /\b(credential|api key|bearer token|cookie|password|secret)\b/i,
+  /\b(SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+.+\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE|CREATE\s+TABLE|SQL statement|database schema|database table|database column|postgres|supabase)\b/i,
+  /\b(shell command|powershell|cmd\.exe|bash|invoke-webrequest|curl|wget)\b/i,
+  /\b(execute (?:a |the )?(?:tool|code|command|script)|run (?:a |the )?(?:tool|command|script)|tool execution|code execution)\b/i,
+  /\b(npm|pnpm|yarn|pip)\s+(?:install|add)\b/i,
+  /\b(package installation|install (?:a |the )?package)\b/i,
+  /\b(payment|order|shipping|quotation|quote|pricing|price)\b/i,
+  /\bCAD\b.*\b(complete|ready|finished|approved)\b/i,
+  /\b(complete|ready|finished|approved)\b.*\bCAD\b/i,
+  /\bproduction\b.*\b(approved|ready|confirmed)\b/i,
+  /\b(approved|ready|confirmed)\b.*\bproduction\b/i,
+  /\b(guaranteed?|guarantee)\b.*\b(manufacturability|manufacturable|manufacturing)\b/i,
+  /\b(customer name|email address|phone number|whatsapp|contact the customer)\b/i,
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+  /(?:\+?\d[\d\s().-]{7,}\d)/,
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i,
+  /\bNOVORA-CB-[A-Z0-9-]+\b/i,
+  /\b(storage bucket|storage object|storage path|private path|signed url|private url)\b/i,
+  /```|<script\b/i,
+] as const;
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowedKeys: ReadonlySet<string>,
+): boolean {
+  return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function failSafe(
+  reason: InstantPreviewAgentFailSafeReason,
+): InstantPreviewAgentAutomaticReviewResult {
+  return {
+    outcome: "FAIL_SAFE",
+    reason,
+  };
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function exactKeys(
+  value: unknown,
+  keys: readonly string[],
+): value is Record<string, unknown> {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+  const actual = Object.keys(value);
+  return (
+    actual.length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+  );
+}
+
+function cloneStringArray(
+  value: unknown,
+  maximumCount: number,
+): string[] {
+  if (!Array.isArray(value) || value.length > maximumCount) {
+    fail("invalid_input");
+  }
+  return value.map((item) => {
+    const normalized = normalizeString(item);
+    if (!normalized) {
+      fail("invalid_input");
+    }
+    return normalized;
+  });
+}
+
+function cloneNullableSafeString(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const normalized = normalizeString(value);
+  if (!normalized) {
+    fail("invalid_input");
+  }
+  return normalized;
+}
+
+function cloneStructuredIntentForReview(
+  value: unknown,
+): InstantPreviewAgentStructuredInput {
+  if (
+    !exactKeys(value, [
+      "contractVersion",
+      "purpose",
+      "customerIntent",
+      "piece",
+      "style",
+      "materials",
+      "stones",
+      "composition",
+      "dimensions",
+      "wearability",
+      "manufacturingConstraints",
+      "referenceObservations",
+      "unknowns",
+      "avoid",
+      "generationNotes",
+      "reviewRequirements",
+      "productBoundaries",
+    ]) ||
+    value.contractVersion !== INSTANT_PREVIEW_AGENT_CORE_VERSION ||
+    value.purpose !== "internal_first_preview_input"
+  ) {
+    fail("invalid_input");
+  }
+
+  const customerIntent = value.customerIntent;
+  const piece = value.piece;
+  const style = value.style;
+  const materials = value.materials;
+  const stones = value.stones;
+  const composition = value.composition;
+  const dimensions = value.dimensions;
+  const wearability = value.wearability;
+  const referenceObservations = value.referenceObservations;
+  const generationNotes = value.generationNotes;
+  const productBoundaries = value.productBoundaries;
+
+  if (
+    !exactKeys(customerIntent, ["designIntent", "designDescription"]) ||
+    typeof customerIntent.designIntent !== "string" ||
+    !isNullableString(customerIntent.designDescription) ||
+    !exactKeys(piece, [
+      "canonicalType",
+      "category",
+      "subtype",
+      "boundedOtherJewelryType",
+    ]) ||
+    !["ring", "pendant_necklace", "earrings", "bracelet_bangle", "other_custom"].includes(
+      String(piece.canonicalType),
+    ) ||
+    ![
+      "ring",
+      "pendant_necklace",
+      "earrings",
+      "bracelet_bangle",
+      "animal_sculpture_concept",
+      "other_jewelry",
+    ].includes(String(piece.category)) ||
+    !isNullableString(piece.subtype) ||
+    !isNullableString(piece.boundedOtherJewelryType) ||
+    !exactKeys(style, ["directions", "colorDirection"]) ||
+    !isNullableString(style.colorDirection) ||
+    !exactKeys(materials, ["directions"]) ||
+    !exactKeys(stones, ["items", "centerStoneDirection", "arrangement"]) ||
+    !Array.isArray(stones.items) ||
+    stones.items.length > INSTANT_PREVIEW_AGENT_LIMITS.maximumStones ||
+    !isNullableString(stones.centerStoneDirection) ||
+    !isNullableString(stones.arrangement) ||
+    !exactKeys(composition, ["direction", "motif", "requestedViews"]) ||
+    !isNullableString(composition.direction) ||
+    !isNullableString(composition.motif) ||
+    !exactKeys(dimensions, ["relationships"]) ||
+    !exactKeys(wearability, ["requirements"]) ||
+    !exactKeys(referenceObservations, [
+      "observations",
+      "inspirationOnly",
+      "doNotCopyExactly",
+    ]) ||
+    referenceObservations.inspirationOnly !== true ||
+    referenceObservations.doNotCopyExactly !== true ||
+    !exactKeys(generationNotes, [
+      "structuredTransformationRequired",
+      "rawCustomerProseIsFinalImageGenerationInstruction",
+      "designSpecRequiredBeforeSketchInstruction",
+      "handSketchInstructionRequiredBeforeGeneration",
+    ]) ||
+    generationNotes.structuredTransformationRequired !== true ||
+    generationNotes.rawCustomerProseIsFinalImageGenerationInstruction !== false ||
+    generationNotes.designSpecRequiredBeforeSketchInstruction !== true ||
+    generationNotes.handSketchInstructionRequiredBeforeGeneration !== true ||
+    !exactKeys(productBoundaries, [
+      "internalFirstPreviewInputOnly",
+      "cad",
+      "quotation",
+      "pricing",
+      "paymentConfirmation",
+      "order",
+      "productionApproval",
+      "manufacturabilityGuarantee",
+    ]) ||
+    productBoundaries.internalFirstPreviewInputOnly !== true ||
+    [
+      productBoundaries.cad,
+      productBoundaries.quotation,
+      productBoundaries.pricing,
+      productBoundaries.paymentConfirmation,
+      productBoundaries.order,
+      productBoundaries.productionApproval,
+      productBoundaries.manufacturabilityGuarantee,
+    ].some((boundary) => boundary !== false)
+  ) {
+    fail("invalid_input");
+  }
+
+  const clonedStones: InstantPreviewAgentStone[] = stones.items.map((item) => {
+    const quantity = isPlainRecord(item) ? item.quantity : undefined;
+    if (
+      !exactKeys(item, [
+        "role",
+        "type",
+        "color",
+        "shape",
+        "setting",
+        "orientation",
+        "tableOrientation",
+        "sizeRelationship",
+        "relationshipToOtherStones",
+        "quantity",
+      ]) ||
+      !isNullableString(item.role) ||
+      !isNullableString(item.type) ||
+      !isNullableString(item.color) ||
+      !isNullableString(item.shape) ||
+      !isNullableString(item.setting) ||
+      !isNullableString(item.orientation) ||
+      !isNullableString(item.tableOrientation) ||
+      !isNullableString(item.sizeRelationship) ||
+      !isNullableString(item.relationshipToOtherStones) ||
+      !(
+        quantity === null ||
+        (typeof quantity === "number" &&
+          Number.isInteger(quantity) &&
+          quantity >= 1 &&
+          quantity <= 100)
+      )
+    ) {
+      fail("invalid_input");
+    }
+
+    return {
+      role: cloneNullableSafeString(item.role),
+      type: cloneNullableSafeString(item.type),
+      color: cloneNullableSafeString(item.color),
+      shape: cloneNullableSafeString(item.shape),
+      setting: cloneNullableSafeString(item.setting),
+      orientation: cloneNullableSafeString(item.orientation),
+      tableOrientation: cloneNullableSafeString(item.tableOrientation),
+      sizeRelationship: cloneNullableSafeString(item.sizeRelationship),
+      relationshipToOtherStones: cloneNullableSafeString(
+        item.relationshipToOtherStones,
+      ),
+      quantity: quantity as number | null,
+    };
+  });
+
+  const cloned: InstantPreviewAgentStructuredInput = {
+    contractVersion: INSTANT_PREVIEW_AGENT_CORE_VERSION,
+    purpose: "internal_first_preview_input",
+    customerIntent: {
+      designIntent: normalizeString(
+        customerIntent.designIntent,
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumDescriptionLength,
+      ),
+      designDescription:
+        customerIntent.designDescription === null
+          ? null
+          : normalizeString(
+              customerIntent.designDescription,
+              INSTANT_PREVIEW_AGENT_LIMITS.maximumDescriptionLength,
+            ),
+    },
+    piece: {
+      canonicalType:
+        piece.canonicalType as InstantPreviewAgentCanonicalPieceType,
+      category: piece.category as InstantPreviewAgentPieceCategory,
+      subtype: cloneNullableSafeString(piece.subtype),
+      boundedOtherJewelryType: cloneNullableSafeString(
+        piece.boundedOtherJewelryType,
+      ),
+    },
+    style: {
+      directions: cloneStringArray(style.directions, 12),
+      colorDirection: cloneNullableSafeString(style.colorDirection),
+    },
+    materials: {
+      directions: cloneStringArray(
+        materials.directions,
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumMaterialDirections,
+      ),
+    },
+    stones: {
+      items: clonedStones,
+      centerStoneDirection: cloneNullableSafeString(
+        stones.centerStoneDirection,
+      ),
+      arrangement: cloneNullableSafeString(stones.arrangement),
+    },
+    composition: {
+      direction: cloneNullableSafeString(composition.direction),
+      motif: cloneNullableSafeString(composition.motif),
+      requestedViews: cloneStringArray(
+        composition.requestedViews,
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumRequestedViews,
+      ),
+    },
+    dimensions: {
+      relationships: cloneStringArray(dimensions.relationships, 12),
+    },
+    wearability: {
+      requirements: cloneStringArray(wearability.requirements, 12),
+    },
+    manufacturingConstraints: cloneStringArray(
+      value.manufacturingConstraints,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumManufacturingConstraints,
+    ),
+    referenceObservations: {
+      observations: cloneStringArray(
+        referenceObservations.observations,
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumReferenceObservations,
+      ),
+      inspirationOnly: true,
+      doNotCopyExactly: true,
+    },
+    unknowns: cloneStringArray(
+      value.unknowns,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumUnknowns,
+    ),
+    avoid: cloneStringArray(
+      value.avoid,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumAvoidRules,
+    ),
+    generationNotes: {
+      structuredTransformationRequired: true,
+      rawCustomerProseIsFinalImageGenerationInstruction: false,
+      designSpecRequiredBeforeSketchInstruction: true,
+      handSketchInstructionRequiredBeforeGeneration: true,
+    },
+    reviewRequirements: cloneStringArray(
+      value.reviewRequirements,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumStructuralReviewRequirements,
+    ),
+    productBoundaries: {
+      internalFirstPreviewInputOnly: true,
+      cad: false,
+      quotation: false,
+      pricing: false,
+      paymentConfirmation: false,
+      order: false,
+      productionApproval: false,
+      manufacturabilityGuarantee: false,
+    },
+  };
+
+  if (
+    JSON.stringify(cloned).length >
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumStructuredOutputCharacters
+  ) {
+    fail("oversized_input");
+  }
+
+  return cloned;
+}
+
+function sanitizeReviewInput(value: unknown): InstantPreviewAgentReviewInput {
+  if (
+    !isPlainRecord(value) ||
+    !hasOnlyKeys(value, REVIEW_INPUT_KEYS) ||
+    Object.keys(value).length !== REVIEW_INPUT_KEYS.size ||
+    !isPlainRecord(value.metadata) ||
+    !hasOnlyKeys(value.metadata, REVIEW_METADATA_KEYS) ||
+    Object.keys(value.metadata).length !== REVIEW_METADATA_KEYS.size ||
+    value.metadata.purpose !== "first_preview_automatic_review" ||
+    typeof value.metadata.candidateSequence !== "number" ||
+    !Number.isInteger(value.metadata.candidateSequence) ||
+    value.metadata.candidateSequence < 1 ||
+    value.metadata.candidateSequence > 100
+  ) {
+    fail("invalid_input");
+  }
+
+  return {
+    structuredIntent: cloneStructuredIntentForReview(value.structuredIntent),
+    designSpecRequirements: cloneStringArray(
+      value.designSpecRequirements,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumDesignSpecReviewRequirements,
+    ),
+    handSketchInstructionRequirements: cloneStringArray(
+      value.handSketchInstructionRequirements,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumHandSketchReviewRequirements,
+    ),
+    candidateObservations: cloneStringArray(
+      value.candidateObservations,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumCandidateObservations,
+    ),
+    structuralReviewRequirements: cloneStringArray(
+      value.structuralReviewRequirements,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumStructuralReviewRequirements,
+    ),
+    metadata: {
+      purpose: "first_preview_automatic_review",
+      candidateSequence: value.metadata.candidateSequence,
+    },
+  };
+}
+
+function isSafeRevisionInstruction(value: string): boolean {
+  return (
+    ALLOWED_REVISION_LANGUAGE.test(value) &&
+    !UNSAFE_REVISION_PATTERNS.some((pattern) => pattern.test(value))
+  );
+}
+
+function normalizeReviewerResult(
+  value: unknown,
+): InstantPreviewAgentAutomaticReviewResult {
+  if (!isPlainRecord(value) || typeof value.outcome !== "string") {
+    return failSafe("malformed_review");
+  }
+
+  const outcome = normalizeWhitespace(value.outcome).toUpperCase();
+  if (outcome === "PASS") {
+    const qualityValue = value.quality;
+    if (
+      !hasOnlyKeys(value, PASS_RESULT_KEYS) ||
+      Object.keys(value).length > PASS_RESULT_KEYS.size
+    ) {
+      return failSafe("malformed_review");
+    }
+
+    if (qualityValue === undefined) {
+      return { outcome: "PASS" };
+    }
+    if (typeof qualityValue !== "string") {
+      return failSafe("malformed_review");
+    }
+    const quality = normalizeWhitespace(qualityValue).toLowerCase();
+    return PASS_QUALITIES.has(quality)
+      ? {
+          outcome: "PASS",
+          quality: quality as InstantPreviewAgentPassQuality,
+        }
+      : failSafe("malformed_review");
+  }
+
+  if (outcome === "REGENERATE") {
+    if (
+      !hasOnlyKeys(value, REGENERATE_RESULT_KEYS) ||
+      Object.keys(value).length !== REGENERATE_RESULT_KEYS.size ||
+      !Array.isArray(value.revisionInstructions) ||
+      value.revisionInstructions.length < 1 ||
+      value.revisionInstructions.length >
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructions
+    ) {
+      return failSafe("malformed_review");
+    }
+
+    const normalized: string[] = [];
+    let totalCharacters = 0;
+    for (const instruction of value.revisionInstructions) {
+      if (typeof instruction !== "string") {
+        return failSafe("malformed_review");
+      }
+      const parsed = normalizeWhitespace(instruction);
+      if (
+        !parsed ||
+        parsed.length >
+          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructionLength
+      ) {
+        return failSafe("malformed_review");
+      }
+      if (!isSafeRevisionInstruction(parsed)) {
+        return failSafe("unsafe_review");
+      }
+      totalCharacters += parsed.length;
+      if (
+        totalCharacters >
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionPayloadCharacters
+      ) {
+        return failSafe("malformed_review");
+      }
+      if (!normalized.includes(parsed)) {
+        normalized.push(parsed);
+      }
+    }
+
+    return {
+      outcome: "REGENERATE",
+      revisionInstructions: normalized,
+    };
+  }
+
+  if (outcome === "FAIL_SAFE") {
+    if (
+      !hasOnlyKeys(value, FAIL_SAFE_RESULT_KEYS) ||
+      Object.keys(value).length !== FAIL_SAFE_RESULT_KEYS.size ||
+      typeof value.reason !== "string"
+    ) {
+      return failSafe("malformed_review");
+    }
+    const reason = normalizeWhitespace(value.reason).toLowerCase();
+    return REVIEWER_FAIL_SAFE_REASONS.has(reason)
+      ? {
+          outcome: "FAIL_SAFE",
+          reason: reason as InstantPreviewAgentFailSafeReason,
+        }
+      : failSafe("malformed_review");
+  }
+
+  return failSafe("malformed_review");
+}
+
+export async function reviewInstantPreviewCandidate(
+  reviewer: InstantPreviewAgentReviewer,
+  input: InstantPreviewAgentReviewInput,
+): Promise<InstantPreviewAgentAutomaticReviewResult> {
+  let sanitizedInput: InstantPreviewAgentReviewInput;
+
+  try {
+    sanitizedInput = sanitizeReviewInput(input);
+  } catch (error) {
+    if (error instanceof ParseFailure && error.category === "unsafe_input") {
+      return failSafe("unsafe_review");
+    }
+    return failSafe(
+      error instanceof ParseFailure ? "malformed_review" : "internal_failure",
+    );
+  }
+
+  if (
+    !reviewer ||
+    typeof reviewer !== "object" ||
+    typeof reviewer.reviewCandidate !== "function"
+  ) {
+    return failSafe("reviewer_unavailable");
+  }
+
+  try {
+    const result = await reviewer.reviewCandidate(sanitizedInput);
+    return normalizeReviewerResult(result);
+  } catch {
+    return failSafe("reviewer_unavailable");
   }
 }
