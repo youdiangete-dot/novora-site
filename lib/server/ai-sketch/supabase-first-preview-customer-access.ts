@@ -15,7 +15,10 @@ import {
   FIRST_PREVIEW_CUSTOMER_ACCESS_CANDIDATE_LIMIT,
   verifyFirstPreviewCustomerAccessProof,
 } from "./first-preview-customer-access-contract";
-import { FIRST_PREVIEW_ASSET_BUCKET } from "./first-preview-persistence-contract";
+import {
+  FIRST_PREVIEW_ASSET_BUCKET,
+  FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+} from "./first-preview-persistence-contract";
 
 type DatabaseError = Readonly<{ kind: "unavailable" }>;
 type CandidateResult = Promise<
@@ -66,6 +69,10 @@ const OUTPUT_COLUMNS = [
   "asset_created_at",
   "asset_validation_status",
   "asset_validated_at",
+  "automatic_gate_status",
+  "automatic_gate_evidence",
+  "automatic_gate_policy_version",
+  "automatic_gate_passed_at",
   "readiness_status",
   "first_preview_ready_at",
   "readiness_revoked_at",
@@ -147,6 +154,109 @@ function readSafePositiveInteger(value: unknown): number | null {
 
 function isIsoTimestamp(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+const CANONICAL_UTC_TIMESTAMP_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(?:Z|\+00:00)$/;
+const DAYS_BEFORE_MONTH = [
+  0,
+  31,
+  59,
+  90,
+  120,
+  151,
+  181,
+  212,
+  243,
+  273,
+  304,
+  334,
+] as const;
+const MICROSECONDS_PER_SECOND = BigInt(1_000_000);
+const SECONDS_PER_DAY = BigInt(86_400);
+
+function isGregorianLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function daysBeforeGregorianYear(year: number): number {
+  return (
+    365 * year +
+    Math.floor((year + 3) / 4) -
+    Math.floor((year + 99) / 100) +
+    Math.floor((year + 399) / 400)
+  );
+}
+
+function parseCanonicalUtcTimestampMicros(value: unknown): bigint | null {
+  if (typeof value !== "string") return null;
+  const match = CANONICAL_UTC_TIMESTAMP_PATTERN.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const fractionMicros = BigInt((match[7] ?? "").padEnd(6, "0") || "0");
+  if (
+    month < 1 ||
+    month > 12 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return null;
+  }
+
+  const daysInMonth =
+    month === 2 && isGregorianLeapYear(year)
+      ? 29
+      : ([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const)[
+          month - 1
+        ];
+  if (day < 1 || day > daysInMonth) return null;
+
+  const daysSinceEpoch =
+    daysBeforeGregorianYear(year) -
+    daysBeforeGregorianYear(1970) +
+    DAYS_BEFORE_MONTH[month - 1] +
+    (month > 2 && isGregorianLeapYear(year) ? 1 : 0) +
+    day -
+    1;
+  const secondsSinceEpoch =
+    BigInt(daysSinceEpoch) * SECONDS_PER_DAY +
+    BigInt(hour * 3_600 + minute * 60 + second);
+
+  return secondsSinceEpoch * MICROSECONDS_PER_SECOND + fractionMicros;
+}
+
+const AUTOMATIC_GATE_EVIDENCE_KEYS = [
+  "result",
+  "outputValid",
+  "assetExists",
+  "ownershipConsistent",
+  "privacyPassed",
+  "customerAccessEligible",
+  "lifecycleEligible",
+] as const;
+
+function isPassedAutomaticGateEvidence(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === AUTOMATIC_GATE_EVIDENCE_KEYS.length &&
+    AUTOMATIC_GATE_EVIDENCE_KEYS.every((key) =>
+      Object.prototype.hasOwnProperty.call(value, key)
+    ) &&
+    value.result === "passed" &&
+    value.outputValid === true &&
+    value.assetExists === true &&
+    value.ownershipConsistent === true &&
+    value.privacyPassed === true &&
+    value.customerAccessEligible === true &&
+    value.lifecycleEligible === true
+  );
 }
 
 function exactlyOne(
@@ -281,6 +391,15 @@ export class SupabaseFirstPreviewCustomerAccessAuthorizer
   ): FirstPreviewStoredAssetMetadata | null {
     const jobId = output.job_id;
     const byteSize = readSafePositiveInteger(output.byte_size);
+    const assetValidatedAtMicros = parseCanonicalUtcTimestampMicros(
+      output.asset_validated_at,
+    );
+    const automaticGatePassedAtMicros = parseCanonicalUtcTimestampMicros(
+      output.automatic_gate_passed_at,
+    );
+    const firstPreviewReadyAtMicros = parseCanonicalUtcTimestampMicros(
+      output.first_preview_ready_at,
+    );
     if (
       output.id !== outputId ||
       output.concept_brief_id !== briefId ||
@@ -299,11 +418,19 @@ export class SupabaseFirstPreviewCustomerAccessAuthorizer
       typeof output.content_sha256 !== "string" ||
       !isValidFirstPreviewContentSha256(output.content_sha256) ||
       !isIsoTimestamp(output.asset_created_at) ||
-      !isIsoTimestamp(output.asset_validated_at) ||
-      !isIsoTimestamp(output.first_preview_ready_at) ||
+      typeof output.asset_validated_at !== "string" ||
+      assetValidatedAtMicros === null ||
+      output.automatic_gate_status !== "passed" ||
+      output.automatic_gate_policy_version !==
+        FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION ||
+      !isPassedAutomaticGateEvidence(output.automatic_gate_evidence) ||
+      automaticGatePassedAtMicros === null ||
+      firstPreviewReadyAtMicros === null ||
       !isIsoTimestamp(output.created_at) ||
       Date.parse(output.asset_validated_at) <
         Date.parse(output.asset_created_at) ||
+      automaticGatePassedAtMicros < assetValidatedAtMicros ||
+      firstPreviewReadyAtMicros < automaticGatePassedAtMicros ||
       output.object_path !==
         deriveFirstPreviewGeneratedAssetId({
           conceptBriefId: briefId,

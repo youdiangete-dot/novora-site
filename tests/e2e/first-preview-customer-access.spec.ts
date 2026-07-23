@@ -18,6 +18,9 @@ import {
   deriveFirstPreviewGeneratedAssetId,
 } from "../../lib/server/ai-sketch/first-preview-generated-assets-contract";
 import {
+  FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+} from "../../lib/server/ai-sketch/first-preview-persistence-contract";
+import {
   FakeFirstPreviewCustomerAccessDatabaseClient,
 } from "../fixtures/ai-sketch/fake-first-preview-customer-access-client";
 
@@ -35,7 +38,20 @@ const NONCE = "test_nonce_7iJ9vH2mQ4xK";
 const HASH = "a".repeat(64);
 const CREATED_AT = "2026-07-23T10:00:00.000Z";
 const VALIDATED_AT = "2026-07-23T10:00:01.000Z";
-const READY_AT = "2026-07-23T10:00:02.000Z";
+const GATE_PASSED_AT = "2026-07-23T10:00:02.000Z";
+const READY_AT = "2026-07-23T10:00:03.000Z";
+
+function validAutomaticGateEvidence() {
+  return {
+    result: "passed",
+    outputValid: true,
+    assetExists: true,
+    ownershipConsistent: true,
+    privacyPassed: true,
+    customerAccessEligible: true,
+    lifecycleEligible: true,
+  };
+}
 
 function briefRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -64,6 +80,11 @@ function outputRow(overrides: Record<string, unknown> = {}) {
     asset_created_at: CREATED_AT,
     asset_validation_status: "passed",
     asset_validated_at: VALIDATED_AT,
+    automatic_gate_status: "passed",
+    automatic_gate_evidence: validAutomaticGateEvidence(),
+    automatic_gate_policy_version:
+      FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+    automatic_gate_passed_at: GATE_PASSED_AT,
     readiness_status: "first_preview_ready",
     first_preview_ready_at: READY_AT,
     readiness_revoked_at: null,
@@ -71,6 +92,47 @@ function outputRow(overrides: Record<string, unknown> = {}) {
     created_at: CREATED_AT,
     ...overrides,
   };
+}
+
+function expectOpaqueDenial(
+  result: unknown,
+  additionalSensitiveValues: readonly string[] = [],
+) {
+  expect(result).toEqual({ authorized: false });
+  const serialized = JSON.stringify(result);
+  for (const sensitiveValue of [
+    FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+    "novora_first_preview_automatic_gates_v0",
+    "novora_first_preview_automatic_gates_v999",
+    "automatic_gate",
+    "automaticGate",
+    "outputValid",
+    "assetExists",
+    "ownershipConsistent",
+    "privacyPassed",
+    "customerAccessEligible",
+    "lifecycleEligible",
+    CREATED_AT,
+    VALIDATED_AT,
+    GATE_PASSED_AT,
+    READY_AT,
+    BRIEF_ID,
+    OUTPUT_ID,
+    JOB_ID,
+    outputRow().object_path,
+    HASH,
+    "diagnostic",
+    "raw error",
+    ...additionalSensitiveValues,
+  ]) {
+    expect(serialized).not.toContain(sensitiveValue);
+  }
+}
+
+function withoutOutputProperty(property: string) {
+  const row: Record<string, unknown> = outputRow();
+  delete row[property];
+  return row;
 }
 
 function jobRow(overrides: Record<string, unknown> = {}) {
@@ -189,7 +251,7 @@ test.describe("First Preview customer-access capability and authorizer", () => {
     expect(payload).not.toHaveProperty("outputId");
   });
 
-  test("authorizes an exact ready/current Brief, Output, and succeeded Job and permits replay only during lifetime", async () => {
+  test("authorizes an exact current-policy ready/current Brief, Output, and succeeded Job and permits replay only during lifetime", async () => {
     const state = harness();
     const proof = validProof();
     const first = await authorize(state, { accessProof: proof });
@@ -451,6 +513,296 @@ test.describe("First Preview customer-access capability and authorizer", () => {
       state.database.outputCandidates = [invalidOutput];
       expect(await authorize(state)).toEqual({ authorized: false });
     }
+  });
+
+  test("rejects missing, non-passed, stale, unknown, malformed, and partial automatic-gate evidence", async () => {
+    const partialEvidence: Record<string, unknown> =
+      validAutomaticGateEvidence();
+    delete partialEvidence.customerAccessEligible;
+    const missingResultEvidence: Record<string, unknown> =
+      validAutomaticGateEvidence();
+    delete missingResultEvidence.result;
+    const inheritedMandatoryEvidence = Object.assign(
+      Object.create({ customerAccessEligible: true }) as Record<string, unknown>,
+      validAutomaticGateEvidence(),
+    );
+    delete inheritedMandatoryEvidence.customerAccessEligible;
+    const inheritedResultEvidence = Object.assign(
+      Object.create({ result: "passed" }) as Record<string, unknown>,
+      validAutomaticGateEvidence(),
+    );
+    delete inheritedResultEvidence.result;
+
+    const invalidOutputs = [
+      {
+        name: "missing automatic gate status",
+        output: withoutOutputProperty("automatic_gate_status"),
+      },
+      {
+        name: "automatic gate status not passed",
+        output: outputRow({ automatic_gate_status: "pending" }),
+      },
+      {
+        name: "null automatic gate status",
+        output: outputRow({ automatic_gate_status: null }),
+      },
+      {
+        name: "missing automatic gate policy version",
+        output: withoutOutputProperty("automatic_gate_policy_version"),
+      },
+      {
+        name: "null automatic gate policy version",
+        output: outputRow({ automatic_gate_policy_version: null }),
+      },
+      {
+        name: "stale automatic gate policy version",
+        output: outputRow({
+          automatic_gate_policy_version:
+            "novora_first_preview_automatic_gates_v0",
+        }),
+      },
+      {
+        name: "unknown future automatic gate policy version",
+        output: outputRow({
+          automatic_gate_policy_version:
+            "novora_first_preview_automatic_gates_v999",
+        }),
+      },
+      {
+        name: "missing automatic gate evidence",
+        output: withoutOutputProperty("automatic_gate_evidence"),
+      },
+      {
+        name: "null automatic gate evidence",
+        output: outputRow({ automatic_gate_evidence: null }),
+      },
+      {
+        name: "non-object automatic gate evidence",
+        output: outputRow({ automatic_gate_evidence: "passed" }),
+      },
+      {
+        name: "array automatic gate evidence",
+        output: outputRow({ automatic_gate_evidence: [] }),
+      },
+      {
+        name: "missing required automatic gate evidence field",
+        output: outputRow({ automatic_gate_evidence: partialEvidence }),
+      },
+      {
+        name: "missing automatic gate evidence result",
+        output: outputRow({
+          automatic_gate_evidence: missingResultEvidence,
+        }),
+      },
+      {
+        name: "required automatic gate evidence field inherited",
+        output: outputRow({
+          automatic_gate_evidence: inheritedMandatoryEvidence,
+        }),
+      },
+      {
+        name: "automatic gate evidence result inherited",
+        output: outputRow({
+          automatic_gate_evidence: inheritedResultEvidence,
+        }),
+      },
+      {
+        name: "automatic gate evidence result not passed",
+        output: outputRow({
+          automatic_gate_evidence: {
+            ...validAutomaticGateEvidence(),
+            result: "pending",
+          },
+        }),
+      },
+      {
+        name: "ambiguous automatic gate evidence with an unexpected field",
+        output: outputRow({
+          automatic_gate_evidence: {
+            ...validAutomaticGateEvidence(),
+            futureGate: false,
+          },
+        }),
+      },
+    ];
+
+    for (const scenario of invalidOutputs) {
+      await test.step(scenario.name, async () => {
+        const state = harness();
+        state.database.outputCandidates = [scenario.output];
+        expectOpaqueDenial(await authorize(state));
+      });
+    }
+  });
+
+  test("rejects every false mandatory automatic-gate evidence field", async () => {
+    const mandatoryGateFields = [
+      "outputValid",
+      "assetExists",
+      "ownershipConsistent",
+      "privacyPassed",
+      "customerAccessEligible",
+      "lifecycleEligible",
+    ] as const;
+
+    for (const field of mandatoryGateFields) {
+      for (const invalidValue of [false, 1, "true"] as const) {
+        await test.step(`${field}: ${JSON.stringify(invalidValue)}`, async () => {
+          const state = harness();
+          state.database.outputCandidates = [
+            outputRow({
+              automatic_gate_evidence: {
+                ...validAutomaticGateEvidence(),
+                [field]: invalidValue,
+              },
+            }),
+          ];
+          expectOpaqueDenial(await authorize(state));
+        });
+      }
+    }
+  });
+
+  test("rejects missing, invalid, and inconsistently ordered automatic-gate timestamps", async () => {
+    const invalidOutputs = [
+      {
+        name: "missing automatic gate passed timestamp",
+        output: withoutOutputProperty("automatic_gate_passed_at"),
+      },
+      {
+        name: "null automatic gate passed timestamp",
+        output: outputRow({ automatic_gate_passed_at: null }),
+      },
+      {
+        name: "invalid automatic gate passed timestamp",
+        output: outputRow({ automatic_gate_passed_at: "not-a-time" }),
+      },
+      {
+        name: "automatic gate passed before asset validation",
+        output: outputRow({ automatic_gate_passed_at: CREATED_AT }),
+      },
+      {
+        name: "first preview ready before automatic gate passed",
+        output: outputRow({ first_preview_ready_at: VALIDATED_AT }),
+      },
+      {
+        name: "automatic gate passed before asset validation within one millisecond",
+        output: outputRow({
+          asset_validated_at: "2026-07-23T10:00:02.000999Z",
+          automatic_gate_passed_at: "2026-07-23T10:00:02.000001Z",
+        }),
+      },
+      {
+        name: "first preview ready before automatic gate passage within one millisecond",
+        output: outputRow({
+          automatic_gate_passed_at: "2026-07-23T10:00:02.000999Z",
+          first_preview_ready_at: "2026-07-23T10:00:02.000001Z",
+        }),
+      },
+    ];
+
+    for (const scenario of invalidOutputs) {
+      await test.step(scenario.name, async () => {
+        const state = harness();
+        state.database.outputCandidates = [scenario.output];
+        expectOpaqueDenial(await authorize(state), [
+          String(scenario.output.automatic_gate_passed_at ?? ""),
+          String(scenario.output.first_preview_ready_at ?? ""),
+          String(scenario.output.asset_validated_at ?? ""),
+        ].filter(Boolean));
+      });
+    }
+  });
+
+  test("rejects noncanonical automatic-gate timestamps even when JavaScript can parse them", async () => {
+    for (const invalidTimestamp of [
+      "July 23, 2026 10:00:02 GMT",
+      "07/23/2026 10:00:02 UTC",
+      "2026-07-23 10:00:02Z",
+      "2026-07-23T10:00:02",
+      "2026-07-23T10:00:02+01:00",
+      "2026-07-23T10:00:02.0000001Z",
+      "2026-02-30T10:00:02Z",
+    ]) {
+      await test.step(invalidTimestamp, async () => {
+        const state = harness();
+        state.database.outputCandidates = [
+          outputRow({ automatic_gate_passed_at: invalidTimestamp }),
+        ];
+        expectOpaqueDenial(await authorize(state), [invalidTimestamp]);
+      });
+    }
+  });
+
+  test("authorizes canonical UTC timestamps with exact microsecond ordering", async () => {
+    const validOutputs = [
+      {
+        name: "canonical Z timestamps",
+        output: outputRow({
+          asset_validated_at: "2026-07-23T10:00:02Z",
+          automatic_gate_passed_at: "2026-07-23T10:00:02.1Z",
+          first_preview_ready_at: "2026-07-23T10:00:02.12Z",
+        }),
+      },
+      {
+        name: "canonical explicit UTC-offset timestamps",
+        output: outputRow({
+          asset_validated_at: "2026-07-23T10:00:02+00:00",
+          automatic_gate_passed_at: "2026-07-23T10:00:02.1+00:00",
+          first_preview_ready_at: "2026-07-23T10:00:02.12+00:00",
+        }),
+      },
+      {
+        name: "equal microsecond timestamps",
+        output: outputRow({
+          asset_validated_at: "2026-07-23T10:00:02.000001Z",
+          automatic_gate_passed_at: "2026-07-23T10:00:02.000001Z",
+          first_preview_ready_at: "2026-07-23T10:00:02.000001Z",
+        }),
+      },
+      {
+        name: "correctly ordered sub-millisecond timestamps",
+        output: outputRow({
+          asset_validated_at: "2026-07-23T10:00:02.000001Z",
+          automatic_gate_passed_at: "2026-07-23T10:00:02.000500Z",
+          first_preview_ready_at: "2026-07-23T10:00:02.000999Z",
+        }),
+      },
+    ];
+
+    for (const scenario of validOutputs) {
+      await test.step(scenario.name, async () => {
+        const state = harness();
+        state.database.outputCandidates = [scenario.output];
+        expect(await authorize(state)).toMatchObject({ authorized: true });
+      });
+    }
+  });
+
+  test("fails closed without diagnostics for stale gate policy despite otherwise ready/current valid state", async () => {
+    const stalePolicyVersion = "novora_first_preview_automatic_gates_v0";
+    const state = harness();
+    state.database.outputCandidates = [
+      outputRow({
+        readiness_status: "first_preview_ready",
+        is_current_customer_preview: true,
+        automatic_gate_policy_version: stalePolicyVersion,
+      }),
+    ];
+
+    const result = await authorize(state);
+
+    expect(result).toEqual({ authorized: false });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(stalePolicyVersion);
+    expect(serialized).not.toContain(
+      FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+    );
+    expect(serialized).not.toContain("automatic_gate");
+    expect(serialized).not.toContain(BRIEF_ID);
+    expect(serialized).not.toContain(JOB_ID);
+    expect(serialized).not.toContain(OUTPUT_ID);
+    expect(serialized).not.toContain("diagnostic");
   });
 
   test("rejects failed, nonterminal, wrong-purpose, and incorrectly linked Jobs", async () => {
