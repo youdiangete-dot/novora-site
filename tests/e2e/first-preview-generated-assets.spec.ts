@@ -81,6 +81,7 @@ function descriptor(
   asset: FirstPreviewStoredAssetMetadata = metadata(),
 ): FirstPreviewAuthorizedAssetDescriptor {
   return {
+    publicReference: PUBLIC_REFERENCE,
     conceptBriefId: BRIEF_ID,
     jobId: JOB_ID,
     outputId: OUTPUT_ID,
@@ -147,6 +148,7 @@ async function expectPngRejectedByPersistenceAndRead(
   expect(await authorizedRead.store.readAuthorizedPng({
     publicReference: PUBLIC_REFERENCE,
     outputId: OUTPUT_ID,
+    accessProof: "test-access-proof",
   })).toEqual({ ok: false, code: "asset_integrity_failure" });
 }
 
@@ -430,6 +432,7 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await actual.store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toMatchObject({ ok: true });
   });
 
@@ -460,6 +463,7 @@ test.describe("server-only private First Preview generated assets", () => {
         expect(await actual.store.readAuthorizedPng({
           publicReference: PUBLIC_REFERENCE,
           outputId: OUTPUT_ID,
+          accessProof: "test-access-proof",
         })).toEqual({ ok: false, code: "privacy_failure" });
       });
     }
@@ -479,6 +483,7 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await actual.store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toEqual({ ok: false, code: "storage_unavailable" });
   });
 
@@ -495,6 +500,7 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await actual.store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toEqual({ ok: false, code: "storage_unavailable" });
   });
 
@@ -529,7 +535,11 @@ test.describe("server-only private First Preview generated assets", () => {
       });
     }
 
-    for (const operation of ["inspectBucket", "downloadObject"] as const) {
+    for (const operation of [
+      "inspectBucket",
+      "downloadObject",
+      "inspectObject",
+    ] as const) {
       const { storage, authorizer, store } = harness();
       storage.seedObject(ASSET_ID, VALID_PNG);
       storage.throwNext(operation);
@@ -537,6 +547,7 @@ test.describe("server-only private First Preview generated assets", () => {
       await expect(store.readAuthorizedPng({
         publicReference: PUBLIC_REFERENCE,
         outputId: OUTPUT_ID,
+        accessProof: "test-access-proof",
       })).resolves.toEqual({ ok: false, code: "storage_unavailable" });
     }
   });
@@ -549,6 +560,7 @@ test.describe("server-only private First Preview generated assets", () => {
     const result = await store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     });
     expect(result).toEqual({
       ok: true,
@@ -560,10 +572,23 @@ test.describe("server-only private First Preview generated assets", () => {
         cacheControl: FIRST_PREVIEW_GENERATED_ASSET_CACHE_CONTROL,
       },
     });
-    expect(authorizer.requests).toEqual([{
-      publicReference: PUBLIC_REFERENCE,
-      outputId: OUTPUT_ID,
-    }]);
+    expect(authorizer.requests).toEqual([
+      {
+        publicReference: PUBLIC_REFERENCE,
+        outputId: OUTPUT_ID,
+        accessProof: "test-access-proof",
+      },
+      {
+        publicReference: PUBLIC_REFERENCE,
+        outputId: OUTPUT_ID,
+        accessProof: "test-access-proof",
+      },
+    ]);
+    expect(storage.operations).toEqual([
+      "inspectBucket",
+      "downloadObject",
+      "inspectObject",
+    ]);
     expect(JSON.stringify(result)).not.toContain(ASSET_ID);
     expect(JSON.stringify(result)).not.toContain(FIRST_PREVIEW_ASSET_BUCKET);
     expect(JSON.stringify(result)).not.toContain("signedUrl");
@@ -581,6 +606,10 @@ test.describe("server-only private First Preview generated assets", () => {
       } as unknown as FirstPreviewAuthorizedAssetDescriptor,
       {
         ...descriptor(),
+        publicReference: "NOVORA-CB-20260722-B640",
+      },
+      {
+        ...descriptor(),
         outputId: OTHER_OUTPUT_ID,
       },
       descriptor(metadata({ assetId: "first-preview/unsafe.png" })),
@@ -590,6 +619,7 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await denied.store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toEqual({ ok: false, code: "access_denied" });
     expect(denied.storage.operations).toEqual([]);
 
@@ -597,6 +627,7 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await invalidRequest.store.readAuthorizedPng({
       publicReference: "not-a-public-reference",
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toEqual({ ok: false, code: "invalid_input" });
     expect(invalidRequest.authorizer.requests).toEqual([]);
     expect(invalidRequest.storage.operations).toEqual([]);
@@ -606,6 +637,7 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await authorizerFailure.store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toEqual({ ok: false, code: "access_denied" });
     expect(authorizerFailure.storage.operations).toEqual([]);
 
@@ -615,6 +647,7 @@ test.describe("server-only private First Preview generated assets", () => {
       expect(await store.readAuthorizedPng({
         publicReference: PUBLIC_REFERENCE,
         outputId: OUTPUT_ID,
+        accessProof: "test-access-proof",
       })).toEqual({ ok: false, code: "access_denied" });
       expect(storage.operations).toEqual([]);
     }
@@ -626,6 +659,7 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await missing.store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toEqual({ ok: false, code: "asset_not_found" });
 
     const tampered = harness();
@@ -635,7 +669,55 @@ test.describe("server-only private First Preview generated assets", () => {
     expect(await tampered.store.readAuthorizedPng({
       publicReference: PUBLIC_REFERENCE,
       outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
     })).toEqual({ ok: false, code: "asset_integrity_failure" });
+  });
+
+  test("fails closed when authorization expires or is revoked during the Storage read", async () => {
+    for (const finalResult of [
+      { authorized: false } as const,
+      {
+        authorized: true,
+        descriptor: {
+          ...descriptor(),
+          isCurrentCustomerPreview: false,
+        } as unknown as FirstPreviewAuthorizedAssetDescriptor,
+      } as const,
+    ]) {
+      const { storage, authorizer, store } = harness();
+      storage.seedObject(ASSET_ID, VALID_PNG);
+      authorizer.results = [
+        { authorized: true, descriptor: descriptor() },
+        finalResult,
+      ];
+
+      expect(await store.readAuthorizedPng({
+        publicReference: PUBLIC_REFERENCE,
+        outputId: OUTPUT_ID,
+        accessProof: "test-access-proof",
+      })).toEqual({ ok: false, code: "access_denied" });
+      expect(authorizer.requests).toHaveLength(2);
+    }
+  });
+
+  test("fails closed when the re-authorized descriptor no longer matches the initial reference-bound asset", async () => {
+    const { storage, authorizer, store } = harness();
+    storage.seedObject(ASSET_ID, VALID_PNG);
+    authorizer.results = [
+      { authorized: true, descriptor: descriptor() },
+      {
+        authorized: true,
+        descriptor: descriptor(metadata({
+          assetValidatedAt: "2026-07-22T12:00:02.000Z",
+        })),
+      },
+    ];
+
+    expect(await store.readAuthorizedPng({
+      publicReference: PUBLIC_REFERENCE,
+      outputId: OUTPUT_ID,
+      accessProof: "test-access-proof",
+    })).toEqual({ ok: false, code: "access_denied" });
   });
 
   test("keeps the Production binding unavailable unless every server-only dependency matches", async () => {
@@ -674,6 +756,7 @@ test.describe("server-only private First Preview generated assets", () => {
       expect(await store.readAuthorizedPng({
         publicReference: PUBLIC_REFERENCE,
         outputId: OUTPUT_ID,
+        accessProof: "test-access-proof",
       })).toEqual({ ok: false, code: "storage_unavailable" });
     }
     expect(storage.operations).toEqual([]);
