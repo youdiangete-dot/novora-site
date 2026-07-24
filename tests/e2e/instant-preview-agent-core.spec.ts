@@ -535,13 +535,15 @@ class FakeInstantPreviewAgentReviewer implements InstantPreviewAgentReviewer {
       | ((input: InstantPreviewAgentReviewInput) => unknown | Promise<unknown>),
   ) {}
 
-  async reviewCandidate(input: InstantPreviewAgentReviewInput): Promise<unknown> {
+  reviewCandidate = async (
+    input: InstantPreviewAgentReviewInput,
+  ): Promise<unknown> => {
     this.callCount += 1;
     this.lastInput = input;
     return typeof this.response === "function"
       ? this.response(input)
       : this.response;
-  }
+  };
 }
 
 async function reviewWith(response: ConstructorParameters<typeof FakeInstantPreviewAgentReviewer>[0]) {
@@ -559,6 +561,41 @@ function expectSafeReviewFailure(
   if (result.outcome === "FAIL_SAFE" && reason) {
     expect(result.reason).toBe(reason);
   }
+}
+
+async function reviewWithRawReviewer(
+  reviewer: unknown,
+  input: InstantPreviewAgentReviewInput = validReviewInput(),
+) {
+  return reviewInstantPreviewCandidate(
+    reviewer as InstantPreviewAgentReviewer,
+    input,
+  );
+}
+
+function revisionInstructionOfLength(length: number, index: number): string {
+  const prefix = `Correct ring stone orientation ${index} `;
+  expect(prefix.length).toBeLessThanOrEqual(length);
+  return `${prefix}${"x".repeat(length - prefix.length)}`;
+}
+
+async function expectSensitivePayloadRejected(payload: string) {
+  expectFailure(
+    structureConceptBriefForInstantPreview(
+      validBrief({
+        designDescription: `Refine the ring composition using ${payload}`,
+      }),
+    ),
+    "unsafe_input",
+  );
+
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      `Correct the ring stone orientation using ${payload}`,
+    ],
+  });
+  expectSafeReviewFailure(result, "unsafe_review");
 }
 
 test("accepts a valid PASS review", async () => {
@@ -823,4 +860,363 @@ test("never exposes raw malformed reviewer content", async () => {
   });
   expectSafeReviewFailure(result);
   expect(JSON.stringify(result)).not.toContain(marker);
+});
+
+test("does not infer PASS from Object.prototype pollution", async () => {
+  const original = Object.getOwnPropertyDescriptor(Object.prototype, "outcome");
+  try {
+    Object.defineProperty(Object.prototype, "outcome", {
+      configurable: true,
+      enumerable: true,
+      value: "PASS",
+      writable: true,
+    });
+    const { result } = await reviewWith({});
+    expectSafeReviewFailure(result, "malformed_review");
+  } finally {
+    if (original) {
+      Object.defineProperty(Object.prototype, "outcome", original);
+    } else {
+      delete (Object.prototype as { outcome?: unknown }).outcome;
+    }
+  }
+});
+
+test("rejects inherited, accessor-backed, and nonliteral outcomes", async () => {
+  const inherited = Object.create({ outcome: "PASS" });
+  const accessor = {};
+  Object.defineProperty(accessor, "outcome", {
+    enumerable: true,
+    get: () => "PASS",
+  });
+  const throwing = {};
+  Object.defineProperty(throwing, "outcome", {
+    enumerable: true,
+    get: () => {
+      throw new Error("OUTCOME_GETTER_PRIVATE_MARKER");
+    },
+  });
+  const cases = [
+    inherited,
+    accessor,
+    throwing,
+    { outcome: "pass" },
+    { outcome: "PaSs" },
+    { outcome: " PASS " },
+    { outcome: new String("PASS") },
+  ];
+
+  for (const response of cases) {
+    const { result } = await reviewWith(response);
+    expectSafeReviewFailure(result, "malformed_review");
+    expect(JSON.stringify(result)).not.toContain("OUTCOME_GETTER_PRIVATE_MARKER");
+  }
+});
+
+test("rejects a reviewer-result Proxy get failure without disclosure", async () => {
+  const marker = "RESULT_PROXY_PRIVATE_MARKER";
+  const response = new Proxy(
+    { outcome: "PASS" },
+    {
+      get() {
+        throw new Error(marker);
+      },
+    },
+  );
+  const { result } = await reviewWith(response);
+  expectSafeReviewFailure(result);
+  expect(JSON.stringify(result)).not.toContain(marker);
+});
+
+test("guards reviewer method retrieval and requires one own callable data property", async () => {
+  const marker = "REVIEW_METHOD_PRIVATE_MARKER";
+  const throwingGetter = {};
+  Object.defineProperty(throwingGetter, "reviewCandidate", {
+    enumerable: true,
+    get: () => {
+      throw new Error(marker);
+    },
+  });
+  const accessorMethod = {};
+  Object.defineProperty(accessorMethod, "reviewCandidate", {
+    enumerable: true,
+    get: () => async () => ({ outcome: "PASS" }),
+  });
+  const inheritedMethod = Object.create({
+    reviewCandidate: async () => ({ outcome: "PASS" }),
+  });
+  const nonCallable = { reviewCandidate: "PASS" };
+  const proxyGetFailure = new Proxy(
+    {
+      reviewCandidate: async () => ({ outcome: "PASS" }),
+    },
+    {
+      get() {
+        throw new Error(marker);
+      },
+    },
+  );
+
+  for (const reviewer of [
+    throwingGetter,
+    accessorMethod,
+    inheritedMethod,
+    nonCallable,
+    proxyGetFailure,
+  ]) {
+    const result = await reviewWithRawReviewer(reviewer);
+    expectSafeReviewFailure(result, "reviewer_unavailable");
+    expect(JSON.stringify(result)).not.toContain(marker);
+  }
+});
+
+test("invokes a captured reviewer method at most once on every path", async () => {
+  const success = await reviewWith({ outcome: "PASS" });
+  const malformed = await reviewWith({ outcome: "not-valid" });
+  const thrown = await reviewWith(() => {
+    throw new Error("single invocation");
+  });
+  expect(success.reviewer.callCount).toBe(1);
+  expect(malformed.reviewer.callCount).toBe(1);
+  expect(thrown.reviewer.callCount).toBe(1);
+
+  let retrievalCalls = 0;
+  const accessor = {};
+  Object.defineProperty(accessor, "reviewCandidate", {
+    enumerable: true,
+    get: () => {
+      retrievalCalls += 1;
+      return async () => ({ outcome: "PASS" });
+    },
+  });
+  expectSafeReviewFailure(
+    await reviewWithRawReviewer(accessor),
+    "reviewer_unavailable",
+  );
+  expect(retrievalCalls).toBe(0);
+
+  const skipped = new FakeInstantPreviewAgentReviewer({ outcome: "PASS" });
+  const invalidInput = validReviewInput();
+  invalidInput.metadata.candidateSequence = 0;
+  expectSafeReviewFailure(
+    await reviewInstantPreviewCandidate(skipped, invalidInput),
+    "malformed_review",
+  );
+  expect(skipped.callCount).toBe(0);
+});
+
+test("rejects bounded encoded and Unicode URL forms on both security paths", async () => {
+  for (const payload of [
+    "https%3A%2F%2Fprivate.invalid%2Fdesign",
+    "https%253A%252F%252Fprivate.invalid%252Fdesign",
+    "ｈｔｔｐｓ：／／private.invalid/design",
+    "һttps://private.invalid/design",
+    "h t t p s : / / private.invalid/design",
+  ]) {
+    await expectSensitivePayloadRejected(payload);
+  }
+});
+
+test("rejects fake token and bearer forms on both security paths", async () => {
+  const fakeToken = `${"s"}${"k-"}${"x".repeat(24)}`;
+  const bearerToken = `${"Bearer"} ${"a".repeat(24)}`;
+  await expectSensitivePayloadRejected(fakeToken);
+  await expectSensitivePayloadRejected(bearerToken);
+});
+
+test("rejects remaining sensitive categories on both security paths", async () => {
+  const sensitivePayloads = [
+    "process.env.OPENAI_API_KEY",
+    "password=privatevalue",
+    "cookie=sessionvalue",
+    "SELECT private_value FROM private_records",
+    "Run a shell command",
+    "execute code",
+    "npm install private-package",
+    "storage bucket private-previews",
+    "123e4567-e89b-42d3-a456-426614174000",
+    "NOVORA-CB-20260724-PRIVATE",
+    "customer@example.invalid",
+    "confirm payment",
+    "confirm order",
+    "shipping address",
+    "CAD approved",
+    "production approved",
+    "guarantee manufacturability",
+  ];
+  for (const payload of sensitivePayloads) {
+    await expectSensitivePayloadRejected(payload);
+  }
+});
+
+test("rejects encoded Windows, UNC, and Unix paths on both security paths", async () => {
+  for (const payload of [
+    "C%3A%5Cprivate%5Cdesign.png",
+    "%5C%5Cserver%5Cshare%5Cdesign.png",
+    "%2Fetc%2Fprivate%2Fdesign.png",
+  ]) {
+    await expectSensitivePayloadRejected(payload);
+  }
+});
+
+test("rejects sparse arrays even when an inherited index is present", async () => {
+  const original = Object.getOwnPropertyDescriptor(Array.prototype, "0");
+  try {
+    Object.defineProperty(Array.prototype, "0", {
+      configurable: true,
+      enumerable: true,
+      value: "inherited ring direction",
+      writable: true,
+    });
+    const sparse = new Array(1);
+    expectFailure(
+      structureConceptBriefForInstantPreview(
+        validBrief({ styleDirection: sparse }),
+      ),
+      "invalid_input",
+    );
+    const { result } = await reviewWith({
+      outcome: "REGENERATE",
+      revisionInstructions: sparse,
+    });
+    expectSafeReviewFailure(result, "malformed_review");
+  } finally {
+    if (original) {
+      Object.defineProperty(Array.prototype, "0", original);
+    } else {
+      delete (Array.prototype as unknown as Record<string, unknown>)["0"];
+    }
+  }
+});
+
+test("rejects accessor indexes and unexpected enumerable array properties", () => {
+  let accessorCalls = 0;
+  const accessorArray: unknown[] = [];
+  Object.defineProperty(accessorArray, "0", {
+    enumerable: true,
+    get: () => {
+      accessorCalls += 1;
+      return "clean ring";
+    },
+  });
+  Object.defineProperty(accessorArray, "length", { value: 1 });
+  expectFailure(
+    structureConceptBriefForInstantPreview(
+      validBrief({ styleDirection: accessorArray }),
+    ),
+    "invalid_input",
+  );
+  expect(accessorCalls).toBe(0);
+
+  const extraProperty = ["clean ring"] as string[] & { extra?: string };
+  extraProperty.extra = "must not be interpreted";
+  expectFailure(
+    structureConceptBriefForInstantPreview(
+      validBrief({ styleDirection: extraProperty }),
+    ),
+    "invalid_input",
+  );
+});
+
+test("rejects malformed reviewer arrays without reading accessor indexes", async () => {
+  let accessorCalls = 0;
+  const accessorArray: unknown[] = [];
+  Object.defineProperty(accessorArray, "0", {
+    enumerable: true,
+    get: () => {
+      accessorCalls += 1;
+      return "Correct ring stone orientation.";
+    },
+  });
+  Object.defineProperty(accessorArray, "length", { value: 1 });
+  const extraProperty = [
+    "Correct ring stone orientation.",
+  ] as string[] & { extra?: string };
+  extraProperty.extra = "must not be interpreted";
+
+  for (const revisionInstructions of [accessorArray, extraProperty]) {
+    const { result } = await reviewWith({
+      outcome: "REGENERATE",
+      revisionInstructions,
+    });
+    expectSafeReviewFailure(result, "malformed_review");
+  }
+  expect(accessorCalls).toBe(0);
+});
+
+test("rejects mandatory properties inherited through a prototype", async () => {
+  const input = validBrief();
+  delete input.designIntent;
+  Object.setPrototypeOf(input, {
+    designIntent: "Inherited ring intent must not be accepted.",
+  });
+  expectFailure(
+    structureConceptBriefForInstantPreview(input),
+    "invalid_input",
+  );
+
+  const reviewer = new FakeInstantPreviewAgentReviewer({ outcome: "PASS" });
+  const reviewInput = validReviewInput();
+  reviewInput.metadata = Object.assign(
+    Object.create({ purpose: "first_preview_automatic_review" }),
+    { candidateSequence: 1 },
+  ) as InstantPreviewAgentReviewInput["metadata"];
+  expectSafeReviewFailure(
+    await reviewInstantPreviewCandidate(reviewer, reviewInput),
+    "malformed_review",
+  );
+  expect(reviewer.callCount).toBe(0);
+});
+
+test("enforces the exact total revision payload boundary", async () => {
+  const exact = Array.from({ length: 5 }, (_, index) =>
+    revisionInstructionOfLength(240, index),
+  );
+  const accepted = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: exact,
+  });
+  expect(accepted.result).toEqual({
+    outcome: "REGENERATE",
+    revisionInstructions: exact,
+  });
+
+  const over = [...exact];
+  over[0] = revisionInstructionOfLength(241, 0);
+  const rejected = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: over,
+  });
+  expectSafeReviewFailure(rejected.result, "malformed_review");
+});
+
+test("requires exact outcome branch fields and rejects malformed extras", async () => {
+  const malformedResponses = [
+    { quality: "strong" },
+    { outcome: "PASS", revisionInstructions: ["Correct ring orientation."] },
+    { outcome: "REGENERATE" },
+    { outcome: "REGENERATE", revisionInstructions: [], reason: "candidate_invalid" },
+    { outcome: "FAIL_SAFE" },
+    { outcome: "FAIL_SAFE", reason: "candidate_invalid", quality: "strong" },
+  ];
+  for (const response of malformedResponses) {
+    const { result } = await reviewWith(response);
+    expectSafeReviewFailure(result, "malformed_review");
+  }
+});
+
+test("failure envelopes disclose no rejected values or exception diagnostics", async () => {
+  const inputMarker = "REJECTED_INPUT_PRIVATE_MARKER";
+  const exceptionMarker = "REVIEW_EXCEPTION_PRIVATE_MARKER";
+  const rejectedInput = structureConceptBriefForInstantPreview(
+    validBrief({
+      designDescription: `${inputMarker} https%3A%2F%2Fprivate.invalid`,
+    }),
+  );
+  const rejectedReview = await reviewWith(() => {
+    throw new Error(exceptionMarker);
+  });
+  expect(JSON.stringify(rejectedInput)).not.toContain(inputMarker);
+  expect(JSON.stringify(rejectedInput)).not.toContain("private.invalid");
+  expect(JSON.stringify(rejectedReview.result)).not.toContain(exceptionMarker);
 });

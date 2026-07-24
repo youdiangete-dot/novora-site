@@ -157,18 +157,59 @@ const STRUCTURAL_REVIEW_REQUIREMENTS = [
 const EMPTY_OPTIONAL_VALUES = new Set(["", "-", "n/a", "not applicable"]);
 const OTHER_JEWELRY_TYPE_PATTERN =
   /\b(brooch|pin|charm|anklet|cufflink|tie clip|tiara|hairpin|body jewelry)\b/i;
-const SENSITIVE_DESIGN_VALUE_PATTERNS = [
+const MAXIMUM_SECURITY_DECODE_PASSES = 2;
+const MAXIMUM_SECURITY_VARIANTS = 12;
+const MAXIMUM_SECURITY_SCAN_CHARACTERS = 4_000;
+const SECURITY_CONFUSABLES: Readonly<Record<string, string>> = {
+  "\u04bb": "h",
+  "\u043d": "h",
+  "\u0442": "t",
+  "\u03c4": "t",
+  "\u0440": "p",
+  "\u03c1": "p",
+  "\u0455": "s",
+  "\u0456": "i",
+  "\u217c": "l",
+  "\u03bf": "o",
+  "\u043e": "o",
+  "\u0430": "a",
+  "\u0435": "e",
+  "\u0441": "c",
+};
+const TECHNICAL_SENSITIVE_VALUE_PATTERNS = [
   /https?:\/\//i,
   /file:\/\//i,
   /\b[A-Z]:[\\/]/i,
-  /(?:^|[\s"'(])(?:\.\.[\\/]|\/(?:etc|home|users|var|tmp)[\\/])/i,
+  /(?:^|[\s"'(])\\\\[^\\\s]+\\[^\\\s]+/i,
+  /(?:^|[\s"'(])(?:\.\.[\\/]|\/(?:[A-Za-z0-9._-]+[\\/])+[A-Za-z0-9._-]*)/i,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
   /(?:\+?\d[\d\s().-]{7,}\d)/,
   /\bNOVORA-CB-[A-Z0-9-]+\b/i,
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i,
-  /\b(api[ _-]?key|bearer token|password|credential|secret|cookie|capability proof)\b/i,
-  /\b(process\.env|environment variable|storage bucket|storage object path|signed url|private url)\b/i,
+  /\bsk-[A-Za-z0-9_-]{12,}\b/i,
+  /\bbearer(?:\s+|%20)[A-Za-z0-9._~+/-]{8,}\b/i,
+  /\b(api[ _-]?key|password|credential|secret|cookie|capability proof)\b/i,
+  /\b(api[ _-]?key|token|password|secret)\s*[:=]\s*[A-Za-z0-9._~+/-]{6,}\b/i,
+  /\b(process\.env|environment variable|\$env:|OPENAI_API_KEY|SUPABASE_[A-Z_]+|API_KEY)\b/i,
+  /(?:\$\{[A-Z][A-Z0-9_]{2,}\}|%[A-Z][A-Z0-9_]{2,}%)/,
+  /\b(storage bucket|storage object|storage path|object path|signed url|private url|private path)\b/i,
   /\b(customer name|email address|phone number|whatsapp|contact note|admin note|reviewer note)\b/i,
+  /\b(SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+.+\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE|CREATE\s+TABLE|SQL statement|database schema|database table|database column|postgres|supabase)\b/i,
+  /\b(shell command|powershell|cmd\.exe|bash|invoke-webrequest|curl|wget)\b/i,
+  /\b(execute (?:a |the )?(?:tool|code|command|script)|run (?:a |the )?(?:tool|command|script)|tool execution|code execution)\b/i,
+  /\b(npm|pnpm|yarn|pip)\s+(?:install|add)\b/i,
+  /\b(package installation|install (?:a |the )?package)\b/i,
+] as const;
+const STRUCTURED_SENSITIVE_VALUE_PATTERNS = [
+  ...TECHNICAL_SENSITIVE_VALUE_PATTERNS,
+  /\b(make|send|take|collect|process|confirm)\b.{0,40}\bpayment\b/i,
+  /\b(place|create|confirm|accept|submit)\b.{0,40}\border\b/i,
+  /\b(ship|shipping|delivery address)\b/i,
+  /\bCAD\b.{0,40}\b(complete|ready|finished|approved)\b/i,
+  /\b(complete|ready|finished|approved)\b.{0,40}\bCAD\b/i,
+  /\bproduction\b.{0,40}\b(approved|ready|confirmed)\b/i,
+  /\b(approved|ready|confirmed)\b.{0,40}\bproduction\b/i,
+  /\b(guaranteed?|guarantee)\b.{0,40}\b(manufacturability|manufacturable|manufacturing)\b/i,
 ] as const;
 
 class ParseFailure extends Error {
@@ -207,6 +248,87 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function snapshotOwnDataRecord(value: unknown): Record<string, unknown> {
+  if (!isPlainRecord(value)) {
+    fail("invalid_input");
+  }
+
+  const snapshot: Record<string, unknown> = Object.create(null);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") {
+      fail("invalid_input");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      !descriptor ||
+      descriptor.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, "value")
+    ) {
+      fail("invalid_input");
+    }
+    if (!Object.is(Reflect.get(value, key, value), descriptor.value)) {
+      fail("invalid_input");
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
+}
+
+function snapshotOrdinaryArray(
+  value: unknown,
+  maximumCount: number,
+): unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    fail("invalid_input");
+  }
+
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    !lengthDescriptor ||
+    !Object.prototype.hasOwnProperty.call(lengthDescriptor, "value") ||
+    typeof lengthDescriptor.value !== "number" ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    fail("invalid_input");
+  }
+  const length = lengthDescriptor.value;
+  if (!Object.is(Reflect.get(value, "length", value), length)) {
+    fail("invalid_input");
+  }
+  if (length > maximumCount) {
+    fail("oversized_input");
+  }
+
+  const ownKeys = Reflect.ownKeys(value);
+  if (
+    ownKeys.some((key) => typeof key !== "string") ||
+    ownKeys.length !== length + 1 ||
+    !ownKeys.includes("length")
+  ) {
+    fail("invalid_input");
+  }
+
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const key = String(index);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      !descriptor ||
+      descriptor.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, "value")
+    ) {
+      fail("invalid_input");
+    }
+    if (!Object.is(Reflect.get(value, key, value), descriptor.value)) {
+      fail("invalid_input");
+    }
+    snapshot.push(descriptor.value);
+  }
+
+  return snapshot;
 }
 
 function inspectInputGraph(
@@ -253,22 +375,19 @@ function inspectInputGraph(
   }
 
   if (Array.isArray(value)) {
-    for (const item of value) {
+    const items = snapshotOrdinaryArray(
+      value,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumInputNodes,
+    );
+    for (const item of items) {
       inspectInputGraph(item, depth + 1, inspection);
     }
     return;
   }
 
-  if (!isPlainRecord(value) || Reflect.ownKeys(value).some((key) => typeof key === "symbol")) {
-    fail("invalid_input");
-  }
-
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  for (const descriptor of Object.values(descriptors)) {
-    if (!("value" in descriptor)) {
-      fail("invalid_input");
-    }
-    inspectInputGraph(descriptor.value, depth + 1, inspection);
+  const snapshot = snapshotOwnDataRecord(value);
+  for (const childValue of Object.values(snapshot)) {
+    inspectInputGraph(childValue, depth + 1, inspection);
   }
 }
 
@@ -276,8 +395,74 @@ function normalizeWhitespace(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function foldSecurityConfusables(value: string): string {
+  return [...value]
+    .map((character) => SECURITY_CONFUSABLES[character] ?? character)
+    .join("");
+}
+
+function safelyDecodePercentSequences(value: string): string {
+  return value.replace(/(?:%[0-9a-f]{2})+/gi, (encoded) => {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  });
+}
+
+function createSecurityScanVariants(value: string): string[] {
+  const variants = new Set<string>();
+  const addSecurityForms = (candidate: string) => {
+    if (
+      candidate.length > MAXIMUM_SECURITY_SCAN_CHARACTERS ||
+      variants.size >= MAXIMUM_SECURITY_VARIANTS
+    ) {
+      return;
+    }
+    const normalized = candidate.normalize("NFKC");
+    const folded = foldSecurityConfusables(normalized);
+    variants.add(candidate);
+    variants.add(normalized);
+    variants.add(folded);
+    variants.add(
+      folded.replace(/[\s\\._\-\u200b\u200c\u200d\u2060]+/g, ""),
+    );
+  };
+
+  let decoded = value;
+  addSecurityForms(decoded);
+  for (
+    let pass = 0;
+    pass < MAXIMUM_SECURITY_DECODE_PASSES &&
+    variants.size < MAXIMUM_SECURITY_VARIANTS;
+    pass += 1
+  ) {
+    const next = safelyDecodePercentSequences(decoded);
+    if (
+      next === decoded ||
+      next.length > MAXIMUM_SECURITY_SCAN_CHARACTERS
+    ) {
+      break;
+    }
+    decoded = next;
+    addSecurityForms(decoded);
+  }
+
+  return [...variants].slice(0, MAXIMUM_SECURITY_VARIANTS);
+}
+
+function containsSensitiveValue(
+  value: string,
+  patterns: readonly RegExp[],
+): boolean {
+  return createSecurityScanVariants(value).some((variant) =>
+    patterns.some((pattern) => pattern.test(variant)),
+  );
+}
+
 function containsSensitiveDesignValue(value: string): boolean {
-  return SENSITIVE_DESIGN_VALUE_PATTERNS.some((pattern) => pattern.test(value));
+  return containsSensitiveValue(value, STRUCTURED_SENSITIVE_VALUE_PATTERNS);
 }
 
 function normalizeString(
@@ -318,12 +503,13 @@ function normalizeStringList(value: unknown, maximumCount: number): string[] {
     return [];
   }
 
-  const values = typeof value === "string" ? [value] : value;
-  if (!Array.isArray(values)) {
+  let values: unknown[];
+  if (typeof value === "string") {
+    values = [value];
+  } else if (Array.isArray(value)) {
+    values = snapshotOrdinaryArray(value, maximumCount);
+  } else {
     fail("invalid_input");
-  }
-  if (values.length > maximumCount) {
-    fail("oversized_input");
   }
 
   const normalized: string[] = [];
@@ -451,19 +637,15 @@ function parseStones(value: unknown): InstantPreviewAgentStone[] {
   if (value === undefined || value === null) {
     return [];
   }
-  if (!Array.isArray(value)) {
-    fail("invalid_input");
-  }
-  if (value.length > INSTANT_PREVIEW_AGENT_LIMITS.maximumStones) {
-    fail("oversized_input");
-  }
+  const items = snapshotOrdinaryArray(
+    value,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumStones,
+  );
 
-  return value.map((item) => {
-    if (!isPlainRecord(item)) {
-      fail("invalid_input");
-    }
+  return items.map((item) => {
+    const stoneSource = snapshotOwnDataRecord(item);
 
-    const quantityValue = item.quantity;
+    const quantityValue = stoneSource.quantity;
     let quantity: number | null = null;
     if (quantityValue !== undefined && quantityValue !== null) {
       if (
@@ -478,16 +660,16 @@ function parseStones(value: unknown): InstantPreviewAgentStone[] {
     }
 
     const stone: InstantPreviewAgentStone = {
-      role: normalizeOptionalString(item.role),
-      type: normalizeOptionalString(item.type),
-      color: normalizeOptionalString(item.color),
-      shape: normalizeOptionalString(item.shape),
-      setting: normalizeOptionalString(item.setting),
-      orientation: normalizeOptionalString(item.orientation),
-      tableOrientation: normalizeOptionalString(item.tableOrientation),
-      sizeRelationship: normalizeOptionalString(item.sizeRelationship),
+      role: normalizeOptionalString(stoneSource.role),
+      type: normalizeOptionalString(stoneSource.type),
+      color: normalizeOptionalString(stoneSource.color),
+      shape: normalizeOptionalString(stoneSource.shape),
+      setting: normalizeOptionalString(stoneSource.setting),
+      orientation: normalizeOptionalString(stoneSource.orientation),
+      tableOrientation: normalizeOptionalString(stoneSource.tableOrientation),
+      sizeRelationship: normalizeOptionalString(stoneSource.sizeRelationship),
       relationshipToOtherStones: normalizeOptionalString(
-        item.relationshipToOtherStones,
+        stoneSource.relationshipToOtherStones,
       ),
       quantity,
     };
@@ -651,7 +833,7 @@ export function structureConceptBriefForInstantPreview(
 
     return {
       ok: true,
-      value: createStructuredInput(input),
+      value: createStructuredInput(snapshotOwnDataRecord(input)),
     };
   } catch (error) {
     return failure(
@@ -722,30 +904,15 @@ const REVIEWER_FAIL_SAFE_REASONS = new Set([
 const PASS_QUALITIES = new Set(["acceptable", "strong"]);
 const ALLOWED_REVISION_LANGUAGE =
   /\b(jewel(?:ry)?|design|composition|stone|gem|center|accent|orientation|table|prong|setting|ring|shank|stacked|collision|motif|view|overall|detail|sketch|presentation|structure|profile|front|side|placement|proportion|silhouette|bail|clasp|hinge|support|alignment)\b/i;
-const UNSAFE_REVISION_PATTERNS = [
-  /https?:\/\//i,
-  /file:\/\//i,
-  /\b[A-Z]:[\\/]/i,
-  /(?:^|[\s"'(])(?:\\\\|\.{1,2}[\\/]|\/(?:etc|home|users|var|tmp|network)[\\/])/i,
-  /\b(process\.env|environment variable|\$env:|OPENAI_API_KEY|SUPABASE_[A-Z_]+|API_KEY)\b/i,
-  /\b(credential|api key|bearer token|cookie|password|secret)\b/i,
-  /\b(SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+.+\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE|CREATE\s+TABLE|SQL statement|database schema|database table|database column|postgres|supabase)\b/i,
-  /\b(shell command|powershell|cmd\.exe|bash|invoke-webrequest|curl|wget)\b/i,
-  /\b(execute (?:a |the )?(?:tool|code|command|script)|run (?:a |the )?(?:tool|command|script)|tool execution|code execution)\b/i,
-  /\b(npm|pnpm|yarn|pip)\s+(?:install|add)\b/i,
-  /\b(package installation|install (?:a |the )?package)\b/i,
+const REVISION_SENSITIVE_VALUE_PATTERNS = [
+  ...TECHNICAL_SENSITIVE_VALUE_PATTERNS,
   /\b(payment|order|shipping|quotation|quote|pricing|price)\b/i,
   /\bCAD\b.*\b(complete|ready|finished|approved)\b/i,
   /\b(complete|ready|finished|approved)\b.*\bCAD\b/i,
   /\bproduction\b.*\b(approved|ready|confirmed)\b/i,
   /\b(approved|ready|confirmed)\b.*\bproduction\b/i,
   /\b(guaranteed?|guarantee)\b.*\b(manufacturability|manufacturable|manufacturing)\b/i,
-  /\b(customer name|email address|phone number|whatsapp|contact the customer)\b/i,
-  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
-  /(?:\+?\d[\d\s().-]{7,}\d)/,
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i,
-  /\bNOVORA-CB-[A-Z0-9-]+\b/i,
-  /\b(storage bucket|storage object|storage path|private path|signed url|private url)\b/i,
+  /\bcontact the customer\b/i,
   /```|<script\b/i,
 ] as const;
 
@@ -769,28 +936,31 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
-function exactKeys(
+function snapshotExactDataRecord(
   value: unknown,
   keys: readonly string[],
-): value is Record<string, unknown> {
-  if (!isPlainRecord(value)) {
-    return false;
+): Record<string, unknown> | null {
+  try {
+    const snapshot = snapshotOwnDataRecord(value);
+    const actual = Object.keys(snapshot);
+    if (
+      actual.length !== keys.length ||
+      !keys.every((key) => Object.prototype.hasOwnProperty.call(snapshot, key))
+    ) {
+      return null;
+    }
+    return snapshot;
+  } catch {
+    return null;
   }
-  const actual = Object.keys(value);
-  return (
-    actual.length === keys.length &&
-    keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
-  );
 }
 
 function cloneStringArray(
   value: unknown,
   maximumCount: number,
 ): string[] {
-  if (!Array.isArray(value) || value.length > maximumCount) {
-    fail("invalid_input");
-  }
-  return value.map((item) => {
+  const items = snapshotOrdinaryArray(value, maximumCount);
+  return items.map((item) => {
     const normalized = normalizeString(item);
     if (!normalized) {
       fail("invalid_input");
@@ -813,98 +983,79 @@ function cloneNullableSafeString(value: string | null): string | null {
 function cloneStructuredIntentForReview(
   value: unknown,
 ): InstantPreviewAgentStructuredInput {
+  const structured = snapshotExactDataRecord(value, [
+    "contractVersion",
+    "purpose",
+    "customerIntent",
+    "piece",
+    "style",
+    "materials",
+    "stones",
+    "composition",
+    "dimensions",
+    "wearability",
+    "manufacturingConstraints",
+    "referenceObservations",
+    "unknowns",
+    "avoid",
+    "generationNotes",
+    "reviewRequirements",
+    "productBoundaries",
+  ]);
   if (
-    !exactKeys(value, [
-      "contractVersion",
-      "purpose",
-      "customerIntent",
-      "piece",
-      "style",
-      "materials",
-      "stones",
-      "composition",
-      "dimensions",
-      "wearability",
-      "manufacturingConstraints",
-      "referenceObservations",
-      "unknowns",
-      "avoid",
-      "generationNotes",
-      "reviewRequirements",
-      "productBoundaries",
-    ]) ||
-    value.contractVersion !== INSTANT_PREVIEW_AGENT_CORE_VERSION ||
-    value.purpose !== "internal_first_preview_input"
+    !structured ||
+    structured.contractVersion !== INSTANT_PREVIEW_AGENT_CORE_VERSION ||
+    structured.purpose !== "internal_first_preview_input"
   ) {
     fail("invalid_input");
   }
 
-  const customerIntent = value.customerIntent;
-  const piece = value.piece;
-  const style = value.style;
-  const materials = value.materials;
-  const stones = value.stones;
-  const composition = value.composition;
-  const dimensions = value.dimensions;
-  const wearability = value.wearability;
-  const referenceObservations = value.referenceObservations;
-  const generationNotes = value.generationNotes;
-  const productBoundaries = value.productBoundaries;
-
-  if (
-    !exactKeys(customerIntent, ["designIntent", "designDescription"]) ||
-    typeof customerIntent.designIntent !== "string" ||
-    !isNullableString(customerIntent.designDescription) ||
-    !exactKeys(piece, [
-      "canonicalType",
-      "category",
-      "subtype",
-      "boundedOtherJewelryType",
-    ]) ||
-    !["ring", "pendant_necklace", "earrings", "bracelet_bangle", "other_custom"].includes(
-      String(piece.canonicalType),
-    ) ||
-    ![
-      "ring",
-      "pendant_necklace",
-      "earrings",
-      "bracelet_bangle",
-      "animal_sculpture_concept",
-      "other_jewelry",
-    ].includes(String(piece.category)) ||
-    !isNullableString(piece.subtype) ||
-    !isNullableString(piece.boundedOtherJewelryType) ||
-    !exactKeys(style, ["directions", "colorDirection"]) ||
-    !isNullableString(style.colorDirection) ||
-    !exactKeys(materials, ["directions"]) ||
-    !exactKeys(stones, ["items", "centerStoneDirection", "arrangement"]) ||
-    !Array.isArray(stones.items) ||
-    stones.items.length > INSTANT_PREVIEW_AGENT_LIMITS.maximumStones ||
-    !isNullableString(stones.centerStoneDirection) ||
-    !isNullableString(stones.arrangement) ||
-    !exactKeys(composition, ["direction", "motif", "requestedViews"]) ||
-    !isNullableString(composition.direction) ||
-    !isNullableString(composition.motif) ||
-    !exactKeys(dimensions, ["relationships"]) ||
-    !exactKeys(wearability, ["requirements"]) ||
-    !exactKeys(referenceObservations, [
-      "observations",
-      "inspirationOnly",
-      "doNotCopyExactly",
-    ]) ||
-    referenceObservations.inspirationOnly !== true ||
-    referenceObservations.doNotCopyExactly !== true ||
-    !exactKeys(generationNotes, [
-      "structuredTransformationRequired",
-      "rawCustomerProseIsFinalImageGenerationInstruction",
-      "designSpecRequiredBeforeSketchInstruction",
-      "handSketchInstructionRequiredBeforeGeneration",
-    ]) ||
-    generationNotes.structuredTransformationRequired !== true ||
-    generationNotes.rawCustomerProseIsFinalImageGenerationInstruction !== false ||
-    generationNotes.designSpecRequiredBeforeSketchInstruction !== true ||
-    generationNotes.handSketchInstructionRequiredBeforeGeneration !== true ||
-    !exactKeys(productBoundaries, [
+  const customerIntent = snapshotExactDataRecord(structured.customerIntent, [
+    "designIntent",
+    "designDescription",
+  ]);
+  const piece = snapshotExactDataRecord(structured.piece, [
+    "canonicalType",
+    "category",
+    "subtype",
+    "boundedOtherJewelryType",
+  ]);
+  const style = snapshotExactDataRecord(structured.style, [
+    "directions",
+    "colorDirection",
+  ]);
+  const materials = snapshotExactDataRecord(structured.materials, [
+    "directions",
+  ]);
+  const stones = snapshotExactDataRecord(structured.stones, [
+    "items",
+    "centerStoneDirection",
+    "arrangement",
+  ]);
+  const composition = snapshotExactDataRecord(structured.composition, [
+    "direction",
+    "motif",
+    "requestedViews",
+  ]);
+  const dimensions = snapshotExactDataRecord(structured.dimensions, [
+    "relationships",
+  ]);
+  const wearability = snapshotExactDataRecord(structured.wearability, [
+    "requirements",
+  ]);
+  const referenceObservations = snapshotExactDataRecord(
+    structured.referenceObservations,
+    ["observations", "inspirationOnly", "doNotCopyExactly"],
+  );
+  const generationNotes = snapshotExactDataRecord(structured.generationNotes, [
+    "structuredTransformationRequired",
+    "rawCustomerProseIsFinalImageGenerationInstruction",
+    "designSpecRequiredBeforeSketchInstruction",
+    "handSketchInstructionRequiredBeforeGeneration",
+  ]);
+  const productBoundaries = snapshotExactDataRecord(
+    structured.productBoundaries,
+    [
       "internalFirstPreviewInputOnly",
       "cad",
       "quotation",
@@ -913,7 +1064,49 @@ function cloneStructuredIntentForReview(
       "order",
       "productionApproval",
       "manufacturabilityGuarantee",
-    ]) ||
+    ],
+  );
+
+  if (
+    !customerIntent ||
+    typeof customerIntent.designIntent !== "string" ||
+    !isNullableString(customerIntent.designDescription) ||
+    !piece ||
+    typeof piece.canonicalType !== "string" ||
+    !["ring", "pendant_necklace", "earrings", "bracelet_bangle", "other_custom"].includes(
+      piece.canonicalType,
+    ) ||
+    typeof piece.category !== "string" ||
+    ![
+      "ring",
+      "pendant_necklace",
+      "earrings",
+      "bracelet_bangle",
+      "animal_sculpture_concept",
+      "other_jewelry",
+    ].includes(piece.category) ||
+    !isNullableString(piece.subtype) ||
+    !isNullableString(piece.boundedOtherJewelryType) ||
+    !style ||
+    !isNullableString(style.colorDirection) ||
+    !materials ||
+    !stones ||
+    !isNullableString(stones.centerStoneDirection) ||
+    !isNullableString(stones.arrangement) ||
+    !composition ||
+    !isNullableString(composition.direction) ||
+    !isNullableString(composition.motif) ||
+    !dimensions ||
+    !wearability ||
+    !referenceObservations ||
+    referenceObservations.inspirationOnly !== true ||
+    referenceObservations.doNotCopyExactly !== true ||
+    !generationNotes ||
+    generationNotes.structuredTransformationRequired !== true ||
+    generationNotes.rawCustomerProseIsFinalImageGenerationInstruction !== false ||
+    generationNotes.designSpecRequiredBeforeSketchInstruction !== true ||
+    generationNotes.handSketchInstructionRequiredBeforeGeneration !== true ||
+    !productBoundaries ||
     productBoundaries.internalFirstPreviewInputOnly !== true ||
     [
       productBoundaries.cad,
@@ -928,54 +1121,58 @@ function cloneStructuredIntentForReview(
     fail("invalid_input");
   }
 
-  const clonedStones: InstantPreviewAgentStone[] = stones.items.map((item) => {
-    const quantity = isPlainRecord(item) ? item.quantity : undefined;
+  const stoneItems = snapshotOrdinaryArray(
+    stones.items,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumStones,
+  );
+  const clonedStones: InstantPreviewAgentStone[] = stoneItems.map((item) => {
+    const stone = snapshotExactDataRecord(item, [
+      "role",
+      "type",
+      "color",
+      "shape",
+      "setting",
+      "orientation",
+      "tableOrientation",
+      "sizeRelationship",
+      "relationshipToOtherStones",
+      "quantity",
+    ]);
     if (
-      !exactKeys(item, [
-        "role",
-        "type",
-        "color",
-        "shape",
-        "setting",
-        "orientation",
-        "tableOrientation",
-        "sizeRelationship",
-        "relationshipToOtherStones",
-        "quantity",
-      ]) ||
-      !isNullableString(item.role) ||
-      !isNullableString(item.type) ||
-      !isNullableString(item.color) ||
-      !isNullableString(item.shape) ||
-      !isNullableString(item.setting) ||
-      !isNullableString(item.orientation) ||
-      !isNullableString(item.tableOrientation) ||
-      !isNullableString(item.sizeRelationship) ||
-      !isNullableString(item.relationshipToOtherStones) ||
+      !stone ||
+      !isNullableString(stone.role) ||
+      !isNullableString(stone.type) ||
+      !isNullableString(stone.color) ||
+      !isNullableString(stone.shape) ||
+      !isNullableString(stone.setting) ||
+      !isNullableString(stone.orientation) ||
+      !isNullableString(stone.tableOrientation) ||
+      !isNullableString(stone.sizeRelationship) ||
+      !isNullableString(stone.relationshipToOtherStones) ||
       !(
-        quantity === null ||
-        (typeof quantity === "number" &&
-          Number.isInteger(quantity) &&
-          quantity >= 1 &&
-          quantity <= 100)
+        stone.quantity === null ||
+        (typeof stone.quantity === "number" &&
+          Number.isInteger(stone.quantity) &&
+          stone.quantity >= 1 &&
+          stone.quantity <= 100)
       )
     ) {
       fail("invalid_input");
     }
 
     return {
-      role: cloneNullableSafeString(item.role),
-      type: cloneNullableSafeString(item.type),
-      color: cloneNullableSafeString(item.color),
-      shape: cloneNullableSafeString(item.shape),
-      setting: cloneNullableSafeString(item.setting),
-      orientation: cloneNullableSafeString(item.orientation),
-      tableOrientation: cloneNullableSafeString(item.tableOrientation),
-      sizeRelationship: cloneNullableSafeString(item.sizeRelationship),
+      role: cloneNullableSafeString(stone.role),
+      type: cloneNullableSafeString(stone.type),
+      color: cloneNullableSafeString(stone.color),
+      shape: cloneNullableSafeString(stone.shape),
+      setting: cloneNullableSafeString(stone.setting),
+      orientation: cloneNullableSafeString(stone.orientation),
+      tableOrientation: cloneNullableSafeString(stone.tableOrientation),
+      sizeRelationship: cloneNullableSafeString(stone.sizeRelationship),
       relationshipToOtherStones: cloneNullableSafeString(
-        item.relationshipToOtherStones,
+        stone.relationshipToOtherStones,
       ),
-      quantity: quantity as number | null,
+      quantity: stone.quantity as number | null,
     };
   });
 
@@ -1036,7 +1233,7 @@ function cloneStructuredIntentForReview(
       requirements: cloneStringArray(wearability.requirements, 12),
     },
     manufacturingConstraints: cloneStringArray(
-      value.manufacturingConstraints,
+      structured.manufacturingConstraints,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumManufacturingConstraints,
     ),
     referenceObservations: {
@@ -1048,11 +1245,11 @@ function cloneStructuredIntentForReview(
       doNotCopyExactly: true,
     },
     unknowns: cloneStringArray(
-      value.unknowns,
+      structured.unknowns,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumUnknowns,
     ),
     avoid: cloneStringArray(
-      value.avoid,
+      structured.avoid,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumAvoidRules,
     ),
     generationNotes: {
@@ -1062,7 +1259,7 @@ function cloneStructuredIntentForReview(
       handSketchInstructionRequiredBeforeGeneration: true,
     },
     reviewRequirements: cloneStringArray(
-      value.reviewRequirements,
+      structured.reviewRequirements,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumStructuralReviewRequirements,
     ),
     productBoundaries: {
@@ -1088,43 +1285,45 @@ function cloneStructuredIntentForReview(
 }
 
 function sanitizeReviewInput(value: unknown): InstantPreviewAgentReviewInput {
+  const reviewInput = snapshotExactDataRecord(value, [...REVIEW_INPUT_KEYS]);
+  const metadata = reviewInput
+    ? snapshotExactDataRecord(reviewInput.metadata, [...REVIEW_METADATA_KEYS])
+    : null;
   if (
-    !isPlainRecord(value) ||
-    !hasOnlyKeys(value, REVIEW_INPUT_KEYS) ||
-    Object.keys(value).length !== REVIEW_INPUT_KEYS.size ||
-    !isPlainRecord(value.metadata) ||
-    !hasOnlyKeys(value.metadata, REVIEW_METADATA_KEYS) ||
-    Object.keys(value.metadata).length !== REVIEW_METADATA_KEYS.size ||
-    value.metadata.purpose !== "first_preview_automatic_review" ||
-    typeof value.metadata.candidateSequence !== "number" ||
-    !Number.isInteger(value.metadata.candidateSequence) ||
-    value.metadata.candidateSequence < 1 ||
-    value.metadata.candidateSequence > 100
+    !reviewInput ||
+    !metadata ||
+    metadata.purpose !== "first_preview_automatic_review" ||
+    typeof metadata.candidateSequence !== "number" ||
+    !Number.isInteger(metadata.candidateSequence) ||
+    metadata.candidateSequence < 1 ||
+    metadata.candidateSequence > 100
   ) {
     fail("invalid_input");
   }
 
   return {
-    structuredIntent: cloneStructuredIntentForReview(value.structuredIntent),
+    structuredIntent: cloneStructuredIntentForReview(
+      reviewInput.structuredIntent,
+    ),
     designSpecRequirements: cloneStringArray(
-      value.designSpecRequirements,
+      reviewInput.designSpecRequirements,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumDesignSpecReviewRequirements,
     ),
     handSketchInstructionRequirements: cloneStringArray(
-      value.handSketchInstructionRequirements,
+      reviewInput.handSketchInstructionRequirements,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumHandSketchReviewRequirements,
     ),
     candidateObservations: cloneStringArray(
-      value.candidateObservations,
+      reviewInput.candidateObservations,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumCandidateObservations,
     ),
     structuralReviewRequirements: cloneStringArray(
-      value.structuralReviewRequirements,
+      reviewInput.structuralReviewRequirements,
       INSTANT_PREVIEW_AGENT_LIMITS.maximumStructuralReviewRequirements,
     ),
     metadata: {
       purpose: "first_preview_automatic_review",
-      candidateSequence: value.metadata.candidateSequence,
+      candidateSequence: metadata.candidateSequence,
     },
   };
 }
@@ -1132,107 +1331,119 @@ function sanitizeReviewInput(value: unknown): InstantPreviewAgentReviewInput {
 function isSafeRevisionInstruction(value: string): boolean {
   return (
     ALLOWED_REVISION_LANGUAGE.test(value) &&
-    !UNSAFE_REVISION_PATTERNS.some((pattern) => pattern.test(value))
+    !containsSensitiveValue(value, REVISION_SENSITIVE_VALUE_PATTERNS)
   );
 }
 
 function normalizeReviewerResult(
   value: unknown,
 ): InstantPreviewAgentAutomaticReviewResult {
-  if (!isPlainRecord(value) || typeof value.outcome !== "string") {
+  try {
+    const result = snapshotOwnDataRecord(value);
+    const outcome = result.outcome;
+    if (outcome === "PASS") {
+      const actualKeys = Object.keys(result);
+      if (
+        actualKeys.length < 1 ||
+        actualKeys.length > PASS_RESULT_KEYS.size ||
+        !hasOnlyKeys(result, PASS_RESULT_KEYS)
+      ) {
+        return failSafe("malformed_review");
+      }
+
+      const qualityValue = result.quality;
+      if (qualityValue === undefined) {
+        return { outcome: "PASS" };
+      }
+      if (typeof qualityValue !== "string") {
+        return failSafe("malformed_review");
+      }
+      const quality = normalizeWhitespace(qualityValue).toLowerCase();
+      return PASS_QUALITIES.has(quality)
+        ? {
+            outcome: "PASS",
+            quality: quality as InstantPreviewAgentPassQuality,
+          }
+        : failSafe("malformed_review");
+    }
+
+    if (outcome === "REGENERATE") {
+      if (
+        Object.keys(result).length !== REGENERATE_RESULT_KEYS.size ||
+        !hasOnlyKeys(result, REGENERATE_RESULT_KEYS)
+      ) {
+        return failSafe("malformed_review");
+      }
+
+      let instructions: unknown[];
+      try {
+        instructions = snapshotOrdinaryArray(
+          result.revisionInstructions,
+          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructions,
+        );
+      } catch {
+        return failSafe("malformed_review");
+      }
+      if (instructions.length < 1) {
+        return failSafe("malformed_review");
+      }
+
+      const normalized: string[] = [];
+      let totalCharacters = 0;
+      for (const instruction of instructions) {
+        if (typeof instruction !== "string") {
+          return failSafe("malformed_review");
+        }
+        const parsed = normalizeWhitespace(instruction);
+        if (
+          !parsed ||
+          parsed.length >
+            INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructionLength
+        ) {
+          return failSafe("malformed_review");
+        }
+        totalCharacters += parsed.length;
+        if (
+          totalCharacters >
+          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionPayloadCharacters
+        ) {
+          return failSafe("malformed_review");
+        }
+        if (!isSafeRevisionInstruction(parsed)) {
+          return failSafe("unsafe_review");
+        }
+        if (!normalized.includes(parsed)) {
+          normalized.push(parsed);
+        }
+      }
+
+      return {
+        outcome: "REGENERATE",
+        revisionInstructions: normalized,
+      };
+    }
+
+    if (outcome === "FAIL_SAFE") {
+      if (
+        Object.keys(result).length !== FAIL_SAFE_RESULT_KEYS.size ||
+        !hasOnlyKeys(result, FAIL_SAFE_RESULT_KEYS) ||
+        typeof result.reason !== "string"
+      ) {
+        return failSafe("malformed_review");
+      }
+      const reason = normalizeWhitespace(result.reason).toLowerCase();
+      return REVIEWER_FAIL_SAFE_REASONS.has(reason)
+        ? {
+            outcome: "FAIL_SAFE",
+            reason: reason as InstantPreviewAgentFailSafeReason,
+          }
+        : failSafe("malformed_review");
+    }
+
+    return failSafe("malformed_review");
+  } catch {
     return failSafe("malformed_review");
   }
-
-  const outcome = normalizeWhitespace(value.outcome).toUpperCase();
-  if (outcome === "PASS") {
-    const qualityValue = value.quality;
-    if (
-      !hasOnlyKeys(value, PASS_RESULT_KEYS) ||
-      Object.keys(value).length > PASS_RESULT_KEYS.size
-    ) {
-      return failSafe("malformed_review");
-    }
-
-    if (qualityValue === undefined) {
-      return { outcome: "PASS" };
-    }
-    if (typeof qualityValue !== "string") {
-      return failSafe("malformed_review");
-    }
-    const quality = normalizeWhitespace(qualityValue).toLowerCase();
-    return PASS_QUALITIES.has(quality)
-      ? {
-          outcome: "PASS",
-          quality: quality as InstantPreviewAgentPassQuality,
-        }
-      : failSafe("malformed_review");
-  }
-
-  if (outcome === "REGENERATE") {
-    if (
-      !hasOnlyKeys(value, REGENERATE_RESULT_KEYS) ||
-      Object.keys(value).length !== REGENERATE_RESULT_KEYS.size ||
-      !Array.isArray(value.revisionInstructions) ||
-      value.revisionInstructions.length < 1 ||
-      value.revisionInstructions.length >
-        INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructions
-    ) {
-      return failSafe("malformed_review");
-    }
-
-    const normalized: string[] = [];
-    let totalCharacters = 0;
-    for (const instruction of value.revisionInstructions) {
-      if (typeof instruction !== "string") {
-        return failSafe("malformed_review");
-      }
-      const parsed = normalizeWhitespace(instruction);
-      if (
-        !parsed ||
-        parsed.length >
-          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructionLength
-      ) {
-        return failSafe("malformed_review");
-      }
-      if (!isSafeRevisionInstruction(parsed)) {
-        return failSafe("unsafe_review");
-      }
-      totalCharacters += parsed.length;
-      if (
-        totalCharacters >
-        INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionPayloadCharacters
-      ) {
-        return failSafe("malformed_review");
-      }
-      if (!normalized.includes(parsed)) {
-        normalized.push(parsed);
-      }
-    }
-
-    return {
-      outcome: "REGENERATE",
-      revisionInstructions: normalized,
-    };
-  }
-
-  if (outcome === "FAIL_SAFE") {
-    if (
-      !hasOnlyKeys(value, FAIL_SAFE_RESULT_KEYS) ||
-      Object.keys(value).length !== FAIL_SAFE_RESULT_KEYS.size ||
-      typeof value.reason !== "string"
-    ) {
-      return failSafe("malformed_review");
-    }
-    const reason = normalizeWhitespace(value.reason).toLowerCase();
-    return REVIEWER_FAIL_SAFE_REASONS.has(reason)
-      ? {
-          outcome: "FAIL_SAFE",
-          reason: reason as InstantPreviewAgentFailSafeReason,
-        }
-      : failSafe("malformed_review");
-  }
-
-  return failSafe("malformed_review");
 }
 
 export async function reviewInstantPreviewCandidate(
@@ -1252,16 +1463,41 @@ export async function reviewInstantPreviewCandidate(
     );
   }
 
-  if (
-    !reviewer ||
-    typeof reviewer !== "object" ||
-    typeof reviewer.reviewCandidate !== "function"
-  ) {
+  let reviewCandidate: (
+    input: InstantPreviewAgentReviewInput,
+  ) => Promise<unknown> | unknown;
+  try {
+    if (
+      !reviewer ||
+      (typeof reviewer !== "object" && typeof reviewer !== "function")
+    ) {
+      return failSafe("reviewer_unavailable");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(
+      reviewer,
+      "reviewCandidate",
+    );
+    if (
+      !descriptor ||
+      descriptor.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+      typeof descriptor.value !== "function"
+    ) {
+      return failSafe("reviewer_unavailable");
+    }
+    const retrieved = Reflect.get(reviewer, "reviewCandidate", reviewer);
+    if (retrieved !== descriptor.value || typeof retrieved !== "function") {
+      return failSafe("reviewer_unavailable");
+    }
+    reviewCandidate = retrieved as typeof reviewCandidate;
+  } catch {
     return failSafe("reviewer_unavailable");
   }
 
   try {
-    const result = await reviewer.reviewCandidate(sanitizedInput);
+    const result = await Reflect.apply(reviewCandidate, reviewer, [
+      sanitizedInput,
+    ]);
     return normalizeReviewerResult(result);
   } catch {
     return failSafe("reviewer_unavailable");
