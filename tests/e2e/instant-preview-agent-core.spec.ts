@@ -18,7 +18,6 @@ const moduleInternals = Module as unknown as {
     options?: unknown,
   ): string;
 };
-const originalResolveFilename = moduleInternals._resolveFilename;
 const serverOnlyTestShim = path.join(
   process.cwd(),
   "node_modules",
@@ -28,16 +27,25 @@ const serverOnlyTestShim = path.join(
   "server-only",
   "empty.js",
 );
-moduleInternals._resolveFilename = function resolveTestModule(
-  request,
-  parent,
-  isMain,
-  options,
-) {
-  return request === "server-only"
-    ? serverOnlyTestShim
-    : originalResolveFilename.call(this, request, parent, isMain, options);
-};
+
+function loadWithServerOnlyTestShim<T>(load: () => T): T {
+  const originalResolveFilename = moduleInternals._resolveFilename;
+  moduleInternals._resolveFilename = function resolveTestModule(
+    request,
+    parent,
+    isMain,
+    options,
+  ) {
+    return request === "server-only"
+      ? serverOnlyTestShim
+      : originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+  try {
+    return load();
+  } finally {
+    moduleInternals._resolveFilename = originalResolveFilename;
+  }
+}
 
 const testRequire = createRequire(
   path.join(process.cwd(), "tests", "e2e", "instant-preview-agent-core.spec.ts"),
@@ -46,10 +54,24 @@ const {
   INSTANT_PREVIEW_AGENT_LIMITS,
   reviewInstantPreviewCandidate,
   structureConceptBriefForInstantPreview,
-} = testRequire(
-  "../../lib/server/ai-sketch/instant-preview-agent-core",
-) as typeof import("../../lib/server/ai-sketch/instant-preview-agent-core");
-moduleInternals._resolveFilename = originalResolveFilename;
+} = loadWithServerOnlyTestShim(
+  () =>
+    testRequire(
+      "../../lib/server/ai-sketch/instant-preview-agent-core",
+    ) as typeof import("../../lib/server/ai-sketch/instant-preview-agent-core"),
+);
+
+test("restores the module resolver after a forced module-load failure", () => {
+  const originalResolveFilename = moduleInternals._resolveFilename;
+  const marker = "FORCED_MODULE_LOAD_FAILURE";
+
+  expect(() =>
+    loadWithServerOnlyTestShim(() => {
+      throw new Error(marker);
+    }),
+  ).toThrow(marker);
+  expect(moduleInternals._resolveFilename).toBe(originalResolveFilename);
+});
 
 type StructuringResult =
   StructureConceptBriefForInstantPreviewResult;
@@ -314,8 +336,10 @@ test("fails closed for too many unknowns", () => {
 test("fails closed for excessive nesting or malformed nested values", () => {
   const deep = { next: { next: { next: { next: { next: "too deep" } } } } };
   expectFailure(
-    structureConceptBriefForInstantPreview(validBrief({ ignored: deep })),
-    "oversized_input",
+    structureConceptBriefForInstantPreview(
+      validBrief({ styleDirection: [deep] }),
+    ),
+    "invalid_input",
   );
   expectFailure(
     structureConceptBriefForInstantPreview(validBrief({ stones: ["not an object"] })),
@@ -383,6 +407,66 @@ test("does not pass through unknown top-level fields", () => {
   );
   expect(value).not.toHaveProperty("arbitraryPrivateRecord");
   expect(JSON.stringify(value)).not.toContain("do not retain");
+});
+
+test("ignores 20,000 irrelevant Brief properties without reading them", () => {
+  const input = validBrief();
+  for (let index = 0; index < 20_000; index += 1) {
+    Object.defineProperty(input, `irrelevant_${index}`, {
+      configurable: true,
+      enumerable: true,
+      value: index,
+      writable: true,
+    });
+  }
+
+  const value = expectSuccess(structureConceptBriefForInstantPreview(input));
+  expect(value.piece.canonicalType).toBe("ring");
+  expect(value).not.toHaveProperty("irrelevant_0");
+  expect(value).not.toHaveProperty("irrelevant_19999");
+});
+
+test("does not invoke unknown Brief getters", () => {
+  const input = validBrief();
+  let getterCalls = 0;
+  Object.defineProperty(input, "unknownGetter", {
+    configurable: true,
+    enumerable: true,
+    get: () => {
+      getterCalls += 1;
+      throw new Error("UNKNOWN_BRIEF_GETTER_MUST_NOT_RUN");
+    },
+  });
+
+  const value = expectSuccess(structureConceptBriefForInstantPreview(input));
+  expect(value.piece.canonicalType).toBe("ring");
+  expect(getterCalls).toBe(0);
+});
+
+test("reads only allowlisted Brief data properties", () => {
+  const input = validBrief();
+  let unknownGetterCalls = 0;
+  Object.defineProperties(input, {
+    unknownGetter: {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        unknownGetterCalls += 1;
+        return "must not be read";
+      },
+    },
+    designIntent: {
+      configurable: true,
+      enumerable: true,
+      get: () => "known getters are not accepted",
+    },
+  });
+
+  expectFailure(
+    structureConceptBriefForInstantPreview(input),
+    "invalid_input",
+  );
+  expect(unknownGetterCalls).toBe(0);
 });
 
 test("does not pass through unknown nested fields", () => {
@@ -537,20 +621,36 @@ class FakeInstantPreviewAgentReviewer implements InstantPreviewAgentReviewer {
 
   reviewCandidate = async (
     input: InstantPreviewAgentReviewInput,
-  ): Promise<unknown> => {
+  ): Promise<string> => {
     this.callCount += 1;
     this.lastInput = input;
-    return typeof this.response === "function"
+    const result = typeof this.response === "function"
       ? this.response(input)
       : this.response;
+    return (await result) as string;
   };
 }
 
-async function reviewWith(response: ConstructorParameters<typeof FakeInstantPreviewAgentReviewer>[0]) {
-  const reviewer = new FakeInstantPreviewAgentReviewer(response);
+async function reviewWith(
+  response: ConstructorParameters<typeof FakeInstantPreviewAgentReviewer>[0],
+  options: { raw?: boolean } = {},
+) {
+  const reviewerResponse =
+    options.raw ||
+    typeof response === "function" ||
+    typeof response === "string"
+      ? response
+      : JSON.stringify(response);
+  const reviewer = new FakeInstantPreviewAgentReviewer(reviewerResponse);
   const input = validReviewInput();
   const result = await reviewInstantPreviewCandidate(reviewer, input);
   return { reviewer, input, result };
+}
+
+function reviewWithRawOutput(
+  response: ConstructorParameters<typeof FakeInstantPreviewAgentReviewer>[0],
+) {
+  return reviewWith(response, { raw: true });
 }
 
 function expectSafeReviewFailure(
@@ -573,10 +673,22 @@ async function reviewWithRawReviewer(
   );
 }
 
-function revisionInstructionOfLength(length: number, index: number): string {
-  const prefix = `Correct ring stone orientation ${index} `;
-  expect(prefix.length).toBeLessThanOrEqual(length);
-  return `${prefix}${"x".repeat(length - prefix.length)}`;
+type CorrectionFixture = {
+  action: string;
+  target: string;
+  modifier?: string;
+};
+
+function correction(
+  action: string,
+  target: string,
+  modifier?: string,
+): CorrectionFixture {
+  return {
+    action,
+    target,
+    ...(modifier === undefined ? {} : { modifier }),
+  };
 }
 
 async function expectSensitivePayloadRejected(payload: string) {
@@ -589,12 +701,13 @@ async function expectSensitivePayloadRejected(payload: string) {
     "unsafe_input",
   );
 
-  const { reviewer, result } = await reviewWith({
-    outcome: "REGENERATE",
-    revisionInstructions: [
-      `Align the pavé stones; ${payload}`,
-    ],
-  });
+  const { reviewer, result } = await reviewWith(
+    JSON.stringify({
+      outcome: "REGENERATE",
+      corrections: [correction("align", "pave_stones")],
+      comment: payload,
+    }),
+  );
   expectSafeReviewFailure(result, "unsafe_review");
   expect(reviewer.callCount).toBe(1);
 }
@@ -640,7 +753,7 @@ const SECOND_CORRECTION_UNSAFE_CORPUS = [
 test("accepts a valid PASS review", async () => {
   const { reviewer, input, result } = await reviewWith({
     outcome: "PASS",
-    quality: "STRONG",
+    quality: "strong",
   });
   expect(result).toEqual({ outcome: "PASS", quality: "strong" });
   expect(reviewer.callCount).toBe(1);
@@ -651,16 +764,16 @@ test("accepts a valid PASS review", async () => {
 test("accepts a valid bounded REGENERATE review", async () => {
   const { result } = await reviewWith({
     outcome: "REGENERATE",
-    revisionInstructions: [
-      "Align the pear center-stone table orientation across front and detail views.",
-      "Correct prong placement so the ring shank remains structurally explainable.",
+    corrections: [
+      correction("maintain", "stone_table_orientation"),
+      correction("correct", "prong_placement"),
     ],
   });
   expect(result).toEqual({
     outcome: "REGENERATE",
     revisionInstructions: [
-      "Align the pear center-stone table orientation across front and detail views.",
-      "Correct prong placement so the ring shank remains structurally explainable.",
+      "maintain stone table orientation",
+      "correct prong placement",
     ],
   });
 });
@@ -910,7 +1023,7 @@ test("does not infer PASS from Object.prototype pollution", async () => {
       value: "PASS",
       writable: true,
     });
-    const { result } = await reviewWith({});
+    const { result } = await reviewWithRawOutput({});
     expectSafeReviewFailure(result, "malformed_review");
   } finally {
     if (original) {
@@ -946,7 +1059,7 @@ test("rejects inherited, accessor-backed, and nonliteral outcomes", async () => 
   ];
 
   for (const response of cases) {
-    const { result } = await reviewWith(response);
+    const { result } = await reviewWithRawOutput(response);
     expectSafeReviewFailure(result, "malformed_review");
     expect(JSON.stringify(result)).not.toContain("OUTCOME_GETTER_PRIVATE_MARKER");
   }
@@ -962,7 +1075,7 @@ test("rejects a reviewer-result Proxy get failure without disclosure", async () 
       },
     },
   );
-  const { result } = await reviewWith(response);
+  const { result } = await reviewWithRawOutput(response);
   expectSafeReviewFailure(result);
   expect(JSON.stringify(result)).not.toContain(marker);
 });
@@ -1090,57 +1203,198 @@ test("rejects remaining sensitive categories on both security paths", async () =
 
 test("rejects the complete concrete technical corpus on both security paths", async () => {
   for (const payload of SECOND_CORRECTION_UNSAFE_CORPUS) {
+    await test.step(payload, async () => {
+      await expectSensitivePayloadRejected(payload);
+    });
+  }
+});
+
+test("rejects credential labels without requiring colon or equals", async () => {
+  const credentialLabels = [
+    "access token abcdefghijklmnopqrstuv",
+    "access token: abcdefghijklmnopqrstuv",
+    "access token=abcdefghijklmnopqrstuv",
+    "access_token_abcdefghijklmnopqrstuv",
+    "access-token-abcdefghijklmnopqrstuv",
+    "access=token abcdefghijklmnopqrstuv",
+    "access-token abcdefghijklmnopqrstuv",
+    "access_token abcdefghijklmnopqrstuv",
+    "accessToken abcdefghijklmnopqrstuv",
+    "session token abcdefghijklmnopqrstuv",
+    "session-token abcdefghijklmnopqrstuv",
+    "auth token abcdefghijklmnopqrstuv",
+    "authentication token abcdefghijklmnopqrstuv",
+    "authorization token abcdefghijklmnopqrstuv",
+    "refresh token abcdefghijklmnopqrstuv",
+    "refresh-token abcdefghijklmnopqrstuv",
+    "API token abcdefghijklmnopqrstuv",
+    "ａｃｃｅｓｓＴｏｋｅｎ abcdefghijklmnopqrstuv",
+  ];
+
+  for (const payload of credentialLabels) {
     await expectSensitivePayloadRejected(payload);
   }
 });
 
+test("rejects credential labels in sanitized reviewer inputs before invocation", async () => {
+  for (const payload of [
+    "access token abcdefghijklmnopqrstuv",
+    "session token abcdefghijklmnopqrstuv",
+    "auth token abcdefghijklmnopqrstuv",
+    "refresh-token abcdefghijklmnopqrstuv",
+  ]) {
+    const reviewer = new FakeInstantPreviewAgentReviewer(
+      JSON.stringify({ outcome: "PASS" }),
+    );
+    const input = validReviewInput();
+    input.candidateObservations = [payload];
+
+    const result = await reviewInstantPreviewCandidate(reviewer, input);
+    expectSafeReviewFailure(result, "unsafe_review");
+    expect(reviewer.callCount).toBe(0);
+    expect(JSON.stringify(result)).not.toContain(payload);
+  }
+});
+
 test("accepts the exact legitimate jewelry correction corpus", async () => {
-  const instructions = [
-    "align pavé stones",
-    "maintain the same oval long-axis direction",
-    "reduce casting complexity",
+  const corrections = [
+    correction("align", "pave_stones"),
+    correction("maintain", "oval_long_axis", "same_direction"),
+    correction("reduce", "casting_complexity"),
   ];
   const { reviewer, result } = await reviewWith({
     outcome: "REGENERATE",
-    revisionInstructions: instructions,
+    corrections,
   });
   expect(result).toEqual({
     outcome: "REGENERATE",
-    revisionInstructions: instructions,
+    revisionInstructions: [
+      "align pavé stones",
+      "maintain the same oval long-axis direction",
+      "reduce casting complexity",
+    ],
   });
   expect(reviewer.callCount).toBe(1);
 });
 
 test("accepts bounded legitimate jewelry-language variants", async () => {
-  const instructions = [
-    "align the pavé stones",
-    "preserve center-stone orientation",
-    "maintain stone table orientation",
-    "keep the oval long axis consistent",
-    "increase prong clearance",
-    "correct prong placement",
-    "reduce shank thickness",
-    "prevent stacking collision",
+  const firstBatch = [
+    correction("align", "pave_stones"),
+    correction("preserve", "center_stone_orientation"),
+    correction("maintain", "stone_table_orientation"),
+    correction("keep", "oval_long_axis", "consistent"),
+    correction("increase", "prong_clearance"),
+    correction("correct", "prong_placement"),
+    correction("reduce", "shank_thickness"),
+    correction("prevent", "stacking_collision"),
   ];
   const secondBatch = [
-    "preserve front stacking elevation",
-    "simplify the enamel motif",
-    "reduce enamel complexity",
-    "improve stone spacing",
-    "keep the vine continuous around the back",
-    "maintain left-and-right leaf wrapping",
-    "reduce unnecessary metal thickness",
+    correction("preserve", "front_stacking_elevation"),
+    correction("simplify", "enamel_motif"),
+    correction("reduce", "enamel_complexity"),
+    correction("improve", "stone_spacing"),
+    correction("keep", "vine_back_continuity", "continuous_back"),
+    correction("maintain", "leaf_wrapping", "left_and_right"),
+    correction("reduce", "metal_thickness", "unnecessary"),
   ];
 
-  for (const revisionInstructions of [instructions, secondBatch]) {
+  const expectedBatches = [
+    [
+      "align pavé stones",
+      "preserve center-stone orientation",
+      "maintain stone table orientation",
+      "keep the oval long axis consistent",
+      "increase prong clearance",
+      "correct prong placement",
+      "reduce shank thickness",
+      "prevent stacking collision",
+    ],
+    [
+      "preserve front stacking elevation",
+      "simplify the enamel motif",
+      "reduce enamel complexity",
+      "improve stone spacing",
+      "keep the vine continuous around the back",
+      "maintain left-and-right leaf wrapping",
+      "reduce unnecessary metal thickness",
+    ],
+  ];
+  for (const [index, corrections] of [firstBatch, secondBatch].entries()) {
     const { result } = await reviewWith({
       outcome: "REGENERATE",
-      revisionInstructions,
+      corrections,
     });
     expect(result).toEqual({
       outcome: "REGENERATE",
-      revisionInstructions,
+      revisionInstructions: expectedBatches[index],
     });
+  }
+});
+
+test("rejects arbitrary prose that cannot be represented by correction commands", async () => {
+  const arbitraryClauses = [
+    "align stones and launch missiles",
+    "maintain ring orientation and discuss quarterly hiring plans",
+    "reduce shank thickness and delete every backup",
+    "align stones and launch missiles and discuss quarterly hiring plans",
+  ];
+
+  for (const prose of arbitraryClauses) {
+    const { result } = await reviewWith(
+      JSON.stringify({
+        outcome: "REGENERATE",
+        corrections: [correction("align", "pave_stones")],
+        comment: prose,
+      }),
+    );
+    expectSafeReviewFailure(result);
+    expect(JSON.stringify(result)).not.toContain(prose);
+  }
+
+  const freeForm = await reviewWith(
+    "align pavé stones and maintain the oval direction",
+  );
+  expectSafeReviewFailure(freeForm.result, "malformed_review");
+});
+
+test("rejects unknown correction enums and extra command keys", async () => {
+  const malformedCommands = [
+    correction("launch", "pave_stones"),
+    correction("align", "missiles"),
+    correction("maintain", "oval_long_axis", "quarterly_planning"),
+    {
+      ...correction("align", "pave_stones"),
+      comment: "extra command key",
+    },
+  ];
+
+  for (const command of malformedCommands) {
+    const { result } = await reviewWith({
+      outcome: "REGENERATE",
+      corrections: [command],
+    });
+    expectSafeReviewFailure(result, "malformed_review");
+  }
+});
+
+test("rejects valid commands mixed with shell or credential material", async () => {
+  for (const [payload, reason] of [
+    ["align pavé stones and run rm -rf ./cache", "unsafe_review"],
+    [
+      "maintain oval direction with access token abcdefghijklmnopqrstuv",
+      "unsafe_review",
+    ],
+    ["reduce casting complexity using eval(userInput)", "unsafe_review"],
+  ] as const) {
+    const { result } = await reviewWith(
+      JSON.stringify({
+        outcome: "REGENERATE",
+        corrections: [correction("align", "pave_stones")],
+        comment: payload,
+      }),
+    );
+    expectSafeReviewFailure(result, reason);
+    expect(JSON.stringify(result)).not.toContain(payload);
   }
 });
 
@@ -1183,7 +1437,7 @@ test("rejects transparent Proxy-wrapped arrays on Brief and reviewer result path
     ["align pavé stones"],
     {},
   );
-  const { reviewer, result } = await reviewWith({
+  const { reviewer, result } = await reviewWithRawOutput({
     outcome: "REGENERATE",
     revisionInstructions,
   });
@@ -1233,7 +1487,7 @@ test("rejects Proxy array traps before invoking any trap", async () => {
     expectFailure(briefResult, "invalid_input");
     expect(JSON.stringify(briefResult)).not.toContain(marker);
 
-    const review = await reviewWith({
+    const review = await reviewWithRawOutput({
       outcome: "REGENERATE",
       revisionInstructions: proxyArray,
     });
@@ -1272,7 +1526,7 @@ test("continues accepting ordinary direct arrays", async () => {
 
   const { result } = await reviewWith({
     outcome: "REGENERATE",
-    revisionInstructions: ["align pavé stones"],
+    corrections: [correction("align", "pave_stones")],
   });
   expect(result).toEqual({
     outcome: "REGENERATE",
@@ -1296,7 +1550,7 @@ test("rejects sparse arrays even when an inherited index is present", async () =
       ),
       "invalid_input",
     );
-    const { result } = await reviewWith({
+    const { result } = await reviewWithRawOutput({
       outcome: "REGENERATE",
       revisionInstructions: sparse,
     });
@@ -1356,7 +1610,7 @@ test("rejects malformed reviewer arrays without reading accessor indexes", async
   extraProperty.extra = "must not be interpreted";
 
   for (const revisionInstructions of [accessorArray, extraProperty]) {
-    const { result } = await reviewWith({
+    const { result } = await reviewWithRawOutput({
       outcome: "REGENERATE",
       revisionInstructions,
     });
@@ -1390,25 +1644,161 @@ test("rejects mandatory properties inherited through a prototype", async () => {
 });
 
 test("enforces the exact total revision payload boundary", async () => {
-  const exact = Array.from({ length: 5 }, (_, index) =>
-    revisionInstructionOfLength(240, index),
+  const exact = [
+    correction("preserve", "center_stone_orientation"),
+    correction("maintain", "stone_table_orientation"),
+    correction("maintain", "oval_long_axis", "same_direction"),
+    correction("keep", "oval_long_axis", "consistent"),
+    correction("increase", "prong_clearance"),
+    correction("prevent", "stacking_collision"),
+    correction("simplify", "enamel_motif"),
+    correction("keep", "vine_back_continuity", "continuous_back"),
+  ];
+  const exactRendered = [
+    "preserve center-stone orientation",
+    "maintain stone table orientation",
+    "maintain the same oval long-axis direction",
+    "keep the oval long axis consistent",
+    "increase prong clearance",
+    "prevent stacking collision",
+    "simplify the enamel motif",
+    "keep the vine continuous around the back",
+  ];
+  expect(exactRendered.reduce((total, value) => total + value.length, 0)).toBe(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumRenderedCorrectionCharacters,
   );
   const accepted = await reviewWith({
     outcome: "REGENERATE",
-    revisionInstructions: exact,
+    corrections: exact,
   });
   expect(accepted.result).toEqual({
     outcome: "REGENERATE",
-    revisionInstructions: exact,
+    revisionInstructions: exactRendered,
   });
 
   const over = [...exact];
-  over[0] = revisionInstructionOfLength(241, 0);
+  over[6] = correction("maintain", "leaf_wrapping", "left_and_right");
   const rejected = await reviewWith({
     outcome: "REGENERATE",
-    revisionInstructions: over,
+    corrections: over,
   });
   expectSafeReviewFailure(rejected.result, "malformed_review");
+});
+
+test("enforces the exact correction-command count limit", async () => {
+  const exact = [
+    correction("align", "pave_stones"),
+    correction("preserve", "center_stone_orientation"),
+    correction("maintain", "stone_table_orientation"),
+    correction("increase", "prong_clearance"),
+    correction("correct", "prong_placement"),
+    correction("reduce", "shank_thickness"),
+    correction("prevent", "stacking_collision"),
+    correction("reduce", "casting_complexity"),
+  ];
+  expect(exact).toHaveLength(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumCorrectionCommands,
+  );
+  const accepted = await reviewWith({
+    outcome: "REGENERATE",
+    corrections: exact,
+  });
+  expect(accepted.result.outcome).toBe("REGENERATE");
+
+  const rejected = await reviewWith({
+    outcome: "REGENERATE",
+    corrections: [
+      ...exact,
+      correction("simplify", "enamel_motif"),
+    ],
+  });
+  expectSafeReviewFailure(rejected.result, "malformed_review");
+});
+
+test("enforces the serialized reviewer envelope before JSON parsing", async () => {
+  const oversized =
+    `${JSON.stringify({ outcome: "PASS" })}${" ".repeat(
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeCharacters,
+    )}`;
+  const oversizedBytes = JSON.stringify({
+    outcome: "PASS",
+    padding: "界".repeat(1_400),
+  });
+  expect(oversized.length).toBeGreaterThan(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeCharacters,
+  );
+  expect(oversizedBytes.length).toBeLessThanOrEqual(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeCharacters,
+  );
+  expect(Buffer.byteLength(oversizedBytes, "utf8")).toBeGreaterThan(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeBytes,
+  );
+
+  const originalParse = JSON.parse;
+  let parseCalls = 0;
+  JSON.parse = ((...args: Parameters<typeof JSON.parse>) => {
+    parseCalls += 1;
+    return originalParse(...args);
+  }) as typeof JSON.parse;
+  try {
+    const oversizedResult = await reviewWith(oversized);
+    const oversizedBytesResult = await reviewWith(oversizedBytes);
+    expectSafeReviewFailure(oversizedResult.result, "malformed_review");
+    expectSafeReviewFailure(oversizedBytesResult.result, "malformed_review");
+    expect(parseCalls).toBe(0);
+  } finally {
+    JSON.parse = originalParse;
+  }
+});
+
+test("rejects a property-flooded reviewer JSON string at the pre-parse envelope", async () => {
+  const flooded: Record<string, unknown> = { outcome: "PASS" };
+  for (let index = 0; index < 3_000; index += 1) {
+    flooded[`unknown_${index}`] = index;
+  }
+  const serialized = JSON.stringify(flooded);
+  expect(serialized.length).toBeGreaterThan(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeCharacters,
+  );
+
+  const { result } = await reviewWith(serialized);
+  expectSafeReviewFailure(result, "malformed_review");
+});
+
+test("rejects malformed JSON and boxed String reviewer output without disclosure", async () => {
+  const marker = "PRIVATE_PARSE_MARKER";
+  const malformed = await reviewWith(`{"outcome":"PASS","marker":"${marker}"`);
+  const boxed = await reviewWithRawOutput(
+    new String(JSON.stringify({ outcome: "PASS" })),
+  );
+
+  expectSafeReviewFailure(malformed.result, "malformed_review");
+  expectSafeReviewFailure(boxed.result, "malformed_review");
+  expect(JSON.stringify(malformed.result)).not.toContain(marker);
+});
+
+test("accepts bounded serialized reviewer JSON", async () => {
+  const serialized = JSON.stringify({
+    outcome: "REGENERATE",
+    corrections: [
+      correction("increase", "prong_clearance"),
+      correction("prevent", "stacking_collision"),
+      correction("keep", "vine_back_continuity", "continuous_back"),
+    ],
+  });
+  expect(serialized.length).toBeLessThanOrEqual(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeCharacters,
+  );
+
+  const { result } = await reviewWith(serialized);
+  expect(result).toEqual({
+    outcome: "REGENERATE",
+    revisionInstructions: [
+      "increase prong clearance",
+      "prevent stacking collision",
+      "keep the vine continuous around the back",
+    ],
+  });
 });
 
 test("requires exact outcome branch fields and rejects malformed extras", async () => {
@@ -1416,7 +1806,11 @@ test("requires exact outcome branch fields and rejects malformed extras", async 
     { quality: "strong" },
     { outcome: "PASS", revisionInstructions: ["Correct ring orientation."] },
     { outcome: "REGENERATE" },
-    { outcome: "REGENERATE", revisionInstructions: [], reason: "candidate_invalid" },
+    {
+      outcome: "REGENERATE",
+      corrections: [correction("align", "pave_stones")],
+      reason: "candidate_invalid",
+    },
     { outcome: "FAIL_SAFE" },
     { outcome: "FAIL_SAFE", reason: "candidate_invalid", quality: "strong" },
   ];

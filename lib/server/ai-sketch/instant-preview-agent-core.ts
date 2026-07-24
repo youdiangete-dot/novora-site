@@ -1,4 +1,5 @@
 import "server-only";
+import { Buffer } from "node:buffer";
 import { types as nodeUtilTypes } from "node:util";
 
 export const INSTANT_PREVIEW_AGENT_CORE_VERSION =
@@ -26,6 +27,10 @@ export const INSTANT_PREVIEW_AGENT_LIMITS = {
   maximumRevisionInstructions: 8,
   maximumRevisionInstructionLength: 300,
   maximumRevisionPayloadCharacters: 1_200,
+  maximumReviewerEnvelopeCharacters: 4_000,
+  maximumReviewerEnvelopeBytes: 4_000,
+  maximumCorrectionCommands: 8,
+  maximumRenderedCorrectionCharacters: 256,
 } as const;
 
 export type InstantPreviewAgentFailureCategory =
@@ -192,6 +197,7 @@ const TECHNICAL_SENSITIVE_VALUE_PATTERNS = [
   /\bbearer(?:\s+|%20)[A-Za-z0-9._~+/-]{8,}\b/i,
   /\b(api[ _-]?key|password|credential|secret|cookie|capability proof)\b/i,
   /\b(api[ _-]?key|token|password|secret)\s*[:=]\s*[A-Za-z0-9._~+/-]{6,}\b/i,
+  /\b(?:access|session|auth(?:entication|orization)?|refresh|api)[\s:=_-]*token(?![A-Za-z0-9])[\s:=_-]+[A-Za-z0-9._~+/-]{8,}\b/i,
   /\b(?:session|cookie|set-cookie|authorization)\s*[:=]\s*[^\s;,]{1,200}/i,
   /\b(process\.env|environment variable|\$env:|OPENAI_API_KEY|SUPABASE_[A-Z_]+|API_KEY)\b/i,
   /(?:\$\{[A-Z][A-Z0-9_]{2,}\}|%[A-Z][A-Z0-9_]{2,}%)/,
@@ -200,7 +206,7 @@ const TECHNICAL_SENSITIVE_VALUE_PATTERNS = [
   /\b(SELECT\s+.{1,200}\s+FROM|INSERT\s+INTO|UPDATE\s+.{1,200}\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE|CREATE\s+TABLE|SQL statement|database schema|database table|database column|postgres|supabase)\b/i,
   /\b(shell command|powershell|cmd\.exe|bash|invoke-webrequest|curl|wget)\b/i,
   /(?:^|[\s"'(])(?:rm\s+-[A-Za-z]*r[A-Za-z]*f|cat\s+\/|chmod\s+[0-7]{3,4}\s|(?:ba|z|k|c)?sh\s+-c\b)/i,
-  /\b(?:Get-ChildItem|Get-Content)\s+Env:|(?:^|[\s"'(])(?:Invoke-Expression|IEX)\s*(?:\(|["'])|(?:^|[\s"'(])Remove-Item\s+-Recurse\b/i,
+  /\b(?:Get-ChildItem|Get-Content)\s+Env:|(?:^|[\s"'(])(?:Invoke-Expression|IEX)\s*(?:\(|\\?["'])|(?:^|[\s"'(])Remove-Item\s+-Recurse\b/i,
   /\b(execute (?:a |the )?(?:tool|code|command|script)|run (?:a |the )?(?:tool|command|script)|tool execution|code execution)\b/i,
   /\b(?:eval|exec|Function|spawn)\s*\(|\bchild_process\b|\bsubprocess\.run\s*\(|\bos\.system\s*\(/i,
   /\b(?:npm\s+(?:install|i)|npx(?:\s|$)|pnpm\s+add|yarn\s+add|pip3?\s+install|python\s+-m\s+pip\s+install)\b/i,
@@ -223,12 +229,6 @@ class ParseFailure extends Error {
     super(category);
   }
 }
-
-type GraphInspection = {
-  nodes: number;
-  stringCharacters: number;
-  seen: WeakSet<object>;
-};
 
 function fail(category: InstantPreviewAgentFailureCategory): never {
   throw new ParseFailure(category);
@@ -282,6 +282,31 @@ function snapshotOwnDataRecord(value: unknown): Record<string, unknown> {
       fail("invalid_input");
     }
     if (!Object.is(Reflect.get(value, key, value), descriptor.value)) {
+      fail("invalid_input");
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
+}
+
+function snapshotAllowlistedDataRecord(
+  value: unknown,
+  keys: readonly string[],
+): Record<string, unknown> {
+  if (!isPlainRecord(value)) {
+    fail("invalid_input");
+  }
+
+  const snapshot: Record<string, unknown> = Object.create(null);
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor) {
+      continue;
+    }
+    if (
+      descriptor.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, "value")
+    ) {
       fail("invalid_input");
     }
     snapshot[key] = descriptor.value;
@@ -348,69 +373,6 @@ function snapshotOrdinaryArray(
   }
 
   return snapshot;
-}
-
-function inspectInputGraph(
-  value: unknown,
-  depth: number,
-  inspection: GraphInspection,
-): void {
-  if (depth > INSTANT_PREVIEW_AGENT_LIMITS.maximumInputDepth) {
-    fail("oversized_input");
-  }
-
-  if (
-    value === null ||
-    value === undefined ||
-    typeof value === "boolean" ||
-    typeof value === "number"
-  ) {
-    return;
-  }
-
-  if (typeof value === "string") {
-    inspection.stringCharacters += value.length;
-    if (
-      inspection.stringCharacters >
-      INSTANT_PREVIEW_AGENT_LIMITS.maximumInputStringCharacters
-    ) {
-      fail("oversized_input");
-    }
-    return;
-  }
-
-  if (typeof value !== "object") {
-    fail("invalid_input");
-  }
-  if (nodeUtilTypes.isProxy(value)) {
-    fail("invalid_input");
-  }
-
-  if (inspection.seen.has(value)) {
-    fail("invalid_input");
-  }
-  inspection.seen.add(value);
-  inspection.nodes += 1;
-
-  if (inspection.nodes > INSTANT_PREVIEW_AGENT_LIMITS.maximumInputNodes) {
-    fail("oversized_input");
-  }
-
-  if (Array.isArray(value)) {
-    const items = snapshotOrdinaryArray(
-      value,
-      INSTANT_PREVIEW_AGENT_LIMITS.maximumInputNodes,
-    );
-    for (const item of items) {
-      inspectInputGraph(item, depth + 1, inspection);
-    }
-    return;
-  }
-
-  const snapshot = snapshotOwnDataRecord(value);
-  for (const childValue of Object.values(snapshot)) {
-    inspectInputGraph(childValue, depth + 1, inspection);
-  }
 }
 
 function normalizeWhitespace(value: string): string {
@@ -655,6 +617,19 @@ function parsePiece(
   };
 }
 
+const BRIEF_STONE_KEYS = [
+  "role",
+  "type",
+  "color",
+  "shape",
+  "setting",
+  "orientation",
+  "tableOrientation",
+  "sizeRelationship",
+  "relationshipToOtherStones",
+  "quantity",
+] as const;
+
 function parseStones(value: unknown): InstantPreviewAgentStone[] {
   if (value === undefined || value === null) {
     return [];
@@ -665,7 +640,7 @@ function parseStones(value: unknown): InstantPreviewAgentStone[] {
   );
 
   return items.map((item) => {
-    const stoneSource = snapshotOwnDataRecord(item);
+    const stoneSource = snapshotAllowlistedDataRecord(item, BRIEF_STONE_KEYS);
 
     const quantityValue = stoneSource.quantity;
     let quantity: number | null = null;
@@ -839,23 +814,38 @@ function createStructuredInput(
   return structured;
 }
 
+const BRIEF_INPUT_KEYS = [
+  "pieceType",
+  "pieceSubtype",
+  "otherJewelryType",
+  "designIntent",
+  "designDescription",
+  "styleDirection",
+  "materialDirection",
+  "stones",
+  "centerStoneDirection",
+  "stoneArrangement",
+  "dimensions",
+  "composition",
+  "motif",
+  "colorDirection",
+  "wearabilityRequirements",
+  "manufacturingConstraints",
+  "referenceObservations",
+  "unknowns",
+  "avoid",
+  "requestedViews",
+] as const;
+
 export function structureConceptBriefForInstantPreview(
   input: unknown,
 ): StructureConceptBriefForInstantPreviewResult {
   try {
-    inspectInputGraph(input, 1, {
-      nodes: 0,
-      stringCharacters: 0,
-      seen: new WeakSet<object>(),
-    });
-
-    if (!isPlainRecord(input)) {
-      return failure("invalid_input");
-    }
-
     return {
       ok: true,
-      value: createStructuredInput(snapshotOwnDataRecord(input)),
+      value: createStructuredInput(
+        snapshotAllowlistedDataRecord(input, BRIEF_INPUT_KEYS),
+      ),
     };
   } catch (error) {
     return failure(
@@ -877,7 +867,7 @@ export type InstantPreviewAgentReviewInput = {
 };
 
 export interface InstantPreviewAgentReviewer {
-  reviewCandidate(input: InstantPreviewAgentReviewInput): Promise<unknown>;
+  reviewCandidate(input: InstantPreviewAgentReviewInput): Promise<string>;
 }
 
 export type InstantPreviewAgentPassQuality = "acceptable" | "strong";
@@ -916,7 +906,7 @@ const REVIEW_METADATA_KEYS = new Set(["purpose", "candidateSequence"]);
 const PASS_RESULT_KEYS = new Set(["outcome", "quality"]);
 const REGENERATE_RESULT_KEYS = new Set([
   "outcome",
-  "revisionInstructions",
+  "corrections",
 ]);
 const FAIL_SAFE_RESULT_KEYS = new Set(["outcome", "reason"]);
 const REVIEWER_FAIL_SAFE_REASONS = new Set([
@@ -924,12 +914,6 @@ const REVIEWER_FAIL_SAFE_REASONS = new Set([
   "quality_below_threshold",
 ]);
 const PASS_QUALITIES = new Set(["acceptable", "strong"]);
-const REVISION_ACTION_PATTERN =
-  /^(?:align|maintain|reduce|preserve|keep|increase|correct|prevent|simplify|improve|adjust|refine|ensure)\b/i;
-const REVISION_JEWELRY_TARGET_PATTERN =
-  /(?:\b(?:jewel(?:ry)?|design|composition|stones?|gems?|center|accent|orientation|table|prongs?|setting|ring|shank|stacking|stacked|collision|casting|enamel|motif|vine|leaf|leaves|spacing|clearance|thickness|complexity|oval|round|pear|marquise|emerald|cushion|princess|baguette|axis|direction|view|overall|detail|sketch|presentation|structure|profile|front|side|placement|proportion|silhouette|bail|clasp|hinge|support|alignment)\b|pav[eé])/iu;
-const REVISION_ALLOWED_CHARACTERS =
-  /^[\p{L}\p{N}\s.,;:'"()\-–—]+$/u;
 const REVISION_SENSITIVE_VALUE_PATTERNS = [
   ...TECHNICAL_SENSITIVE_VALUE_PATTERNS,
   /\b(payment|order|shipping|quotation|quote|pricing|price)\b/i,
@@ -941,6 +925,78 @@ const REVISION_SENSITIVE_VALUE_PATTERNS = [
   /\bcontact the customer\b/i,
   /```|<script\b/i,
 ] as const;
+
+type ReviewerCorrectionAction =
+  | "align"
+  | "preserve"
+  | "maintain"
+  | "increase"
+  | "reduce"
+  | "correct"
+  | "prevent"
+  | "simplify"
+  | "improve"
+  | "keep";
+
+type ReviewerCorrectionTarget =
+  | "pave_stones"
+  | "center_stone_orientation"
+  | "stone_table_orientation"
+  | "oval_long_axis"
+  | "prong_clearance"
+  | "prong_placement"
+  | "shank_thickness"
+  | "stacking_collision"
+  | "front_stacking_elevation"
+  | "enamel_motif"
+  | "enamel_complexity"
+  | "stone_spacing"
+  | "vine_back_continuity"
+  | "leaf_wrapping"
+  | "metal_thickness"
+  | "casting_complexity";
+
+type ReviewerCorrectionModifier =
+  | "same_direction"
+  | "consistent"
+  | "continuous_back"
+  | "left_and_right"
+  | "unnecessary";
+
+type ReviewerCorrectionCommand = {
+  action: ReviewerCorrectionAction;
+  target: ReviewerCorrectionTarget;
+  modifier?: ReviewerCorrectionModifier;
+};
+
+function correctionKey(command: ReviewerCorrectionCommand): string {
+  return `${command.action}|${command.target}|${command.modifier ?? ""}`;
+}
+
+const TRUSTED_CORRECTION_RENDERINGS: Readonly<Record<string, string>> = {
+  "align|pave_stones|": "align pavé stones",
+  "preserve|center_stone_orientation|": "preserve center-stone orientation",
+  "maintain|stone_table_orientation|": "maintain stone table orientation",
+  "maintain|oval_long_axis|same_direction":
+    "maintain the same oval long-axis direction",
+  "keep|oval_long_axis|consistent": "keep the oval long axis consistent",
+  "increase|prong_clearance|": "increase prong clearance",
+  "correct|prong_placement|": "correct prong placement",
+  "reduce|shank_thickness|": "reduce shank thickness",
+  "prevent|stacking_collision|": "prevent stacking collision",
+  "preserve|front_stacking_elevation|":
+    "preserve front stacking elevation",
+  "simplify|enamel_motif|": "simplify the enamel motif",
+  "reduce|enamel_complexity|": "reduce enamel complexity",
+  "improve|stone_spacing|": "improve stone spacing",
+  "keep|vine_back_continuity|continuous_back":
+    "keep the vine continuous around the back",
+  "maintain|leaf_wrapping|left_and_right":
+    "maintain left-and-right leaf wrapping",
+  "reduce|metal_thickness|unnecessary":
+    "reduce unnecessary metal thickness",
+  "reduce|casting_complexity|": "reduce casting complexity",
+};
 
 function hasOnlyKeys(
   value: Record<string, unknown>,
@@ -1354,22 +1410,24 @@ function sanitizeReviewInput(value: unknown): InstantPreviewAgentReviewInput {
   };
 }
 
-function isSafeRevisionInstruction(value: string): boolean {
-  if (containsSensitiveValue(value, REVISION_SENSITIVE_VALUE_PATTERNS)) {
-    return false;
-  }
-  return (
-    REVISION_ALLOWED_CHARACTERS.test(value) &&
-    REVISION_ACTION_PATTERN.test(value) &&
-    REVISION_JEWELRY_TARGET_PATTERN.test(value)
-  );
-}
-
 function normalizeReviewerResult(
   value: unknown,
 ): InstantPreviewAgentAutomaticReviewResult {
+  if (
+    typeof value !== "string" ||
+    value.length > INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeCharacters ||
+    Buffer.byteLength(value, "utf8") >
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeBytes
+  ) {
+    return failSafe("malformed_review");
+  }
+  if (containsSensitiveValue(value, REVISION_SENSITIVE_VALUE_PATTERNS)) {
+    return failSafe("unsafe_review");
+  }
+
   try {
-    const result = snapshotOwnDataRecord(value);
+    const parsed: unknown = JSON.parse(value);
+    const result = snapshotOwnDataRecord(parsed);
     const outcome = result.outcome;
     if (outcome === "PASS") {
       const actualKeys = Object.keys(result);
@@ -1388,11 +1446,10 @@ function normalizeReviewerResult(
       if (typeof qualityValue !== "string") {
         return failSafe("malformed_review");
       }
-      const quality = normalizeWhitespace(qualityValue).toLowerCase();
-      return PASS_QUALITIES.has(quality)
+      return PASS_QUALITIES.has(qualityValue)
         ? {
             outcome: "PASS",
-            quality: quality as InstantPreviewAgentPassQuality,
+            quality: qualityValue as InstantPreviewAgentPassQuality,
           }
         : failSafe("malformed_review");
     }
@@ -1408,8 +1465,8 @@ function normalizeReviewerResult(
       let instructions: unknown[];
       try {
         instructions = snapshotOrdinaryArray(
-          result.revisionInstructions,
-          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructions,
+          result.corrections,
+          INSTANT_PREVIEW_AGENT_LIMITS.maximumCorrectionCommands,
         );
       } catch {
         return failSafe("malformed_review");
@@ -1418,38 +1475,57 @@ function normalizeReviewerResult(
         return failSafe("malformed_review");
       }
 
-      const normalized: string[] = [];
+      const renderedInstructions: string[] = [];
+      const seenCommands = new Set<string>();
       let totalCharacters = 0;
       for (const instruction of instructions) {
-        if (typeof instruction !== "string") {
-          return failSafe("malformed_review");
-        }
-        const parsed = normalizeWhitespace(instruction);
+        const command = snapshotOwnDataRecord(instruction);
+        const commandKeys = Object.keys(command);
         if (
-          !parsed ||
-          parsed.length >
-            INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructionLength
+          commandKeys.length < 2 ||
+          commandKeys.length > 3 ||
+          !commandKeys.every((key) =>
+            key === "action" || key === "target" || key === "modifier"
+          ) ||
+          !Object.prototype.hasOwnProperty.call(command, "action") ||
+          !Object.prototype.hasOwnProperty.call(command, "target") ||
+          typeof command.action !== "string" ||
+          typeof command.target !== "string" ||
+          !(
+            command.modifier === undefined ||
+            typeof command.modifier === "string"
+          )
         ) {
           return failSafe("malformed_review");
         }
-        totalCharacters += parsed.length;
+        const typedCommand: ReviewerCorrectionCommand = {
+          action: command.action as ReviewerCorrectionAction,
+          target: command.target as ReviewerCorrectionTarget,
+          ...(command.modifier === undefined
+            ? {}
+            : {
+                modifier: command.modifier as ReviewerCorrectionModifier,
+              }),
+        };
+        const key = correctionKey(typedCommand);
+        const rendered = TRUSTED_CORRECTION_RENDERINGS[key];
+        if (!rendered || seenCommands.has(key)) {
+          return failSafe("malformed_review");
+        }
+        seenCommands.add(key);
+        totalCharacters += rendered.length;
         if (
           totalCharacters >
-          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionPayloadCharacters
+          INSTANT_PREVIEW_AGENT_LIMITS.maximumRenderedCorrectionCharacters
         ) {
           return failSafe("malformed_review");
         }
-        if (!isSafeRevisionInstruction(parsed)) {
-          return failSafe("unsafe_review");
-        }
-        if (!normalized.includes(parsed)) {
-          normalized.push(parsed);
-        }
+        renderedInstructions.push(rendered);
       }
 
       return {
         outcome: "REGENERATE",
-        revisionInstructions: normalized,
+        revisionInstructions: renderedInstructions,
       };
     }
 
@@ -1461,11 +1537,10 @@ function normalizeReviewerResult(
       ) {
         return failSafe("malformed_review");
       }
-      const reason = normalizeWhitespace(result.reason).toLowerCase();
-      return REVIEWER_FAIL_SAFE_REASONS.has(reason)
+      return REVIEWER_FAIL_SAFE_REASONS.has(result.reason)
         ? {
             outcome: "FAIL_SAFE",
-            reason: reason as InstantPreviewAgentFailSafeReason,
+            reason: result.reason as InstantPreviewAgentFailSafeReason,
           }
         : failSafe("malformed_review");
     }
