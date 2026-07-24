@@ -197,7 +197,7 @@ const TECHNICAL_SENSITIVE_VALUE_PATTERNS = [
   /\bbearer(?:\s+|%20)[A-Za-z0-9._~+/-]{8,}\b/i,
   /\b(api[ _-]?key|password|credential|secret|cookie|capability proof)\b/i,
   /\b(api[ _-]?key|token|password|secret)\s*[:=]\s*[A-Za-z0-9._~+/-]{6,}\b/i,
-  /\b(?:access|session|auth(?:entication|orization)?|refresh|api)[\s:=_-]*token(?![A-Za-z0-9])[\s:=_-]+[A-Za-z0-9._~+/-]{8,}\b/i,
+  /\b(?:access|session|auth|authentication|authorization|refresh|api) token [A-Za-z0-9][A-Za-z0-9._~+/-]{7,}\b/i,
   /\b(?:session|cookie|set-cookie|authorization)\s*[:=]\s*[^\s;,]{1,200}/i,
   /\b(process\.env|environment variable|\$env:|OPENAI_API_KEY|SUPABASE_[A-Z_]+|API_KEY)\b/i,
   /(?:\$\{[A-Z][A-Z0-9_]{2,}\}|%[A-Z][A-Z0-9_]{2,}%)/,
@@ -395,8 +395,30 @@ function safelyDecodePercentSequences(value: string): string {
   });
 }
 
+function canonicalizeCredentialSecurityBoundaries(value: string): string {
+  return foldSecurityConfusables(
+    value
+      .normalize("NFKC")
+      .replace(/([a-z])([A-Z])/g, "$1 $2"),
+  )
+    .replace(
+      /[\p{White_Space}\p{Default_Ignorable_Code_Point}._:=\-]+/gu,
+      " ",
+    )
+    .trim()
+    .replace(/ +/g, " ");
+}
+
 function createSecurityScanVariants(value: string): string[] {
   const variants = new Set<string>();
+  const addBoundedVariant = (candidate: string) => {
+    if (
+      candidate.length <= MAXIMUM_SECURITY_SCAN_CHARACTERS &&
+      variants.size < MAXIMUM_SECURITY_VARIANTS
+    ) {
+      variants.add(candidate);
+    }
+  };
   const addSecurityForms = (candidate: string) => {
     if (
       candidate.length > MAXIMUM_SECURITY_SCAN_CHARACTERS ||
@@ -406,12 +428,13 @@ function createSecurityScanVariants(value: string): string[] {
     }
     const normalized = candidate.normalize("NFKC");
     const folded = foldSecurityConfusables(normalized);
-    variants.add(candidate);
-    variants.add(normalized);
-    variants.add(folded);
-    variants.add(
+    addBoundedVariant(candidate);
+    addBoundedVariant(normalized);
+    addBoundedVariant(folded);
+    addBoundedVariant(
       folded.replace(/[\s\\._\-\u200b\u200c\u200d\u2060]+/g, ""),
     );
+    addBoundedVariant(canonicalizeCredentialSecurityBoundaries(candidate));
   };
 
   let decoded = value;

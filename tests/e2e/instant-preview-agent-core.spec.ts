@@ -1256,6 +1256,171 @@ test("rejects credential labels in sanitized reviewer inputs before invocation",
   }
 });
 
+const FINAL_CREDENTIAL_VALUE = "abcdefghijklmnopqrstuv";
+const FINAL_CREDENTIAL_BOUNDARY_CASES = [
+  {
+    label: "zero-width access label",
+    raw: `access\u200Btoken ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `access token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "word-joiner value boundary",
+    raw: `access token\u2060${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `access token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "dot-separated access label",
+    raw: `access.token ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `access token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "uppercase zero-width access label",
+    raw: `ACCESS\u200BTOKEN ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `ACCESS TOKEN ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "full-width camel-case access label",
+    raw:
+      `\uFF41\uFF43\uFF43\uFF45\uFF53\uFF53` +
+      `\uFF34\uFF4F\uFF4B\uFF45\uFF4E ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `access Token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "dot plus zero-width access label",
+    raw: `access.\u200Btoken ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `access token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "word-joiner access label and value",
+    raw: `access\u2060token\u2060${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `access token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "zero-width session label",
+    raw: `session\u200Btoken ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `session token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "dot-separated auth label",
+    raw: `auth.token ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `auth token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "hyphenated refresh label",
+    raw: `refresh-token ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `refresh token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "underscored API label",
+    raw: `api_token ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `api token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+  {
+    label: "camel-case access label",
+    raw: `accessToken ${FINAL_CREDENTIAL_VALUE}`,
+    canonical: `access Token ${FINAL_CREDENTIAL_VALUE}`,
+  },
+] as const;
+
+function expectCredentialMaterialNotDisclosed(
+  value: unknown,
+  raw: string,
+  canonical: string,
+) {
+  const serialized = JSON.stringify(value);
+  expect(serialized.length).toBeLessThan(200);
+  expect(serialized).not.toContain(raw);
+  expect(serialized).not.toContain(canonical);
+  expect(serialized).not.toContain(FINAL_CREDENTIAL_VALUE);
+  expect(serialized).not.toContain("C:\\");
+  expect(serialized).not.toContain("instant-preview-agent-core");
+}
+
+test("preserves credential boundaries on every supported Brief string path", async () => {
+  for (const credentialCase of FINAL_CREDENTIAL_BOUNDARY_CASES) {
+    await test.step(credentialCase.label, () => {
+      const result = structureConceptBriefForInstantPreview(
+        validBrief({ designDescription: credentialCase.raw }),
+      );
+      expectFailure(result, "unsafe_input");
+      expectCredentialMaterialNotDisclosed(
+        result,
+        credentialCase.raw,
+        credentialCase.canonical,
+      );
+    });
+  }
+});
+
+test("preserves credential boundaries before reviewer-input invocation", async () => {
+  for (const credentialCase of FINAL_CREDENTIAL_BOUNDARY_CASES) {
+    await test.step(credentialCase.label, async () => {
+      const reviewer = new FakeInstantPreviewAgentReviewer(
+        JSON.stringify({ outcome: "PASS" }),
+      );
+      const input = validReviewInput();
+      input.candidateObservations = [credentialCase.raw];
+
+      const result = await reviewInstantPreviewCandidate(reviewer, input);
+      expect(result).toEqual({
+        outcome: "FAIL_SAFE",
+        reason: "unsafe_review",
+      });
+      expect(reviewer.callCount).toBe(0);
+      expectCredentialMaterialNotDisclosed(
+        result,
+        credentialCase.raw,
+        credentialCase.canonical,
+      );
+    });
+  }
+});
+
+test("preserves credential boundaries in serialized reviewer-output scanning", async () => {
+  for (const credentialCase of FINAL_CREDENTIAL_BOUNDARY_CASES.slice(0, 3)) {
+    await test.step(credentialCase.label, async () => {
+      const { reviewer, result } = await reviewWith(
+        JSON.stringify({
+          outcome: "REGENERATE",
+          corrections: [correction("align", "pave_stones")],
+          comment: credentialCase.raw,
+        }),
+      );
+      expectSafeReviewFailure(result, "unsafe_review");
+      expect(reviewer.callCount).toBe(1);
+      expectCredentialMaterialNotDisclosed(
+        result,
+        credentialCase.raw,
+        credentialCase.canonical,
+      );
+    });
+  }
+});
+
+test("does not classify ordinary jewelry access language as credentials", async () => {
+  for (const phrase of [
+    "access opening clearance",
+    "maintain gallery access",
+    "improve stone setting access",
+  ]) {
+    const structured = expectSuccess(
+      structureConceptBriefForInstantPreview(
+        validBrief({ designDescription: phrase }),
+      ),
+    );
+    expect(structured.customerIntent.designDescription).toBe(phrase);
+
+    const reviewer = new FakeInstantPreviewAgentReviewer(
+      JSON.stringify({ outcome: "PASS", quality: "strong" }),
+    );
+    const input = validReviewInput();
+    input.candidateObservations = [phrase];
+    const result = await reviewInstantPreviewCandidate(reviewer, input);
+    expect(result).toEqual({ outcome: "PASS", quality: "strong" });
+    expect(reviewer.callCount).toBe(1);
+  }
+});
+
 test("accepts the exact legitimate jewelry correction corpus", async () => {
   const corrections = [
     correction("align", "pave_stones"),
