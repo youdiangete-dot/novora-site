@@ -1,4 +1,5 @@
 import "server-only";
+import { types as nodeUtilTypes } from "node:util";
 
 export const INSTANT_PREVIEW_AGENT_CORE_VERSION =
   "novora_instant_preview_agent_core_v1" as const;
@@ -181,7 +182,8 @@ const TECHNICAL_SENSITIVE_VALUE_PATTERNS = [
   /file:\/\//i,
   /\b[A-Z]:[\\/]/i,
   /(?:^|[\s"'(])\\\\[^\\\s]+\\[^\\\s]+/i,
-  /(?:^|[\s"'(])(?:\.\.[\\/]|\/(?:[A-Za-z0-9._-]+[\\/])+[A-Za-z0-9._-]*)/i,
+  /(?:^|[\s"'(])(?:\.\.?[\\/]|\/(?:[A-Za-z0-9._-]+[\\/])+[A-Za-z0-9._-]*)/i,
+  /(?:^|[\s"'(])(?:[A-Za-z0-9._-]+[\\/]){2,}[A-Za-z0-9._-]+(?:\.[A-Za-z0-9]{1,8})?/i,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
   /(?:\+?\d[\d\s().-]{7,}\d)/,
   /\bNOVORA-CB-[A-Z0-9-]+\b/i,
@@ -190,14 +192,18 @@ const TECHNICAL_SENSITIVE_VALUE_PATTERNS = [
   /\bbearer(?:\s+|%20)[A-Za-z0-9._~+/-]{8,}\b/i,
   /\b(api[ _-]?key|password|credential|secret|cookie|capability proof)\b/i,
   /\b(api[ _-]?key|token|password|secret)\s*[:=]\s*[A-Za-z0-9._~+/-]{6,}\b/i,
+  /\b(?:session|cookie|set-cookie|authorization)\s*[:=]\s*[^\s;,]{1,200}/i,
   /\b(process\.env|environment variable|\$env:|OPENAI_API_KEY|SUPABASE_[A-Z_]+|API_KEY)\b/i,
   /(?:\$\{[A-Z][A-Z0-9_]{2,}\}|%[A-Z][A-Z0-9_]{2,}%)/,
   /\b(storage bucket|storage object|storage path|object path|signed url|private url|private path)\b/i,
   /\b(customer name|email address|phone number|whatsapp|contact note|admin note|reviewer note)\b/i,
-  /\b(SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+.+\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE|CREATE\s+TABLE|SQL statement|database schema|database table|database column|postgres|supabase)\b/i,
+  /\b(SELECT\s+.{1,200}\s+FROM|INSERT\s+INTO|UPDATE\s+.{1,200}\s+SET|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE|CREATE\s+TABLE|SQL statement|database schema|database table|database column|postgres|supabase)\b/i,
   /\b(shell command|powershell|cmd\.exe|bash|invoke-webrequest|curl|wget)\b/i,
+  /(?:^|[\s"'(])(?:rm\s+-[A-Za-z]*r[A-Za-z]*f|cat\s+\/|chmod\s+[0-7]{3,4}\s|(?:ba|z|k|c)?sh\s+-c\b)/i,
+  /\b(?:Get-ChildItem|Get-Content)\s+Env:|(?:^|[\s"'(])(?:Invoke-Expression|IEX)\s*(?:\(|["'])|(?:^|[\s"'(])Remove-Item\s+-Recurse\b/i,
   /\b(execute (?:a |the )?(?:tool|code|command|script)|run (?:a |the )?(?:tool|command|script)|tool execution|code execution)\b/i,
-  /\b(npm|pnpm|yarn|pip)\s+(?:install|add)\b/i,
+  /\b(?:eval|exec|Function|spawn)\s*\(|\bchild_process\b|\bsubprocess\.run\s*\(|\bos\.system\s*\(/i,
+  /\b(?:npm\s+(?:install|i)|npx(?:\s|$)|pnpm\s+add|yarn\s+add|pip3?\s+install|python\s+-m\s+pip\s+install)\b/i,
   /\b(package installation|install (?:a |the )?package)\b/i,
 ] as const;
 const STRUCTURED_SENSITIVE_VALUE_PATTERNS = [
@@ -242,6 +248,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (
+    (typeof value === "object" || typeof value === "function") &&
+    value !== null &&
+    nodeUtilTypes.isProxy(value)
+  ) {
+    return false;
+  }
   if (!isRecord(value)) {
     return false;
   }
@@ -280,7 +293,13 @@ function snapshotOrdinaryArray(
   value: unknown,
   maximumCount: number,
 ): unknown[] {
-  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    nodeUtilTypes.isProxy(value) ||
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype
+  ) {
     fail("invalid_input");
   }
 
@@ -361,6 +380,9 @@ function inspectInputGraph(
   }
 
   if (typeof value !== "object") {
+    fail("invalid_input");
+  }
+  if (nodeUtilTypes.isProxy(value)) {
     fail("invalid_input");
   }
 
@@ -902,16 +924,20 @@ const REVIEWER_FAIL_SAFE_REASONS = new Set([
   "quality_below_threshold",
 ]);
 const PASS_QUALITIES = new Set(["acceptable", "strong"]);
-const ALLOWED_REVISION_LANGUAGE =
-  /\b(jewel(?:ry)?|design|composition|stone|gem|center|accent|orientation|table|prong|setting|ring|shank|stacked|collision|motif|view|overall|detail|sketch|presentation|structure|profile|front|side|placement|proportion|silhouette|bail|clasp|hinge|support|alignment)\b/i;
+const REVISION_ACTION_PATTERN =
+  /^(?:align|maintain|reduce|preserve|keep|increase|correct|prevent|simplify|improve|adjust|refine|ensure)\b/i;
+const REVISION_JEWELRY_TARGET_PATTERN =
+  /(?:\b(?:jewel(?:ry)?|design|composition|stones?|gems?|center|accent|orientation|table|prongs?|setting|ring|shank|stacking|stacked|collision|casting|enamel|motif|vine|leaf|leaves|spacing|clearance|thickness|complexity|oval|round|pear|marquise|emerald|cushion|princess|baguette|axis|direction|view|overall|detail|sketch|presentation|structure|profile|front|side|placement|proportion|silhouette|bail|clasp|hinge|support|alignment)\b|pav[eé])/iu;
+const REVISION_ALLOWED_CHARACTERS =
+  /^[\p{L}\p{N}\s.,;:'"()\-–—]+$/u;
 const REVISION_SENSITIVE_VALUE_PATTERNS = [
   ...TECHNICAL_SENSITIVE_VALUE_PATTERNS,
   /\b(payment|order|shipping|quotation|quote|pricing|price)\b/i,
-  /\bCAD\b.*\b(complete|ready|finished|approved)\b/i,
-  /\b(complete|ready|finished|approved)\b.*\bCAD\b/i,
-  /\bproduction\b.*\b(approved|ready|confirmed)\b/i,
-  /\b(approved|ready|confirmed)\b.*\bproduction\b/i,
-  /\b(guaranteed?|guarantee)\b.*\b(manufacturability|manufacturable|manufacturing)\b/i,
+  /\bCAD\b.{0,120}\b(complete|ready|finished|approved)\b/i,
+  /\b(complete|ready|finished|approved)\b.{0,120}\bCAD\b/i,
+  /\bproduction\b.{0,120}\b(approved|ready|confirmed)\b/i,
+  /\b(approved|ready|confirmed)\b.{0,120}\bproduction\b/i,
+  /\b(guaranteed?|guarantee)\b.{0,120}\b(manufacturability|manufacturable|manufacturing)\b/i,
   /\bcontact the customer\b/i,
   /```|<script\b/i,
 ] as const;
@@ -1329,9 +1355,13 @@ function sanitizeReviewInput(value: unknown): InstantPreviewAgentReviewInput {
 }
 
 function isSafeRevisionInstruction(value: string): boolean {
+  if (containsSensitiveValue(value, REVISION_SENSITIVE_VALUE_PATTERNS)) {
+    return false;
+  }
   return (
-    ALLOWED_REVISION_LANGUAGE.test(value) &&
-    !containsSensitiveValue(value, REVISION_SENSITIVE_VALUE_PATTERNS)
+    REVISION_ALLOWED_CHARACTERS.test(value) &&
+    REVISION_ACTION_PATTERN.test(value) &&
+    REVISION_JEWELRY_TARGET_PATTERN.test(value)
   );
 }
 

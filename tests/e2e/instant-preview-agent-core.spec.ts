@@ -583,20 +583,59 @@ async function expectSensitivePayloadRejected(payload: string) {
   expectFailure(
     structureConceptBriefForInstantPreview(
       validBrief({
-        designDescription: `Refine the ring composition using ${payload}`,
+        designDescription: payload,
       }),
     ),
     "unsafe_input",
   );
 
-  const { result } = await reviewWith({
+  const { reviewer, result } = await reviewWith({
     outcome: "REGENERATE",
     revisionInstructions: [
-      `Correct the ring stone orientation using ${payload}`,
+      `Align the pavé stones; ${payload}`,
     ],
   });
   expectSafeReviewFailure(result, "unsafe_review");
+  expect(reviewer.callCount).toBe(1);
 }
+
+const SECOND_CORRECTION_UNSAFE_CORPUS = [
+  "session=privatevalue; theme=dark",
+  "cookie=session-token",
+  "Set-Cookie: session-token",
+  "authorization=bearer-value",
+  "novora-ai-sketches/concepts/example.png",
+  "private-bucket/customer/output.png",
+  "../private/file",
+  "./cache/private.json",
+  "rm -rf ./cache",
+  "cat /etc/passwd",
+  "curl example.invalid",
+  "wget example.invalid",
+  "chmod 777 file",
+  "bash -c command",
+  "sh -c command",
+  "Get-ChildItem Env:",
+  'Invoke-Expression "malicious"',
+  "IEX(malicious)",
+  "Get-Content Env:",
+  "Remove-Item -Recurse",
+  "eval(userInput)",
+  "exec(command)",
+  "Function(code)",
+  "child_process",
+  "spawn(command)",
+  "subprocess.run(command)",
+  "os.system(command)",
+  "npm install private-package",
+  "npm i private-package",
+  "npx private-package",
+  "pnpm add private-package",
+  "yarn add private-package",
+  "pip install private-package",
+  "pip3 install private-package",
+  "python -m pip install private-package",
+] as const;
 
 test("accepts a valid PASS review", async () => {
   const { reviewer, input, result } = await reviewWith({
@@ -1049,6 +1088,78 @@ test("rejects remaining sensitive categories on both security paths", async () =
   }
 });
 
+test("rejects the complete concrete technical corpus on both security paths", async () => {
+  for (const payload of SECOND_CORRECTION_UNSAFE_CORPUS) {
+    await expectSensitivePayloadRejected(payload);
+  }
+});
+
+test("accepts the exact legitimate jewelry correction corpus", async () => {
+  const instructions = [
+    "align pavé stones",
+    "maintain the same oval long-axis direction",
+    "reduce casting complexity",
+  ];
+  const { reviewer, result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: instructions,
+  });
+  expect(result).toEqual({
+    outcome: "REGENERATE",
+    revisionInstructions: instructions,
+  });
+  expect(reviewer.callCount).toBe(1);
+});
+
+test("accepts bounded legitimate jewelry-language variants", async () => {
+  const instructions = [
+    "align the pavé stones",
+    "preserve center-stone orientation",
+    "maintain stone table orientation",
+    "keep the oval long axis consistent",
+    "increase prong clearance",
+    "correct prong placement",
+    "reduce shank thickness",
+    "prevent stacking collision",
+  ];
+  const secondBatch = [
+    "preserve front stacking elevation",
+    "simplify the enamel motif",
+    "reduce enamel complexity",
+    "improve stone spacing",
+    "keep the vine continuous around the back",
+    "maintain left-and-right leaf wrapping",
+    "reduce unnecessary metal thickness",
+  ];
+
+  for (const revisionInstructions of [instructions, secondBatch]) {
+    const { result } = await reviewWith({
+      outcome: "REGENERATE",
+      revisionInstructions,
+    });
+    expect(result).toEqual({
+      outcome: "REGENERATE",
+      revisionInstructions,
+    });
+  }
+});
+
+test("rejects safe jewelry language mixed with technical material", async () => {
+  for (const instruction of [
+    "align pavé stones and run rm -rf ./cache",
+    "reduce casting complexity using eval(userInput)",
+    "maintain oval direction; npm i private-package",
+  ]) {
+    const { reviewer, result } = await reviewWith({
+      outcome: "REGENERATE",
+      revisionInstructions: [instruction],
+    });
+    expectSafeReviewFailure(result, "unsafe_review");
+    expect(reviewer.callCount).toBe(1);
+    expect(JSON.stringify(result)).not.toContain(instruction);
+  }
+});
+
 test("rejects encoded Windows, UNC, and Unix paths on both security paths", async () => {
   for (const payload of [
     "C%3A%5Cprivate%5Cdesign.png",
@@ -1057,6 +1168,116 @@ test("rejects encoded Windows, UNC, and Unix paths on both security paths", asyn
   ]) {
     await expectSensitivePayloadRejected(payload);
   }
+});
+
+test("rejects transparent Proxy-wrapped arrays on Brief and reviewer result paths", async () => {
+  const briefArray = new Proxy(["clean sculptural"], {});
+  expectFailure(
+    structureConceptBriefForInstantPreview(
+      validBrief({ styleDirection: briefArray }),
+    ),
+    "invalid_input",
+  );
+
+  const revisionInstructions = new Proxy(
+    ["align pavé stones"],
+    {},
+  );
+  const { reviewer, result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions,
+  });
+  expectSafeReviewFailure(result, "malformed_review");
+  expect(reviewer.callCount).toBe(1);
+});
+
+test("rejects Proxy array traps before invoking any trap", async () => {
+  const marker = "PROXY_ARRAY_TRAP_PRIVATE_MARKER";
+  const trapCalls = {
+    get: 0,
+    ownKeys: 0,
+    getOwnPropertyDescriptor: 0,
+    getPrototypeOf: 0,
+  };
+  const proxyArrays = [
+    new Proxy(["clean sculptural"], {
+      get() {
+        trapCalls.get += 1;
+        throw new Error(`${marker}_GET`);
+      },
+    }),
+    new Proxy(["clean sculptural"], {
+      ownKeys() {
+        trapCalls.ownKeys += 1;
+        throw new Error(`${marker}_OWN_KEYS`);
+      },
+    }),
+    new Proxy(["clean sculptural"], {
+      getOwnPropertyDescriptor() {
+        trapCalls.getOwnPropertyDescriptor += 1;
+        throw new Error(`${marker}_DESCRIPTOR`);
+      },
+    }),
+    new Proxy(["clean sculptural"], {
+      getPrototypeOf() {
+        trapCalls.getPrototypeOf += 1;
+        throw new Error(`${marker}_PROTOTYPE`);
+      },
+    }),
+  ];
+
+  for (const proxyArray of proxyArrays) {
+    const briefResult = structureConceptBriefForInstantPreview(
+      validBrief({ styleDirection: proxyArray }),
+    );
+    expectFailure(briefResult, "invalid_input");
+    expect(JSON.stringify(briefResult)).not.toContain(marker);
+
+    const review = await reviewWith({
+      outcome: "REGENERATE",
+      revisionInstructions: proxyArray,
+    });
+    expectSafeReviewFailure(review.result, "malformed_review");
+    expect(review.reviewer.callCount).toBe(1);
+    expect(JSON.stringify(review.result)).not.toContain(marker);
+  }
+
+  expect(trapCalls).toEqual({
+    get: 0,
+    ownKeys: 0,
+    getOwnPropertyDescriptor: 0,
+    getPrototypeOf: 0,
+  });
+});
+
+test("rejects Proxy-wrapped reviewer input arrays before reviewer invocation", async () => {
+  const reviewer = new FakeInstantPreviewAgentReviewer({ outcome: "PASS" });
+  const input = validReviewInput();
+  input.candidateObservations = new Proxy(
+    ["Maintain stone table orientation."],
+    {},
+  );
+  const result = await reviewInstantPreviewCandidate(reviewer, input);
+  expectSafeReviewFailure(result, "malformed_review");
+  expect(reviewer.callCount).toBe(0);
+});
+
+test("continues accepting ordinary direct arrays", async () => {
+  const structured = expectSuccess(
+    structureConceptBriefForInstantPreview(
+      validBrief({ styleDirection: ["clean sculptural"] }),
+    ),
+  );
+  expect(structured.style.directions).toEqual(["clean sculptural"]);
+
+  const { result } = await reviewWith({
+    outcome: "REGENERATE",
+    revisionInstructions: ["align pavé stones"],
+  });
+  expect(result).toEqual({
+    outcome: "REGENERATE",
+    revisionInstructions: ["align pavé stones"],
+  });
 });
 
 test("rejects sparse arrays even when an inherited index is present", async () => {
