@@ -24,9 +24,6 @@ export const INSTANT_PREVIEW_AGENT_LIMITS = {
   maximumHandSketchReviewRequirements: 12,
   maximumCandidateObservations: 12,
   maximumStructuralReviewRequirements: 16,
-  maximumRevisionInstructions: 8,
-  maximumRevisionInstructionLength: 300,
-  maximumRevisionPayloadCharacters: 1_200,
   maximumReviewerEnvelopeCharacters: 4_000,
   maximumReviewerEnvelopeBytes: 4_000,
   maximumCorrectionCommands: 8,
@@ -472,14 +469,24 @@ function containsSensitiveDesignValue(value: string): boolean {
   return containsSensitiveValue(value, STRUCTURED_SENSITIVE_VALUE_PATTERNS);
 }
 
+function assertRawStringWithinLimit(
+  value: unknown,
+  maximumLength: number,
+): asserts value is string {
+  if (typeof value !== "string") {
+    fail("invalid_input");
+  }
+  if (value.length > maximumLength) {
+    fail("oversized_input");
+  }
+}
+
 function normalizeString(
   value: unknown,
   maximumLength: number =
     INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
 ): string {
-  if (typeof value !== "string") {
-    fail("invalid_input");
-  }
+  assertRawStringWithinLimit(value, maximumLength);
 
   const normalized = normalizeWhitespace(value);
   if (normalized.length > maximumLength) {
@@ -567,9 +574,10 @@ function parsePiece(
   subtypeValue: unknown,
   otherJewelryTypeValue: unknown,
 ): InstantPreviewAgentStructuredInput["piece"] {
-  if (typeof pieceTypeValue !== "string") {
-    fail("invalid_input");
-  }
+  assertRawStringWithinLimit(
+    pieceTypeValue,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+  );
 
   const pieceType = normalizeWhitespace(pieceTypeValue)
     .toLowerCase()
@@ -860,15 +868,164 @@ const BRIEF_INPUT_KEYS = [
   "requestedViews",
 ] as const;
 
+type RawInputBudget = {
+  remainingCharacters: number;
+};
+
+function consumeRawInputString(
+  value: unknown,
+  budget: RawInputBudget,
+  maximumLength: number =
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+  optional = false,
+): void {
+  if (optional && (value === undefined || value === null)) {
+    return;
+  }
+  assertRawStringWithinLimit(value, maximumLength);
+  if (value.length > budget.remainingCharacters) {
+    fail("oversized_input");
+  }
+  budget.remainingCharacters -= value.length;
+}
+
+function consumeRawBriefStringList(
+  value: unknown,
+  maximumCount: number,
+  budget: RawInputBudget,
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+  const items =
+    typeof value === "string"
+      ? [value]
+      : snapshotOrdinaryArray(value, maximumCount);
+  for (const item of items) {
+    consumeRawInputString(
+      item,
+      budget,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+      true,
+    );
+  }
+}
+
+function assertBriefRawInputBudget(source: Record<string, unknown>): void {
+  const budget: RawInputBudget = {
+    remainingCharacters:
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumInputStringCharacters,
+  };
+
+  consumeRawInputString(
+    source.pieceType,
+    budget,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+  );
+  consumeRawInputString(
+    source.pieceSubtype,
+    budget,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+    true,
+  );
+  consumeRawInputString(
+    source.otherJewelryType,
+    budget,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+    true,
+  );
+  consumeRawInputString(
+    source.designIntent,
+    budget,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumDescriptionLength,
+  );
+  consumeRawInputString(
+    source.designDescription,
+    budget,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumDescriptionLength,
+    true,
+  );
+
+  consumeRawBriefStringList(source.styleDirection, 12, budget);
+  consumeRawBriefStringList(
+    source.materialDirection,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumMaterialDirections,
+    budget,
+  );
+
+  if (source.stones !== undefined && source.stones !== null) {
+    const stones = snapshotOrdinaryArray(
+      source.stones,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumStones,
+    );
+    for (const item of stones) {
+      const stone = snapshotAllowlistedDataRecord(item, BRIEF_STONE_KEYS);
+      for (const key of BRIEF_STONE_KEYS) {
+        if (key !== "quantity") {
+          consumeRawInputString(
+            stone[key],
+            budget,
+            INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+            true,
+          );
+        }
+      }
+    }
+  }
+
+  for (const key of [
+    "centerStoneDirection",
+    "stoneArrangement",
+    "composition",
+    "motif",
+    "colorDirection",
+  ] as const) {
+    consumeRawInputString(
+      source[key],
+      budget,
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+      true,
+    );
+  }
+
+  consumeRawBriefStringList(source.dimensions, 12, budget);
+  consumeRawBriefStringList(source.wearabilityRequirements, 12, budget);
+  consumeRawBriefStringList(
+    source.manufacturingConstraints,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumManufacturingConstraints,
+    budget,
+  );
+  consumeRawBriefStringList(
+    source.referenceObservations,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumReferenceObservations,
+    budget,
+  );
+  consumeRawBriefStringList(
+    source.unknowns,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumUnknowns,
+    budget,
+  );
+  consumeRawBriefStringList(
+    source.avoid,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumAvoidRules,
+    budget,
+  );
+  consumeRawBriefStringList(
+    source.requestedViews,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumRequestedViews,
+    budget,
+  );
+}
+
 export function structureConceptBriefForInstantPreview(
   input: unknown,
 ): StructureConceptBriefForInstantPreviewResult {
   try {
+    const source = snapshotAllowlistedDataRecord(input, BRIEF_INPUT_KEYS);
+    assertBriefRawInputBudget(source);
     return {
       ok: true,
-      value: createStructuredInput(
-        snapshotAllowlistedDataRecord(input, BRIEF_INPUT_KEYS),
-      ),
+      value: createStructuredInput(source),
     };
   } catch (error) {
     return failure(
@@ -1389,6 +1546,250 @@ function cloneStructuredIntentForReview(
   return cloned;
 }
 
+function consumeRawReviewStringArray(
+  value: unknown,
+  maximumCount: number,
+  budget: RawInputBudget,
+): void {
+  const items = snapshotOrdinaryArray(value, maximumCount);
+  for (const item of items) {
+    consumeRawInputString(item, budget);
+  }
+}
+
+function consumeRawNullableReviewString(
+  value: unknown,
+  budget: RawInputBudget,
+  maximumLength: number =
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+): void {
+  if (value === null) {
+    return;
+  }
+  consumeRawInputString(value, budget, maximumLength);
+}
+
+function requireExactReviewRecord(
+  value: unknown,
+  keys: readonly string[],
+): Record<string, unknown> {
+  const record = snapshotExactDataRecord(value, keys);
+  if (!record) {
+    fail("invalid_input");
+  }
+  return record;
+}
+
+function assertStructuredReviewRawInputBudget(
+  value: unknown,
+  budget: RawInputBudget,
+): void {
+  const structured = requireExactReviewRecord(value, [
+    "contractVersion",
+    "purpose",
+    "customerIntent",
+    "piece",
+    "style",
+    "materials",
+    "stones",
+    "composition",
+    "dimensions",
+    "wearability",
+    "manufacturingConstraints",
+    "referenceObservations",
+    "unknowns",
+    "avoid",
+    "generationNotes",
+    "reviewRequirements",
+    "productBoundaries",
+  ]);
+  consumeRawInputString(structured.contractVersion, budget);
+  consumeRawInputString(structured.purpose, budget);
+
+  const customerIntent = requireExactReviewRecord(structured.customerIntent, [
+    "designIntent",
+    "designDescription",
+  ]);
+  consumeRawInputString(
+    customerIntent.designIntent,
+    budget,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumDescriptionLength,
+  );
+  consumeRawNullableReviewString(
+    customerIntent.designDescription,
+    budget,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumDescriptionLength,
+  );
+
+  const piece = requireExactReviewRecord(structured.piece, [
+    "canonicalType",
+    "category",
+    "subtype",
+    "boundedOtherJewelryType",
+  ]);
+  consumeRawInputString(piece.canonicalType, budget);
+  consumeRawInputString(piece.category, budget);
+  consumeRawNullableReviewString(piece.subtype, budget);
+  consumeRawNullableReviewString(piece.boundedOtherJewelryType, budget);
+
+  const style = requireExactReviewRecord(structured.style, [
+    "directions",
+    "colorDirection",
+  ]);
+  consumeRawReviewStringArray(style.directions, 12, budget);
+  consumeRawNullableReviewString(style.colorDirection, budget);
+
+  const materials = requireExactReviewRecord(structured.materials, [
+    "directions",
+  ]);
+  consumeRawReviewStringArray(
+    materials.directions,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumMaterialDirections,
+    budget,
+  );
+
+  const stones = requireExactReviewRecord(structured.stones, [
+    "items",
+    "centerStoneDirection",
+    "arrangement",
+  ]);
+  const stoneItems = snapshotOrdinaryArray(
+    stones.items,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumStones,
+  );
+  for (const item of stoneItems) {
+    const stone = requireExactReviewRecord(item, [
+      "role",
+      "type",
+      "color",
+      "shape",
+      "setting",
+      "orientation",
+      "tableOrientation",
+      "sizeRelationship",
+      "relationshipToOtherStones",
+      "quantity",
+    ]);
+    for (const key of [
+      "role",
+      "type",
+      "color",
+      "shape",
+      "setting",
+      "orientation",
+      "tableOrientation",
+      "sizeRelationship",
+      "relationshipToOtherStones",
+    ] as const) {
+      consumeRawNullableReviewString(stone[key], budget);
+    }
+  }
+  consumeRawNullableReviewString(stones.centerStoneDirection, budget);
+  consumeRawNullableReviewString(stones.arrangement, budget);
+
+  const composition = requireExactReviewRecord(structured.composition, [
+    "direction",
+    "motif",
+    "requestedViews",
+  ]);
+  consumeRawNullableReviewString(composition.direction, budget);
+  consumeRawNullableReviewString(composition.motif, budget);
+  consumeRawReviewStringArray(
+    composition.requestedViews,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumRequestedViews,
+    budget,
+  );
+
+  const dimensions = requireExactReviewRecord(structured.dimensions, [
+    "relationships",
+  ]);
+  consumeRawReviewStringArray(dimensions.relationships, 12, budget);
+
+  const wearability = requireExactReviewRecord(structured.wearability, [
+    "requirements",
+  ]);
+  consumeRawReviewStringArray(wearability.requirements, 12, budget);
+  consumeRawReviewStringArray(
+    structured.manufacturingConstraints,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumManufacturingConstraints,
+    budget,
+  );
+
+  const referenceObservations = requireExactReviewRecord(
+    structured.referenceObservations,
+    ["observations", "inspirationOnly", "doNotCopyExactly"],
+  );
+  consumeRawReviewStringArray(
+    referenceObservations.observations,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumReferenceObservations,
+    budget,
+  );
+  consumeRawReviewStringArray(
+    structured.unknowns,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumUnknowns,
+    budget,
+  );
+  consumeRawReviewStringArray(
+    structured.avoid,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumAvoidRules,
+    budget,
+  );
+  consumeRawReviewStringArray(
+    structured.reviewRequirements,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumStructuralReviewRequirements,
+    budget,
+  );
+
+  requireExactReviewRecord(structured.generationNotes, [
+    "structuredTransformationRequired",
+    "rawCustomerProseIsFinalImageGenerationInstruction",
+    "designSpecRequiredBeforeSketchInstruction",
+    "handSketchInstructionRequiredBeforeGeneration",
+  ]);
+  requireExactReviewRecord(structured.productBoundaries, [
+    "internalFirstPreviewInputOnly",
+    "cad",
+    "quotation",
+    "pricing",
+    "paymentConfirmation",
+    "order",
+    "productionApproval",
+    "manufacturabilityGuarantee",
+  ]);
+}
+
+function assertReviewRawInputBudget(
+  reviewInput: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+): void {
+  const budget: RawInputBudget = {
+    remainingCharacters:
+      INSTANT_PREVIEW_AGENT_LIMITS.maximumInputStringCharacters,
+  };
+  assertStructuredReviewRawInputBudget(reviewInput.structuredIntent, budget);
+  consumeRawReviewStringArray(
+    reviewInput.designSpecRequirements,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumDesignSpecReviewRequirements,
+    budget,
+  );
+  consumeRawReviewStringArray(
+    reviewInput.handSketchInstructionRequirements,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumHandSketchReviewRequirements,
+    budget,
+  );
+  consumeRawReviewStringArray(
+    reviewInput.candidateObservations,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumCandidateObservations,
+    budget,
+  );
+  consumeRawReviewStringArray(
+    reviewInput.structuralReviewRequirements,
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumStructuralReviewRequirements,
+    budget,
+  );
+  consumeRawInputString(metadata.purpose, budget);
+}
+
 function sanitizeReviewInput(value: unknown): InstantPreviewAgentReviewInput {
   const reviewInput = snapshotExactDataRecord(value, [...REVIEW_INPUT_KEYS]);
   const metadata = reviewInput
@@ -1405,6 +1806,7 @@ function sanitizeReviewInput(value: unknown): InstantPreviewAgentReviewInput {
   ) {
     fail("invalid_input");
   }
+  assertReviewRawInputBudget(reviewInput, metadata);
 
   return {
     structuredIntent: cloneStructuredIntentForReview(

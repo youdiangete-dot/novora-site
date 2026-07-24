@@ -109,6 +109,13 @@ function validBrief(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function rawStringAtLength(length: number, suffix: string): string {
+  if (suffix.length > length) {
+    throw new Error("Suffix exceeds requested raw string length.");
+  }
+  return `${" ".repeat(length - suffix.length)}${suffix}`;
+}
+
 function expectSuccess(
   result: StructuringResult,
 ): InstantPreviewAgentStructuredInput {
@@ -275,6 +282,84 @@ test("fails closed for an oversized individual string field", () => {
     ),
     "oversized_input",
   );
+});
+
+test("enforces the raw piece-type boundary before whitespace normalization", () => {
+  const maximum =
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength;
+  const accepted = expectSuccess(
+    structureConceptBriefForInstantPreview(
+      validBrief({ pieceType: rawStringAtLength(maximum, "ring") }),
+    ),
+  );
+  expect(accepted.piece.canonicalType).toBe("ring");
+
+  const rejectedRaw = rawStringAtLength(maximum + 1, "ring");
+  const rejected = structureConceptBriefForInstantPreview(
+    validBrief({ pieceType: rejectedRaw }),
+  );
+  expectFailure(rejected, "oversized_input");
+  expect(JSON.stringify(rejected)).not.toContain(rejectedRaw);
+});
+
+test("enforces the raw design-intent boundary before whitespace normalization", () => {
+  const maximum = INSTANT_PREVIEW_AGENT_LIMITS.maximumDescriptionLength;
+  const accepted = expectSuccess(
+    structureConceptBriefForInstantPreview(
+      validBrief({ designIntent: rawStringAtLength(maximum, "heirloom ring") }),
+    ),
+  );
+  expect(accepted.customerIntent.designIntent).toBe("heirloom ring");
+
+  const rejectedRaw = rawStringAtLength(maximum + 1, "heirloom ring");
+  const rejected = structureConceptBriefForInstantPreview(
+    validBrief({ designIntent: rejectedRaw }),
+  );
+  expectFailure(rejected, "oversized_input");
+  expect(JSON.stringify(rejected)).not.toContain(rejectedRaw);
+});
+
+test("rejects oversized raw optional and list strings before normalization", () => {
+  const maximum =
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength;
+  for (const overrides of [
+    { motif: rawStringAtLength(maximum + 1, "leaf") },
+    {
+      styleDirection: [
+        rawStringAtLength(maximum + 1, "clean sculptural"),
+      ],
+    },
+  ]) {
+    expectFailure(
+      structureConceptBriefForInstantPreview(validBrief(overrides)),
+      "oversized_input",
+    );
+  }
+});
+
+test("enforces the exact aggregate raw Brief string budget", () => {
+  const item = rawStringAtLength(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+    "x",
+  );
+  const exact = {
+    pieceType: "ring",
+    designIntent: "intent",
+    styleDirection: Array.from({ length: 12 }, () => item),
+    dimensions: Array.from({ length: 7 }, () => item),
+    colorDirection: rawStringAtLength(490, "gold"),
+  };
+  expect(
+    4 + 6 + (12 * item.length) + (7 * item.length) +
+      exact.colorDirection.length,
+  ).toBe(INSTANT_PREVIEW_AGENT_LIMITS.maximumInputStringCharacters);
+  expectSuccess(structureConceptBriefForInstantPreview(exact));
+
+  const rejected = structureConceptBriefForInstantPreview({
+    ...exact,
+    colorDirection: rawStringAtLength(491, "gold"),
+  });
+  expectFailure(rejected, "oversized_input");
 });
 
 test("fails closed for too many stones", () => {
@@ -761,6 +846,69 @@ test("accepts a valid PASS review", async () => {
   expect(reviewer.lastInput?.structuredIntent).not.toBe(input.structuredIntent);
 });
 
+test("enforces raw reviewer-input string limits before normalization", async () => {
+  const maximum =
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength;
+  const acceptedReviewer = new FakeInstantPreviewAgentReviewer(
+    JSON.stringify({ outcome: "PASS" }),
+  );
+  const acceptedInput = validReviewInput();
+  acceptedInput.candidateObservations = [
+    rawStringAtLength(maximum, "stone orientation"),
+  ];
+  expect(
+    await reviewInstantPreviewCandidate(acceptedReviewer, acceptedInput),
+  ).toEqual({ outcome: "PASS" });
+  expect(acceptedReviewer.callCount).toBe(1);
+  expect(acceptedReviewer.lastInput?.candidateObservations).toEqual([
+    "stone orientation",
+  ]);
+
+  const rejectedRaw = rawStringAtLength(
+    maximum + 1,
+    "RAW_REVIEW_INPUT_MARKER",
+  );
+  const rejectedReviewer = new FakeInstantPreviewAgentReviewer(
+    JSON.stringify({ outcome: "PASS" }),
+  );
+  const rejectedInput = validReviewInput();
+  rejectedInput.candidateObservations = [rejectedRaw];
+  const rejected = await reviewInstantPreviewCandidate(
+    rejectedReviewer,
+    rejectedInput,
+  );
+  expectSafeReviewFailure(rejected, "malformed_review");
+  expect(rejectedReviewer.callCount).toBe(0);
+  expect(JSON.stringify(rejected)).not.toContain("RAW_REVIEW_INPUT_MARKER");
+});
+
+test("rejects reviewer input above the aggregate known-string budget", async () => {
+  const reviewer = new FakeInstantPreviewAgentReviewer(
+    JSON.stringify({ outcome: "PASS" }),
+  );
+  const input = validReviewInput();
+  const rawItem = rawStringAtLength(
+    INSTANT_PREVIEW_AGENT_LIMITS.maximumIndividualStringLength,
+    "AGGREGATE_REVIEW_MARKER",
+  );
+  input.designSpecRequirements = Array.from(
+    { length: INSTANT_PREVIEW_AGENT_LIMITS.maximumDesignSpecReviewRequirements },
+    () => rawItem,
+  );
+  input.handSketchInstructionRequirements = Array.from(
+    {
+      length:
+        INSTANT_PREVIEW_AGENT_LIMITS.maximumHandSketchReviewRequirements,
+    },
+    () => rawItem,
+  );
+
+  const result = await reviewInstantPreviewCandidate(reviewer, input);
+  expectSafeReviewFailure(result, "malformed_review");
+  expect(reviewer.callCount).toBe(0);
+  expect(JSON.stringify(result)).not.toContain("AGGREGATE_REVIEW_MARKER");
+});
+
 test("accepts a valid bounded REGENERATE review", async () => {
   const { result } = await reviewWith({
     outcome: "REGENERATE",
@@ -828,28 +976,37 @@ test("rejects extra unsafe reviewer fields under the exact schema", async () => 
   expect(JSON.stringify(result)).not.toContain("rawProviderResponse");
 });
 
-test("rejects an oversized revision instruction", async () => {
+test("rejects a current corrections payload above the rendered limit", async () => {
   const { result } = await reviewWith({
     outcome: "REGENERATE",
-    revisionInstructions: [
-      `Correct the ring stone orientation ${"x".repeat(
-        INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructionLength,
-      )}`,
+    corrections: [
+      correction("preserve", "center_stone_orientation"),
+      correction("maintain", "stone_table_orientation"),
+      correction("maintain", "oval_long_axis", "same_direction"),
+      correction("keep", "oval_long_axis", "consistent"),
+      correction("increase", "prong_clearance"),
+      correction("prevent", "stacking_collision"),
+      correction("maintain", "leaf_wrapping", "left_and_right"),
+      correction("keep", "vine_back_continuity", "continuous_back"),
     ],
   });
   expectSafeReviewFailure(result, "malformed_review");
 });
 
-test("rejects too many revision instructions", async () => {
+test("rejects one current correction command above the count limit", async () => {
   const { result } = await reviewWith({
     outcome: "REGENERATE",
-    revisionInstructions: Array.from(
-      {
-        length:
-          INSTANT_PREVIEW_AGENT_LIMITS.maximumRevisionInstructions + 1,
-      },
-      (_, index) => `Correct stone orientation in detail view ${index}.`,
-    ),
+    corrections: [
+      correction("align", "pave_stones"),
+      correction("preserve", "center_stone_orientation"),
+      correction("maintain", "stone_table_orientation"),
+      correction("increase", "prong_clearance"),
+      correction("correct", "prong_placement"),
+      correction("reduce", "shank_thickness"),
+      correction("prevent", "stacking_collision"),
+      correction("reduce", "casting_complexity"),
+      correction("simplify", "enamel_motif"),
+    ],
   });
   expectSafeReviewFailure(result, "malformed_review");
 });
@@ -1881,12 +2038,15 @@ test("enforces the exact correction-command count limit", async () => {
 });
 
 test("enforces the serialized reviewer envelope before JSON parsing", async () => {
+  const characterMarker = "SERIALIZED_CHARACTER_LIMIT_MARKER";
+  const byteMarker = "SERIALIZED_BYTE_LIMIT_MARKER";
   const oversized =
-    `${JSON.stringify({ outcome: "PASS" })}${" ".repeat(
+    `${JSON.stringify({ outcome: "PASS", marker: characterMarker })}${" ".repeat(
       INSTANT_PREVIEW_AGENT_LIMITS.maximumReviewerEnvelopeCharacters,
     )}`;
   const oversizedBytes = JSON.stringify({
     outcome: "PASS",
+    marker: byteMarker,
     padding: "界".repeat(1_400),
   });
   expect(oversized.length).toBeGreaterThan(
@@ -1910,6 +2070,12 @@ test("enforces the serialized reviewer envelope before JSON parsing", async () =
     const oversizedBytesResult = await reviewWith(oversizedBytes);
     expectSafeReviewFailure(oversizedResult.result, "malformed_review");
     expectSafeReviewFailure(oversizedBytesResult.result, "malformed_review");
+    expect(JSON.stringify(oversizedResult.result)).not.toContain(
+      characterMarker,
+    );
+    expect(JSON.stringify(oversizedBytesResult.result)).not.toContain(
+      byteMarker,
+    );
     expect(parseCalls).toBe(0);
   } finally {
     JSON.parse = originalParse;
