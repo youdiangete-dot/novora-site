@@ -39,49 +39,23 @@ export const ZODIAC_MOUSE_EYE_GEMSTONE_RULE =
   "For zodiac mouse jewelry/sculpture designs, do not use ruby or red gemstones for mouse eyes. Preserve an explicitly requested non-red eye gemstone. If no eye gemstone is specified, keep it unknown and do not select a substitute; green, black, jadeite/emerald tones, or dark neutral stones are allowed only when explicitly requested or later approved by a human reviewer.";
 
 const ZODIAC_MOUSE_EYE_CONTEXT_PATTERN =
-  /\bmouse\b[\s\S]{0,220}\beyes?\b|\beyes?\b[\s\S]{0,220}\bmouse\b/i;
+  /\bmouse\b(?:\s+[a-z0-9]+){0,8}\s+\beyes?\b|\beyes?\b(?:\s+[a-z0-9]+){0,8}\s+\bmouse\b/;
 
-const SAFE_MOUSE_EYE_CHOICE_CONDITION_PATTERN =
-  /\bonly\s+(?:when|if)\s+explicitly requested\b|\bonly\s+after\s+(?:a\s+)?human(?:\s+reviewer)?\s+approval\b|\bonly\s+(?:when|if)\s+(?:later\s+)?approved\s+by\s+(?:a\s+)?human reviewer\b/i;
-
-const NEGATED_MOUSE_EYE_SUBSTITUTION_PATTERNS = [
-  /\b(?:do not|don't|never|must not|should not|cannot|can't)\s+(?:automatically\s+|auto\s+)?(?:select|choose|assign|use|replace|substitute|default)(?:\s+to)?(?:\s+(?:a|an|the)\s+substitute)?\b/gi,
-  /\bno\s+substitute\s+(?:should|must|may|can)\s+be\s+(?:selected|chosen|assigned|used)\b/gi,
-  /\b(?:no|without)\s+(?:automatic(?:ally)?\s+|default\s+)?substitution\b/gi,
-] as const;
-
-const DETERMINISTIC_MOUSE_EYE_SUBSTITUTION_PATTERNS = [
-  /\b(?:automatically|auto)\s*(?:select|choose|assign|use|replace|substitute)\b/i,
-  /\bdefault(?:s|ed|ing)?\s+to\b|\bby\s+default\b/i,
-  /\b(?:choose|select|assign|use)\s+(?:a|an|the)?\s*substitute\b/i,
-  /\bsubstitut(?:e|es|ed|ing)\b/i,
-  /\b(?:if|when)\b[^.;]{0,160}\b(?:none|no\b|unknown|unspecified|not specified|missing)\b[^.;]{0,160}\b(?:select|choose|assign|use|replace|substitute|default)\b/i,
-  /\b(?:select|choose|assign|use|replace|substitute|default)\b[^.;]{0,160}\b(?:when|if)\b[^.;]{0,160}\b(?:none|no\b|unknown|unspecified|not specified|missing)\b/i,
-  /\b(?:select|choose|assign|use|replace|substitute)\b[^.;]{0,180}\beyes?\b[^.;]{0,80}\binstead\b/i,
-] as const;
+function normalizeZodiacMouseEyeContext(rule: string): string {
+  return rule
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[-\u2010-\u2015\u2212]/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
 
 export function isContradictoryZodiacMouseEyeRule(rule: string): boolean {
-  if (
-    rule === ZODIAC_MOUSE_EYE_GEMSTONE_RULE ||
-    !ZODIAC_MOUSE_EYE_CONTEXT_PATTERN.test(rule)
-  ) {
-    return false;
-  }
-
-  return rule.split(/[.;]/).some((clause) => {
-    if (SAFE_MOUSE_EYE_CHOICE_CONDITION_PATTERN.test(clause)) {
-      return false;
-    }
-
-    const affirmativeClause = NEGATED_MOUSE_EYE_SUBSTITUTION_PATTERNS.reduce(
-      (currentClause, pattern) => currentClause.replace(pattern, ""),
-      clause,
-    );
-
-    return DETERMINISTIC_MOUSE_EYE_SUBSTITUTION_PATTERNS.some((pattern) =>
-      pattern.test(affirmativeClause),
-    );
-  });
+  return (
+    rule !== ZODIAC_MOUSE_EYE_GEMSTONE_RULE &&
+    ZODIAC_MOUSE_EYE_CONTEXT_PATTERN.test(normalizeZodiacMouseEyeContext(rule))
+  );
 }
 
 export type NovoraDesignSpecLanguage = (typeof NOVORA_DESIGN_SPEC_LANGUAGES)[number];
@@ -527,7 +501,7 @@ export function validateNovoraDesignSpec(value: unknown): NovoraDesignSpecValida
       issues,
       "contradictory_zodiac_mouse_eye_rule",
       "$.stones.special_stone_rules",
-      "NOVORA Design Spec must not automatically or by default substitute a zodiac mouse eye gemstone.",
+      "NOVORA Design Spec permits only the exact canonical zodiac mouse eye rule in special stone rules.",
     );
   }
 

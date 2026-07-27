@@ -626,7 +626,7 @@ export function validateNovoraHandSketchInstruction(
       issues,
       "contradictory_zodiac_mouse_eye_rule",
       "$.stone_and_setting_instructions.special_stone_rules",
-      "NOVORA Hand Sketch Instruction must not automatically or by default substitute a zodiac mouse eye gemstone.",
+      "NOVORA Hand Sketch Instruction permits only the exact canonical zodiac mouse eye rule in special stone rules.",
     );
   }
 
@@ -635,7 +635,7 @@ export function validateNovoraHandSketchInstruction(
       issues,
       "contradictory_zodiac_mouse_eye_rule",
       "$.human_review_checklist",
-      "NOVORA Hand Sketch Instruction human review checklist must not automatically or by default substitute a zodiac mouse eye gemstone.",
+      "NOVORA Hand Sketch Instruction permits only the exact canonical zodiac mouse eye rule in the human review checklist.",
     );
   }
 
