@@ -1,4 +1,6 @@
 import { createHmac } from "node:crypto";
+import Module, { createRequire } from "node:module";
+import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
@@ -11,18 +13,76 @@ import {
   createFirstPreviewCustomerAccessProof,
   verifyFirstPreviewCustomerAccessProof,
 } from "../../lib/server/ai-sketch/first-preview-customer-access-contract";
-import {
-  issueFirstPreviewCustomerSession,
-  type FirstPreviewCustomerSessionIssuanceInput,
+import type {
+  FirstPreviewCustomerSessionIssuanceInput,
 } from "../../lib/server/ai-sketch/first-preview-customer-session";
-import {
+import type {
+  FirstPreviewCustomerPreviewStateLookup,
+  FirstPreviewCustomerPreviewStateSource,
+  FirstPreviewCustomerViewDependencies,
+  FirstPreviewCustomerViewRequest,
+} from "../../lib/server/ai-sketch/first-preview-customer-view";
+
+const moduleInternals = Module as unknown as {
+  _resolveFilename(
+    request: string,
+    parent: unknown,
+    isMain: boolean,
+    options?: unknown,
+  ): string;
+};
+const serverOnlyTestShim = path.join(
+  process.cwd(),
+  "node_modules",
+  "next",
+  "dist",
+  "compiled",
+  "server-only",
+  "empty.js",
+);
+
+function loadWithServerOnlyTestShim<T>(load: () => T): T {
+  const originalResolveFilename = moduleInternals._resolveFilename;
+  moduleInternals._resolveFilename = function resolveTestModule(
+    request,
+    parent,
+    isMain,
+    options,
+  ) {
+    return request === "server-only"
+      ? serverOnlyTestShim
+      : originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+  try {
+    return load();
+  } finally {
+    moduleInternals._resolveFilename = originalResolveFilename;
+  }
+}
+
+const testRequire = createRequire(
+  path.join(
+    process.cwd(),
+    "tests",
+    "e2e",
+    "instant-first-preview-customer-flow.spec.ts",
+  ),
+);
+const { issueFirstPreviewCustomerSession } = loadWithServerOnlyTestShim(
+  () =>
+    testRequire(
+      "../../lib/server/ai-sketch/first-preview-customer-session",
+    ) as typeof import("../../lib/server/ai-sketch/first-preview-customer-session"),
+);
+const {
   FIRST_PREVIEW_CUSTOMER_VIEW_POLL_AFTER_MS,
   readFirstPreviewCustomerView,
-  type FirstPreviewCustomerPreviewStateLookup,
-  type FirstPreviewCustomerPreviewStateSource,
-  type FirstPreviewCustomerViewDependencies,
-  type FirstPreviewCustomerViewRequest,
-} from "../../lib/server/ai-sketch/first-preview-customer-view";
+} = loadWithServerOnlyTestShim(
+  () =>
+    testRequire(
+      "../../lib/server/ai-sketch/first-preview-customer-view",
+    ) as typeof import("../../lib/server/ai-sketch/first-preview-customer-view"),
+);
 
 const NOW = 1_785_283_200;
 const SECRET =
@@ -362,6 +422,192 @@ test.describe("server-only First Preview customer session issuance", () => {
     const inherited = Object.create(sessionInput()) as Record<string, unknown>;
     expectOpaqueSessionDenial(issue(invalidInput(inherited)));
   });
+
+  test("restores the guarded server-only resolver after module loading", () => {
+    const originalResolveFilename = moduleInternals._resolveFilename;
+    expect(() =>
+      loadWithServerOnlyTestShim(() => {
+        throw new Error("FORCED_CUSTOMER_MODULE_LOAD_FAILURE");
+      }),
+    ).toThrow("FORCED_CUSTOMER_MODULE_LOAD_FAILURE");
+    expect(moduleInternals._resolveFilename).toBe(originalResolveFilename);
+  });
+
+  test("rejects accessor-backed issuance fields without invoking getters", () => {
+    for (const key of [
+      "confirmedPersistence",
+      "conceptBriefId",
+      "publicReference",
+      "signingSecret",
+      "clock",
+      "nonce",
+      "nonceSource",
+    ] as const) {
+      const input = sessionInput() as unknown as Record<string, unknown>;
+      let getterCalls = 0;
+      Object.defineProperty(input, key, {
+        configurable: true,
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          throw new Error(`PRIVATE_${key.toUpperCase()}_GETTER`);
+        },
+      });
+      if (key === "nonce") delete input.nonceSource;
+      expectOpaqueSessionDenial(issue(invalidInput(input)));
+      expect(getterCalls).toBe(0);
+    }
+  });
+
+  test("rejects Proxy-backed issuance containers before any trap", () => {
+    const trapCalls = { get: 0, ownKeys: 0, descriptor: 0, prototype: 0 };
+    const input = new Proxy(sessionInput(), {
+      get() {
+        trapCalls.get += 1;
+        throw new Error("PRIVATE_ISSUANCE_PROXY_GET");
+      },
+      ownKeys() {
+        trapCalls.ownKeys += 1;
+        throw new Error("PRIVATE_ISSUANCE_PROXY_KEYS");
+      },
+      getOwnPropertyDescriptor() {
+        trapCalls.descriptor += 1;
+        throw new Error("PRIVATE_ISSUANCE_PROXY_DESCRIPTOR");
+      },
+      getPrototypeOf() {
+        trapCalls.prototype += 1;
+        throw new Error("PRIVATE_ISSUANCE_PROXY_PROTOTYPE");
+      },
+    });
+    expectOpaqueSessionDenial(issue(input));
+    expect(trapCalls).toEqual({
+      get: 0,
+      ownKeys: 0,
+      descriptor: 0,
+      prototype: 0,
+    });
+  });
+
+  test("rejects Proxy-backed issuance callables before invocation", () => {
+    for (const key of ["clock", "nonceSource"] as const) {
+      let applyCalls = 0;
+      const callable = new Proxy(
+        key === "clock" ? () => NOW : () => NONCE,
+        {
+          apply() {
+            applyCalls += 1;
+            throw new Error(`PRIVATE_${key.toUpperCase()}_PROXY`);
+          },
+        },
+      );
+      expectOpaqueSessionDenial(
+        issue(sessionInput({ [key]: callable })),
+      );
+      expect(applyCalls).toBe(0);
+    }
+  });
+
+  test("rejects boxed issuance strings and numbers", () => {
+    for (const [key, value] of [
+      ["conceptBriefId", new String(BRIEF_ID)],
+      ["publicReference", new String(PUBLIC_REFERENCE)],
+      ["signingSecret", new String(SECRET)],
+      ["nonce", new String(NONCE)],
+      ["lifetimeSeconds", new Number(60)],
+    ] as const) {
+      const input = sessionInput() as unknown as Record<string, unknown>;
+      if (key === "nonce") delete input.nonceSource;
+      input[key] = value;
+      expectOpaqueSessionDenial(issue(invalidInput(input)));
+    }
+  });
+
+  test("observes every accepted issuance data property exactly once", () => {
+    const input = sessionInput({
+      lifetimeSeconds: 60,
+    }) as unknown as Record<string, unknown>;
+    const counts = new Map<string, number>();
+    const original = Object.getOwnPropertyDescriptor;
+    Object.getOwnPropertyDescriptor = ((value: object, key: PropertyKey) => {
+      if (value === input && typeof key === "string") {
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      return original(value, key);
+    }) as typeof Object.getOwnPropertyDescriptor;
+    try {
+      expect(issue(invalidInput(input)).ok).toBe(true);
+    } finally {
+      Object.getOwnPropertyDescriptor = original;
+    }
+    expect(Object.fromEntries(counts)).toEqual({
+      confirmedPersistence: 1,
+      conceptBriefId: 1,
+      publicReference: 1,
+      signingSecret: 1,
+      clock: 1,
+      nonceSource: 1,
+      lifetimeSeconds: 1,
+    });
+  });
+
+  test("enforces the raw signing-secret minimum and maximum boundaries", () => {
+    expect(issue(sessionInput({ signingSecret: "s".repeat(32) })).ok).toBe(
+      true,
+    );
+    expectOpaqueSessionDenial(
+      issue(sessionInput({ signingSecret: "s".repeat(31) })),
+    );
+    expect(
+      issue(sessionInput({ signingSecret: "s".repeat(4_096) })).ok,
+    ).toBe(true);
+    expectOpaqueSessionDenial(
+      issue(sessionInput({ signingSecret: "s".repeat(4_097) })),
+    );
+    expectOpaqueSessionDenial(
+      issue(sessionInput({ signingSecret: " ".repeat(4_096) + "s" })),
+    );
+  });
+
+  test("rejects an over-limit secret before clock or nonce invocation", () => {
+    let clockCalls = 0;
+    let nonceCalls = 0;
+    expectOpaqueSessionDenial(
+      issue(
+        sessionInput({
+          signingSecret: "s".repeat(4_097),
+          clock: () => {
+            clockCalls += 1;
+            return NOW;
+          },
+          nonceSource: () => {
+            nonceCalls += 1;
+            return NONCE;
+          },
+        }),
+      ),
+    );
+    expect(clockCalls).toBe(0);
+    expect(nonceCalls).toBe(0);
+  });
+
+  test("accepts zero and rejects unsafe issuance clock values", () => {
+    expect(issue(sessionInput({ clock: () => 0 })).ok).toBe(true);
+    for (const value of [
+      -0,
+      -1,
+      -Number.MAX_SAFE_INTEGER,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.MAX_SAFE_INTEGER,
+    ]) {
+      expectOpaqueSessionDenial(
+        issue(sessionInput({ clock: () => value })),
+      );
+    }
+  });
 });
 
 function proof(
@@ -406,9 +652,16 @@ function proofClaims(
 }
 
 function signClaims(claims: Record<string, unknown>): string {
-  const payload = Buffer.from(JSON.stringify(claims), "utf8").toString(
-    "base64url",
-  );
+  return signRawPayload(JSON.stringify(claims));
+}
+
+function signRawPayload(
+  serializedClaims: string | Buffer,
+  encodedPayloadOverride?: string,
+): string {
+  const payload =
+    encodedPayloadOverride ??
+    Buffer.from(serializedClaims).toString("base64url");
   const signature = createHmac("sha256", SECRET)
     .update(
       `NOVORA\0first-preview-customer-access\0v1\0hmac-sha-256\0${payload}`,
@@ -441,9 +694,9 @@ class FakeExactCustomerPreviewStateSource
   result: unknown = { state: "pending" };
   shouldThrow = false;
 
-  async readExactCustomerPreviewState(
+  readExactCustomerPreviewState = async (
     lookup: FirstPreviewCustomerPreviewStateLookup,
-  ): Promise<unknown> {
+  ): Promise<unknown> => {
     this.requests.push({ ...lookup });
     if (this.shouldThrow) {
       throw new Error(
@@ -451,7 +704,7 @@ class FakeExactCustomerPreviewStateSource
       );
     }
     return this.result;
-  }
+  };
 }
 
 function viewRequest(
@@ -514,6 +767,32 @@ function expectOpaqueDenied(result: unknown) {
       sensitive.toLowerCase(),
     );
   }
+}
+
+async function expectDeniedBeforeSource(accessProof: unknown) {
+  const source = new FakeExactCustomerPreviewStateSource();
+  let methodRetrievals = 0;
+  const original = Object.getOwnPropertyDescriptor;
+  Object.getOwnPropertyDescriptor = ((value: object, key: PropertyKey) => {
+    if (value === source && key === "readExactCustomerPreviewState") {
+      methodRetrievals += 1;
+    }
+    return original(value, key);
+  }) as typeof Object.getOwnPropertyDescriptor;
+  try {
+    const result = await readFirstPreviewCustomerView(
+      invalidRequest({
+        publicReference: PUBLIC_REFERENCE,
+        accessProof,
+      }),
+      viewDependencies(source),
+    );
+    expectOpaqueDenied(result);
+  } finally {
+    Object.getOwnPropertyDescriptor = original;
+  }
+  expect(methodRetrievals).toBe(0);
+  expect(source.requests).toEqual([]);
 }
 
 test.describe("server-only exact-customer First Preview view resolver", () => {
@@ -985,5 +1264,360 @@ test.describe("server-only exact-customer First Preview view resolver", () => {
     });
     expectOpaqueDenied(result);
     expect(source.requests).toEqual([]);
+  });
+
+  test("invalid proof never retrieves or invokes a throwing source getter", async () => {
+    let getterCalls = 0;
+    const source = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(source, "readExactCustomerPreviewState", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("PRIVATE_SOURCE_GETTER");
+      },
+    });
+    const result = await readFirstPreviewCustomerView(
+      viewRequest({ accessProof: "invalid.proof" }),
+      viewDependencies(source as unknown as FirstPreviewCustomerPreviewStateSource),
+    );
+    expectOpaqueDenied(result);
+    expect(getterCalls).toBe(0);
+  });
+
+  test("invalid proof performs no Proxy-backed source interaction", async () => {
+    const traps = { get: 0, ownKeys: 0, descriptor: 0, prototype: 0 };
+    const source = new Proxy(
+      {
+        readExactCustomerPreviewState: () => {
+          throw new Error("PRIVATE_PROXY_SOURCE_INVOCATION");
+        },
+      },
+      {
+        get() {
+          traps.get += 1;
+          throw new Error("PRIVATE_PROXY_SOURCE_GET");
+        },
+        ownKeys() {
+          traps.ownKeys += 1;
+          throw new Error("PRIVATE_PROXY_SOURCE_KEYS");
+        },
+        getOwnPropertyDescriptor() {
+          traps.descriptor += 1;
+          throw new Error("PRIVATE_PROXY_SOURCE_DESCRIPTOR");
+        },
+        getPrototypeOf() {
+          traps.prototype += 1;
+          throw new Error("PRIVATE_PROXY_SOURCE_PROTOTYPE");
+        },
+      },
+    );
+    const result = await readFirstPreviewCustomerView(
+      viewRequest({ accessProof: "invalid.proof" }),
+      viewDependencies(source),
+    );
+    expectOpaqueDenied(result);
+    expect(traps).toEqual({ get: 0, ownKeys: 0, descriptor: 0, prototype: 0 });
+  });
+
+  test("valid proof retrieves and invokes the source method exactly once", async () => {
+    const source = new FakeExactCustomerPreviewStateSource();
+    let methodRetrievals = 0;
+    const original = Object.getOwnPropertyDescriptor;
+    Object.getOwnPropertyDescriptor = ((value: object, key: PropertyKey) => {
+      if (value === source && key === "readExactCustomerPreviewState") {
+        methodRetrievals += 1;
+      }
+      return original(value, key);
+    }) as typeof Object.getOwnPropertyDescriptor;
+    try {
+      const result = await readFirstPreviewCustomerView(
+        viewRequest(),
+        viewDependencies(source),
+      );
+      expect(result.state).toBe("pending");
+    } finally {
+      Object.getOwnPropertyDescriptor = original;
+    }
+    expect(methodRetrievals).toBe(1);
+    expect(source.requests).toHaveLength(1);
+  });
+
+  test("valid proof rejects accessor and Proxy source methods without disclosure", async () => {
+    let getterCalls = 0;
+    const accessorSource = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(
+      accessorSource,
+      "readExactCustomerPreviewState",
+      {
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          throw new Error("PRIVATE_SOURCE_ACCESSOR");
+        },
+      },
+    );
+    expectOpaqueDenied(
+      await readFirstPreviewCustomerView(
+        viewRequest(),
+        viewDependencies(
+          accessorSource as unknown as FirstPreviewCustomerPreviewStateSource,
+        ),
+      ),
+    );
+    expect(getterCalls).toBe(0);
+
+    const proxyTraps = { descriptor: 0, prototype: 0 };
+    const proxySource = new Proxy(
+      { readExactCustomerPreviewState: () => ({ state: "pending" }) },
+      {
+        getOwnPropertyDescriptor() {
+          proxyTraps.descriptor += 1;
+          throw new Error("PRIVATE_SOURCE_DESCRIPTOR");
+        },
+        getPrototypeOf() {
+          proxyTraps.prototype += 1;
+          throw new Error("PRIVATE_SOURCE_PROTOTYPE");
+        },
+      },
+    );
+    expectOpaqueDenied(
+      await readFirstPreviewCustomerView(
+        viewRequest(),
+        viewDependencies(proxySource),
+      ),
+    );
+    expect(proxyTraps).toEqual({ descriptor: 0, prototype: 0 });
+  });
+
+  test("rejects accessor and Proxy view boundary containers without getters or traps", async () => {
+    const source = new FakeExactCustomerPreviewStateSource();
+    for (const key of ["accessProof", "publicReference"] as const) {
+      const request = viewRequest() as unknown as Record<string, unknown>;
+      let calls = 0;
+      Object.defineProperty(request, key, {
+        enumerable: true,
+        get() {
+          calls += 1;
+          throw new Error(`PRIVATE_REQUEST_${key}`);
+        },
+      });
+      expectOpaqueDenied(
+        await readFirstPreviewCustomerView(
+          request as unknown as FirstPreviewCustomerViewRequest,
+          viewDependencies(source),
+        ),
+      );
+      expect(calls).toBe(0);
+    }
+
+    const trapCalls = { get: 0, ownKeys: 0 };
+    const dependencies = new Proxy(viewDependencies(source), {
+      get() {
+        trapCalls.get += 1;
+        throw new Error("PRIVATE_DEPENDENCY_GET");
+      },
+      ownKeys() {
+        trapCalls.ownKeys += 1;
+        throw new Error("PRIVATE_DEPENDENCY_KEYS");
+      },
+    });
+    expectOpaqueDenied(
+      await readFirstPreviewCustomerView(viewRequest(), dependencies),
+    );
+    expect(trapCalls).toEqual({ get: 0, ownKeys: 0 });
+    expect(source.requests).toEqual([]);
+  });
+
+  test("rejects accessor-backed view dependencies without invoking them", async () => {
+    for (const key of ["clock", "signingSecret", "proofVerifier"] as const) {
+      const source = new FakeExactCustomerPreviewStateSource();
+      const dependencies = viewDependencies(source) as unknown as Record<
+        string,
+        unknown
+      >;
+      if (key === "proofVerifier") delete dependencies.signingSecret;
+      let calls = 0;
+      Object.defineProperty(dependencies, key, {
+        enumerable: true,
+        get() {
+          calls += 1;
+          throw new Error(`PRIVATE_DEPENDENCY_${key}`);
+        },
+      });
+      expectOpaqueDenied(
+        await readFirstPreviewCustomerView(
+          viewRequest(),
+          dependencies as unknown as FirstPreviewCustomerViewDependencies,
+        ),
+      );
+      expect(calls).toBe(0);
+      expect(source.requests).toEqual([]);
+    }
+  });
+
+  test("rejects wrong version, algorithm, and rotated-secret proofs before source access", async () => {
+    await expectDeniedBeforeSource(signClaims(proofClaims({ v: 2 })));
+    await expectDeniedBeforeSource(signClaims(proofClaims({ alg: "none" })));
+    await expectDeniedBeforeSource(
+      proof({ signingSecret: `${SECRET}-rotated` }),
+    );
+    await expectDeniedBeforeSource(new String(proof()));
+  });
+
+  test("rejects non-canonical, duplicate, and unexpected proof encodings before source access", async () => {
+    const canonical = JSON.stringify(proofClaims());
+    const paddedPayload = `${Buffer.from(canonical).toString("base64url")}=`;
+    for (const candidate of [
+      signRawPayload(` ${canonical}`),
+      signRawPayload(canonical, paddedPayload),
+      signRawPayload(
+        canonical.replace(
+          `"v":${FIRST_PREVIEW_CUSTOMER_ACCESS_VERSION}`,
+          `"v":${FIRST_PREVIEW_CUSTOMER_ACCESS_VERSION},"v":${FIRST_PREVIEW_CUSTOMER_ACCESS_VERSION}`,
+        ),
+      ),
+      signClaims(proofClaims({ unexpected: "PRIVATE_PROOF_FIELD" })),
+      signRawPayload(Buffer.from([0xff, 0xfe, 0xfd])),
+      signRawPayload("{"),
+    ]) {
+      await expectDeniedBeforeSource(candidate);
+    }
+  });
+
+  test("rejects unsafe verification clocks before source access", async () => {
+    for (const value of [
+      -0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      const source = new FakeExactCustomerPreviewStateSource();
+      const result = await readFirstPreviewCustomerView(
+        viewRequest(),
+        viewDependencies(source, { clock: () => value }),
+      );
+      expectOpaqueDenied(result);
+      expect(source.requests).toEqual([]);
+    }
+  });
+
+  test("rejects accessor, Proxy, inherited, and custom-prototype source records", async () => {
+    for (const key of [
+      "state",
+      "conceptBriefId",
+      "publicReference",
+      "outputId",
+      "readinessStatus",
+      "isCurrentCustomerPreview",
+      "readinessRevokedAt",
+      "authorizationEligible",
+    ]) {
+      const record = readySourceRecord();
+      let calls = 0;
+      Object.defineProperty(record, key, {
+        enumerable: true,
+        get() {
+          calls += 1;
+          throw new Error(`PRIVATE_SOURCE_RECORD_${key}`);
+        },
+      });
+      expectOpaqueDenied((await readView(record)).result);
+      expect(calls).toBe(0);
+    }
+
+    const traps = { get: 0, ownKeys: 0, descriptor: 0, prototype: 0 };
+    const proxyRecord = new Proxy(readySourceRecord(), {
+      get() {
+        traps.get += 1;
+        throw new Error("PRIVATE_RECORD_GET");
+      },
+      ownKeys() {
+        traps.ownKeys += 1;
+        throw new Error("PRIVATE_RECORD_KEYS");
+      },
+      getOwnPropertyDescriptor() {
+        traps.descriptor += 1;
+        throw new Error("PRIVATE_RECORD_DESCRIPTOR");
+      },
+      getPrototypeOf() {
+        traps.prototype += 1;
+        throw new Error("PRIVATE_RECORD_PROTOTYPE");
+      },
+    });
+    const proxyRecordSource = {
+      readExactCustomerPreviewState: () => proxyRecord,
+    };
+    expectOpaqueDenied(
+      await readFirstPreviewCustomerView(
+        viewRequest(),
+        viewDependencies(proxyRecordSource),
+      ),
+    );
+    expect(traps).toEqual({ get: 0, ownKeys: 0, descriptor: 0, prototype: 0 });
+
+    const inherited = Object.assign(
+      Object.create({ authorizationEligible: true }),
+      readySourceRecord({ authorizationEligible: undefined }),
+    );
+    delete inherited.authorizationEligible;
+    expectOpaqueDenied((await readView(inherited)).result);
+
+    const custom = Object.assign(
+      Object.create({ customPrototype: true }),
+      readySourceRecord(),
+    );
+    expectOpaqueDenied((await readView(custom)).result);
+  });
+
+  test("snapshots every ready source primitive exactly once", async () => {
+    const record = readySourceRecord();
+    const counts = new Map<string, number>();
+    const original = Object.getOwnPropertyDescriptor;
+    Object.getOwnPropertyDescriptor = ((value: object, key: PropertyKey) => {
+      if (value === record && typeof key === "string") {
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      return original(value, key);
+    }) as typeof Object.getOwnPropertyDescriptor;
+    try {
+      expect((await readView(record)).result.state).toBe("ready");
+    } finally {
+      Object.getOwnPropertyDescriptor = original;
+    }
+    expect([...counts.values()]).toEqual(new Array(8).fill(1));
+    expect([...counts.keys()].sort()).toEqual(
+      Object.keys(readySourceRecord()).sort(),
+    );
+  });
+
+  test("treats explicit authorization ineligibility as opaque non-ready denial", async () => {
+    const result = (
+      await readView(readySourceRecord({ authorizationEligible: false }))
+    ).result;
+    expectOpaqueDenied(result);
+    expect(result).not.toHaveProperty("assetRequest");
+  });
+
+  test("rejects Proxy-backed verifier claims and accessor claims without source access", async () => {
+    for (const rawClaims of [
+      new Proxy(proofClaims(), {}),
+      Object.defineProperty(proofClaims(), "briefId", {
+        enumerable: true,
+        get() {
+          throw new Error("PRIVATE_CLAIM_GETTER");
+        },
+      }),
+    ]) {
+      const source = new FakeExactCustomerPreviewStateSource();
+      const result = await readFirstPreviewCustomerView(viewRequest(), {
+        clock: () => NOW,
+        stateSource: source,
+        proofVerifier: () => rawClaims,
+      });
+      expectOpaqueDenied(result);
+      expect(source.requests).toEqual([]);
+    }
   });
 });
