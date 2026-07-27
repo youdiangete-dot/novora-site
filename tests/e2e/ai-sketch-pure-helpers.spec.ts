@@ -50,8 +50,35 @@ const PREVIOUS_ZODIAC_MOUSE_EYE_GEMSTONE_RULE =
 const WEAKENED_ZODIAC_MOUSE_EYE_GEMSTONE_RULE =
   'For zodiac mouse designs, avoid red eye stones.';
 
+const AUTOMATIC_GREEN_ZODIAC_MOUSE_EYE_RULE =
+  'If no zodiac mouse eye gemstone is specified, automatically select green gemstones for the eyes.';
+
+const AUTOMATIC_BLACK_ZODIAC_MOUSE_EYE_RULE =
+  'For zodiac mouse eyes with no specified gemstone, automatically choose black gemstones.';
+
+const DEFAULT_ZODIAC_MOUSE_EYE_SUBSTITUTE_RULE =
+  'For zodiac mouse eyes, default to an emerald substitute when no gemstone is specified.';
+
+const UNRELATED_SAFE_STONE_RULE =
+  'Automatically select a bezel setting for the unrelated pendant center stone.';
+
+const EXPLICIT_NON_RED_MOUSE_EYE_PRESERVATION_RULE =
+  'For zodiac mouse eyes, preserve an explicitly requested non-red eye gemstone.';
+
+const HUMAN_APPROVED_MOUSE_EYE_OPTION_RULE =
+  'For zodiac mouse eyes, default to green only after human reviewer approval.';
+
+const PROHIBIT_RED_MOUSE_EYE_RULE =
+  'For zodiac mouse eyes, do not use ruby or red gemstones.';
+
 function cloneFixture<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function designSpecWithSpecialStoneRules(rules: string[]) {
+  const designSpec = cloneFixture(MOCK_NOVORA_DESIGN_SPEC);
+  designSpec.stones.special_stone_rules = rules;
+  return designSpec;
 }
 
 function validationIssueCodes(value: unknown) {
@@ -209,22 +236,23 @@ test.describe('pure NOVORA first-preview Design Spec helper', () => {
     );
   });
 
-  test('accepts only the corrected exact zodiac mouse rule', () => {
-    expect(validateNovoraDesignSpec(MOCK_NOVORA_DESIGN_SPEC)).toEqual({
+  test('accepts the corrected zodiac mouse rule alone', () => {
+    const designSpec = designSpecWithSpecialStoneRules([
+      ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+    ]);
+
+    expect(validateNovoraDesignSpec(designSpec)).toEqual({
       ok: true,
       issues: [],
     });
+  });
 
+  test('continues rejecting a missing, weakened, or replacement-only zodiac mouse rule', () => {
     for (const replacementRules of [
       [],
-      [PREVIOUS_ZODIAC_MOUSE_EYE_GEMSTONE_RULE],
       [WEAKENED_ZODIAC_MOUSE_EYE_GEMSTONE_RULE],
-      [
-        'For zodiac mouse jewelry, avoid red eyes and automatically choose a green substitute.',
-      ],
     ]) {
-      const designSpec = cloneFixture(MOCK_NOVORA_DESIGN_SPEC);
-      designSpec.stones.special_stone_rules = replacementRules;
+      const designSpec = designSpecWithSpecialStoneRules(replacementRules);
 
       expect(validateNovoraDesignSpec(designSpec).issues).toEqual(
         expect.arrayContaining([
@@ -235,6 +263,134 @@ test.describe('pure NOVORA first-preview Design Spec helper', () => {
         ]),
       );
     }
+  });
+
+  test('rejects the corrected rule plus the previous automatic-substitution rule', () => {
+    const result = validateNovoraDesignSpec(
+      designSpecWithSpecialStoneRules([
+        ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+        PREVIOUS_ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+      ]),
+    );
+
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+          path: '$.stones.special_stone_rules',
+        }),
+      ]),
+    );
+    expect(result.issues.map((issue) => issue.code)).not.toContain(
+      'missing_zodiac_mouse_rule',
+    );
+  });
+
+  test('rejects the corrected rule plus automatic green mouse-eye substitution', () => {
+    expect(
+      validateNovoraDesignSpec(
+        designSpecWithSpecialStoneRules([
+          ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+          AUTOMATIC_GREEN_ZODIAC_MOUSE_EYE_RULE,
+        ]),
+      ).issues,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+        }),
+      ]),
+    );
+  });
+
+  test('rejects the corrected rule plus automatic black mouse-eye substitution', () => {
+    expect(
+      validateNovoraDesignSpec(
+        designSpecWithSpecialStoneRules([
+          ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+          AUTOMATIC_BLACK_ZODIAC_MOUSE_EYE_RULE,
+        ]),
+      ).issues,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+        }),
+      ]),
+    );
+  });
+
+  test('rejects the corrected rule plus default-to-substitute wording', () => {
+    expect(
+      validateNovoraDesignSpec(
+        designSpecWithSpecialStoneRules([
+          ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+          DEFAULT_ZODIAC_MOUSE_EYE_SUBSTITUTE_RULE,
+        ]),
+      ).issues,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+        }),
+      ]),
+    );
+  });
+
+  test('allows an unrelated automatic stone-setting rule', () => {
+    expect(
+      validateNovoraDesignSpec(
+        designSpecWithSpecialStoneRules([
+          ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+          UNRELATED_SAFE_STONE_RULE,
+        ]),
+      ),
+    ).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('allows explicit non-red customer-choice preservation wording', () => {
+    expect(
+      validateNovoraDesignSpec(
+        designSpecWithSpecialStoneRules([
+          ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+          EXPLICIT_NON_RED_MOUSE_EYE_PRESERVATION_RULE,
+        ]),
+      ),
+    ).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('allows a mouse-eye option gated only by human approval', () => {
+    expect(
+      validateNovoraDesignSpec(
+        designSpecWithSpecialStoneRules([
+          ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+          HUMAN_APPROVED_MOUSE_EYE_OPTION_RULE,
+        ]),
+      ),
+    ).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('allows an additional prohibition against ruby or red mouse eyes', () => {
+    expect(
+      validateNovoraDesignSpec(
+        designSpecWithSpecialStoneRules([
+          ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+          PROHIBIT_RED_MOUSE_EYE_RULE,
+        ]),
+      ),
+    ).toEqual({
+      ok: true,
+      issues: [],
+    });
   });
 
   test('supports English and Traditional Chinese fixture language', () => {
@@ -398,6 +554,86 @@ test.describe('pure NOVORA Hand Sketch Instruction helper fixture', () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: 'missing_zodiac_mouse_rule',
+        }),
+      ]),
+    );
+  });
+
+  test('builder carries safe companion stone rules normally', () => {
+    const designSpec = designSpecWithSpecialStoneRules([
+      ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+      UNRELATED_SAFE_STONE_RULE,
+      EXPLICIT_NON_RED_MOUSE_EYE_PRESERVATION_RULE,
+      HUMAN_APPROVED_MOUSE_EYE_OPTION_RULE,
+    ]);
+
+    expect(validateNovoraDesignSpec(designSpec)).toEqual({
+      ok: true,
+      issues: [],
+    });
+
+    const instruction = createNovoraHandSketchInstructionFromDesignSpec(designSpec);
+
+    expect(instruction.stone_and_setting_instructions.special_stone_rules).toEqual(
+      expect.arrayContaining([
+        UNRELATED_SAFE_STONE_RULE,
+        EXPLICIT_NON_RED_MOUSE_EYE_PRESERVATION_RULE,
+        HUMAN_APPROVED_MOUSE_EYE_OPTION_RULE,
+      ]),
+    );
+    expect(validateNovoraHandSketchInstruction(instruction)).toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  test('rejects a contradictory companion rule in Hand Sketch special stone rules', () => {
+    const instruction = cloneFixture(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION);
+    instruction.stone_and_setting_instructions.special_stone_rules.push(
+      AUTOMATIC_GREEN_ZODIAC_MOUSE_EYE_RULE,
+    );
+
+    expect(validateNovoraHandSketchInstruction(instruction).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+          path: '$.stone_and_setting_instructions.special_stone_rules',
+        }),
+      ]),
+    );
+  });
+
+  test('rejects a contradiction placed only in the Hand Sketch human review checklist', () => {
+    const instruction = cloneFixture(MOCK_NOVORA_HAND_SKETCH_INSTRUCTION);
+    instruction.human_review_checklist.push(AUTOMATIC_BLACK_ZODIAC_MOUSE_EYE_RULE);
+
+    expect(validateNovoraHandSketchInstruction(instruction).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+          path: '$.human_review_checklist',
+        }),
+      ]),
+    );
+  });
+
+  test('independently supplied Hand Sketch Instruction cannot bypass contradiction validation', () => {
+    const independentlySuppliedInstruction = cloneFixture(
+      MOCK_NOVORA_HAND_SKETCH_INSTRUCTION,
+    );
+    independentlySuppliedInstruction.stone_and_setting_instructions.special_stone_rules.push(
+      DEFAULT_ZODIAC_MOUSE_EYE_SUBSTITUTE_RULE,
+    );
+
+    const result = validateNovoraHandSketchInstruction(
+      independentlySuppliedInstruction,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
         }),
       ]),
     );
@@ -623,6 +859,56 @@ test.describe('pure NOVORA Preview Generation Mock Bridge fixture', () => {
     );
     expect(completeMockPipeline).not.toContain(
       'Use green gemstones, black gemstones, jadeite/emerald tones, or dark neutral stones for eyes instead.',
+    );
+  });
+
+  test('fails a contradictory pipeline before Provider request eligibility', () => {
+    const contradictoryDesignSpec = designSpecWithSpecialStoneRules([
+      ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+      AUTOMATIC_GREEN_ZODIAC_MOUSE_EYE_RULE,
+    ]);
+    const designSpecValidation = validateNovoraDesignSpec(contradictoryDesignSpec);
+
+    expect(designSpecValidation.ok).toBe(false);
+    expect(designSpecValidation.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+        }),
+      ]),
+    );
+
+    const contradictoryInstruction =
+      createNovoraHandSketchInstructionFromDesignSpec(contradictoryDesignSpec);
+    const handSketchValidation =
+      validateNovoraHandSketchInstruction(contradictoryInstruction);
+
+    expect(
+      contradictoryInstruction.stone_and_setting_instructions.special_stone_rules,
+    ).toContain(AUTOMATIC_GREEN_ZODIAC_MOUSE_EYE_RULE);
+    expect(handSketchValidation.ok).toBe(false);
+    expect(handSketchValidation.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'contradictory_zodiac_mouse_eye_rule',
+        }),
+      ]),
+    );
+    expect(
+      contradictoryInstruction.generation_readiness.ready_for_future_provider_prompt,
+    ).toBe(false);
+
+    const serializedContradictoryPipeline = JSON.stringify({
+      designSpec: contradictoryDesignSpec,
+      handSketchInstruction: contradictoryInstruction,
+      designSpecValidation,
+      handSketchValidation,
+    });
+    expect(serializedContradictoryPipeline).toContain(
+      AUTOMATIC_GREEN_ZODIAC_MOUSE_EYE_RULE,
+    );
+    expect(serializedContradictoryPipeline).toContain(
+      'contradictory_zodiac_mouse_eye_rule',
     );
   });
 

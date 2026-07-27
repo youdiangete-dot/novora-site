@@ -1,5 +1,6 @@
 import {
   createMockNovoraDesignSpec,
+  isContradictoryZodiacMouseEyeRule,
   MOCK_NOVORA_DESIGN_SPEC,
   NOVORA_DESIGN_SPEC_VERSION,
   type NovoraDesignSpec,
@@ -176,7 +177,8 @@ export type NovoraHandSketchInstructionValidationIssueCode =
   | "missing_concept_preview_boundary"
   | "missing_status_separation"
   | "missing_human_review_boundary"
-  | "missing_zodiac_mouse_rule";
+  | "missing_zodiac_mouse_rule"
+  | "contradictory_zodiac_mouse_eye_rule";
 
 export type NovoraHandSketchInstructionValidationIssue = {
   code: NovoraHandSketchInstructionValidationIssueCode;
@@ -616,6 +618,24 @@ export function validateNovoraHandSketchInstruction(
       "missing_zodiac_mouse_rule",
       "$.stone_and_setting_instructions.special_stone_rules",
       "NOVORA Hand Sketch Instruction must include the locked zodiac mouse eye gemstone rule.",
+    );
+  }
+
+  if (specialStoneRules.some(isContradictoryZodiacMouseEyeRule)) {
+    pushIssue(
+      issues,
+      "contradictory_zodiac_mouse_eye_rule",
+      "$.stone_and_setting_instructions.special_stone_rules",
+      "NOVORA Hand Sketch Instruction must not automatically or by default substitute a zodiac mouse eye gemstone.",
+    );
+  }
+
+  if (humanReviewChecklist.some(isContradictoryZodiacMouseEyeRule)) {
+    pushIssue(
+      issues,
+      "contradictory_zodiac_mouse_eye_rule",
+      "$.human_review_checklist",
+      "NOVORA Hand Sketch Instruction human review checklist must not automatically or by default substitute a zodiac mouse eye gemstone.",
     );
   }
 
