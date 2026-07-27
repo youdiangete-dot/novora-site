@@ -36,7 +36,7 @@ export const NOVORA_DESIGN_SPEC_STATUS_BOUNDARIES = [
 ] as const;
 
 export const ZODIAC_MOUSE_EYE_GEMSTONE_RULE =
-  "For zodiac mouse jewelry/sculpture designs, do not use ruby or red gemstones for mouse eyes. Use green gemstones, black gemstones, jadeite/emerald tones, or dark neutral stones for eyes instead.";
+  "For zodiac mouse jewelry/sculpture designs, do not use ruby or red gemstones for mouse eyes. Preserve an explicitly requested non-red eye gemstone. If no eye gemstone is specified, keep it unknown and do not select a substitute; green, black, jadeite/emerald tones, or dark neutral stones are allowed only when explicitly requested or later approved by a human reviewer.";
 
 export type NovoraDesignSpecLanguage = (typeof NOVORA_DESIGN_SPEC_LANGUAGES)[number];
 export type NovoraDesignSpecPieceType = (typeof NOVORA_DESIGN_SPEC_PIECE_TYPES)[number];
