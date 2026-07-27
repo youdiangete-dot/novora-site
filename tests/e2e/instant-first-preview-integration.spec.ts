@@ -76,11 +76,20 @@ const {
 );
 const {
   createFirstPreviewCustomerViewBinding,
+  readExactFirstPreviewCustomerAccessCookie,
 } = loadWithServerOnlyTestShim(
   () =>
     testRequire(
       "../../lib/server/ai-sketch/first-preview-customer-view-binding",
     ) as typeof import("../../lib/server/ai-sketch/first-preview-customer-view-binding"),
+);
+const {
+  createSupabaseFirstPreviewCustomerAccessAuthorizer,
+} = loadWithServerOnlyTestShim(
+  () =>
+    testRequire(
+      "../../lib/server/ai-sketch/supabase-first-preview-customer-access",
+    ) as typeof import("../../lib/server/ai-sketch/supabase-first-preview-customer-access"),
 );
 const {
   FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT,
@@ -107,6 +116,7 @@ const SECRET =
 const BRIEF_ID = "123e4567-e89b-42d3-a456-426614174000";
 const OTHER_BRIEF_ID = "223e4567-e89b-42d3-a456-426614174000";
 const JOB_ID = "323e4567-e89b-42d3-a456-426614174000";
+const SECOND_JOB_ID = "333e4567-e89b-42d3-a456-426614174000";
 const OUTPUT_ID = "423e4567-e89b-42d3-a456-426614174000";
 const OTHER_OUTPUT_ID = "523e4567-e89b-42d3-a456-426614174000";
 const PUBLIC_REFERENCE = "NOVORA-CB-20260723-A540";
@@ -116,6 +126,11 @@ const CREATED_AT = "2026-07-23T10:00:00.000001Z";
 const VALIDATED_AT = "2026-07-23T10:00:01.000001Z";
 const GATED_AT = "2026-07-23T10:00:02.000001Z";
 const READY_AT = "2026-07-23T10:00:03.000001Z";
+const REVOKED_AT = "2026-07-23T10:00:04.000001Z";
+
+function epochIso(epochSeconds: number) {
+  return new Date(epochSeconds * 1_000).toISOString();
+}
 
 function persistedIdentity() {
   return {
@@ -254,18 +269,31 @@ function outputRow(overrides: Record<string, unknown> = {}) {
 }
 
 function jobRow(overrides: Record<string, unknown> = {}) {
+  const attemptNumber =
+    overrides.attempt_number === 2 ? 2 : 1;
   return {
     id: JOB_ID,
     concept_brief_id: BRIEF_ID,
     generation_purpose: "first_preview",
-    attempt_number: 1,
+    attempt_number: attemptNumber,
+    lineage_identity: "first-preview:v1",
+    parent_job_id: attemptNumber === 2 ? JOB_ID : null,
+    parent_generation_purpose:
+      attemptNumber === 2 ? "first_preview" : null,
+    parent_attempt_number: attemptNumber === 2 ? 1 : null,
+    source_output_id: null,
     status: "succeeded",
+    failure_category: null,
     retry_eligible: null,
-    completed_at: READY_AT,
+    terminal_reason: null,
+    started_at: CREATED_AT,
+    deadline_at: GATED_AT,
+    completed_at: GATED_AT,
     failed_at: null,
     cancelled_at: null,
     timed_out_at: null,
     created_at: CREATED_AT,
+    updated_at: READY_AT,
     ...overrides,
   };
 }
@@ -326,13 +354,96 @@ class FakeViewDatabase implements FirstPreviewCustomerViewDatabaseClient {
   }
 }
 
-function reader(database: FakeViewDatabase, enabled = true) {
+function reader(
+  database: FakeViewDatabase,
+  options: Readonly<{
+    accessProof?: unknown;
+    enabled?: boolean;
+    onCreateSource?: () => void;
+  }> = {},
+) {
   return createFirstPreviewCustomerViewBinding({
-    enabled,
+    enabled: options.enabled ?? true,
     signingSecret: SECRET,
     clock: () => NOW,
-    stateSource:
-      createSupabaseFirstPreviewCustomerViewStateSource(database),
+    readAccessProof: () =>
+      Object.prototype.hasOwnProperty.call(options, "accessProof")
+        ? options.accessProof
+        : proof(),
+    createStateSource() {
+      options.onCreateSource?.();
+      return createSupabaseFirstPreviewCustomerViewStateSource(database, {
+        clock: () => NOW,
+      });
+    },
+  });
+}
+
+function viewRequest() {
+  return { publicReference: PUBLIC_REFERENCE };
+}
+
+function queuedJob(overrides: Record<string, unknown> = {}) {
+  const createdAt = epochIso(NOW - 30);
+  return jobRow({
+    status: "queued",
+    started_at: null,
+    deadline_at: null,
+    completed_at: null,
+    created_at: createdAt,
+    updated_at: createdAt,
+    ...overrides,
+  });
+}
+
+function processingJob(overrides: Record<string, unknown> = {}) {
+  return jobRow({
+    status: "processing",
+    started_at: epochIso(NOW - 30),
+    deadline_at: epochIso(NOW + 30),
+    completed_at: null,
+    updated_at: epochIso(NOW - 30),
+    ...overrides,
+  });
+}
+
+function retryableFailureJob(overrides: Record<string, unknown> = {}) {
+  return jobRow({
+    status: "failed",
+    failure_category: "network_failure",
+    retry_eligible: true,
+    terminal_reason: "network_failure",
+    started_at: null,
+    deadline_at: null,
+    completed_at: null,
+    failed_at: READY_AT,
+    updated_at: READY_AT,
+    ...overrides,
+  });
+}
+
+function attemptTwoJob(overrides: Record<string, unknown> = {}) {
+  return jobRow({
+    id: SECOND_JOB_ID,
+    attempt_number: 2,
+    parent_job_id: JOB_ID,
+    parent_generation_purpose: "first_preview",
+    parent_attempt_number: 1,
+    ...overrides,
+  });
+}
+
+function notReadyOutputRow(overrides: Record<string, unknown> = {}) {
+  return outputRow({
+    readiness_status: "not_ready",
+    first_preview_ready_at: null,
+    readiness_revoked_at: null,
+    is_current_customer_preview: false,
+    automatic_gate_status: null,
+    automatic_gate_evidence: null,
+    automatic_gate_policy_version: null,
+    automatic_gate_passed_at: null,
+    ...overrides,
   });
 }
 
@@ -512,20 +623,92 @@ test.describe("trusted First Preview customer-view production binding", () => {
   test("invalid proof is denied before any state-source interaction", async () => {
     const database = new FakeViewDatabase();
     expect(
-      await reader(database)({
-        publicReference: PUBLIC_REFERENCE,
-        accessProof: "invalid",
-      }),
+      await reader(database, { accessProof: "invalid" })(viewRequest()),
     ).toEqual({ state: "denied" });
     expect(database.requests).toEqual([]);
   });
 
-  test("valid proof invokes the source only with verified Brief and reference identity", async () => {
+  test("reads only the exact frozen HttpOnly-cookie identity", () => {
+    const requestedNames: string[] = [];
+    const exact = readExactFirstPreviewCustomerAccessCookie({
+      get(name) {
+        requestedNames.push(name);
+        return name === "__Host-novora_first_preview_access"
+          ? { value: proof() }
+          : undefined;
+      },
+    });
+    expect(requestedNames).toEqual([
+      "__Host-novora_first_preview_access",
+    ]);
+    expect(exact).toBe(proof());
+
+    expect(
+      readExactFirstPreviewCustomerAccessCookie({
+        get(name) {
+          return name === "novora_first_preview_access"
+            ? { value: proof() }
+            : undefined;
+        },
+      }),
+    ).toBeNull();
+  });
+
+  test("missing cookie proof is denied before source construction", async () => {
     const database = new FakeViewDatabase();
-    const result = await reader(database)({
+    let sourceConstructions = 0;
+    expect(
+      await reader(database, {
+        accessProof: null,
+        onCreateSource: () => {
+          sourceConstructions += 1;
+        },
+      })(viewRequest()),
+    ).toEqual({ state: "denied" });
+    expect(sourceConstructions).toBe(0);
+    expect(database.requests).toEqual([]);
+  });
+
+  test("body, query, or header-like proof fields cannot substitute for the cookie", async () => {
+    const database = new FakeViewDatabase();
+    let sourceConstructions = 0;
+    const untrustedRequest = {
       publicReference: PUBLIC_REFERENCE,
       accessProof: proof(),
-    });
+      bodyProof: proof(),
+      queryProof: proof(),
+      headerProof: proof(),
+    };
+    expect(
+      await reader(database, {
+        accessProof: null,
+        onCreateSource: () => {
+          sourceConstructions += 1;
+        },
+      })(untrustedRequest),
+    ).toEqual({ state: "denied" });
+    expect(sourceConstructions).toBe(0);
+  });
+
+  test("injected proof reader preserves proof-before-source for pure tests", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [queuedJob()];
+    let sourceConstructions = 0;
+    expect(
+      await reader(database, {
+        accessProof: proof(),
+        onCreateSource: () => {
+          sourceConstructions += 1;
+        },
+      })(viewRequest()),
+    ).toEqual({ state: "pending", pollAfterMs: 5_000 });
+    expect(sourceConstructions).toBe(1);
+  });
+
+  test("valid proof invokes the source only with verified Brief and reference identity", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [queuedJob()];
+    const result = await reader(database)(viewRequest());
     expect(result).toEqual({ state: "pending", pollAfterMs: 5_000 });
     expect(database.requests).toEqual([
       {
@@ -543,10 +726,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
     const database = new FakeViewDatabase();
     database.outputs = [outputRow()];
     database.jobs = [jobRow()];
-    const result = await reader(database)({
-      publicReference: PUBLIC_REFERENCE,
-      accessProof: proof(),
-    });
+    const result = await reader(database)(viewRequest());
     expect(result).toEqual({
       state: "ready",
       assetRequest: {
@@ -560,14 +740,110 @@ test.describe("trusted First Preview customer-view production binding", () => {
     );
   });
 
+  test("rejects contradictory, orphaned, duplicate, and impossible candidate lineages", async () => {
+    const readyAttemptTwo = outputRow({ job_id: SECOND_JOB_ID });
+    const validJobs = [retryableFailureJob(), attemptTwoJob()];
+    const scenarios: Array<Readonly<{
+      jobs: unknown[];
+      outputs: unknown[];
+    }>> = [
+      {
+        jobs: validJobs,
+        outputs: [
+          outputRow({
+            id: OTHER_OUTPUT_ID,
+            readiness_status: "revoked",
+            is_current_customer_preview: false,
+            readiness_revoked_at: REVOKED_AT,
+          }),
+          readyAttemptTwo,
+        ],
+      },
+      {
+        jobs: validJobs,
+        outputs: [
+          notReadyOutputRow({ id: OTHER_OUTPUT_ID }),
+          readyAttemptTwo,
+        ],
+      },
+      {
+        jobs: [queuedJob(), attemptTwoJob()],
+        outputs: [readyAttemptTwo],
+      },
+      {
+        jobs: [jobRow({ completed_at: READY_AT })],
+        outputs: [outputRow()],
+      },
+      {
+        jobs: [jobRow()],
+        outputs: [
+          outputRow({
+            job_id: "723e4567-e89b-42d3-a456-426614174000",
+          }),
+        ],
+      },
+      {
+        jobs: [
+          retryableFailureJob(),
+          attemptTwoJob({
+            parent_job_id:
+              "823e4567-e89b-42d3-a456-426614174000",
+          }),
+        ],
+        outputs: [readyAttemptTwo],
+      },
+      {
+        jobs: [
+          queuedJob(),
+          queuedJob({
+            id: SECOND_JOB_ID,
+            created_at: epochIso(NOW - 20),
+            updated_at: epochIso(NOW - 20),
+          }),
+        ],
+        outputs: [],
+      },
+      {
+        jobs: [
+          retryableFailureJob(),
+          attemptTwoJob(),
+          jobRow({
+            id: "923e4567-e89b-42d3-a456-426614174000",
+            attempt_number: 3,
+          }),
+        ],
+        outputs: [],
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const database = new FakeViewDatabase();
+      database.jobs = [...scenario.jobs];
+      database.outputs = [...scenario.outputs];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "unavailable",
+      });
+    }
+  });
+
+  test("accepts one exact attempt-1 to attempt-2 retry lineage", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [retryableFailureJob(), attemptTwoJob()];
+    database.outputs = [outputRow({ job_id: SECOND_JOB_ID })];
+    expect(await reader(database)(viewRequest())).toEqual({
+      state: "ready",
+      assetRequest: {
+        publicReference: PUBLIC_REFERENCE,
+        outputId: OUTPUT_ID,
+      },
+    });
+  });
+
   test("ready output remains compatible with the protected asset-route identity", async () => {
     const database = new FakeViewDatabase();
     database.outputs = [outputRow()];
     database.jobs = [jobRow()];
-    const result = await reader(database)({
-      publicReference: PUBLIC_REFERENCE,
-      accessProof: proof(),
-    });
+    const result = await reader(database)(viewRequest());
     expect(result.state).toBe("ready");
     if (result.state !== "ready") throw new Error("expected ready");
     expect(
@@ -575,27 +851,87 @@ test.describe("trusted First Preview customer-view production binding", () => {
     ).toBe(
       `/api/first-preview-assets/${PUBLIC_REFERENCE}/${OUTPUT_ID}`,
     );
+
+    const authorizer =
+      createSupabaseFirstPreviewCustomerAccessAuthorizer(
+        {
+          async findBriefCandidates() {
+            return {
+              data: [
+                {
+                  id: BRIEF_ID,
+                  public_reference: PUBLIC_REFERENCE,
+                },
+              ],
+              error: null,
+            };
+          },
+          async findOutputCandidates() {
+            return { data: [outputRow()], error: null };
+          },
+          async findJobCandidates() {
+            return {
+              data: [
+                {
+                  id: JOB_ID,
+                  concept_brief_id: BRIEF_ID,
+                  generation_purpose: "first_preview",
+                  status: "succeeded",
+                  completed_at: READY_AT,
+                },
+              ],
+              error: null,
+            };
+          },
+        },
+        SECRET,
+        { clock: () => NOW },
+      );
+    expect(
+      await authorizer.authorize({
+        publicReference: result.assetRequest.publicReference,
+        outputId: result.assetRequest.outputId,
+        accessProof: proof(),
+      }),
+    ).toMatchObject({ authorized: true });
   });
 
-  test("returns deterministic pending for no Job, active Job, or retryable first failure", async () => {
+  test("enforces canonical complete ready-asset chronology", async () => {
+    const invalidOutputs = [
+      outputRow({
+        asset_created_at: "2026-07-23 10:00:00Z",
+      }),
+      outputRow({
+        asset_created_at: "2026-07-23T10:00:01.000002Z",
+      }),
+      outputRow({
+        asset_validated_at: "2026-07-23T10:00:02.000002Z",
+      }),
+      outputRow({
+        automatic_gate_passed_at:
+          "2026-07-23T10:00:03.000002Z",
+      }),
+      outputRow({ asset_created_at: null }),
+    ];
+    for (const invalidOutput of invalidOutputs) {
+      const database = new FakeViewDatabase();
+      database.jobs = [jobRow()];
+      database.outputs = [invalidOutput];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "unavailable",
+      });
+    }
+  });
+
+  test("returns deterministic pending for valid active Jobs or an eligible first retry", async () => {
     for (const jobs of [
-      [],
-      [jobRow({ status: "queued", completed_at: null })],
-      [
-        jobRow({
-          status: "failed",
-          retry_eligible: true,
-          completed_at: null,
-          failed_at: READY_AT,
-        }),
-      ],
+      [queuedJob()],
+      [processingJob()],
+      [retryableFailureJob()],
     ]) {
       const database = new FakeViewDatabase();
       database.jobs = jobs;
-      const request = {
-        publicReference: PUBLIC_REFERENCE,
-        accessProof: proof(),
-      };
+      const request = viewRequest();
       expect(await reader(database)(request)).toEqual({
         state: "pending",
         pollAfterMs: 5_000,
@@ -607,10 +943,63 @@ test.describe("trusted First Preview customer-view production binding", () => {
     }
   });
 
-  test("maps deterministic terminal and revoked conditions to unavailable", async () => {
-    const scenarios = [
+  test("keeps only a permitted succeeded completion window pending", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [jobRow()];
+    database.outputs = [notReadyOutputRow()];
+    expect(await reader(database)(viewRequest())).toEqual({
+      state: "pending",
+      pollAfterMs: 5_000,
+    });
+  });
+
+  test("maps stale active, gate-failed, malformed, conflicting, and exhausted states to unavailable", async () => {
+    const failedAsset = notReadyOutputRow({
+      asset_validation_status: "failed",
+      asset_validated_at: null,
+    });
+    const failedGate = notReadyOutputRow({
+      automatic_gate_status: "failed",
+      automatic_gate_evidence: { result: "failed" },
+      automatic_gate_policy_version:
+        FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+    });
+    const exhaustedAttemptTwo = attemptTwoJob({
+      status: "failed",
+      failure_category: "network_failure",
+      retry_eligible: true,
+      terminal_reason: "network_failure",
+      started_at: null,
+      deadline_at: null,
+      completed_at: null,
+      failed_at: READY_AT,
+    });
+    const scenarios: Array<Readonly<{
+      jobs: unknown[];
+      outputs: unknown[];
+    }>> = [
       {
+        jobs: [
+          queuedJob({
+            created_at: epochIso(NOW - 1_801),
+            updated_at: epochIso(NOW - 1_801),
+          }),
+        ],
         outputs: [],
+      },
+      {
+        jobs: [
+          processingJob({
+            started_at: epochIso(NOW - 60),
+            deadline_at: epochIso(NOW - 1),
+            updated_at: epochIso(NOW - 60),
+          }),
+        ],
+        outputs: [],
+      },
+      { jobs: [jobRow()], outputs: [failedAsset] },
+      { jobs: [jobRow()], outputs: [failedGate] },
+      {
         jobs: [
           jobRow({
             status: "failed",
@@ -619,13 +1008,55 @@ test.describe("trusted First Preview customer-view production binding", () => {
             failed_at: READY_AT,
           }),
         ],
+        outputs: [],
+      },
+      {
+        jobs: [
+          queuedJob(),
+          attemptTwoJob({
+            status: "processing",
+            started_at: epochIso(NOW - 20),
+            deadline_at: epochIso(NOW + 20),
+            completed_at: null,
+            updated_at: epochIso(NOW - 20),
+          }),
+        ],
+        outputs: [],
+      },
+      {
+        jobs: [retryableFailureJob(), exhaustedAttemptTwo],
+        outputs: [],
+      },
+      { jobs: [], outputs: [] },
+    ];
+    for (const scenario of scenarios) {
+      const database = new FakeViewDatabase();
+      database.jobs = [...scenario.jobs];
+      database.outputs = [...scenario.outputs];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "unavailable",
+      });
+    }
+  });
+
+  test("maps deterministic terminal and revoked conditions to unavailable", async () => {
+    const scenarios = [
+      {
+        outputs: [],
+        jobs: [
+          retryableFailureJob({ retry_eligible: false }),
+        ],
       },
       {
         outputs: [],
         jobs: [
           jobRow({
             status: "timed_out",
+            failure_category: "timeout",
             retry_eligible: false,
+            terminal_reason: "timeout",
+            started_at: CREATED_AT,
+            deadline_at: GATED_AT,
             completed_at: null,
             timed_out_at: READY_AT,
           }),
@@ -636,7 +1067,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
           outputRow({
             readiness_status: "revoked",
             is_current_customer_preview: false,
-            readiness_revoked_at: READY_AT,
+            readiness_revoked_at: REVOKED_AT,
           }),
         ],
         jobs: [jobRow()],
@@ -647,10 +1078,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
       database.outputs = scenario.outputs;
       database.jobs = scenario.jobs;
       expect(
-        await reader(database)({
-          publicReference: PUBLIC_REFERENCE,
-          accessProof: proof(),
-        }),
+        await reader(database)(viewRequest()),
       ).toEqual({ state: "unavailable" });
     }
   });
@@ -661,10 +1089,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
       { id: OTHER_BRIEF_ID, public_reference: PUBLIC_REFERENCE },
     ];
     expect(
-      await reader(database)({
-        publicReference: PUBLIC_REFERENCE,
-        accessProof: proof(),
-      }),
+      await reader(database)(viewRequest()),
     ).toEqual({ state: "unavailable" });
     expect(database.requests.map((request) => request.operation)).toEqual([
       "brief",
@@ -685,10 +1110,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
     ];
     for (const database of [duplicateBriefs, ambiguousOutputs]) {
       expect(
-        await reader(database)({
-          publicReference: PUBLIC_REFERENCE,
-          accessProof: proof(),
-        }),
+        await reader(database)(viewRequest()),
       ).toEqual({ state: "unavailable" });
       expect(database.requests.every((request) => request.limit === 3)).toBe(
         true,
@@ -714,10 +1136,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
       database.outputs = [invalidOutput];
       database.jobs = [jobRow()];
       expect(
-        await reader(database)({
-          publicReference: PUBLIC_REFERENCE,
-          accessProof: proof(),
-        }),
+        await reader(database)(viewRequest()),
       ).toEqual({ state: "unavailable" });
     }
   });
@@ -728,10 +1147,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
         const database = new FakeViewDatabase();
         if (mode === "returned") database.fail = operation;
         else database.throwOperation = operation;
-        const result = await reader(database)({
-          publicReference: PUBLIC_REFERENCE,
-          accessProof: proof(),
-        });
+        const result = await reader(database)(viewRequest());
         expect(result).toEqual({ state: "unavailable" });
         expect(JSON.stringify(result)).not.toContain("PRIVATE_");
       }
@@ -749,20 +1165,19 @@ test.describe("trusted First Preview customer-view production binding", () => {
         enabled: false,
         signingSecret: SECRET,
         clock: () => NOW,
-        stateSource: countingSource,
+        readAccessProof: () => proof(),
+        createStateSource: () => countingSource,
       }),
       createFirstPreviewCustomerViewBinding({
         enabled: true,
         signingSecret: null,
         clock: () => NOW,
-        stateSource: countingSource,
+        readAccessProof: () => proof(),
+        createStateSource: () => countingSource,
       }),
     ]) {
       expect(
-        await binding({
-          publicReference: PUBLIC_REFERENCE,
-          accessProof: proof(),
-        }),
+        await binding(viewRequest()),
       ).toEqual({ state: "unavailable" });
     }
   });
@@ -770,16 +1185,32 @@ test.describe("trusted First Preview customer-view production binding", () => {
   test("cross-customer proof is denied without source access", async () => {
     const database = new FakeViewDatabase();
     expect(
-      await reader(database)({
-        publicReference: PUBLIC_REFERENCE,
+      await reader(database, {
         accessProof: proof({ briefId: OTHER_BRIEF_ID }),
-      }),
+      })(viewRequest()),
     ).toEqual({ state: "unavailable" });
     // A valid proof for another Brief can pass cryptographic verification, but
     // the exact Brief/reference database linkage still fails closed.
     expect(database.requests.map((request) => request.operation)).toEqual([
       "brief",
     ]);
+  });
+
+  test("default Production binding mechanically uses cookies and no caller proof field", () => {
+    const source = readFileSync(
+      path.join(
+        process.cwd(),
+        "lib/server/ai-sketch/first-preview-customer-view-binding.ts",
+      ),
+      "utf8",
+    );
+    expect(source).toContain(
+      "readExactFirstPreviewCustomerAccessCookie(await cookies())",
+    );
+    expect(source).toContain(
+      "cookieStore.get(FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME)",
+    );
+    expect(source).not.toContain("request.accessProof");
   });
 
   test("all Coordinator lib bindings are mechanically server-only", () => {

@@ -70,13 +70,23 @@ const JOB_COLUMNS = [
   "concept_brief_id",
   "generation_purpose",
   "attempt_number",
+  "lineage_identity",
+  "parent_job_id",
+  "parent_generation_purpose",
+  "parent_attempt_number",
+  "source_output_id",
   "status",
+  "failure_category",
   "retry_eligible",
+  "terminal_reason",
+  "started_at",
+  "deadline_at",
   "completed_at",
   "failed_at",
   "cancelled_at",
   "timed_out_at",
   "created_at",
+  "updated_at",
 ].join(", ");
 
 function normalizeCandidates(
@@ -140,10 +150,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isIsoTimestamp(value: unknown): value is string {
-  return typeof value === "string" && Number.isFinite(Date.parse(value));
-}
-
 function readPositiveInteger(value: unknown): number | null {
   const normalized =
     typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
@@ -159,6 +165,38 @@ const DAYS_BEFORE_MONTH = [
 ] as const;
 const MICROSECONDS_PER_SECOND = BigInt(1_000_000);
 const SECONDS_PER_DAY = BigInt(86_400);
+const FIRST_PREVIEW_QUEUED_JOB_MAX_AGE_SECONDS = BigInt(1_800);
+const FIRST_PREVIEW_FAILURE_CATEGORIES = new Set([
+  "configuration_missing",
+  "invalid_structured_input",
+  "precondition_failed",
+  "invalid_request",
+  "authentication_failed",
+  "permission_denied",
+  "moderation_blocked",
+  "rate_limited",
+  "provider_unavailable",
+  "network_failure",
+  "timeout",
+  "cancelled",
+  "invalid_provider_response",
+  "invalid_base64",
+  "invalid_image_format",
+  "invalid_image_dimensions",
+  "image_too_large",
+  "unsafe_output",
+  "privacy_failure",
+  "access_failure",
+  "storage_failure",
+  "lifecycle_conflict",
+  "budget_blocked",
+  "unexpected_provider_error",
+]);
+const FIRST_PREVIEW_RETRYABLE_FAILURE_CATEGORIES = new Set([
+  "rate_limited",
+  "provider_unavailable",
+  "network_failure",
+]);
 
 function isGregorianLeapYear(year: number): boolean {
   return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
@@ -246,6 +284,9 @@ function isValidReadyOutput(
   conceptBriefId: string,
 ): boolean {
   const byteSize = readPositiveInteger(output.byte_size);
+  const assetCreatedAt = parseCanonicalUtcTimestampMicros(
+    output.asset_created_at,
+  );
   const assetValidatedAt = parseCanonicalUtcTimestampMicros(
     output.asset_validated_at,
   );
@@ -255,6 +296,7 @@ function isValidReadyOutput(
   const readyAt = parseCanonicalUtcTimestampMicros(
     output.first_preview_ready_at,
   );
+  const createdAt = parseCanonicalUtcTimestampMicros(output.created_at);
   return (
     typeof output.id === "string" &&
     isValidFirstPreviewAssetUuid(output.id) &&
@@ -273,7 +315,7 @@ function isValidReadyOutput(
     output.height_px === 1024 &&
     typeof output.content_sha256 === "string" &&
     isValidFirstPreviewContentSha256(output.content_sha256) &&
-    isIsoTimestamp(output.asset_created_at) &&
+    assetCreatedAt !== null &&
     assetValidatedAt !== null &&
     output.automatic_gate_status === "passed" &&
     output.automatic_gate_policy_version ===
@@ -281,6 +323,8 @@ function isValidReadyOutput(
     hasPassedAutomaticGateEvidence(output.automatic_gate_evidence) &&
     gatePassedAt !== null &&
     readyAt !== null &&
+    createdAt !== null &&
+    assetCreatedAt <= assetValidatedAt &&
     assetValidatedAt <= gatePassedAt &&
     gatePassedAt <= readyAt &&
     output.object_path ===
@@ -294,6 +338,7 @@ function isValidReadyOutput(
 
 type SafeJob = Readonly<{
   id: string;
+  parentJobId: string | null;
   attemptNumber: 1 | 2;
   status:
     | "queued"
@@ -303,13 +348,44 @@ type SafeJob = Readonly<{
     | "timed_out"
     | "cancelled";
   retryEligible: boolean | null;
-  completedAt: string | null;
+  createdAt: bigint;
+  startedAt: bigint | null;
+  deadlineAt: bigint | null;
+  completedAt: bigint | null;
 }>;
 
-function mapSafeJob(
-  value: unknown,
-  conceptBriefId: string,
-): SafeJob | null {
+type SafeOutput = Readonly<{
+  id: string;
+  jobId: string;
+  readinessStatus: "not_ready" | "first_preview_ready" | "revoked";
+  assetValidationStatus: null | "pending" | "passed" | "failed";
+  automaticGateStatus: null | "pending" | "passed" | "failed";
+  assetValidatedAt: bigint | null;
+  automaticGatePassedAt: bigint | null;
+  readyAt: bigint | null;
+}>;
+
+function isNullableCanonicalTimestamp(value: unknown): boolean {
+  return value === null || parseCanonicalUtcTimestampMicros(value) !== null;
+}
+
+function hasNullValues(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  return keys.every((key) => value[key] === null);
+}
+
+function hasNonblankString(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 512 &&
+    value.length > 0 &&
+    value === value.trim()
+  );
+}
+
+function mapSafeJob(value: unknown, conceptBriefId: string): SafeJob | null {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
@@ -317,6 +393,8 @@ function mapSafeJob(
     value.concept_brief_id !== conceptBriefId ||
     value.generation_purpose !== "first_preview" ||
     (value.attempt_number !== 1 && value.attempt_number !== 2) ||
+    value.lineage_identity !== "first-preview:v1" ||
+    value.source_output_id !== null ||
     ![
       "queued",
       "processing",
@@ -326,60 +404,142 @@ function mapSafeJob(
       "cancelled",
     ].includes(String(value.status)) ||
     (value.retry_eligible !== null &&
-      typeof value.retry_eligible !== "boolean")
+      typeof value.retry_eligible !== "boolean") ||
+    !isNullableCanonicalTimestamp(value.started_at) ||
+    !isNullableCanonicalTimestamp(value.deadline_at) ||
+    !isNullableCanonicalTimestamp(value.completed_at) ||
+    !isNullableCanonicalTimestamp(value.failed_at) ||
+    !isNullableCanonicalTimestamp(value.cancelled_at) ||
+    !isNullableCanonicalTimestamp(value.timed_out_at)
   ) {
     return null;
   }
-  const hasNoTerminalTimestamp =
-    value.completed_at === null &&
-    value.failed_at === null &&
-    value.cancelled_at === null &&
-    value.timed_out_at === null;
+
+  const createdAt = parseCanonicalUtcTimestampMicros(value.created_at);
+  const updatedAt = parseCanonicalUtcTimestampMicros(value.updated_at);
+  const startedAt = parseCanonicalUtcTimestampMicros(value.started_at);
+  const deadlineAt = parseCanonicalUtcTimestampMicros(value.deadline_at);
+  const completedAt = parseCanonicalUtcTimestampMicros(value.completed_at);
+  const failedAt = parseCanonicalUtcTimestampMicros(value.failed_at);
+  const cancelledAt = parseCanonicalUtcTimestampMicros(value.cancelled_at);
+  const timedOutAt = parseCanonicalUtcTimestampMicros(value.timed_out_at);
+  if (createdAt === null || updatedAt === null || updatedAt < createdAt) {
+    return null;
+  }
+  if (
+    [startedAt, completedAt, failedAt, cancelledAt, timedOutAt].some(
+      (timestamp) =>
+        timestamp !== null &&
+        (timestamp < createdAt || timestamp > updatedAt),
+    )
+  ) {
+    return null;
+  }
+
+  const parentJobId =
+    typeof value.parent_job_id === "string" ? value.parent_job_id : null;
+  const validLineage =
+    (value.attempt_number === 1 &&
+      value.parent_job_id === null &&
+      value.parent_generation_purpose === null &&
+      value.parent_attempt_number === null) ||
+    (value.attempt_number === 2 &&
+      parentJobId !== null &&
+      isValidFirstPreviewAssetUuid(parentJobId) &&
+      value.parent_generation_purpose === "first_preview" &&
+      value.parent_attempt_number === 1);
+  if (!validLineage) return null;
+
+  const hasNoTerminalTimestamp = hasNullValues(value, [
+    "completed_at",
+    "failed_at",
+    "cancelled_at",
+    "timed_out_at",
+  ]);
+  const hasNoFailureState = hasNullValues(value, [
+    "failure_category",
+    "retry_eligible",
+    "terminal_reason",
+  ]);
+  const hasValidAttemptWindow =
+    startedAt !== null && deadlineAt !== null && deadlineAt > startedAt;
   const validLifecycle =
-    ((value.status === "queued" || value.status === "processing") &&
+    (value.status === "queued" &&
+      value.started_at === null &&
+      value.deadline_at === null &&
       hasNoTerminalTimestamp &&
-      value.retry_eligible === null) ||
+      hasNoFailureState) ||
+    (value.status === "processing" &&
+      hasValidAttemptWindow &&
+      hasNoTerminalTimestamp &&
+      hasNoFailureState) ||
     (value.status === "succeeded" &&
-      isIsoTimestamp(value.completed_at) &&
+      hasValidAttemptWindow &&
+      completedAt !== null &&
+      completedAt >= startedAt! &&
       value.failed_at === null &&
       value.cancelled_at === null &&
       value.timed_out_at === null &&
-      value.retry_eligible === null) ||
+      hasNoFailureState) ||
     (value.status === "failed" &&
       value.completed_at === null &&
-      isIsoTimestamp(value.failed_at) &&
+      failedAt !== null &&
       value.cancelled_at === null &&
       value.timed_out_at === null &&
-      typeof value.retry_eligible === "boolean") ||
+      hasNonblankString(value.failure_category) &&
+      FIRST_PREVIEW_FAILURE_CATEGORIES.has(value.failure_category) &&
+      value.failure_category !== "timeout" &&
+      value.failure_category !== "cancelled" &&
+      typeof value.retry_eligible === "boolean" &&
+      (value.retry_eligible === false ||
+        FIRST_PREVIEW_RETRYABLE_FAILURE_CATEGORIES.has(
+          value.failure_category,
+        )) &&
+      hasNonblankString(value.terminal_reason) &&
+      ((value.started_at === null &&
+        value.deadline_at === null) ||
+        (hasValidAttemptWindow && failedAt >= startedAt!))) ||
     (value.status === "timed_out" &&
+      hasValidAttemptWindow &&
       value.completed_at === null &&
       value.failed_at === null &&
       value.cancelled_at === null &&
-      isIsoTimestamp(value.timed_out_at) &&
-      value.retry_eligible === false) ||
+      timedOutAt !== null &&
+      timedOutAt >= deadlineAt! &&
+      value.failure_category === "timeout" &&
+      value.retry_eligible === false &&
+      hasNonblankString(value.terminal_reason)) ||
     (value.status === "cancelled" &&
       value.completed_at === null &&
       value.failed_at === null &&
-      isIsoTimestamp(value.cancelled_at) &&
+      cancelledAt !== null &&
       value.timed_out_at === null &&
-      value.retry_eligible === false);
+      value.failure_category === "cancelled" &&
+      value.retry_eligible === false &&
+      hasNonblankString(value.terminal_reason) &&
+      ((value.started_at === null &&
+        value.deadline_at === null) ||
+        (hasValidAttemptWindow && cancelledAt >= startedAt!)));
   if (!validLifecycle) {
     return null;
   }
   return {
     id: value.id,
+    parentJobId,
     attemptNumber: value.attempt_number,
     status: value.status as SafeJob["status"],
     retryEligible: value.retry_eligible as boolean | null,
-    completedAt:
-      typeof value.completed_at === "string" ? value.completed_at : null,
+    createdAt,
+    startedAt,
+    deadlineAt,
+    completedAt,
   };
 }
 
-function hasSafeOutputLifecycle(
+function mapSafeOutput(
   value: unknown,
   conceptBriefId: string,
-): value is Record<string, unknown> {
+): SafeOutput | null {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
@@ -390,25 +550,176 @@ function hasSafeOutputLifecycle(
     !["not_ready", "first_preview_ready", "revoked"].includes(
       String(value.readiness_status),
     ) ||
-    typeof value.is_current_customer_preview !== "boolean"
+    typeof value.is_current_customer_preview !== "boolean" ||
+    ![null, "pending", "passed", "failed"].includes(
+      value.asset_validation_status as null | string,
+    ) ||
+    ![null, "pending", "passed", "failed"].includes(
+      value.automatic_gate_status as null | string,
+    ) ||
+    parseCanonicalUtcTimestampMicros(value.created_at) === null
+  ) {
+    return null;
+  }
+
+  const assetCreatedAt = parseCanonicalUtcTimestampMicros(
+    value.asset_created_at,
+  );
+  const assetValidatedAt = parseCanonicalUtcTimestampMicros(
+    value.asset_validated_at,
+  );
+  const gatePassedAt = parseCanonicalUtcTimestampMicros(
+    value.automatic_gate_passed_at,
+  );
+  const readyAt = parseCanonicalUtcTimestampMicros(
+    value.first_preview_ready_at,
+  );
+  const revokedAt = parseCanonicalUtcTimestampMicros(
+    value.readiness_revoked_at,
+  );
+
+  const validAssetValidation =
+    (value.asset_validation_status === null &&
+      value.asset_created_at === null &&
+      value.asset_validated_at === null) ||
+    ((value.asset_validation_status === "pending" ||
+      value.asset_validation_status === "failed") &&
+      assetCreatedAt !== null &&
+      value.asset_validated_at === null) ||
+    (value.asset_validation_status === "passed" &&
+      assetCreatedAt !== null &&
+      assetValidatedAt !== null &&
+      assetCreatedAt <= assetValidatedAt);
+  if (!validAssetValidation) return null;
+
+  const validAutomaticGate =
+    (value.automatic_gate_status === null &&
+      value.automatic_gate_evidence === null &&
+      value.automatic_gate_policy_version === null &&
+      value.automatic_gate_passed_at === null) ||
+    (value.automatic_gate_status === "pending" &&
+      value.asset_validation_status === "passed" &&
+      hasNonblankString(value.automatic_gate_policy_version) &&
+      value.automatic_gate_evidence === null &&
+      value.automatic_gate_passed_at === null) ||
+    (value.automatic_gate_status === "failed" &&
+      value.asset_validation_status === "passed" &&
+      hasNonblankString(value.automatic_gate_policy_version) &&
+      isRecord(value.automatic_gate_evidence) &&
+      Object.keys(value.automatic_gate_evidence).length > 0 &&
+      value.automatic_gate_passed_at === null) ||
+    (value.automatic_gate_status === "passed" &&
+      value.asset_validation_status === "passed" &&
+      value.automatic_gate_policy_version ===
+        FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION &&
+      hasPassedAutomaticGateEvidence(value.automatic_gate_evidence) &&
+      gatePassedAt !== null &&
+      assetValidatedAt !== null &&
+      assetValidatedAt <= gatePassedAt);
+  if (!validAutomaticGate) return null;
+
+  let validReadiness = false;
+  if (value.readiness_status === "not_ready") {
+    validReadiness =
+      value.is_current_customer_preview === false &&
+      value.first_preview_ready_at === null &&
+      value.readiness_revoked_at === null;
+  } else if (value.readiness_status === "revoked") {
+    validReadiness =
+      value.is_current_customer_preview === false &&
+      readyAt !== null &&
+      revokedAt !== null &&
+      gatePassedAt !== null &&
+      gatePassedAt <= readyAt &&
+      readyAt <= revokedAt;
+  } else {
+    validReadiness =
+      value.is_current_customer_preview === true &&
+      value.readiness_revoked_at === null &&
+      readyAt !== null &&
+      gatePassedAt !== null &&
+      gatePassedAt <= readyAt &&
+      isValidReadyOutput(value, conceptBriefId);
+  }
+  if (!validReadiness) return null;
+
+  return {
+    id: value.id,
+    jobId: value.job_id,
+    readinessStatus: value.readiness_status as SafeOutput["readinessStatus"],
+    assetValidationStatus:
+      value.asset_validation_status as SafeOutput["assetValidationStatus"],
+    automaticGateStatus:
+      value.automatic_gate_status as SafeOutput["automaticGateStatus"],
+    assetValidatedAt,
+    automaticGatePassedAt: gatePassedAt,
+    readyAt,
+  };
+}
+
+function hasValidCandidateLineage(
+  jobs: readonly SafeJob[],
+  outputs: readonly SafeOutput[],
+): boolean {
+  if (
+    new Set(jobs.map((job) => job.id)).size !== jobs.length ||
+    new Set(jobs.map((job) => job.attemptNumber)).size !== jobs.length ||
+    new Set(outputs.map((output) => output.id)).size !== outputs.length ||
+    new Set(outputs.map((output) => output.jobId)).size !== outputs.length
   ) {
     return false;
   }
-  if (value.readiness_status === "not_ready") {
-    return (
-      value.is_current_customer_preview === false &&
-      value.readiness_revoked_at === null
-    );
+
+  const orderedJobs = [...jobs].sort(
+    (left, right) => left.attemptNumber - right.attemptNumber,
+  );
+  if (
+    orderedJobs.length > 0 &&
+    orderedJobs[0].attemptNumber !== 1
+  ) {
+    return false;
   }
-  if (value.readiness_status === "revoked") {
-    return (
-      value.is_current_customer_preview === false &&
-      isIsoTimestamp(value.readiness_revoked_at)
-    );
+  if (orderedJobs.length === 2) {
+    const [first, second] = orderedJobs;
+    if (
+      second.attemptNumber !== 2 ||
+      second.parentJobId !== first.id ||
+      first.status !== "failed" ||
+      first.retryEligible !== true
+    ) {
+      return false;
+    }
   }
+
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  if (outputs.some((output) => !jobsById.has(output.jobId))) return false;
+  if (
+    jobs.some(
+      (job) =>
+        job.status === "queued" &&
+        outputs.some((output) => output.jobId === job.id),
+    )
+  ) {
+    return false;
+  }
+  if (
+    jobs.some(
+      (job) =>
+        job.status === "succeeded" &&
+        outputs.filter((output) => output.jobId === job.id).length !== 1,
+    )
+  ) {
+    return false;
+  }
+
+  const activeJobs = jobs.filter(
+    (job) => job.status === "queued" || job.status === "processing",
+  );
   return (
-    value.is_current_customer_preview === true &&
-    value.readiness_revoked_at === null
+    activeJobs.length <= 1 &&
+    (activeJobs.length === 0 ||
+      activeJobs[0].attemptNumber ===
+        Math.max(...jobs.map((job) => job.attemptNumber)))
   );
 }
 
@@ -429,7 +740,14 @@ export function createUnavailableFirstPreviewCustomerViewStateSource(): FirstPre
 export class SupabaseFirstPreviewCustomerViewStateSource
   implements FirstPreviewCustomerPreviewStateSource
 {
-  constructor(private readonly database: FirstPreviewCustomerViewDatabaseClient) {}
+  private readonly clock: () => number;
+
+  constructor(
+    private readonly database: FirstPreviewCustomerViewDatabaseClient,
+    options: Readonly<{ clock?: () => number }> = {},
+  ) {
+    this.clock = options.clock ?? (() => Math.floor(Date.now() / 1_000));
+  }
 
   readonly readExactCustomerPreviewState = async (
     lookup: FirstPreviewCustomerPreviewStateLookup,
@@ -477,40 +795,56 @@ export class SupabaseFirstPreviewCustomerViewStateSource
         return unavailable();
       }
 
-      const outputs = outputResult.data;
-      if (
-        outputs.some(
-          (output) => !hasSafeOutputLifecycle(output, lookup.conceptBriefId),
-        )
-      ) {
+      const outputs = outputResult.data.map((output) =>
+        mapSafeOutput(output, lookup.conceptBriefId),
+      );
+      if (outputs.some((output) => output === null)) {
         return unavailable();
       }
       const jobs = jobResult.data.map((job) =>
         mapSafeJob(job, lookup.conceptBriefId),
       );
+      if (jobs.some((job) => job === null)) {
+        return unavailable();
+      }
+      const safeOutputs = outputs as SafeOutput[];
+      const safeJobs = jobs as SafeJob[];
+      if (!hasValidCandidateLineage(safeJobs, safeOutputs)) {
+        return unavailable();
+      }
+
+      const nowEpochSeconds = this.clock();
       if (
-        jobs.some((job) => job === null) ||
-        new Set(jobs.map((job) => job?.attemptNumber)).size !== jobs.length
+        !Number.isSafeInteger(nowEpochSeconds) ||
+        nowEpochSeconds < 0 ||
+        Object.is(nowEpochSeconds, -0)
       ) {
         return unavailable();
       }
-      const safeJobs = jobs as SafeJob[];
+      const nowMicros =
+        BigInt(nowEpochSeconds) * MICROSECONDS_PER_SECOND;
+      if (safeJobs.some((job) => job.createdAt > nowMicros)) {
+        return unavailable();
+      }
 
-      const readyCandidates = outputs.filter(
-        (output) =>
-          isRecord(output) &&
-          output.readiness_status === "first_preview_ready" &&
-          output.is_current_customer_preview === true &&
-          output.readiness_revoked_at === null,
+      const readyCandidates = safeOutputs.filter(
+        (output) => output.readinessStatus === "first_preview_ready",
       );
       if (readyCandidates.length > 1) return unavailable();
       if (readyCandidates.length === 1) {
-        const ready = readyCandidates[0] as Record<string, unknown>;
-        if (!isValidReadyOutput(ready, lookup.conceptBriefId)) {
-          return unavailable();
-        }
-        const job = safeJobs.find((candidate) => candidate.id === ready.job_id);
-        if (!job || job.status !== "succeeded" || !job.completedAt) {
+        if (safeOutputs.length !== 1) return unavailable();
+        const ready = readyCandidates[0];
+        const job = safeJobs.find((candidate) => candidate.id === ready.jobId);
+        if (
+          !job ||
+          job.status !== "succeeded" ||
+          job.completedAt === null ||
+          ready.assetValidatedAt === null ||
+          ready.automaticGatePassedAt === null ||
+          ready.readyAt === null ||
+          ready.assetValidatedAt > job.completedAt ||
+          job.completedAt > ready.automaticGatePassedAt
+        ) {
           return unavailable();
         }
         return {
@@ -526,29 +860,57 @@ export class SupabaseFirstPreviewCustomerViewStateSource
       }
 
       if (
-        outputs.some(
+        safeOutputs.some(
           (output) =>
-            isRecord(output) &&
-            (output.readiness_status === "revoked" ||
-              output.readiness_revoked_at !== null),
+            output.readinessStatus === "revoked" ||
+            output.assetValidationStatus === "failed" ||
+            output.automaticGateStatus === "failed" ||
+            (output.readinessStatus === "not_ready" &&
+              output.automaticGateStatus === "passed"),
         )
       ) {
         return unavailable();
       }
-      if (
-        safeJobs.length === 0 ||
-        safeJobs.some(
-          (job) => job.status === "queued" || job.status === "processing",
-        ) ||
-        safeJobs.some((job) => job.status === "succeeded")
-      ) {
+
+      const activeJobs = safeJobs.filter(
+        (job) => job.status === "queued" || job.status === "processing",
+      );
+      if (activeJobs.length === 1) {
+        const active = activeJobs[0];
+        const isStale =
+          active.status === "queued"
+            ? nowMicros - active.createdAt >
+              FIRST_PREVIEW_QUEUED_JOB_MAX_AGE_SECONDS *
+                MICROSECONDS_PER_SECOND
+            : active.deadlineAt === null || nowMicros > active.deadlineAt;
+        if (isStale) return unavailable();
         return { state: "pending" } as const;
       }
 
       const latest = [...safeJobs].sort(
         (left, right) => right.attemptNumber - left.attemptNumber,
       )[0];
-      return latest.status === "failed" &&
+      if (!latest) return unavailable();
+
+      if (latest.status === "succeeded") {
+        const linkedOutput = safeOutputs.find(
+          (output) => output.jobId === latest.id,
+        );
+        return safeOutputs.length === 1 &&
+          linkedOutput?.readinessStatus === "not_ready" &&
+          linkedOutput.assetValidationStatus === "passed" &&
+          linkedOutput.assetValidatedAt !== null &&
+          latest.completedAt !== null &&
+          linkedOutput.assetValidatedAt <= latest.completedAt &&
+          (linkedOutput.automaticGateStatus === null ||
+            linkedOutput.automaticGateStatus === "pending")
+          ? ({ state: "pending" } as const)
+          : unavailable();
+      }
+
+      return safeJobs.length === 1 &&
+        safeOutputs.length === 0 &&
+        latest.status === "failed" &&
         latest.attemptNumber === 1 &&
         latest.retryEligible === true
         ? ({ state: "pending" } as const)
@@ -561,6 +923,7 @@ export class SupabaseFirstPreviewCustomerViewStateSource
 
 export function createSupabaseFirstPreviewCustomerViewStateSource(
   database: FirstPreviewCustomerViewDatabaseClient,
+  options: Readonly<{ clock?: () => number }> = {},
 ): FirstPreviewCustomerPreviewStateSource {
-  return new SupabaseFirstPreviewCustomerViewStateSource(database);
+  return new SupabaseFirstPreviewCustomerViewStateSource(database, options);
 }
