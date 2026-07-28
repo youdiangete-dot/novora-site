@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 import Module from "node:module";
 import path from "node:path";
@@ -48,12 +49,19 @@ const {
 const { structureConceptBriefForInstantPreview } = testRequire(
   "../../lib/server/ai-sketch/instant-preview-agent-core",
 ) as typeof import("../../lib/server/ai-sketch/instant-preview-agent-core");
-const { validateNovoraDesignSpec } = testRequire(
+const {
+  isContradictoryZodiacMouseEyeRule,
+  validateNovoraDesignSpec,
+  ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
+} = testRequire(
   "../../lib/server/ai-sketch/design-spec",
 ) as typeof import("../../lib/server/ai-sketch/design-spec");
 const { validateNovoraHandSketchInstruction } = testRequire(
   "../../lib/server/ai-sketch/hand-sketch-instruction",
 ) as typeof import("../../lib/server/ai-sketch/hand-sketch-instruction");
+const { evaluateAutomaticFirstPreviewGates } = testRequire(
+  "../../lib/server/ai-sketch/first-preview-runtime",
+) as typeof import("../../lib/server/ai-sketch/first-preview-runtime");
 
 moduleInternals._resolveFilename = originalResolveFilename;
 
@@ -133,6 +141,67 @@ function expectFailure(
   return result;
 }
 
+function aggregateInputBytes(
+  input: InstantPreviewAgentStructuredInput,
+): number {
+  return Buffer.byteLength(JSON.stringify(input), "utf8");
+}
+
+function inputAtAggregateByteSize(
+  targetBytes: number,
+): InstantPreviewAgentStructuredInput {
+  const input = clone(structured());
+  input.reviewRequirements = Array.from({ length: 16 }, () => "x");
+  let remaining = targetBytes - aggregateInputBytes(input);
+  if (remaining < 0) {
+    throw new Error("Aggregate input fixture baseline exceeds target.");
+  }
+  for (let index = 0; index < input.reviewRequirements.length; index += 1) {
+    const growth = Math.min(
+      remaining,
+      NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumStringLength - 1,
+    );
+    input.reviewRequirements[index] += "x".repeat(growth);
+    remaining -= growth;
+  }
+  if (remaining !== 0) {
+    throw new Error("Aggregate input fixture lacks padding capacity.");
+  }
+  expect(aggregateInputBytes(input)).toBe(targetBytes);
+  return input;
+}
+
+function boundedOtherStructured(): InstantPreviewAgentStructuredInput {
+  return structured({
+    pieceType: "other",
+    otherJewelryType: "articulated brooch",
+    designIntent: "A wearable articulated floral brooch.",
+    dimensions: ["wearable lapel scale"],
+    requestedViews: ["front view", "back view"],
+  });
+}
+
+function earringsStructured(
+  designIntent: string,
+): InstantPreviewAgentStructuredInput {
+  return structured({
+    pieceType: "earrings",
+    designIntent,
+    dimensions: ["drop length unknown"],
+    requestedViews: ["front view", "detail view"],
+  });
+}
+
+function freeTextRuleArrays(output: ReturnType<typeof expectSuccess>): string[][] {
+  return [
+    output.designSpec.stones.special_stone_rules,
+    output.handSketchInstruction.stone_and_setting_instructions
+      .special_stone_rules,
+    output.handSketchInstruction.negative_constraints,
+    output.handSketchInstruction.human_review_checklist,
+  ];
+}
+
 test("produces deterministic valid shared-contract output", () => {
   const input = structured();
   const first = expectSuccess(input);
@@ -200,6 +269,39 @@ for (const [label, overrides, pieceType] of supportedPieces) {
   });
 }
 
+test("rejects a blank bounded other-jewelry value", () => {
+  const input = clone(boundedOtherStructured());
+  input.piece.boundedOtherJewelryType = null;
+  expectFailure(input, "unsupported_input");
+});
+
+test("rejects an unknown bounded other-jewelry value", () => {
+  const input = clone(boundedOtherStructured());
+  input.piece.boundedOtherJewelryType = "watch";
+  expectFailure(input, "unsupported_input");
+});
+
+test("rejects unrestricted prose containing an allowlisted other-jewelry word", () => {
+  const input = clone(boundedOtherStructured());
+  input.piece.boundedOtherJewelryType =
+    "invent an unrestricted articulated brooch category";
+  expectFailure(input, "unsupported_input");
+});
+
+test("rejects a malformed bounded other-jewelry value", () => {
+  const malformed = clone(boundedOtherStructured());
+  malformed.piece.boundedOtherJewelryType = "brooch<script>";
+  expectFailure(malformed, "unsupported_input");
+});
+
+test("rejects an overlong bounded other-jewelry value", () => {
+  const overlong = clone(boundedOtherStructured());
+  overlong.piece.boundedOtherJewelryType = "x".repeat(
+    NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumStringLength + 1,
+  );
+  expectFailure(overlong, "oversized_input");
+});
+
 test("preserves meaningful stone and requested-view order", () => {
   const output = expectSuccess(structured());
   expect(output.designSpec.stones.center_stone).toContain("pear");
@@ -238,6 +340,38 @@ test("rejects a 90-degree stone rotation between requested views", () => {
     "front view with vertical long axis",
     "profile detail with horizontal long axis",
   ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects whole-view and detail-view center table contradictions", () => {
+  const input = clone(structured());
+  input.composition.requestedViews = [
+    "front view with the center-stone table face-up",
+    "setting detail with the center-stone table face-down",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects accent-table contradictions isolated to an enlarged detail", () => {
+  const input = clone(structured());
+  input.composition.requestedViews = [
+    "front view",
+    "enlarged detail with accent-stone tables face-down",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects a face-down center stone in a front-facing stacking elevation", () => {
+  const input = clone(
+    structured({
+      designIntent: "A main ring with an open stacking ring.",
+      composition: "Open stacking ring wraps from left and right.",
+      requestedViews: ["front view", "stacking elevation"],
+    }),
+  );
+  input.stones.centerStoneDirection = "Keep the center stone face-down.";
+  input.stones.items[0].tableOrientation = "face-down";
+  input.stones.items[1].tableOrientation = "face-down";
   expectFailure(input, "contradictory_input");
 });
 
@@ -309,6 +443,81 @@ test("rejects contradictory prong counts", () => {
   expectFailure(input, "contradictory_input");
 });
 
+test("rejects a split-to-double prong-style change between views", () => {
+  const input = clone(structured());
+  input.stones.items[0].setting = "five split-prong setting";
+  input.composition.requestedViews = [
+    "front view with split prongs",
+    "detail view with double prongs",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("preserves identical bounded prong positions across whole and detail views", () => {
+  const input = clone(structured());
+  input.stones.items[0].setting =
+    "four-prong setting with top, bottom, left, and right prongs";
+  input.composition.requestedViews = [
+    "front view with four prongs at top, bottom, left, and right",
+    "detail view with four prongs at top, bottom, left, and right",
+  ];
+  const output = expectSuccess(input);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).toContain("bottom, left, right, top");
+});
+
+test("rejects changed bounded prong positions with a stable count", () => {
+  const input = clone(structured());
+  input.stones.items[0].setting =
+    "four-prong setting with top, bottom, left, and right prongs";
+  input.composition.requestedViews = [
+    "front view with four prongs at top, bottom, left, and right",
+    "detail view with four prongs at top, bottom, and tip",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects omitted structural prongs when an exact count is supplied", () => {
+  const input = clone(structured());
+  input.composition.requestedViews = [
+    "front view with five prongs",
+    "detail view without prongs",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects an invented structural prong when an exact count is supplied", () => {
+  const input = clone(structured());
+  input.composition.requestedViews = [
+    "front view with five prongs",
+    "detail view with an extra prong",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects a prong-to-bezel setting-family change", () => {
+  const input = clone(structured());
+  input.composition.requestedViews = [
+    "front view with five-prong setting",
+    "detail view with bezel setting",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("fails safely for an unsupported setting instead of inventing one", () => {
+  const input = clone(structured());
+  input.stones.items[0].setting = "quantum floating matrix";
+  expectFailure(input, "unsupported_input");
+});
+
+test("rejects a prong position incompatible with a vertical directional tip", () => {
+  const input = clone(structured());
+  input.stones.items[0].setting =
+    "five-prong setting with a left-tip prong";
+  expectFailure(input, "contradictory_input");
+});
+
 test("preserves a specified ring-shank count", () => {
   const input = clone(structured());
   input.customerIntent.designDescription = "Use a double ring shank.";
@@ -318,11 +527,53 @@ test("preserves a specified ring-shank count", () => {
   ).toContain("exactly 2 ring shanks");
 });
 
+test("preserves exactly two shanks for one main and one combined companion ring", () => {
+  const input = clone(structured());
+  input.customerIntent.designDescription =
+    "Use one main ring and one combined companion ring.";
+  input.avoid = ["avoid a third ring shank"];
+  const output = expectSuccess(input);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).toContain("exactly 2 ring shanks");
+  expect(
+    output.handSketchInstruction.negative_constraints.join(" "),
+  ).toContain("avoid a third ring shank");
+});
+
 test("rejects inconsistent ring-shank counts", () => {
   const input = clone(structured());
   input.customerIntent.designDescription = "Use a double ring shank.";
   input.composition.requestedViews = ["front view", "detail with single shank"];
   expectFailure(input, "contradictory_input");
+});
+
+test("keeps negative avoid text out of positive feature inference", () => {
+  const input = clone(structured());
+  input.avoid = [
+    "avoid a halo",
+    "no red gemstone eyes",
+    "do not rotate the center stone",
+    "avoid a third ring shank",
+  ];
+  const output = expectSuccess(input);
+  expect(output.designSpec.motifs.motif_planning).not.toContain("halo");
+  expect(output.designSpec.stones.center_stone).not.toMatch(/\bred\b/i);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).not.toContain("exactly 3 ring shanks");
+  expect(
+    output.handSketchInstruction.negative_constraints.join(" "),
+  ).toEqual(expect.stringContaining("avoid a halo"));
+  expect(
+    output.handSketchInstruction.negative_constraints.join(" "),
+  ).toEqual(expect.stringContaining("no red gemstone eyes"));
+  expect(
+    output.handSketchInstruction.negative_constraints.join(" "),
+  ).toEqual(expect.stringContaining("do not rotate the center stone"));
+  expect(
+    output.handSketchInstruction.negative_constraints.join(" "),
+  ).toEqual(expect.stringContaining("avoid a third ring shank"));
 });
 
 test("keeps local and overall motif placement consistent", () => {
@@ -335,6 +586,78 @@ test("keeps local and overall motif placement consistent", () => {
   expect(output.handSketchInstruction.views.at(-1)?.instruction).toContain(
     "add or remove parts",
   );
+});
+
+test("rejects a motif moving from shoulders to a halo detail", () => {
+  const input = clone(structured());
+  input.composition.motif = "two leaf motifs on the shoulders";
+  input.composition.requestedViews = [
+    "whole front view with two leaf motifs on the shoulders",
+    "detail view with two leaf motifs on the halo",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects a motif-count change between whole and detail views", () => {
+  const input = clone(structured());
+  input.composition.motif = "two leaf motifs on the shoulders";
+  input.composition.requestedViews = [
+    "whole front view with two leaf motifs",
+    "detail view with three leaf motifs",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects omission of an explicitly required front-to-back motif continuation", () => {
+  const input = clone(structured());
+  input.composition.direction =
+    "The leaf motif continues from the front to the back.";
+  input.composition.requestedViews = [
+    "front view",
+    "back view without the motif",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects an explicit whole-versus-detail construction rewrite", () => {
+  const input = clone(structured());
+  input.composition.requestedViews = [
+    "whole front view",
+    "detail view removes a motif component",
+  ];
+  expectFailure(input, "contradictory_input");
+});
+
+test("rejects an unintentionally mismatched earring pair", () => {
+  const input = clone(
+    earringsStructured("A matching pair of drop earrings."),
+  );
+  input.composition.direction =
+    "The left and right earrings are different by accident.";
+  expectFailure(input, "contradictory_input");
+});
+
+test("preserves an explicitly intentional asymmetric earring pair", () => {
+  const input = clone(
+    earringsStructured(
+      "An intentionally asymmetric pair of drop earrings.",
+    ),
+  );
+  input.composition.motif =
+    "Left earring has one leaf motif; right earring has two leaf motifs.";
+  const output = expectSuccess(input);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).toContain("intentional left-right asymmetry");
+});
+
+test("rejects simultaneous matching and intentionally asymmetric pair requirements", () => {
+  const input = clone(
+    earringsStructured(
+      "A matching pair that is also intentionally asymmetric.",
+    ),
+  );
+  expectFailure(input, "contradictory_input");
 });
 
 test("rejects ruby or red gemstone eyes for a zodiac mouse", () => {
@@ -373,6 +696,56 @@ test("does not invent an alternative mouse-eye gemstone", () => {
   );
 });
 
+test("preserves an explicitly selected non-red zodiac-mouse eye gemstone", () => {
+  const output = expectSuccess(
+    structured({
+      pieceType: "animal or sculpture concept",
+      designIntent: "A zodiac mouse pendant with blue sapphire eyes.",
+      motif: "zodiac mouse",
+      stones: [
+        {
+          role: "eyes",
+          type: "sapphire",
+          color: "blue",
+          shape: "round",
+          setting: "bezel",
+        },
+      ],
+      dimensions: ["small wearable pendant scale"],
+    }),
+  );
+  expect(output.designSpec.stones.center_stone).toContain("sapphire");
+  expect(output.designSpec.stones.center_stone).toContain("blue");
+});
+
+test("uses only the canonical zodiac-mouse eye rule in free-text rule arrays", () => {
+  const input = clone(
+    structured({
+      pieceType: "animal or sculpture concept",
+      designIntent: "A zodiac mouse pendant with eye stones unknown.",
+      motif: "zodiac mouse",
+      stones: [],
+      dimensions: ["small wearable pendant scale"],
+      unknowns: ["eye gemstone type"],
+    }),
+  );
+  input.avoid = ["no red gemstone eyes"];
+  const output = expectSuccess(input);
+  for (const rules of freeTextRuleArrays(output)) {
+    expect(rules).toContain(ZODIAC_MOUSE_EYE_GEMSTONE_RULE);
+    expect(
+      rules.filter(
+        (rule) =>
+          rule === ZODIAC_MOUSE_EYE_GEMSTONE_RULE ||
+          isContradictoryZodiacMouseEyeRule(rule),
+      ),
+    ).toEqual([ZODIAC_MOUSE_EYE_GEMSTONE_RULE]);
+    expect(rules.some(isContradictoryZodiacMouseEyeRule)).toBe(false);
+  }
+  expect(output.designSpec.stones.center_stone).toBe("none specified");
+  expect(output.designSpec.stones.side_stones).toBe("none specified");
+});
+
 test("keeps unknown values unknown and avoids material or size invention", () => {
   const output = expectSuccess(structured());
   expect(output.designSpec.materials.metal_preference).toContain(
@@ -386,6 +759,42 @@ test("keeps unknown values unknown and avoids material or size invention", () =>
     ]),
   );
   expect(JSON.stringify(output)).not.toMatch(/\b(14k|18k|950 platinum|1\.0 carat)\b/i);
+});
+
+test("keeps gold color unknown when only a general palette is supplied", () => {
+  const output = expectSuccess(structured());
+  expect(output.designSpec.materials.gold_color).toBe("unspecified");
+});
+
+test("does not infer gold color from gemstone, motif, enamel, mood, or palette text", () => {
+  const output = expectSuccess(
+    structured({
+      designIntent:
+        "A rose-colored floral mood with pink enamel and blush gemstones.",
+      materialDirection: ["platinum direction; exact purity unknown"],
+      colorDirection: "rose gemstone palette with warm enamel",
+      motif: "rose flower motif",
+    }),
+  );
+  expect(output.designSpec.materials.gold_color).toBe("unspecified");
+});
+
+test("populates gold color from an explicit supported material source", () => {
+  const output = expectSuccess(
+    structured({
+      materialDirection: ["rose gold direction; exact purity unknown"],
+    }),
+  );
+  expect(output.designSpec.materials.gold_color).toBe("rose gold");
+});
+
+test("rejects contradictory explicit supported gold colors", () => {
+  const input = clone(
+    structured({
+      materialDirection: ["yellow gold", "white gold"],
+    }),
+  );
+  expectFailure(input, "contradictory_input");
 });
 
 test("does not invent a pendant chain specification", () => {
@@ -419,6 +828,26 @@ test("contains no price, sourcing, approval, or manufacturability invention", ()
   expect(serialized).toContain("manufacturability guarantee");
 });
 
+test("remains compatible with automatically gated customer-visible First Preview", () => {
+  const output = expectSuccess(structured());
+  const serialized = JSON.stringify(output);
+  expect(output.designSpec.safety_boundaries).toMatchObject({
+    first_preview_ready: "first_preview_ready",
+    approved_for_customer: "approved_for_customer",
+    first_preview_ready_is_separate_from_approved_for_customer: true,
+  });
+  expect(
+    output.handSketchInstruction.safety_boundaries,
+  ).toMatchObject({
+    first_preview_ready: "first_preview_ready",
+    approved_for_customer: "approved_for_customer",
+    first_preview_ready_is_separate_from_approved_for_customer: true,
+  });
+  expect(serialized).not.toMatch(
+    /\binternal[- ]only\b|\bemail[- ]only\b|\bapproved_for_customer\b.{0,40}\b(?:required|prerequisite)\b|\b(?:human|manual) (?:pre-?)?approval\b.{0,50}\bfirst preview\b/i,
+  );
+});
+
 test("uses only the PII-free internal reference sentinel", () => {
   const output = expectSuccess(structured());
   expect(output.designSpec.public_reference).toBe(
@@ -428,6 +857,54 @@ test("uses only the PII-free internal reference sentinel", () => {
     NOVORA_PII_FREE_DESIGN_REFERENCE,
   );
   expect(JSON.stringify(output)).not.toContain("NOVORA-CB-");
+});
+
+test("does not reconstruct the sentinel from customer data", () => {
+  const first = expectSuccess(structured());
+  const secondInput = clone(structured());
+  secondInput.customerIntent.designDescription =
+    "A different PII-free sentimental design direction.";
+  const second = expectSuccess(secondInput);
+  expect(first.designSpec.public_reference).toBe(
+    NOVORA_PII_FREE_DESIGN_REFERENCE,
+  );
+  expect(second.designSpec.public_reference).toBe(
+    NOVORA_PII_FREE_DESIGN_REFERENCE,
+  );
+  expect(second.designSpec.public_reference).not.toContain("sentimental");
+});
+
+test("cannot use the internal sentinel as a real customer-access reference", () => {
+  const output = expectSuccess(structured());
+  const gates = evaluateAutomaticFirstPreviewGates({
+    persistenceConfirmed: true,
+    conceptBriefId: "123e4567-e89b-42d3-a456-426614174000",
+    publicReference: NOVORA_PII_FREE_DESIGN_REFERENCE,
+    designSpec: output.designSpec,
+    handSketchInstruction: output.handSketchInstruction,
+    generation: {
+      status: "completed",
+      imageCount: 1,
+      assetId: "preview_asset_sentinel_test",
+      checks: {
+        contentSafetyPassed: true,
+        privacyPassed: true,
+        outputValidityPassed: true,
+        providerMetadataExposed: false,
+        internalPromptExposed: false,
+        reviewerOrAdminNotesExposed: false,
+        privateStoragePathExposed: false,
+        secretExposed: false,
+      },
+      failureCategory: null,
+    },
+    accessControlEligible: true,
+    falseSuccessDetected: false,
+  });
+  expect(gates.ready).toBe(false);
+  expect(gates.lifecycleDecision).toBe("not_ready");
+  expect(gates.failedGates).toContain("valid_public_reference");
+  expect(gates.approvedForCustomerRequired).toBe(false);
 });
 
 for (const malformed of [null, undefined, 1, "brief", [], true]) {
@@ -469,6 +946,57 @@ test("enforces bounded strings, arrays, and output", () => {
   expect(JSON.stringify(output).length).toBeLessThanOrEqual(
     NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumOutputCharacters,
   );
+});
+
+test("accepts the exact maximum aggregate UTF-8 input budget", () => {
+  const input = inputAtAggregateByteSize(
+    NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumInputBytes,
+  );
+  expectSuccess(input);
+});
+
+test("rejects one byte over the aggregate UTF-8 input budget", () => {
+  const input = inputAtAggregateByteSize(
+    NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumInputBytes + 1,
+  );
+  const rejectedMarker = "REJECTED_AGGREGATE_MARKER";
+  input.reviewRequirements[0] =
+    rejectedMarker +
+    input.reviewRequirements[0].slice(rejectedMarker.length);
+  const rejected = expectFailure(input, "oversized_input");
+  expect(JSON.stringify(rejected)).not.toContain(rejectedMarker);
+});
+
+test("prevents many individually valid fields from bypassing the aggregate budget", () => {
+  const input = clone(structured());
+  input.reviewRequirements = Array.from(
+    { length: 16 },
+    () => "x".repeat(NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumStringLength),
+  );
+  expect(
+    input.reviewRequirements.every(
+      (value) =>
+        value.length <=
+        NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumStringLength,
+    ),
+  ).toBe(true);
+  expect(aggregateInputBytes(input)).toBeGreaterThan(
+    NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumInputBytes,
+  );
+  expectFailure(input, "oversized_input");
+});
+
+test("counts Unicode input by UTF-8 bytes at the aggregate boundary", () => {
+  const input = inputAtAggregateByteSize(
+    NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumInputBytes,
+  );
+  const lastIndex = input.reviewRequirements.length - 1;
+  input.reviewRequirements[lastIndex] =
+    input.reviewRequirements[lastIndex].slice(0, -1) + "é";
+  expect(aggregateInputBytes(input)).toBe(
+    NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumInputBytes + 1,
+  );
+  expectFailure(input, "oversized_input");
 });
 
 test("rejects inherited mandatory properties", () => {
