@@ -29,18 +29,6 @@ export type FirstPreviewCustomerViewBinding = (
   request: FirstPreviewCustomerViewBindingRequest,
 ) => Promise<FirstPreviewCustomerView>;
 
-export type FirstPreviewCustomerAccessProofReader = () =>
-  | unknown
-  | Promise<unknown>;
-
-export type FirstPreviewCustomerViewBindingDependencies = Readonly<{
-  enabled: boolean;
-  signingSecret: string | null;
-  clock: () => number;
-  readAccessProof: FirstPreviewCustomerAccessProofReader;
-  createStateSource: () => FirstPreviewCustomerPreviewStateSource;
-}>;
-
 type FirstPreviewCookieStore = Readonly<{
   get(name: string): Readonly<{ value: string }> | undefined;
 }>;
@@ -62,7 +50,7 @@ function hasUsableSigningSecret(value: unknown): value is string {
   );
 }
 
-export function readExactFirstPreviewCustomerAccessCookie(
+function readExactFirstPreviewCustomerAccessCookie(
   cookieStore: FirstPreviewCookieStore,
 ): string | null {
   try {
@@ -79,42 +67,6 @@ async function readProductionFirstPreviewCustomerAccessProof(): Promise<
   return readExactFirstPreviewCustomerAccessCookie(await cookies());
 }
 
-export function createFirstPreviewCustomerViewBinding(
-  dependencies: FirstPreviewCustomerViewBindingDependencies,
-): FirstPreviewCustomerViewBinding {
-  return async (request) => {
-    if (
-      dependencies.enabled !== true ||
-      !hasUsableSigningSecret(dependencies.signingSecret)
-    ) {
-      return unavailable();
-    }
-    try {
-      const accessProof = await dependencies.readAccessProof();
-      if (typeof accessProof !== "string" || accessProof.length === 0) {
-        return denied();
-      }
-
-      const lazyStateSource: FirstPreviewCustomerPreviewStateSource = {
-        async readExactCustomerPreviewState(lookup) {
-          const stateSource = dependencies.createStateSource();
-          return stateSource.readExactCustomerPreviewState(lookup);
-        },
-      };
-      return await readFirstPreviewCustomerView({
-        publicReference: request.publicReference,
-        accessProof,
-      }, {
-        clock: dependencies.clock,
-        signingSecret: dependencies.signingSecret,
-        stateSource: lazyStateSource,
-      });
-    } catch {
-      return unavailable();
-    }
-  };
-}
-
 export async function readFirstPreviewCustomerViewBinding(
   request: FirstPreviewCustomerViewBindingRequest,
 ): Promise<FirstPreviewCustomerView> {
@@ -125,20 +77,34 @@ export async function readFirstPreviewCustomerViewBinding(
       process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? null;
     if (!hasUsableSigningSecret(signingSecret)) return unavailable();
 
-    return createFirstPreviewCustomerViewBinding({
-      enabled: true,
-      signingSecret,
-      clock: () => Math.floor(Date.now() / 1_000),
-      readAccessProof: readProductionFirstPreviewCustomerAccessProof,
-      createStateSource() {
+    const accessProof = await readProductionFirstPreviewCustomerAccessProof();
+    if (typeof accessProof !== "string" || accessProof.length === 0) {
+      return denied();
+    }
+
+    const lazyStateSource: FirstPreviewCustomerPreviewStateSource = {
+      async readExactCustomerPreviewState(lookup) {
         const supabase = createSupabaseAdminClientOrNull();
-        return supabase
+        const stateSource = supabase
           ? createSupabaseFirstPreviewCustomerViewStateSource(
               createFirstPreviewCustomerViewDatabaseClient(supabase),
             )
           : createUnavailableFirstPreviewCustomerViewStateSource();
+        return stateSource.readExactCustomerPreviewState(lookup);
       },
-    })(request);
+    };
+
+    return await readFirstPreviewCustomerView(
+      {
+        publicReference: request.publicReference,
+        accessProof,
+      },
+      {
+        clock: () => Math.floor(Date.now() / 1_000),
+        signingSecret,
+        stateSource: lazyStateSource,
+      },
+    );
   } catch {
     return unavailable();
   }

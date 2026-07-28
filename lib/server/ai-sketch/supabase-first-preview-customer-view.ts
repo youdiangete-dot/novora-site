@@ -166,6 +166,8 @@ const DAYS_BEFORE_MONTH = [
 const MICROSECONDS_PER_SECOND = BigInt(1_000_000);
 const SECONDS_PER_DAY = BigInt(86_400);
 const FIRST_PREVIEW_QUEUED_JOB_MAX_AGE_SECONDS = BigInt(1_800);
+const FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS = BigInt(1_800);
+const FIRST_PREVIEW_RETRY_AVAILABILITY_MAX_AGE_SECONDS = BigInt(1_800);
 const FIRST_PREVIEW_FAILURE_CATEGORIES = new Set([
   "configuration_missing",
   "invalid_structured_input",
@@ -352,6 +354,7 @@ type SafeJob = Readonly<{
   startedAt: bigint | null;
   deadlineAt: bigint | null;
   completedAt: bigint | null;
+  failedAt: bigint | null;
 }>;
 
 type SafeOutput = Readonly<{
@@ -360,6 +363,8 @@ type SafeOutput = Readonly<{
   readinessStatus: "not_ready" | "first_preview_ready" | "revoked";
   assetValidationStatus: null | "pending" | "passed" | "failed";
   automaticGateStatus: null | "pending" | "passed" | "failed";
+  createdAt: bigint;
+  assetCreatedAt: bigint | null;
   assetValidatedAt: bigint | null;
   automaticGatePassedAt: bigint | null;
   readyAt: bigint | null;
@@ -477,6 +482,7 @@ function mapSafeJob(value: unknown, conceptBriefId: string): SafeJob | null {
       hasValidAttemptWindow &&
       completedAt !== null &&
       completedAt >= startedAt! &&
+      completedAt <= deadlineAt! &&
       value.failed_at === null &&
       value.cancelled_at === null &&
       value.timed_out_at === null &&
@@ -533,6 +539,7 @@ function mapSafeJob(value: unknown, conceptBriefId: string): SafeJob | null {
     startedAt,
     deadlineAt,
     completedAt,
+    failedAt,
   };
 }
 
@@ -562,6 +569,7 @@ function mapSafeOutput(
     return null;
   }
 
+  const createdAt = parseCanonicalUtcTimestampMicros(value.created_at)!;
   const assetCreatedAt = parseCanonicalUtcTimestampMicros(
     value.asset_created_at,
   );
@@ -585,10 +593,12 @@ function mapSafeOutput(
     ((value.asset_validation_status === "pending" ||
       value.asset_validation_status === "failed") &&
       assetCreatedAt !== null &&
+      createdAt <= assetCreatedAt &&
       value.asset_validated_at === null) ||
     (value.asset_validation_status === "passed" &&
       assetCreatedAt !== null &&
       assetValidatedAt !== null &&
+      createdAt <= assetCreatedAt &&
       assetCreatedAt <= assetValidatedAt);
   if (!validAssetValidation) return null;
 
@@ -651,6 +661,8 @@ function mapSafeOutput(
       value.asset_validation_status as SafeOutput["assetValidationStatus"],
     automaticGateStatus:
       value.automatic_gate_status as SafeOutput["automaticGateStatus"],
+    createdAt,
+    assetCreatedAt,
     assetValidatedAt,
     automaticGatePassedAt: gatePassedAt,
     readyAt,
@@ -685,7 +697,12 @@ function hasValidCandidateLineage(
       second.attemptNumber !== 2 ||
       second.parentJobId !== first.id ||
       first.status !== "failed" ||
-      first.retryEligible !== true
+      first.retryEligible !== true ||
+      first.failedAt === null ||
+      second.createdAt < first.failedAt ||
+      (second.startedAt !== null &&
+        (second.startedAt < second.createdAt ||
+          second.startedAt < first.failedAt))
     ) {
       return false;
     }
@@ -693,6 +710,25 @@ function hasValidCandidateLineage(
 
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
   if (outputs.some((output) => !jobsById.has(output.jobId))) return false;
+  if (
+    outputs.some((output) => {
+      const job = jobsById.get(output.jobId);
+      if (!job) return true;
+      const legalJobBeginning = job.startedAt ?? job.createdAt;
+      return [
+        output.createdAt,
+        output.assetCreatedAt,
+        output.assetValidatedAt,
+        output.automaticGatePassedAt,
+        output.readyAt,
+      ].some(
+        (timestamp) =>
+          timestamp !== null && timestamp < legalJobBeginning,
+      );
+    })
+  ) {
+    return false;
+  }
   if (
     jobs.some(
       (job) =>
@@ -879,10 +915,10 @@ export class SupabaseFirstPreviewCustomerViewStateSource
         const active = activeJobs[0];
         const isStale =
           active.status === "queued"
-            ? nowMicros - active.createdAt >
+            ? nowMicros - active.createdAt >=
               FIRST_PREVIEW_QUEUED_JOB_MAX_AGE_SECONDS *
                 MICROSECONDS_PER_SECOND
-            : active.deadlineAt === null || nowMicros > active.deadlineAt;
+            : active.deadlineAt === null || nowMicros >= active.deadlineAt;
         if (isStale) return unavailable();
         return { state: "pending" } as const;
       }
@@ -902,6 +938,10 @@ export class SupabaseFirstPreviewCustomerViewStateSource
           linkedOutput.assetValidatedAt !== null &&
           latest.completedAt !== null &&
           linkedOutput.assetValidatedAt <= latest.completedAt &&
+          nowMicros <
+            latest.completedAt +
+              FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS *
+                MICROSECONDS_PER_SECOND &&
           (linkedOutput.automaticGateStatus === null ||
             linkedOutput.automaticGateStatus === "pending")
           ? ({ state: "pending" } as const)
@@ -912,7 +952,12 @@ export class SupabaseFirstPreviewCustomerViewStateSource
         safeOutputs.length === 0 &&
         latest.status === "failed" &&
         latest.attemptNumber === 1 &&
-        latest.retryEligible === true
+        latest.retryEligible === true &&
+        latest.failedAt !== null &&
+        nowMicros <
+          latest.failedAt +
+            FIRST_PREVIEW_RETRY_AVAILABILITY_MAX_AGE_SECONDS *
+              MICROSECONDS_PER_SECOND
         ? ({ state: "pending" } as const)
         : unavailable();
     } catch {

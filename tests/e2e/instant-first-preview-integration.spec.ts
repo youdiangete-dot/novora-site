@@ -5,6 +5,8 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 import {
+  FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME,
+  FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV,
   createFirstPreviewCustomerAccessProof,
 } from "../../lib/server/ai-sketch/first-preview-customer-access-contract";
 import {
@@ -15,13 +17,15 @@ import {
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
 } from "../../lib/server/ai-sketch/first-preview-persistence-contract";
 import type {
-  FirstPreviewCustomerPreviewStateSource,
-} from "../../lib/server/ai-sketch/first-preview-customer-view";
-import type {
   FirstPreviewCustomerViewDatabaseClient,
 } from "../../lib/server/ai-sketch/supabase-first-preview-customer-view";
 
 const moduleInternals = Module as unknown as {
+  _load(
+    request: string,
+    parent: unknown,
+    isMain: boolean,
+  ): unknown;
   _resolveFilename(
     request: string,
     parent: unknown,
@@ -75,15 +79,6 @@ const {
     ) as typeof import("../../lib/server/ai-sketch/first-preview-customer-session"),
 );
 const {
-  createFirstPreviewCustomerViewBinding,
-  readExactFirstPreviewCustomerAccessCookie,
-} = loadWithServerOnlyTestShim(
-  () =>
-    testRequire(
-      "../../lib/server/ai-sketch/first-preview-customer-view-binding",
-    ) as typeof import("../../lib/server/ai-sketch/first-preview-customer-view-binding"),
-);
-const {
   createSupabaseFirstPreviewCustomerAccessAuthorizer,
 } = loadWithServerOnlyTestShim(
   () =>
@@ -102,6 +97,7 @@ const {
 );
 const {
   attachFirstPreviewCustomerSessionCookie,
+  INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV,
   isInstantFirstPreviewAgentEnabled,
 } = loadWithServerOnlyTestShim(
   () =>
@@ -357,26 +353,140 @@ class FakeViewDatabase implements FirstPreviewCustomerViewDatabaseClient {
 function reader(
   database: FakeViewDatabase,
   options: Readonly<{
-    accessProof?: unknown;
-    enabled?: boolean;
+    cookieStore?: Readonly<{
+      get(name: string): Readonly<{ value: string }> | undefined;
+    }>;
+    cookieValue?: string | null;
+    featureFlagValue?: string | null;
+    signingSecret?: string | null;
+    sourceAvailable?: boolean;
     onCreateSource?: () => void;
   }> = {},
 ) {
-  return createFirstPreviewCustomerViewBinding({
-    enabled: options.enabled ?? true,
-    signingSecret: SECRET,
-    clock: () => NOW,
-    readAccessProof: () =>
-      Object.prototype.hasOwnProperty.call(options, "accessProof")
-        ? options.accessProof
-        : proof(),
-    createStateSource() {
-      options.onCreateSource?.();
-      return createSupabaseFirstPreviewCustomerViewStateSource(database, {
-        clock: () => NOW,
-      });
-    },
-  });
+  const cookieValue = Object.prototype.hasOwnProperty.call(
+    options,
+    "cookieValue",
+  )
+    ? options.cookieValue
+    : proof();
+  const cookieStore =
+    options.cookieStore ??
+    ({
+      get(name: string) {
+        return name === FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME &&
+          typeof cookieValue === "string"
+          ? { value: cookieValue }
+          : undefined;
+      },
+    } as const);
+  const bindingModulePath = testRequire.resolve(
+    "../../lib/server/ai-sketch/first-preview-customer-view-binding",
+  );
+  const originalLoad = moduleInternals._load;
+  delete testRequire.cache[bindingModulePath];
+  moduleInternals._load = function loadProductionBindingDependency(
+    request,
+    parent,
+    isMain,
+  ) {
+    if (request === "next/headers") {
+      return { cookies: async () => cookieStore };
+    }
+    if (request === "../supabase") {
+      return {
+        createSupabaseAdminClientOrNull() {
+          options.onCreateSource?.();
+          return options.sourceAvailable === false ? null : {};
+        },
+      };
+    }
+    if (request === "./supabase-first-preview-customer-view") {
+      return {
+        createFirstPreviewCustomerViewDatabaseClient() {
+          return database;
+        },
+        createSupabaseFirstPreviewCustomerViewStateSource() {
+          return createSupabaseFirstPreviewCustomerViewStateSource(database, {
+            clock: () => NOW,
+          });
+        },
+        createUnavailableFirstPreviewCustomerViewStateSource() {
+          return {
+            readExactCustomerPreviewState() {
+              return { state: "unavailable" as const };
+            },
+          };
+        },
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  let bindingModule: typeof import("../../lib/server/ai-sketch/first-preview-customer-view-binding");
+  try {
+    bindingModule = loadWithServerOnlyTestShim(
+      () =>
+        testRequire(
+          bindingModulePath,
+        ) as typeof import("../../lib/server/ai-sketch/first-preview-customer-view-binding"),
+    );
+  } finally {
+    moduleInternals._load = originalLoad;
+    delete testRequire.cache[bindingModulePath];
+  }
+
+  return async (
+    request: Parameters<
+      typeof bindingModule.readFirstPreviewCustomerViewBinding
+    >[0],
+  ) => {
+    const previousFeatureFlag =
+      process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
+    const previousSigningSecret =
+      process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV];
+    const originalDateNow = Date.now;
+    const featureFlagValue = Object.prototype.hasOwnProperty.call(
+      options,
+      "featureFlagValue",
+    )
+      ? options.featureFlagValue
+      : "true";
+    const signingSecret = Object.prototype.hasOwnProperty.call(
+      options,
+      "signingSecret",
+    )
+      ? options.signingSecret
+      : SECRET;
+    if (featureFlagValue === null) {
+      delete process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
+    } else {
+      process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV] = featureFlagValue;
+    }
+    if (signingSecret === null) {
+      delete process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV];
+    } else {
+      process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] =
+        signingSecret;
+    }
+    Date.now = () => NOW * 1_000;
+    try {
+      return await bindingModule.readFirstPreviewCustomerViewBinding(request);
+    } finally {
+      Date.now = originalDateNow;
+      if (previousFeatureFlag === undefined) {
+        delete process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
+      } else {
+        process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV] =
+          previousFeatureFlag;
+      }
+      if (previousSigningSecret === undefined) {
+        delete process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV];
+      } else {
+        process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] =
+          previousSigningSecret;
+      }
+    }
+  };
 }
 
 function viewRequest() {
@@ -416,8 +526,8 @@ function retryableFailureJob(overrides: Record<string, unknown> = {}) {
     started_at: null,
     deadline_at: null,
     completed_at: null,
-    failed_at: READY_AT,
-    updated_at: READY_AT,
+    failed_at: CREATED_AT,
+    updated_at: CREATED_AT,
     ...overrides,
   });
 }
@@ -445,6 +555,76 @@ function notReadyOutputRow(overrides: Record<string, unknown> = {}) {
     automatic_gate_passed_at: null,
     ...overrides,
   });
+}
+
+function succeededPendingJob(
+  completedAgoSeconds: number,
+  overrides: Record<string, unknown> = {},
+) {
+  const completedAt = NOW - completedAgoSeconds;
+  return jobRow({
+    created_at: epochIso(completedAt - 30),
+    started_at: epochIso(completedAt - 30),
+    deadline_at: epochIso(completedAt + 30),
+    completed_at: epochIso(completedAt),
+    updated_at: epochIso(completedAt),
+    ...overrides,
+  });
+}
+
+function succeededPendingOutputRow(
+  completedAgoSeconds: number,
+  overrides: Record<string, unknown> = {},
+) {
+  const completedAt = NOW - completedAgoSeconds;
+  return notReadyOutputRow({
+    created_at: epochIso(completedAt - 30),
+    asset_created_at: epochIso(completedAt - 20),
+    asset_validated_at: epochIso(completedAt - 10),
+    ...overrides,
+  });
+}
+
+function causalRetryRows(
+  options: Readonly<{
+    secondCreatedOffsetSeconds?: number;
+    secondStartedOffsetSeconds?: number;
+    outputCreatedOffsetSeconds?: number;
+  }> = {},
+) {
+  const failureAt = NOW - 120;
+  const secondCreatedAt =
+    failureAt + (options.secondCreatedOffsetSeconds ?? 0);
+  const secondStartedAt =
+    failureAt + (options.secondStartedOffsetSeconds ??
+      options.secondCreatedOffsetSeconds ??
+      0);
+  const outputCreatedAt =
+    secondStartedAt + (options.outputCreatedOffsetSeconds ?? 0);
+  return {
+    jobs: [
+      retryableFailureJob({
+        created_at: epochIso(failureAt - 60),
+        failed_at: epochIso(failureAt),
+        updated_at: epochIso(failureAt),
+      }),
+      attemptTwoJob({
+        created_at: epochIso(secondCreatedAt),
+        started_at: epochIso(secondStartedAt),
+        deadline_at: epochIso(secondStartedAt + 60),
+        completed_at: epochIso(secondStartedAt + 30),
+        updated_at: epochIso(secondStartedAt + 40),
+      }),
+    ],
+    output: outputRow({
+      job_id: SECOND_JOB_ID,
+      created_at: epochIso(outputCreatedAt),
+      asset_created_at: epochIso(outputCreatedAt + 5),
+      asset_validated_at: epochIso(outputCreatedAt + 10),
+      automatic_gate_passed_at: epochIso(secondStartedAt + 35),
+      first_preview_ready_at: epochIso(secondStartedAt + 40),
+    }),
+  };
 }
 
 test.describe("strict First Preview feature flag and session route binding", () => {
@@ -623,35 +803,71 @@ test.describe("trusted First Preview customer-view production binding", () => {
   test("invalid proof is denied before any state-source interaction", async () => {
     const database = new FakeViewDatabase();
     expect(
-      await reader(database, { accessProof: "invalid" })(viewRequest()),
+      await reader(database, { cookieValue: "invalid" })(viewRequest()),
     ).toEqual({ state: "denied" });
     expect(database.requests).toEqual([]);
   });
 
-  test("reads only the exact frozen HttpOnly-cookie identity", () => {
+  test("actual default binding reads only the exact frozen HttpOnly cookie", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [queuedJob()];
     const requestedNames: string[] = [];
-    const exact = readExactFirstPreviewCustomerAccessCookie({
-      get(name) {
-        requestedNames.push(name);
-        return name === "__Host-novora_first_preview_access"
-          ? { value: proof() }
-          : undefined;
-      },
-    });
-    expect(requestedNames).toEqual([
-      "__Host-novora_first_preview_access",
-    ]);
-    expect(exact).toBe(proof());
-
+    let sourceConstructions = 0;
     expect(
-      readExactFirstPreviewCustomerAccessCookie({
-        get(name) {
-          return name === "novora_first_preview_access"
-            ? { value: proof() }
-            : undefined;
+      await reader(database, {
+        cookieStore: {
+          get(name) {
+            requestedNames.push(name);
+            return name === FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME
+              ? { value: proof() }
+              : undefined;
+          },
         },
-      }),
-    ).toBeNull();
+        onCreateSource() {
+          sourceConstructions += 1;
+        },
+      })(viewRequest()),
+    ).toEqual({ state: "pending", pollAfterMs: 5_000 });
+    expect(requestedNames).toEqual([
+      FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME,
+    ]);
+    expect(sourceConstructions).toBe(1);
+
+    const wrongCookieDatabase = new FakeViewDatabase();
+    let wrongCookieSourceConstructions = 0;
+    expect(
+      await reader(wrongCookieDatabase, {
+        cookieStore: {
+          get(name) {
+            return name === "novora_first_preview_access"
+              ? { value: proof() }
+              : undefined;
+          },
+        },
+        onCreateSource() {
+          wrongCookieSourceConstructions += 1;
+        },
+      })(viewRequest()),
+    ).toEqual({ state: "denied" });
+    expect(wrongCookieSourceConstructions).toBe(0);
+    expect(wrongCookieDatabase.requests).toEqual([]);
+  });
+
+  test("missing, empty, and malformed exact-cookie proofs never construct a source", async () => {
+    for (const cookieValue of [null, "", "invalid"] as const) {
+      const database = new FakeViewDatabase();
+      let sourceConstructions = 0;
+      expect(
+        await reader(database, {
+          cookieValue,
+          onCreateSource() {
+            sourceConstructions += 1;
+          },
+        })(viewRequest()),
+      ).toEqual({ state: "denied" });
+      expect(sourceConstructions).toBe(0);
+      expect(database.requests).toEqual([]);
+    }
   });
 
   test("missing cookie proof is denied before source construction", async () => {
@@ -659,7 +875,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
     let sourceConstructions = 0;
     expect(
       await reader(database, {
-        accessProof: null,
+        cookieValue: null,
         onCreateSource: () => {
           sourceConstructions += 1;
         },
@@ -681,22 +897,23 @@ test.describe("trusted First Preview customer-view production binding", () => {
     };
     expect(
       await reader(database, {
-        accessProof: null,
+        cookieValue: null,
         onCreateSource: () => {
           sourceConstructions += 1;
         },
       })(untrustedRequest),
     ).toEqual({ state: "denied" });
     expect(sourceConstructions).toBe(0);
+    expect(database.requests).toEqual([]);
   });
 
-  test("injected proof reader preserves proof-before-source for pure tests", async () => {
+  test("valid exact-cookie proof preserves proof-before-source ordering", async () => {
     const database = new FakeViewDatabase();
     database.jobs = [queuedJob()];
     let sourceConstructions = 0;
     expect(
       await reader(database, {
-        accessProof: proof(),
+        cookieValue: proof(),
         onCreateSource: () => {
           sourceConstructions += 1;
         },
@@ -839,6 +1056,95 @@ test.describe("trusted First Preview customer-view production binding", () => {
     });
   });
 
+  test("enforces cross-attempt failure-to-retry temporal causality", async () => {
+    for (const options of [
+      {
+        secondCreatedOffsetSeconds: -1,
+        secondStartedOffsetSeconds: 0,
+      },
+      {
+        secondCreatedOffsetSeconds: -1,
+        secondStartedOffsetSeconds: -1,
+      },
+    ]) {
+      const rows = causalRetryRows(options);
+      const database = new FakeViewDatabase();
+      database.jobs = rows.jobs;
+      database.outputs = [rows.output];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "unavailable",
+      });
+    }
+
+    for (const secondCreatedOffsetSeconds of [0, 1]) {
+      const rows = causalRetryRows({ secondCreatedOffsetSeconds });
+      const database = new FakeViewDatabase();
+      database.jobs = rows.jobs;
+      database.outputs = [rows.output];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "ready",
+        assetRequest: {
+          publicReference: PUBLIC_REFERENCE,
+          outputId: OUTPUT_ID,
+        },
+      });
+    }
+  });
+
+  test("attempt-2 Output chronology cannot precede its own Job lifecycle", async () => {
+    const rows = causalRetryRows({ outputCreatedOffsetSeconds: -1 });
+    const database = new FakeViewDatabase();
+    database.jobs = rows.jobs;
+    database.outputs = [rows.output];
+    expect(await reader(database)(viewRequest())).toEqual({
+      state: "unavailable",
+    });
+  });
+
+  test("succeeded completion must be at or before its deadline", async () => {
+    for (const completedAt of [
+      "2026-07-23T10:00:01.500001Z",
+      GATED_AT,
+    ]) {
+      const database = new FakeViewDatabase();
+      database.jobs = [jobRow({ completed_at: completedAt })];
+      database.outputs = [outputRow()];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "ready",
+        assetRequest: {
+          publicReference: PUBLIC_REFERENCE,
+          outputId: OUTPUT_ID,
+        },
+      });
+    }
+
+    const lateDatabase = new FakeViewDatabase();
+    lateDatabase.jobs = [
+      jobRow({
+        completed_at: READY_AT,
+        updated_at: READY_AT,
+      }),
+    ];
+    lateDatabase.outputs = [notReadyOutputRow()];
+    expect(await reader(lateDatabase)(viewRequest())).toEqual({
+      state: "unavailable",
+    });
+  });
+
+  test("ready Output linked to a late-completed succeeded Job is unavailable", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [
+      jobRow({
+        completed_at: READY_AT,
+        updated_at: READY_AT,
+      }),
+    ];
+    database.outputs = [outputRow()];
+    expect(await reader(database)(viewRequest())).toEqual({
+      state: "unavailable",
+    });
+  });
+
   test("ready output remains compatible with the protected asset-route identity", async () => {
     const database = new FakeViewDatabase();
     database.outputs = [outputRow()];
@@ -927,7 +1233,13 @@ test.describe("trusted First Preview customer-view production binding", () => {
     for (const jobs of [
       [queuedJob()],
       [processingJob()],
-      [retryableFailureJob()],
+      [
+        retryableFailureJob({
+          created_at: epochIso(NOW - 60),
+          failed_at: epochIso(NOW - 30),
+          updated_at: epochIso(NOW - 30),
+        }),
+      ],
     ]) {
       const database = new FakeViewDatabase();
       database.jobs = jobs;
@@ -945,12 +1257,83 @@ test.describe("trusted First Preview customer-view production binding", () => {
 
   test("keeps only a permitted succeeded completion window pending", async () => {
     const database = new FakeViewDatabase();
-    database.jobs = [jobRow()];
-    database.outputs = [notReadyOutputRow()];
+    database.jobs = [succeededPendingJob(30)];
+    database.outputs = [succeededPendingOutputRow(30)];
     expect(await reader(database)(viewRequest())).toEqual({
       state: "pending",
       pollAfterMs: 5_000,
     });
+  });
+
+  test("succeeded gate-pending state expires at the exact bounded boundary", async () => {
+    for (const completedAgoSeconds of [1_799]) {
+      const database = new FakeViewDatabase();
+      database.jobs = [succeededPendingJob(completedAgoSeconds)];
+      database.outputs = [
+        succeededPendingOutputRow(completedAgoSeconds, {
+          automatic_gate_status: "pending",
+          automatic_gate_policy_version:
+            FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+        }),
+      ];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "pending",
+        pollAfterMs: 5_000,
+      });
+    }
+
+    for (const completedAgoSeconds of [1_800, 1_801, 7 * 24 * 60 * 60]) {
+      const database = new FakeViewDatabase();
+      database.jobs = [succeededPendingJob(completedAgoSeconds)];
+      database.outputs = [
+        succeededPendingOutputRow(completedAgoSeconds, {
+          automatic_gate_status: "pending",
+          automatic_gate_policy_version:
+            FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+        }),
+      ];
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "unavailable",
+      });
+    }
+  });
+
+  test("queued, processing, and retry pending expire at exact boundaries", async () => {
+    const scenarios = [
+      {
+        jobs: [
+          queuedJob({
+            created_at: epochIso(NOW - 1_800),
+            updated_at: epochIso(NOW - 1_800),
+          }),
+        ],
+      },
+      {
+        jobs: [
+          processingJob({
+            started_at: epochIso(NOW - 60),
+            deadline_at: epochIso(NOW),
+            updated_at: epochIso(NOW - 60),
+          }),
+        ],
+      },
+      {
+        jobs: [
+          retryableFailureJob({
+            created_at: epochIso(NOW - 1_860),
+            failed_at: epochIso(NOW - 1_800),
+            updated_at: epochIso(NOW - 1_800),
+          }),
+        ],
+      },
+    ];
+    for (const scenario of scenarios) {
+      const database = new FakeViewDatabase();
+      database.jobs = scenario.jobs;
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "unavailable",
+      });
+    }
   });
 
   test("maps stale active, gate-failed, malformed, conflicting, and exhausted states to unavailable", async () => {
@@ -1155,29 +1538,13 @@ test.describe("trusted First Preview customer-view production binding", () => {
   });
 
   test("missing feature, secret, or source configuration is safe", async () => {
-    const countingSource: FirstPreviewCustomerPreviewStateSource = {
-      async readExactCustomerPreviewState() {
-        throw new Error("must not run");
-      },
-    };
-    for (const binding of [
-      createFirstPreviewCustomerViewBinding({
-        enabled: false,
-        signingSecret: SECRET,
-        clock: () => NOW,
-        readAccessProof: () => proof(),
-        createStateSource: () => countingSource,
-      }),
-      createFirstPreviewCustomerViewBinding({
-        enabled: true,
-        signingSecret: null,
-        clock: () => NOW,
-        readAccessProof: () => proof(),
-        createStateSource: () => countingSource,
-      }),
+    for (const options of [
+      { featureFlagValue: "false" },
+      { signingSecret: null },
+      { sourceAvailable: false },
     ]) {
       expect(
-        await binding(viewRequest()),
+        await reader(new FakeViewDatabase(), options)(viewRequest()),
       ).toEqual({ state: "unavailable" });
     }
   });
@@ -1186,7 +1553,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
     const database = new FakeViewDatabase();
     expect(
       await reader(database, {
-        accessProof: proof({ briefId: OTHER_BRIEF_ID }),
+        cookieValue: proof({ briefId: OTHER_BRIEF_ID }),
       })(viewRequest()),
     ).toEqual({ state: "unavailable" });
     // A valid proof for another Brief can pass cryptographic verification, but
@@ -1196,7 +1563,17 @@ test.describe("trusted First Preview customer-view production binding", () => {
     ]);
   });
 
-  test("default Production binding mechanically uses cookies and no caller proof field", () => {
+  test("Production module exports no arbitrary raw-proof reader or factory", () => {
+    const bindingModule = loadWithServerOnlyTestShim(
+      () =>
+        testRequire(
+          "../../lib/server/ai-sketch/first-preview-customer-view-binding",
+        ) as Record<string, unknown>,
+    );
+    expect(Object.keys(bindingModule).sort()).toEqual([
+      "readFirstPreviewCustomerViewBinding",
+    ]);
+
     const source = readFileSync(
       path.join(
         process.cwd(),
@@ -1211,6 +1588,8 @@ test.describe("trusted First Preview customer-view production binding", () => {
       "cookieStore.get(FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME)",
     );
     expect(source).not.toContain("request.accessProof");
+    expect(source).not.toContain("FirstPreviewCustomerAccessProofReader");
+    expect(source).not.toContain("createFirstPreviewCustomerViewBinding");
   });
 
   test("all Coordinator lib bindings are mechanically server-only", () => {
