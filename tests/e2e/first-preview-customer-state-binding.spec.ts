@@ -179,6 +179,21 @@ function attemptOneRetryableFailure(
   };
 }
 
+function attemptOneProcessing(overrides: Record<string, unknown> = {}) {
+  return {
+    ...attemptOneSucceeded(),
+    status: "processing",
+    failureCategory: null,
+    retryEligible: null,
+    deadlineAt: "2026-07-28T00:00:35.000Z",
+    completedAt: null,
+    failedAt: null,
+    cancelledAt: null,
+    timedOutAt: null,
+    ...overrides,
+  };
+}
+
 function attemptTwoSucceeded(overrides: Record<string, unknown> = {}) {
   return {
     ...attemptOneSucceeded(),
@@ -381,6 +396,54 @@ test.describe("server-only First Preview customer state binding", () => {
     }
   });
 
+  test("accepts strict ordinary-cookie separation and exact access-cookie casing", async () => {
+    for (const cookieHeaderValue of [
+      `ordinary_cookie=value; ${FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME}=${proof()}`,
+      `ordinary_cookie=value; \t${FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME}=${proof()}`,
+    ]) {
+      const attempt = await read(
+        readySnapshot(),
+        request({ cookieHeader: cookieHeaderValue }),
+      );
+      expect(attempt.result.state).toBe("ready");
+      expect(attempt.deps.constructions()).toBe(1);
+      expect(attempt.deps.source()?.calls).toBe(1);
+    }
+  });
+
+  test("strict Cookie grammar denies every malformed segment before any source exists", async () => {
+    const accessCookie =
+      `${FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME}=${proof()}`;
+    const malformedHeaders = [
+      `bad name=value; ${accessCookie}`,
+      `${FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME} =${proof()}`,
+      `${FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME}= ${proof()}`,
+      `ordinary_cookie=value ; ${accessCookie}`,
+      `ordinary_cookie=bad value; ${accessCookie}`,
+      `ordinary_cookie="quoted"; ${accessCookie}`,
+      `ordinary_cookie=bad,value; ${accessCookie}`,
+      `ordinary_cookie=bad\\value; ${accessCookie}`,
+      `ordinary_cookie=value;; ${accessCookie}`,
+      `ordinary_cookie; ${accessCookie}`,
+      `ordinary_cookie=value; ${accessCookie};`,
+      `${accessCookie}; ${accessCookie}`,
+      `ordinary_cookie=value\r; ${accessCookie}`,
+      `ordinary_cookie=value\n; ${accessCookie}`,
+      `ordinary_cookie=value\0; ${accessCookie}`,
+    ];
+
+    for (const cookieHeaderValue of malformedHeaders) {
+      const deps = dependencies(readySnapshot());
+      const result = await readFirstPreviewCustomerState(
+        request({ cookieHeader: cookieHeaderValue }),
+        deps.value,
+      );
+      expectDenied(result);
+      expect(deps.constructions()).toBe(0);
+      expect(deps.source()).toBeNull();
+    }
+  });
+
   test("rejects query-like, bearer-like, and direct proof request fields", async () => {
     for (const extra of [
       { accessProof: proof() },
@@ -442,8 +505,8 @@ test.describe("server-only First Preview customer state binding", () => {
       pendingSnapshot({
         jobs: [
           attemptOneRetryableFailure({
-            deadlineAt: "2026-07-28T00:00:45.000Z",
-            failedAt: "2026-07-28T00:00:40.000Z",
+            deadlineAt: "2026-07-28T00:00:35.000Z",
+            failedAt: "2026-07-28T00:00:31.000Z",
           }),
         ],
       }),
@@ -453,11 +516,11 @@ test.describe("server-only First Preview customer state binding", () => {
 
   test("future completed evidence is unavailable", async () => {
     const { result } = await read(
-      readySnapshot({
+      pendingSnapshot({
         jobs: [
           attemptOneSucceeded({
-            deadlineAt: "2026-07-28T00:00:50.000Z",
-            completedAt: "2026-07-28T00:00:40.000Z",
+            deadlineAt: "2026-07-28T00:00:35.000Z",
+            completedAt: "2026-07-28T00:00:31.000Z",
           }),
         ],
       }),
@@ -494,13 +557,13 @@ test.describe("server-only First Preview customer state binding", () => {
 
   test("future asset and lifecycle evidence cannot authorize disclosure", async () => {
     for (const snapshot of [
-      readySnapshot({
+      pendingSnapshot({
         jobs: [
           attemptOneSucceeded({
             createdAt: "2026-07-28T00:00:31.000Z",
             startedAt: "2026-07-28T00:00:31.000Z",
             completedAt: "2026-07-28T00:00:31.000Z",
-            deadlineAt: "2026-07-28T00:00:31.000Z",
+            deadlineAt: "2026-07-28T00:00:35.000Z",
           }),
         ],
       }),
@@ -518,6 +581,101 @@ test.describe("server-only First Preview customer state binding", () => {
     ]) {
       expectUnavailable((await read(snapshot)).result);
     }
+  });
+
+  test("future started evidence cannot create a processing pending state", async () => {
+    const { result } = await read(
+      pendingSnapshot({
+        jobs: [
+          attemptOneProcessing({
+            createdAt: "2026-07-28T00:00:29.000Z",
+            startedAt: "2026-07-28T00:00:31.000Z",
+            deadlineAt: "2026-07-28T00:00:35.000Z",
+          }),
+        ],
+      }),
+    );
+    expectUnavailable(result);
+  });
+
+  test("a future deadline bounds legal processing pending without becoming event evidence", async () => {
+    const { result } = await read(
+      pendingSnapshot({
+        jobs: [attemptOneProcessing()],
+      }),
+    );
+    expect(result).toEqual({ state: "pending" });
+  });
+
+  test("processing remains pending one second before its future deadline", async () => {
+    const { result } = await read(
+      pendingSnapshot({
+        jobs: [
+          attemptOneProcessing({
+            deadlineAt: "2026-07-28T00:00:35.000Z",
+          }),
+        ],
+      }),
+      request(),
+      {
+        clock: () => Date.parse("2026-07-28T00:00:34.000Z") / 1_000,
+      },
+    );
+    expect(result).toEqual({ state: "pending" });
+  });
+
+  test("processing is unavailable exactly at and after its deadline", async () => {
+    for (const observation of [
+      "2026-07-28T00:00:35.000Z",
+      "2026-07-28T00:00:36.000Z",
+    ]) {
+      const { result } = await read(
+        pendingSnapshot({
+          jobs: [attemptOneProcessing()],
+        }),
+        request(),
+        {
+          clock: () => Date.parse(observation) / 1_000,
+        },
+      );
+      expectUnavailable(result);
+    }
+  });
+
+  test("processing requires startedAt to be strictly before deadlineAt", async () => {
+    for (const startedAt of [
+      "2026-07-28T00:00:35.000Z",
+      "2026-07-28T00:00:36.000Z",
+    ]) {
+      const { result } = await read(
+        pendingSnapshot({
+          jobs: [
+            attemptOneProcessing({
+              startedAt,
+              deadlineAt: "2026-07-28T00:00:35.000Z",
+            }),
+          ],
+        }),
+        request(),
+        {
+          clock: () => Date.parse("2026-07-28T00:00:34.000Z") / 1_000,
+        },
+      );
+      expectUnavailable(result);
+    }
+  });
+
+  test("a future deadline never authorizes ready disclosure", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [
+          attemptOneSucceeded({
+            deadlineAt: "2026-07-28T00:00:35.000Z",
+          }),
+        ],
+      }),
+    );
+    expectUnavailable(result);
   });
 
   test("protects every cross-attempt causal timestamp comparison", async () => {
@@ -602,6 +760,57 @@ test.describe("server-only First Preview customer state binding", () => {
     }
   });
 
+  test("duplicate Job UUID is unavailable with attempt 1 first", async () => {
+    const { result } = await read(
+      pendingSnapshot({
+        jobs: [
+          attemptOneRetryableFailure(),
+          attemptTwoSucceeded({ id: JOB_1_ID }),
+        ],
+      }),
+    );
+    expectUnavailable(result);
+  });
+
+  test("duplicate Job UUID is unavailable with attempt 2 first", async () => {
+    const { result } = await read(
+      pendingSnapshot({
+        jobs: [
+          attemptTwoSucceeded({ id: JOB_1_ID }),
+          attemptOneRetryableFailure(),
+        ],
+      }),
+    );
+    expectUnavailable(result);
+  });
+
+  test("duplicate Job UUID cannot authorize an otherwise valid attempt-2 Output", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [
+          attemptOneRetryableFailure(),
+          attemptTwoSucceeded({ id: JOB_1_ID }),
+        ],
+        outputs: [attemptTwoOutput({ jobId: JOB_1_ID })],
+      }),
+    );
+    expectUnavailable(result);
+  });
+
+  test("two distinct Job UUIDs preserve a valid attempt-2 ready lineage", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [attemptOneRetryableFailure(), attemptTwoSucceeded()],
+        outputs: [attemptTwoOutput()],
+      }),
+    );
+    expect(result).toEqual({
+      state: "ready",
+      publicReference: PUBLIC_REFERENCE,
+      outputId: OUTPUT_2_ID,
+    });
+  });
+
   test("a retryable-looking attempt-2 failure is unavailable because no third attempt is legal", async () => {
     const attemptTwoFailed = attemptTwoSucceeded({
       status: "failed",
@@ -624,6 +833,96 @@ test.describe("server-only First Preview customer state binding", () => {
         jobs: [
           attemptOneSucceeded({
             completedAt: "2026-07-28T00:00:21.000Z",
+          }),
+        ],
+      }),
+    );
+    expectUnavailable(result);
+  });
+
+  test("accepts completed before gate before ready", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [
+          attemptOneSucceeded({
+            completedAt: "2026-07-28T00:00:08.000Z",
+          }),
+        ],
+        outputs: [
+          attemptOneOutput({
+            automaticGatePassedAt: "2026-07-28T00:00:09.000Z",
+            readyAt: "2026-07-28T00:00:10.000Z",
+          }),
+        ],
+      }),
+    );
+    expect(result.state).toBe("ready");
+  });
+
+  test("accepts Job completion exactly at the automatic gate boundary", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [
+          attemptOneSucceeded({
+            completedAt: "2026-07-28T00:00:09.000Z",
+          }),
+        ],
+        outputs: [
+          attemptOneOutput({
+            automaticGatePassedAt: "2026-07-28T00:00:09.000Z",
+            readyAt: "2026-07-28T00:00:10.000Z",
+          }),
+        ],
+      }),
+    );
+    expect(result.state).toBe("ready");
+  });
+
+  test("gate before Job completion is unavailable", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [
+          attemptOneSucceeded({
+            completedAt: "2026-07-28T00:00:10.000Z",
+          }),
+        ],
+        outputs: [
+          attemptOneOutput({
+            automaticGatePassedAt: "2026-07-28T00:00:09.000Z",
+            readyAt: "2026-07-28T00:00:11.000Z",
+          }),
+        ],
+      }),
+    );
+    expectUnavailable(result);
+  });
+
+  test("ready before Job completion is unavailable", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [
+          attemptOneSucceeded({
+            completedAt: "2026-07-28T00:00:10.000Z",
+          }),
+        ],
+        outputs: [
+          attemptOneOutput({
+            automaticGatePassedAt: "2026-07-28T00:00:08.000Z",
+            readyAt: "2026-07-28T00:00:09.000Z",
+          }),
+        ],
+      }),
+    );
+    expectUnavailable(result);
+  });
+
+  test("ready before the automatic gate is unavailable", async () => {
+    const { result } = await read(
+      readySnapshot({
+        outputs: [
+          attemptOneOutput({
+            automaticGatePassedAt: "2026-07-28T00:00:11.000Z",
+            readyAt: "2026-07-28T00:00:10.000Z",
           }),
         ],
       }),
@@ -762,6 +1061,173 @@ test.describe("server-only First Preview customer state binding", () => {
     ]) {
       expectUnavailable((await read(snapshot)).result);
     }
+  });
+
+  test("rejects extra string own keys on Job and Output arrays", async () => {
+    const jobs = [attemptOneSucceeded()];
+    const outputs = [attemptOneOutput()];
+    Object.defineProperty(jobs, "extra", {
+      value: "unexpected",
+      enumerable: true,
+    });
+    Object.defineProperty(outputs, "extra", {
+      value: "unexpected",
+      enumerable: true,
+    });
+
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            jobs,
+            outputs: [attemptOneOutput()],
+          }),
+        )
+      ).result,
+    );
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            jobs: [attemptOneSucceeded()],
+            outputs,
+          }),
+        )
+      ).result,
+    );
+  });
+
+  test("rejects symbol own keys on authority-bearing arrays", async () => {
+    const jobs = [attemptOneSucceeded()];
+    const outputs = [attemptOneOutput()];
+    Object.defineProperty(jobs, Symbol("unexpected-job-key"), {
+      value: true,
+      enumerable: true,
+    });
+    Object.defineProperty(outputs, Symbol("unexpected-output-key"), {
+      value: true,
+      enumerable: true,
+    });
+
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            jobs,
+          }),
+        )
+      ).result,
+    );
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            outputs,
+          }),
+        )
+      ).result,
+    );
+  });
+
+  test("rejects sparse Job and Output arrays", async () => {
+    const sparseJobs = new Array(1);
+    const sparseOutputs = new Array(1);
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            jobs: sparseJobs,
+          }),
+        )
+      ).result,
+    );
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            outputs: sparseOutputs,
+          }),
+        )
+      ).result,
+    );
+  });
+
+  test("rejects accessor array indices without invoking them", async () => {
+    let jobGetterCalls = 0;
+    let outputGetterCalls = 0;
+    const accessorJobs = new Array(1);
+    const accessorOutputs = new Array(1);
+    Object.defineProperty(accessorJobs, "0", {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        jobGetterCalls += 1;
+        return attemptOneSucceeded();
+      },
+    });
+    Object.defineProperty(accessorOutputs, "0", {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        outputGetterCalls += 1;
+        return attemptOneOutput();
+      },
+    });
+
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            jobs: accessorJobs,
+          }),
+        )
+      ).result,
+    );
+    expectUnavailable(
+      (
+        await read(
+          readySnapshot({
+            outputs: accessorOutputs,
+          }),
+        )
+      ).result,
+    );
+    expect(jobGetterCalls).toBe(0);
+    expect(outputGetterCalls).toBe(0);
+  });
+
+  test("rejects Proxy arrays and custom Array prototypes", async () => {
+    const proxiedJobs = new Proxy([attemptOneSucceeded()], {});
+    const proxiedOutputs = new Proxy([attemptOneOutput()], {});
+    const customPrototypeJobs = [attemptOneSucceeded()];
+    const customPrototypeOutputs = [attemptOneOutput()];
+    Object.setPrototypeOf(
+      customPrototypeJobs,
+      Object.create(Array.prototype),
+    );
+    Object.setPrototypeOf(
+      customPrototypeOutputs,
+      Object.create(Array.prototype),
+    );
+
+    for (const snapshot of [
+      readySnapshot({ jobs: proxiedJobs }),
+      readySnapshot({ outputs: proxiedOutputs }),
+      readySnapshot({ jobs: customPrototypeJobs }),
+      readySnapshot({ outputs: customPrototypeOutputs }),
+    ]) {
+      expectUnavailable((await read(snapshot)).result);
+    }
+  });
+
+  test("accepts normal dense exact arrays for a distinct two-Job lineage", async () => {
+    const { result } = await read(
+      readySnapshot({
+        jobs: [attemptOneRetryableFailure(), attemptTwoSucceeded()],
+        outputs: [attemptTwoOutput()],
+      }),
+    );
+    expect(result.state).toBe("ready");
   });
 
   test("low-confidence, complex, unsafe, invalid, or ambiguous gates fail closed", async () => {

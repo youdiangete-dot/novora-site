@@ -24,6 +24,9 @@ const MAXIMUM_DATE_EPOCH_MILLISECONDS = 8_640_000_000_000_000;
 const CANONICAL_UTC_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const COOKIE_NAME_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const COOKIE_VALUE_OCTETS_PATTERN =
+  /^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/;
 const RETRYABLE_FAILURES = new Set<FirstPreviewFailureCategory>([
   "rate_limited",
   "provider_unavailable",
@@ -139,6 +142,7 @@ type ValidatedJob = Readonly<{
   startedAt: number | null;
   deadlineAt: number | null;
   terminalAt: number | null;
+  completedAt: number | null;
   failedAt: number | null;
 }>;
 
@@ -214,15 +218,59 @@ function snapshotOwnDataRecord(
 
 function snapshotArray(value: unknown, maximumLength: number): unknown[] | null {
   if (
-    !Array.isArray(value) ||
     nodeUtilTypes.isProxy(value) ||
-    value.length > maximumLength
+    !Array.isArray(value)
   ) {
     return null;
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Array.prototype) return null;
-  return Array.from(value);
+
+  const ownKeys = Reflect.ownKeys(value);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    !lengthDescriptor ||
+    !Object.prototype.hasOwnProperty.call(lengthDescriptor, "value") ||
+    Object.prototype.hasOwnProperty.call(lengthDescriptor, "get") ||
+    Object.prototype.hasOwnProperty.call(lengthDescriptor, "set") ||
+    lengthDescriptor.enumerable !== false ||
+    typeof lengthDescriptor.value !== "number" ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0 ||
+    lengthDescriptor.value > maximumLength ||
+    ownKeys.length !== lengthDescriptor.value + 1
+  ) {
+    return null;
+  }
+
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < lengthDescriptor.value; index += 1) {
+    const key = String(index);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      !descriptor ||
+      descriptor.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+      Object.prototype.hasOwnProperty.call(descriptor, "get") ||
+      Object.prototype.hasOwnProperty.call(descriptor, "set")
+    ) {
+      return null;
+    }
+    snapshot.push(descriptor.value);
+  }
+
+  if (
+    ownKeys.some(
+      (key) =>
+        typeof key !== "string" ||
+        (key !== "length" &&
+          (!/^(0|[1-9]\d*)$/.test(key) ||
+            Number(key) >= lengthDescriptor.value)),
+    )
+  ) {
+    return null;
+  }
+  return snapshot;
 }
 
 function isSafeObservationClock(value: unknown): value is number {
@@ -251,8 +299,28 @@ function canonicalUtcEpochMs(value: unknown): number | null {
     : null;
 }
 
-function nullableCanonicalUtcEpochMs(value: unknown): number | null | undefined {
-  return value === null ? null : canonicalUtcEpochMs(value) ?? undefined;
+type TimestampRole = "occurred-event" | "future-boundary";
+
+function canonicalTimestampByRole(
+  value: unknown,
+  role: TimestampRole,
+  observationMs: number,
+): number | null {
+  const timestamp = canonicalUtcEpochMs(value);
+  return timestamp !== null &&
+    (role === "future-boundary" || timestamp <= observationMs)
+    ? timestamp
+    : null;
+}
+
+function nullableCanonicalTimestampByRole(
+  value: unknown,
+  role: TimestampRole,
+  observationMs: number,
+): number | null | undefined {
+  return value === null
+    ? null
+    : canonicalTimestampByRole(value, role, observationMs) ?? undefined;
 }
 
 function isUuid(value: unknown): value is string {
@@ -279,12 +347,22 @@ function extractExactAccessProof(cookieHeader: unknown): string | null {
   }
 
   let proof: string | null = null;
-  for (const rawPart of cookieHeader.split(";")) {
-    const part = rawPart.trim();
+  const rawParts = cookieHeader.split(";");
+  for (let index = 0; index < rawParts.length; index += 1) {
+    const rawPart = rawParts[index];
+    const part =
+      index === 0 ? rawPart : rawPart.replace(/^[\t ]*/, "");
+    if (part.length === 0) return null;
     const separator = part.indexOf("=");
     if (separator <= 0) return null;
-    const name = part.slice(0, separator).trim();
-    const value = part.slice(separator + 1).trim();
+    const name = part.slice(0, separator);
+    const value = part.slice(separator + 1);
+    if (
+      !COOKIE_NAME_TOKEN_PATTERN.test(name) ||
+      !COOKIE_VALUE_OCTETS_PATTERN.test(value)
+    ) {
+      return null;
+    }
     if (name !== FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME) continue;
     if (
       proof !== null ||
@@ -388,13 +466,41 @@ function validateJob(
     return null;
   }
 
-  const createdAt = canonicalUtcEpochMs(job.createdAt);
-  const startedAt = nullableCanonicalUtcEpochMs(job.startedAt);
-  const deadlineAt = nullableCanonicalUtcEpochMs(job.deadlineAt);
-  const completedAt = nullableCanonicalUtcEpochMs(job.completedAt);
-  const failedAt = nullableCanonicalUtcEpochMs(job.failedAt);
-  const cancelledAt = nullableCanonicalUtcEpochMs(job.cancelledAt);
-  const timedOutAt = nullableCanonicalUtcEpochMs(job.timedOutAt);
+  const createdAt = canonicalTimestampByRole(
+    job.createdAt,
+    "occurred-event",
+    observationMs,
+  );
+  const startedAt = nullableCanonicalTimestampByRole(
+    job.startedAt,
+    "occurred-event",
+    observationMs,
+  );
+  const deadlineAt = nullableCanonicalTimestampByRole(
+    job.deadlineAt,
+    "future-boundary",
+    observationMs,
+  );
+  const completedAt = nullableCanonicalTimestampByRole(
+    job.completedAt,
+    "occurred-event",
+    observationMs,
+  );
+  const failedAt = nullableCanonicalTimestampByRole(
+    job.failedAt,
+    "occurred-event",
+    observationMs,
+  );
+  const cancelledAt = nullableCanonicalTimestampByRole(
+    job.cancelledAt,
+    "occurred-event",
+    observationMs,
+  );
+  const timedOutAt = nullableCanonicalTimestampByRole(
+    job.timedOutAt,
+    "occurred-event",
+    observationMs,
+  );
   if (
     createdAt === null ||
     startedAt === undefined ||
@@ -402,10 +508,7 @@ function validateJob(
     completedAt === undefined ||
     failedAt === undefined ||
     cancelledAt === undefined ||
-    timedOutAt === undefined ||
-    [createdAt, startedAt, deadlineAt, completedAt, failedAt, cancelledAt, timedOutAt]
-      .filter((timestamp): timestamp is number => timestamp !== null)
-      .some((timestamp) => timestamp > observationMs)
+    timedOutAt === undefined
   ) {
     return null;
   }
@@ -434,6 +537,7 @@ function validateJob(
       : status === "processing"
         ? startedAt !== null &&
           deadlineAt !== null &&
+          startedAt < deadlineAt &&
           terminalValues.length === 0 &&
           job.retryEligible === null &&
           job.failureCategory === null
@@ -503,6 +607,7 @@ function validateJob(
     startedAt,
     deadlineAt,
     terminalAt,
+    completedAt,
     failedAt,
   };
 }
@@ -576,7 +681,6 @@ function validateOutput(
     output.assetPersisted !== true ||
     output.readinessStatus !== "first_preview_ready" ||
     output.isCurrentCustomerPreview !== true ||
-    output.revokedAt !== null ||
     !validateGates(output.gates) ||
     job.status !== "succeeded" ||
     job.startedAt === null ||
@@ -586,33 +690,53 @@ function validateOutput(
     return null;
   }
 
-  const assetCreatedAt = canonicalUtcEpochMs(output.assetCreatedAt);
-  const assetValidatedAt = canonicalUtcEpochMs(output.assetValidatedAt);
-  const createdAt = canonicalUtcEpochMs(output.createdAt);
-  const automaticGatePassedAt = canonicalUtcEpochMs(
-    output.automaticGatePassedAt,
+  const assetCreatedAt = canonicalTimestampByRole(
+    output.assetCreatedAt,
+    "occurred-event",
+    observationMs,
   );
-  const readyAt = canonicalUtcEpochMs(output.readyAt);
+  const assetValidatedAt = canonicalTimestampByRole(
+    output.assetValidatedAt,
+    "occurred-event",
+    observationMs,
+  );
+  const createdAt = canonicalTimestampByRole(
+    output.createdAt,
+    "occurred-event",
+    observationMs,
+  );
+  const automaticGatePassedAt = canonicalTimestampByRole(
+    output.automaticGatePassedAt,
+    "occurred-event",
+    observationMs,
+  );
+  const readyAt = canonicalTimestampByRole(
+    output.readyAt,
+    "occurred-event",
+    observationMs,
+  );
+  const revokedAt = nullableCanonicalTimestampByRole(
+    output.revokedAt,
+    "occurred-event",
+    observationMs,
+  );
   if (
     assetCreatedAt === null ||
     assetValidatedAt === null ||
     createdAt === null ||
     automaticGatePassedAt === null ||
     readyAt === null ||
-    [
-      assetCreatedAt,
-      assetValidatedAt,
-      createdAt,
-      automaticGatePassedAt,
-      readyAt,
-    ].some((timestamp) => timestamp > observationMs) ||
+    revokedAt === undefined ||
+    revokedAt !== null ||
+    job.completedAt === null ||
+    job.deadlineAt > observationMs ||
     job.startedAt > assetCreatedAt ||
     assetCreatedAt > assetValidatedAt ||
     assetValidatedAt > createdAt ||
     createdAt > job.terminalAt ||
     job.terminalAt > job.deadlineAt ||
-    createdAt > automaticGatePassedAt ||
     assetValidatedAt > automaticGatePassedAt ||
+    job.completedAt > automaticGatePassedAt ||
     automaticGatePassedAt > readyAt
   ) {
     return null;
@@ -666,6 +790,11 @@ function mapSnapshot(
   );
   if (jobs.some((job) => job === null)) return unavailable();
   const validatedJobs = jobs as ValidatedJob[];
+  if (
+    new Set(validatedJobs.map((job) => job.id)).size !== validatedJobs.length
+  ) {
+    return unavailable();
+  }
   const attemptOne = validatedJobs.find((job) => job.attemptNumber === 1);
   const attemptTwo = validatedJobs.find((job) => job.attemptNumber === 2);
   if (
@@ -679,13 +808,16 @@ function mapSnapshot(
 
   if (rawOutputs.length === 1) {
     if (snapshot.pendingExpiresAt !== null) return unavailable();
+    const outputRecord = snapshotOwnDataRecord(rawOutputs[0], OUTPUT_KEYS);
+    if (!outputRecord) return unavailable();
     const outputJob = validatedJobs.find(
       (job) =>
-        snapshotOwnDataRecord(rawOutputs[0], OUTPUT_KEYS)?.jobId === job.id,
+        outputRecord.jobId === job.id &&
+        outputRecord.attemptNumber === job.attemptNumber,
     );
     if (!outputJob) return unavailable();
     const output = validateOutput(
-      rawOutputs[0],
+      outputRecord,
       customer,
       outputJob,
       observationMs,
