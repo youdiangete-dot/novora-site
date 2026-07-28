@@ -192,6 +192,42 @@ function earringsStructured(
   });
 }
 
+function isolatedRingStructured(): InstantPreviewAgentStructuredInput {
+  const input = clone(structured());
+  input.customerIntent.designIntent = "A bounded ring concept.";
+  input.customerIntent.designDescription = null;
+  input.style.directions = [];
+  input.style.colorDirection = null;
+  input.materials.directions = [];
+  input.stones.items = [
+    {
+      role: "center",
+      type: null,
+      color: null,
+      shape: null,
+      setting: null,
+      orientation: null,
+      tableOrientation: null,
+      sizeRelationship: null,
+      relationshipToOtherStones: null,
+      quantity: null,
+    },
+  ];
+  input.stones.centerStoneDirection = null;
+  input.stones.arrangement = null;
+  input.composition.direction = null;
+  input.composition.motif = null;
+  input.composition.requestedViews = ["front view"];
+  input.dimensions.relationships = [];
+  input.wearability.requirements = [];
+  input.manufacturingConstraints = [];
+  input.referenceObservations.observations = [];
+  input.unknowns = [];
+  input.avoid = [];
+  input.reviewRequirements = [];
+  return input;
+}
+
 function freeTextRuleArrays(output: ReturnType<typeof expectSuccess>): string[][] {
   return [
     output.designSpec.stones.special_stone_rules,
@@ -424,6 +460,59 @@ test("rejects an affirmative stacking collision requirement", () => {
   expectFailure(input, "contradictory_input");
 });
 
+test("separates an explicit four-prong count from double-prong style", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "four double-prong setting";
+  const output = expectSuccess(input);
+  const notes =
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" ");
+  expect(notes).toContain("exactly 4 center-stone prongs");
+  expect(notes).toContain("double-prong construction");
+  expect(notes).not.toContain("exactly 2 center-stone prongs");
+});
+
+test("separates an explicit four-prong count from split-prong style", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "four split-prong setting";
+  const output = expectSuccess(input);
+  const notes =
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" ");
+  expect(notes).toContain("exactly 4 center-stone prongs");
+  expect(notes).toContain("split-prong construction");
+});
+
+test("preserves six as the count and paired as the prong style", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "six paired prongs";
+  const output = expectSuccess(input);
+  const notes =
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" ");
+  expect(notes).toContain("exactly 6 center-stone prongs");
+  expect(notes).toContain("paired-prong construction");
+});
+
+test("does not manufacture a numeric count from a prong style", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "double-prong setting";
+  const output = expectSuccess(input);
+  const notes =
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" ");
+  expect(notes).toContain("double-prong construction");
+  expect(notes).not.toContain("exactly 2 center-stone prongs");
+});
+
+test("fails closed for ambiguous prong count and style syntax", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "four split double-prongs";
+  expectFailure(input, "unsupported_input");
+});
+
+test("fails closed for an unsupported explicit prong count", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "seven-prong setting";
+  expectFailure(input, "unsupported_input");
+});
+
 test("preserves a specified prong count in full and detail views", () => {
   const output = expectSuccess(structured());
   expect(
@@ -505,6 +594,71 @@ test("rejects a prong-to-bezel setting-family change", () => {
   expectFailure(input, "contradictory_input");
 });
 
+test("keeps an exact positive bezel setting as positive evidence", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "Use a bezel setting.";
+  const output = expectSuccess(input);
+  expect(output.designSpec.jewelry_structure.setting_planning).toContain(
+    "bezel",
+  );
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).toContain("Preserve the bezel setting family");
+});
+
+test("keeps a negated bezel setting out of positive setting evidence", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "Do not use a bezel setting.";
+  const output = expectSuccess(input);
+  expect(output.designSpec.jewelry_structure.setting_planning).toEqual([
+    "to_confirm",
+  ]);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).not.toContain("Preserve the bezel setting family");
+  expect(output.handSketchInstruction.negative_constraints.join(" ")).toContain(
+    "Do not use a bezel setting",
+  );
+});
+
+test("rejects explicit positive and negative bezel evidence", () => {
+  const input = isolatedRingStructured();
+  input.stones.items[0].setting = "Use a bezel setting.";
+  input.customerIntent.designDescription = "Do not use a bezel setting.";
+  expectFailure(input, "contradictory_input");
+});
+
+for (const [label, statement] of [
+  ["no", "No bezel setting."],
+  ["not", "Not a bezel setting."],
+  ["do not", "Do not use a bezel setting."],
+  ["don't", "Don't use a bezel setting."],
+  ["avoid", "Avoid a bezel setting."],
+  ["without", "Without a bezel setting."],
+  ["never", "Never use a bezel setting."],
+  ["must not", "Must not use a bezel setting."],
+  ["should not", "Should not use a bezel setting."],
+  ["cannot", "Cannot use a bezel setting."],
+  ["can't", "Can't use a bezel setting."],
+] as const) {
+  test(`recognizes ${label} as bounded setting negation`, () => {
+    const input = isolatedRingStructured();
+    input.stones.items[0].setting = statement;
+    const output = expectSuccess(input);
+    expect(output.designSpec.jewelry_structure.setting_planning).toEqual([
+      "to_confirm",
+    ]);
+    expect(
+      output.designSpec.jewelry_structure.construction_consistency_notes.join(
+        " ",
+      ),
+    ).not.toContain("Preserve the bezel setting family");
+    expect(
+      output.handSketchInstruction.negative_constraints.join(" "),
+    ).toContain(statement.slice(0, -1));
+  });
+}
+
 test("fails safely for an unsupported setting instead of inventing one", () => {
   const input = clone(structured());
   input.stones.items[0].setting = "quantum floating matrix";
@@ -574,6 +728,68 @@ test("keeps negative avoid text out of positive feature inference", () => {
   expect(
     output.handSketchInstruction.negative_constraints.join(" "),
   ).toEqual(expect.stringContaining("avoid a third ring shank"));
+});
+
+test("does not infer halo from negated customer-intent text", () => {
+  const input = isolatedRingStructured();
+  input.customerIntent.designDescription = "Do not use a halo setting.";
+  const output = expectSuccess(input);
+  expect(output.designSpec.motifs.motif_planning).toEqual([]);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).not.toContain("Preserve the halo setting family");
+});
+
+test("does not infer bezel from negated style-direction text", () => {
+  const input = isolatedRingStructured();
+  input.style.directions = ["Avoid a bezel setting."];
+  const output = expectSuccess(input);
+  expect(output.designSpec.jewelry_structure.setting_planning).toEqual([
+    "to_confirm",
+  ]);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).not.toContain("Preserve the bezel setting family");
+});
+
+test("does not infer pavé from negated reference-observation text", () => {
+  const input = isolatedRingStructured();
+  input.referenceObservations.observations = ["Never use pavé."];
+  const output = expectSuccess(input);
+  expect(output.designSpec.jewelry_structure.setting_planning).toEqual([
+    "to_confirm",
+  ]);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).not.toContain("Preserve the pave setting family");
+});
+
+test("does not infer rose gold from negated material-direction text", () => {
+  const input = isolatedRingStructured();
+  input.materials.directions = ["No rose gold."];
+  const output = expectSuccess(input);
+  expect(output.designSpec.materials.gold_color).toBe("unspecified");
+});
+
+test("does not infer center-stone rotation from a negated requested view", () => {
+  const input = isolatedRingStructured();
+  input.composition.requestedViews = [
+    "front view",
+    "Do not rotate the center stone 90 degrees.",
+  ];
+  const output = expectSuccess(input);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).not.toContain("long axis horizontal");
+});
+
+test("does not infer a third ring shank from negated design text", () => {
+  const input = isolatedRingStructured();
+  input.customerIntent.designDescription = "Avoid a third ring shank.";
+  const output = expectSuccess(input);
+  expect(
+    output.designSpec.jewelry_structure.construction_consistency_notes.join(" "),
+  ).not.toContain("exactly 3 ring shanks");
 });
 
 test("keeps local and overall motif placement consistent", () => {
@@ -786,6 +1002,30 @@ test("populates gold color from an explicit supported material source", () => {
     }),
   );
   expect(output.designSpec.materials.gold_color).toBe("rose gold");
+});
+
+test("keeps negated rose gold out of positive metal-color evidence", () => {
+  const input = isolatedRingStructured();
+  input.materials.directions = ["Do not use rose gold."];
+  const output = expectSuccess(input);
+  expect(output.designSpec.materials.gold_color).toBe("unspecified");
+  expect(output.designSpec.materials.metal_preference).toBe("unspecified");
+  expect(output.handSketchInstruction.negative_constraints.join(" ")).toContain(
+    "Do not use rose gold",
+  );
+});
+
+test("keeps exact positive rose gold as a supported control", () => {
+  const input = isolatedRingStructured();
+  input.materials.directions = ["Use rose gold."];
+  const output = expectSuccess(input);
+  expect(output.designSpec.materials.gold_color).toBe("rose gold");
+});
+
+test("rejects explicit positive and negative rose-gold evidence", () => {
+  const input = isolatedRingStructured();
+  input.materials.directions = ["Use rose gold.", "Do not use rose gold."];
+  expectFailure(input, "contradictory_input");
 });
 
 test("rejects contradictory explicit supported gold colors", () => {

@@ -459,7 +459,49 @@ function snapshotStructuredInput(value: unknown): InstantPreviewAgentStructuredI
   return snapshot;
 }
 
-function allPositiveDesignText(
+const SUPPORTED_NEGATION_PATTERN =
+  /\b(?:do\s+not|don't|avoid|without|never|must\s+not|should\s+not|cannot|can't|no|not)\b/i;
+
+function boundedStatements(value: string): string[] {
+  return value
+    .replace(/[‘’]/g, "'")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(
+      /(?:[.!?;]+\s*|,?\s+\b(?:but|however)\b\s+|,?\s+\band\b\s+(?=(?:do\s+not|don't|avoid|without|never|must\s+not|should\s+not|cannot|can't|no|not)\b))/i,
+    )
+    .map((statement) => statement.trim())
+    .filter(Boolean);
+}
+
+function positiveBoundedStatements(
+  values: Array<string | null | undefined>,
+): string[] {
+  return values
+    .flatMap((value) => (value ? boundedStatements(value) : []))
+    .filter((statement) => !SUPPORTED_NEGATION_PATTERN.test(statement));
+}
+
+function negativeBoundedStatements(
+  values: Array<string | null | undefined>,
+): string[] {
+  return values
+    .flatMap((value) => (value ? boundedStatements(value) : []))
+    .filter((statement) => SUPPORTED_NEGATION_PATTERN.test(statement));
+}
+
+function positiveValue(value: string | null | undefined): string | null {
+  const statements = positiveBoundedStatements([value]);
+  return statements.length > 0 ? statements.join("; ") : null;
+}
+
+function positiveValues(
+  values: Array<string | null | undefined>,
+): string[] {
+  return positiveBoundedStatements(values);
+}
+
+function allDesignTextSources(
   input: InstantPreviewAgentStructuredInput,
 ): string[] {
   return [
@@ -490,11 +532,28 @@ function allPositiveDesignText(
     ...input.wearability.requirements,
     ...input.manufacturingConstraints,
     ...input.referenceObservations.observations,
-    ...input.unknowns,
   ].filter((value): value is string => value !== null);
 }
 
-function orientations(values: string[]): Set<"vertical" | "horizontal"> {
+function allPositiveDesignText(
+  input: InstantPreviewAgentStructuredInput,
+): string[] {
+  return positiveBoundedStatements(allDesignTextSources(input));
+}
+
+function allNegativeDesignText(
+  input: InstantPreviewAgentStructuredInput,
+): string[] {
+  return [
+    ...negativeBoundedStatements(allDesignTextSources(input)),
+    ...negativeBoundedStatements(input.reviewRequirements),
+    ...input.avoid.flatMap(boundedStatements),
+  ];
+}
+
+function orientationsFromStatements(
+  values: string[],
+): Set<"vertical" | "horizontal"> {
   const result = new Set<"vertical" | "horizontal">();
   for (const value of values) {
     if (/\b(vertical|portrait|north[- ]south|long axis (?:up|vertical)|point (?:up|down|toward fingertip|towards fingertip))\b/i.test(value)) {
@@ -507,13 +566,23 @@ function orientations(values: string[]): Set<"vertical" | "horizontal"> {
   return result;
 }
 
-function tableOrientations(values: string[]): Set<"face_up" | "other"> {
+function orientations(values: string[]): Set<"vertical" | "horizontal"> {
+  return orientationsFromStatements(positiveBoundedStatements(values));
+}
+
+function tableOrientationsFromStatements(
+  values: string[],
+): Set<"face_up" | "other"> {
   const result = new Set<"face_up" | "other">();
   for (const value of values) {
     if (/\b(face[- ]up|table[- ]up|table facing (?:up|viewer|outward))\b/i.test(value)) result.add("face_up");
     if (/\b(face[- ]down|table[- ]down|table facing inward)\b/i.test(value)) result.add("other");
   }
   return result;
+}
+
+function tableOrientations(values: string[]): Set<"face_up" | "other"> {
+  return tableOrientationsFromStatements(positiveBoundedStatements(values));
 }
 
 type SupportedSettingFamily = "prong" | "bezel" | "pave" | "channel";
@@ -533,7 +602,18 @@ const NUMBER_WORDS: Record<string, number> = {
   six: 6,
 };
 
-function settingFamilies(values: string[]): Set<SupportedSettingFamily> {
+const PRONG_COUNT_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+};
+
+function settingFamiliesFromStatements(
+  values: string[],
+): Set<SupportedSettingFamily> {
   const result = new Set<SupportedSettingFamily>();
   for (const value of values) {
     if (/\bprongs?\b/i.test(value)) result.add("prong");
@@ -544,19 +624,31 @@ function settingFamilies(values: string[]): Set<SupportedSettingFamily> {
   return result;
 }
 
-function prongCounts(values: string[]): Set<number> {
+function settingFamilies(values: string[]): Set<SupportedSettingFamily> {
+  return settingFamiliesFromStatements(positiveBoundedStatements(values));
+}
+
+function prongCountsFromStatements(values: string[]): Set<number> {
   const result = new Set<number>();
   for (const value of values) {
     for (const match of value.matchAll(
-      /\b(single|one|double|two|triple|three|four|five|six|1|2|3|4|5|6)[- ]prongs?\b/gi,
+      /\b(one|two|three|four|five|six|[1-6])(?:[- ]+(?:single|split|double|paired))?[- ]+prongs?\b/gi,
     )) {
-      result.add(NUMBER_WORDS[match[1].toLowerCase()] ?? Number(match[1]));
+      result.add(
+        PRONG_COUNT_WORDS[match[1].toLowerCase()] ?? Number(match[1]),
+      );
     }
   }
   return result;
 }
 
-function prongStyles(values: string[]): Set<SupportedProngStyle> {
+function prongCounts(values: string[]): Set<number> {
+  return prongCountsFromStatements(positiveBoundedStatements(values));
+}
+
+function prongStylesFromStatements(
+  values: string[],
+): Set<SupportedProngStyle> {
   const result = new Set<SupportedProngStyle>();
   for (const value of values) {
     if (/\bsingle[- ]prongs?\b/i.test(value)) result.add("single");
@@ -567,10 +659,15 @@ function prongStyles(values: string[]): Set<SupportedProngStyle> {
   return result;
 }
 
+function prongStyles(values: string[]): Set<SupportedProngStyle> {
+  return prongStylesFromStatements(positiveBoundedStatements(values));
+}
+
 function prongPositions(value: string): Set<string> {
-  if (!/\bprongs?\b/i.test(value)) return new Set();
+  const positive = positiveBoundedStatements([value]).join("; ");
+  if (!/\bprongs?\b/i.test(positive)) return new Set();
   const result = new Set<string>();
-  for (const match of value.matchAll(/\b(12|3|6|9)\s*o(?:'|’)?clock\b/gi)) {
+  for (const match of positive.matchAll(/\b(12|3|6|9)\s*o(?:'|’)?clock\b/gi)) {
     result.add(`${match[1]}_oclock`);
   }
   for (const token of ["top", "bottom", "left", "right", "tip"] as const) {
@@ -578,7 +675,7 @@ function prongPositions(value: string): Set<string> {
       new RegExp(
         `\\b${token}\\b.{0,60}\\bprongs?\\b|\\bprongs?\\b.{0,60}\\b${token}\\b`,
         "i",
-      ).test(value)
+      ).test(positive)
     ) {
       result.add(token);
     }
@@ -597,7 +694,7 @@ function motifCounts(values: string[]): Set<number> {
   const result = new Set<number>();
   const motif =
     "(?:motifs?|leaves?|leaf|flowers?|mice|mouse|animals?|clouds?|waves?|gears?)";
-  for (const value of values) {
+  for (const value of positiveBoundedStatements(values)) {
     const patterns = [
       new RegExp(
         `\\b(single|one|pair|double|two|triple|three|four|five|six|1|2|3|4|5|6)\\b.{0,16}\\b${motif}\\b`,
@@ -634,7 +731,7 @@ function motifLocations(values: string[]): Set<string> {
     "clasp",
     "earring drops?",
   ];
-  for (const value of values) {
+  for (const value of positiveBoundedStatements(values)) {
     for (const location of locations) {
       if (
         new RegExp(
@@ -652,19 +749,29 @@ function motifLocations(values: string[]): Set<string> {
 function explicitGoldColor(
   input: InstantPreviewAgentStructuredInput,
 ): string {
-  const colors = new Set<string>();
-  for (const value of input.materials.directions) {
-    for (const match of value.matchAll(
-      /\b(yellow|white|rose)\s+gold\b/gi,
-    )) {
-      colors.add(`${match[1].toLowerCase()} gold`);
+  const extractColors = (values: string[]) => {
+    const colors = new Set<string>();
+    for (const value of values) {
+      for (const match of value.matchAll(
+        /\b(yellow|white|rose)\s+gold\b/gi,
+      )) {
+        colors.add(`${match[1].toLowerCase()} gold`);
+      }
     }
+    return colors;
+  };
+  const colors = extractColors(
+    positiveBoundedStatements(input.materials.directions),
+  );
+  const negativeColors = extractColors(allNegativeDesignText(input));
+  if ([...colors].some((color) => negativeColors.has(color))) {
+    fail("contradictory_input");
   }
   if (colors.size > 1) fail("contradictory_input");
   return colors.size === 1 ? [...colors][0] : "unspecified";
 }
 
-function preservedAvoidConstraint(
+function preservedNegativeConstraint(
   input: InstantPreviewAgentStructuredInput,
   value: string,
 ): string {
@@ -679,7 +786,57 @@ function preservedAvoidConstraint(
   ) {
     return ZODIAC_MOUSE_EYE_GEMSTONE_RULE;
   }
-  return `preserve negative avoid constraint: ${value}`;
+  return `preserve negative constraint: ${value}`;
+}
+
+function shankCountsFromStatements(values: string[]): Set<number> {
+  const shankCounts = new Set<number>();
+  for (const value of values) {
+    const match = value.match(/\b(single|double|triple|one|two|three|1|2|3)[- ](?:ring )?shanks?\b/i);
+    if (match) {
+      const words: Record<string, number> = {
+        single: 1,
+        one: 1,
+        double: 2,
+        two: 2,
+        triple: 3,
+        three: 3,
+      };
+      shankCounts.add(words[match[1].toLowerCase()] ?? Number(match[1]));
+    }
+    if (
+      /\bone main ring\b.{0,80}\bone (?:combined )?companion ring\b|\bone (?:combined )?companion ring\b.{0,80}\bone main ring\b/i.test(
+        value,
+      )
+    ) {
+      shankCounts.add(2);
+    }
+  }
+  return shankCounts;
+}
+
+function assertSupportedProngSyntax(values: string[]): void {
+  for (const value of positiveBoundedStatements(values)) {
+    if (!/\bprongs?\b/i.test(value)) continue;
+    const exactCountMentions = [...value.matchAll(
+      /\b(one|two|three|four|five|six|[1-6])(?:[- ]+(?:single|split|double|paired))?[- ]+prongs?\b/gi,
+    )];
+    const countCandidates = [...value.matchAll(
+      /\b(one|two|three|four|five|six|\d+|zero|seven|eight|nine|ten|pair|triple|quadruple)\b(?=[^.!?;]{0,24}\bprongs?\b)/gi,
+    )];
+    const exactStyleMentions = [...value.matchAll(
+      /\b(single|split|double|paired)[- ]+prongs?\b/gi,
+    )];
+    const styleCandidates = [...value.matchAll(
+      /\b(single|split|double|paired)\b(?=[^.!?;]{0,24}\bprongs?\b)/gi,
+    )];
+    if (
+      countCandidates.length !== exactCountMentions.length ||
+      styleCandidates.length !== exactStyleMentions.length
+    ) {
+      fail("unsupported_input");
+    }
+  }
 }
 
 function assertStructuralConsistency(input: InstantPreviewAgentStructuredInput): {
@@ -698,8 +855,9 @@ function assertStructuralConsistency(input: InstantPreviewAgentStructuredInput):
   earringPairMode: EarringPairMode;
 } {
   const text = allPositiveDesignText(input);
+  const negativeText = allNegativeDesignText(input);
   const centerStones = input.stones.items.filter((stone) =>
-    /\b(center|centre|main)\b/i.test(stone.role ?? ""),
+    /\b(center|centre|main)\b/i.test(positiveValue(stone.role) ?? ""),
   );
   if (centerStones.length > 1) fail("contradictory_input");
   const center = centerStones[0] ?? input.stones.items[0];
@@ -716,12 +874,20 @@ function assertStructuralConsistency(input: InstantPreviewAgentStructuredInput):
   ].filter((value): value is string => value !== null && value !== undefined);
   const longAxes = orientations(centerText);
   if (longAxes.size > 1) fail("contradictory_input");
+  const negativeLongAxes = orientationsFromStatements(negativeText);
+  if ([...longAxes].some((axis) => negativeLongAxes.has(axis))) {
+    fail("contradictory_input");
+  }
   const centerTables = tableOrientations([
     center?.tableOrientation,
     input.stones.centerStoneDirection,
     ...stoneViewText,
   ].filter((value): value is string => Boolean(value)));
   if (centerTables.size > 1) fail("contradictory_input");
+  const negativeTables = tableOrientationsFromStatements(negativeText);
+  if ([...centerTables].some((table) => negativeTables.has(table))) {
+    fail("contradictory_input");
+  }
   const accentViewText = input.composition.requestedViews.filter((value) =>
     /\b(accent|side stone)\b/i.test(value),
   );
@@ -741,13 +907,13 @@ function assertStructuralConsistency(input: InstantPreviewAgentStructuredInput):
     }
   }
 
-  const positiveCompositionText = [
+  const positiveCompositionText = positiveBoundedStatements([
     input.customerIntent.designIntent,
     input.customerIntent.designDescription,
     input.piece.subtype,
     input.composition.direction,
     ...input.composition.requestedViews,
-  ].filter((value): value is string => value !== null);
+  ]);
   const stacking = positiveCompositionText.some((value) =>
     /\b(stack|stacking|stacked)\b/i.test(value),
   );
@@ -777,28 +943,57 @@ function assertStructuralConsistency(input: InstantPreviewAgentStructuredInput):
 
   for (const stone of input.stones.items) {
     if (!stone.setting) continue;
-    const families = settingFamilies([stone.setting]);
+    const positiveSettingStatements = positiveBoundedStatements([stone.setting]);
+    const negativeSettingStatements = negativeBoundedStatements([stone.setting]);
+    assertSupportedProngSyntax(positiveSettingStatements);
+    const families = settingFamiliesFromStatements(positiveSettingStatements);
+    const negativeFamilies =
+      settingFamiliesFromStatements(negativeSettingStatements);
+    if ([...families].some((family) => negativeFamilies.has(family))) {
+      fail("contradictory_input");
+    }
     if (families.size > 1) fail("contradictory_input");
     if (
+      positiveSettingStatements.length > 0 &&
       families.size === 0 &&
-      !/\b(unknown|unspecified|to confirm|confirm later)\b/i.test(stone.setting)
+      !positiveSettingStatements.every((statement) =>
+        /\b(unknown|unspecified|to confirm|confirm later)\b/i.test(statement),
+      )
     ) {
       fail("unsupported_input");
     }
   }
-  const settingText = [
+  const settingText = positiveBoundedStatements([
     center?.setting,
     input.stones.centerStoneDirection,
     input.customerIntent.designIntent,
     input.customerIntent.designDescription,
     input.composition.direction,
     ...input.composition.requestedViews,
-  ].filter((value): value is string => Boolean(value));
+  ]);
   const centerSettingFamilies = settingFamilies(settingText);
+  const negativeSettingFamilies =
+    settingFamiliesFromStatements(negativeText);
+  if (
+    [...centerSettingFamilies].some((family) =>
+      negativeSettingFamilies.has(family),
+    )
+  ) {
+    fail("contradictory_input");
+  }
   if (centerSettingFamilies.size > 1) fail("contradictory_input");
+  assertSupportedProngSyntax(settingText);
   const exactProngCounts = prongCounts(settingText);
+  const negativeProngCounts = prongCountsFromStatements(negativeText);
+  if ([...exactProngCounts].some((count) => negativeProngCounts.has(count))) {
+    fail("contradictory_input");
+  }
   if (exactProngCounts.size > 1) fail("contradictory_input");
   const exactProngStyles = prongStyles(settingText);
+  const negativeProngStyles = prongStylesFromStatements(negativeText);
+  if ([...exactProngStyles].some((style) => negativeProngStyles.has(style))) {
+    fail("contradictory_input");
+  }
   if (exactProngStyles.size > 1) fail("contradictory_input");
   if (
     exactProngCounts.size === 1 &&
@@ -839,48 +1034,28 @@ function assertStructuralConsistency(input: InstantPreviewAgentStructuredInput):
     fail("contradictory_input");
   }
 
-  const shankCounts = new Set<number>();
-  for (const value of text) {
-    const match = value.match(/\b(single|double|triple|one|two|three|1|2|3)[- ](?:ring )?shanks?\b/i);
-    if (match) {
-      const words: Record<string, number> = {
-        single: 1,
-        one: 1,
-        double: 2,
-        two: 2,
-        triple: 3,
-        three: 3,
-      };
-      shankCounts.add(words[match[1].toLowerCase()] ?? Number(match[1]));
-    }
-    if (
-      /\bone main ring\b.{0,80}\bone (?:combined )?companion ring\b|\bone (?:combined )?companion ring\b.{0,80}\bone main ring\b/i.test(
-        value,
-      )
-    ) {
-      shankCounts.add(2);
-    }
+  const shankCounts = shankCountsFromStatements(text);
+  const negativeShankCounts = shankCountsFromStatements(negativeText);
+  if ([...shankCounts].some((count) => negativeShankCounts.has(count))) {
+    fail("contradictory_input");
   }
   if (shankCounts.size > 1) fail("contradictory_input");
 
   const mouse = text.some((value) => /\b(mouse|mice|rat)\b/i.test(value));
   const redEye = text.some(
     (value) =>
-      !/\b(?:no|avoid|without|do not|don't)\b.{0,60}\b(?:ruby|red(?: gemstone| stone)?)\b/i.test(
-        value,
-      ) &&
-      (/\b(?:ruby|red(?: gemstone| stone)?)\b.{0,40}\b(?:eye|eyes)\b/i.test(value) ||
-        /\b(?:eye|eyes)\b.{0,40}\b(?:ruby|red(?: gemstone| stone)?)\b/i.test(value)),
+      /\b(?:ruby|red(?: gemstone| stone)?)\b.{0,40}\b(?:eye|eyes)\b/i.test(value) ||
+        /\b(?:eye|eyes)\b.{0,40}\b(?:ruby|red(?: gemstone| stone)?)\b/i.test(value),
   );
   if (mouse && redEye) fail("contradictory_input");
 
-  const motifText = [
+  const motifText = positiveBoundedStatements([
     input.composition.motif,
     input.composition.direction,
     input.customerIntent.designIntent,
     input.customerIntent.designDescription,
     ...input.composition.requestedViews,
-  ].filter((value): value is string => Boolean(value));
+  ]);
   const locations = motifLocations(motifText);
   const counts = motifCounts(motifText);
   const intentionallyAsymmetric =
@@ -924,7 +1099,7 @@ function assertStructuralConsistency(input: InstantPreviewAgentStructuredInput):
       value,
     ),
   );
-  const frontOnlyOrMissingBack = motifText.some((value) =>
+  const frontOnlyOrMissingBack = [...motifText, ...negativeText].some((value) =>
     /\bfront[- ]only motif\b|\bmotif\b.{0,20}\bdoes not continue\b.{0,20}\bback\b|\bback\b.{0,20}\b(?:without|missing|omit(?:s|ted)?)\b.{0,20}\bmotif\b/i.test(
       value,
     ),
@@ -979,7 +1154,7 @@ function joinOrUnknown(values: Array<string | null>, unknown = "unspecified"): s
 }
 
 function motifTypes(input: InstantPreviewAgentStructuredInput): NovoraDesignSpecMotifType[] {
-  const motif = input.composition.motif ?? "";
+  const motif = positiveValue(input.composition.motif) ?? "";
   const result: NovoraDesignSpecMotifType[] = [];
   const add = (value: NovoraDesignSpecMotifType) => {
     if (!result.includes(value)) result.push(value);
@@ -1000,7 +1175,7 @@ function boundedSettingTypes(
 ): NovoraDesignSpecSettingType[] {
   const result: NovoraDesignSpecSettingType[] = [];
   for (const setting of input.stones.items
-    .map((stone) => stone.setting)
+    .flatMap((stone) => positiveValues([stone.setting]))
     .filter((value): value is string => Boolean(value))) {
     const family = [...settingFamilies([setting])][0] ?? "to_confirm";
     if (!result.includes(family)) result.push(family);
@@ -1013,16 +1188,29 @@ function buildDesignSpec(
   consistency: ReturnType<typeof assertStructuralConsistency>,
 ): NovoraDesignSpec {
   const center =
-    input.stones.items.find((stone) => /\b(center|centre|main)\b/i.test(stone.role ?? "")) ??
+    input.stones.items.find((stone) =>
+      /\b(center|centre|main)\b/i.test(positiveValue(stone.role) ?? ""),
+    ) ??
     input.stones.items[0];
   const accents = input.stones.items.filter((stone) => stone !== center);
+  const materialDirections = positiveValues(input.materials.directions);
+  const dimensionRelationships = positiveValues(input.dimensions.relationships);
+  const manufacturingConstraints = positiveValues(
+    input.manufacturingConstraints,
+  );
+  const wearabilityRequirements = positiveValues(
+    input.wearability.requirements,
+  );
   const unknowns = [...input.unknowns];
-  if (input.materials.directions.length === 0) unknowns.push("exact material and purity");
-  if (input.dimensions.relationships.length === 0) unknowns.push("exact dimensions");
-  if (input.stones.items.length > 0 && !input.stones.items.some((stone) => stone.sizeRelationship)) {
+  if (materialDirections.length === 0) unknowns.push("exact material and purity");
+  if (dimensionRelationships.length === 0) unknowns.push("exact dimensions");
+  if (
+    input.stones.items.length > 0 &&
+    !input.stones.items.some((stone) => positiveValue(stone.sizeRelationship))
+  ) {
     unknowns.push("exact gemstone dimensions");
   }
-  if (input.piece.canonicalType === "pendant_necklace" && !input.dimensions.relationships.some((value) => /\bchain\b/i.test(value))) {
+  if (input.piece.canonicalType === "pendant_necklace" && !dimensionRelationships.some((value) => /\bchain\b/i.test(value))) {
     unknowns.push("chain length and thickness");
   }
   const uniqueUnknowns = [...new Set(unknowns)].slice(0, 16);
@@ -1095,43 +1283,43 @@ function buildDesignSpec(
     language: "en",
     piece_type: input.piece.canonicalType,
     customer_intent_summary: joinOrUnknown([
-      input.customerIntent.designIntent,
-      input.customerIntent.designDescription,
+      positiveValue(input.customerIntent.designIntent),
+      positiveValue(input.customerIntent.designDescription),
     ]),
     design_direction: {
-      style_keywords: input.style.directions,
-      mood: joinOrUnknown([input.style.colorDirection], "unspecified mood and color direction"),
+      style_keywords: positiveValues(input.style.directions),
+      mood: joinOrUnknown([positiveValue(input.style.colorDirection)], "unspecified mood and color direction"),
       target_customer_note: "PII-free structured design intent only; no customer identity retained.",
-      symmetry_preference: joinOrUnknown([input.composition.direction], "unspecified symmetry"),
+      symmetry_preference: joinOrUnknown([positiveValue(input.composition.direction)], "unspecified symmetry"),
       unified_novora_sketch_style_note:
         "Use the NOVORA first-preview hand-sketch style with a warm light background, consistent line weight, and bounded annotations.",
     },
     jewelry_structure: {
       primary_form: joinOrUnknown([
-        input.piece.subtype,
-        input.piece.boundedOtherJewelryType,
+        positiveValue(input.piece.subtype),
+        positiveValue(input.piece.boundedOtherJewelryType),
         input.piece.canonicalType,
       ]),
       view_requirements: [
         "main front view preserving the complete design",
         ...(consistency.stacking
           ? ["front-facing stacking elevation"]
-          : input.composition.requestedViews),
+          : positiveValues(input.composition.requestedViews)),
         "enlarged structural detail preserving the same stone, setting, shank count, and motif location",
       ].slice(0, 8),
       setting_logic: joinOrUnknown(
-        input.stones.items.map((stone) => stone.setting),
+        input.stones.items.flatMap((stone) => positiveValues([stone.setting])),
         "setting construction to confirm; do not invent production detail",
       ),
       setting_planning: boundedSettingTypes(input),
       construction_consistency_notes: structureNotes,
       structure_risk_flags: [
-        ...input.manufacturingConstraints,
-        ...input.wearability.requirements,
+        ...manufacturingConstraints,
+        ...wearabilityRequirements,
       ].slice(0, 16),
     },
     materials: {
-      metal_preference: joinOrUnknown(input.materials.directions, "unspecified"),
+      metal_preference: joinOrUnknown(materialDirections, "unspecified"),
       gold_color: explicitGoldColor(input),
       enamel: "unspecified",
       lab_diamond_or_lab_colored_stone_preference: "unspecified",
@@ -1141,26 +1329,45 @@ function buildDesignSpec(
     },
     stones: {
       center_stone: center
-        ? joinOrUnknown([center.type, center.shape, center.color, center.orientation])
+        ? joinOrUnknown([
+            positiveValue(center.type),
+            positiveValue(center.shape),
+            positiveValue(center.color),
+            positiveValue(center.orientation),
+          ])
         : "none specified",
       side_stones: accents.length
-        ? accents.map((stone) => joinOrUnknown([stone.role, stone.type, stone.shape, stone.color])).join("; ")
+        ? accents.map((stone) => joinOrUnknown([
+            positiveValue(stone.role),
+            positiveValue(stone.type),
+            positiveValue(stone.shape),
+            positiveValue(stone.color),
+          ])).join("; ")
         : "none specified",
       repeated_stones: joinOrUnknown(
         input.stones.items
           .filter((stone) => (stone.quantity ?? 0) > 1)
-          .map((stone) => `${stone.quantity} × ${joinOrUnknown([stone.type, stone.shape], "stone")}`),
+          .map((stone) => `${stone.quantity} × ${joinOrUnknown([
+            positiveValue(stone.type),
+            positiveValue(stone.shape),
+          ], "stone")}`),
         "none specified",
       ),
       stone_color_direction: joinOrUnknown([
-        input.style.colorDirection,
-        ...input.stones.items.map((stone) => stone.color),
+        positiveValue(input.style.colorDirection),
+        ...input.stones.items.map((stone) => positiveValue(stone.color)),
       ]),
-      stone_shape: joinOrUnknown(input.stones.items.map((stone) => stone.shape)),
+      stone_shape: joinOrUnknown(
+        input.stones.items.map((stone) => positiveValue(stone.shape)),
+      ),
       stone_size_relationship: joinOrUnknown([
-        input.stones.arrangement,
-        ...input.stones.items.map((stone) => stone.sizeRelationship),
-        ...input.stones.items.map((stone) => stone.relationshipToOtherStones),
+        positiveValue(input.stones.arrangement),
+        ...input.stones.items.map((stone) =>
+          positiveValue(stone.sizeRelationship),
+        ),
+        ...input.stones.items.map((stone) =>
+          positiveValue(stone.relationshipToOtherStones),
+        ),
       ]),
       special_stone_rules: [
         orientationNote,
@@ -1170,27 +1377,30 @@ function buildDesignSpec(
     },
     motifs: {
       motif_types: motifTypes(input),
-      motif_planning: input.composition.motif ? [input.composition.motif] : [],
-      motif_placement: joinOrUnknown([input.composition.direction], "motif placement unspecified"),
+      motif_planning: positiveValues([input.composition.motif]),
+      motif_placement: joinOrUnknown(
+        [positiveValue(input.composition.direction)],
+        "motif placement unspecified",
+      ),
       motif_to_structure_relationship:
         "Keep the motif attached to the stated jewelry structure without blocking stones, settings, shanks, wearability, or required clearances.",
     },
     dimensions: {
-      approximate_size: joinOrUnknown(input.dimensions.relationships, "unspecified"),
+      approximate_size: joinOrUnknown(dimensionRelationships, "unspecified"),
       ring_size_if_applicable:
         input.piece.canonicalType === "ring"
-          ? joinOrUnknown(input.dimensions.relationships.filter((value) => /\bring size\b/i.test(value)), "unknown")
+          ? joinOrUnknown(dimensionRelationships.filter((value) => /\bring size\b/i.test(value)), "unknown")
           : "not applicable",
       pendant_scale_if_applicable:
         input.piece.canonicalType === "pendant_necklace"
-          ? joinOrUnknown(input.dimensions.relationships, "unknown")
+          ? joinOrUnknown(dimensionRelationships, "unknown")
           : "not applicable",
       unknown_or_to_confirm: uniqueUnknowns,
     },
     production_feasibility_notes: [
       "Concept preview only; jewelry construction and manufacturability require later human review.",
       "Do not claim production readiness, guaranteed manufacturability, or precise tolerances.",
-      ...input.manufacturingConstraints,
+      ...manufacturingConstraints,
     ].slice(0, 16),
     sketch_requirements: {
       unified_novora_sketch_sheet_style: "novora_first_preview_sketch_style_v1",
@@ -1322,7 +1532,9 @@ function buildHandSketchInstruction(
     "no change between single, split, double, or paired-prong construction",
     "no extra or missing ring shank",
     ZODIAC_MOUSE_EYE_GEMSTONE_RULE,
-    ...input.avoid.map((value) => preservedAvoidConstraint(input, value)),
+    ...allNegativeDesignText(input).map((value) =>
+      preservedNegativeConstraint(input, value),
+    ),
     "no stacking collision, vertical misalignment, or hidden component",
     "no stacking relationship mislabeled as a side, profile, or section view",
     "no motif relocation or collision with stones, settings, shanks, or wearability",
