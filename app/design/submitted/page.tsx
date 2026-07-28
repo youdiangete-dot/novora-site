@@ -57,9 +57,6 @@ type SubmittedConceptBrief = {
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 const SERVER_RECEIPT_WARNING =
   'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
-const MOCK_PREVIEW_PUBLIC_REFERENCE = 'NOVORA-CB-MOCK-001';
-const MOCK_PREVIEW_STATE = 'first_preview_ready';
-const MOCK_PREVIEW_HREF = `/design/preview/${MOCK_PREVIEW_PUBLIC_REFERENCE}?state=${MOCK_PREVIEW_STATE}`;
 
 type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   apiSubmission: {
@@ -151,6 +148,7 @@ export default function DesignSubmittedPage() {
   }
 
   const displayedConceptBriefId = submittedBrief.apiSubmission.publicReference;
+  const previewHref = `/design/preview/${encodeURIComponent(displayedConceptBriefId)}`;
 
   return (
     <main className={styles.pageBackground}>
@@ -256,85 +254,91 @@ export default function DesignSubmittedPage() {
           <section className={styles.boundaryCard}>
             <h2>Important boundary</h2>
             <p>
-              This submission helps NOVORA understand your design direction, but it is not a final order, final pricing,
-              CAD approval, or production confirmation.
+              This submission helps NOVORA understand your design direction. The First Preview is an early AI
+              hand-drawn concept sketch, not CAD, a quotation, payment confirmation, an order, production approval, or
+              a manufacturability guarantee.
             </p>
             <p>
-              This is not a CAD-ready production order. Final CAD, pricing, sourcing, and production feasibility are
-              confirmed later.
+              Paid CAD, pricing, sourcing, feasibility, and every production decision remain separate later steps with
+              manual confirmation.
             </p>
             <ul className={submittedStyles.boundaryList}>
-              <li>Not a final order</li>
-              <li>Not final pricing</li>
-              <li>Not CAD approval</li>
-              <li>Not production confirmation</li>
+              <li>Not CAD</li>
+              <li>Not a quotation</li>
+              <li>Not payment confirmation</li>
+              <li>Not an order</li>
+              <li>Not production approval</li>
+              <li>Not a manufacturability guarantee</li>
             </ul>
           </section>
 
           <section className={submittedStyles.nextSteps}>
             <div>
               <p className={styles.eyebrow}>What happens next</p>
-              <h2>What NOVORA reviews next</h2>
+              <h2>Your automatic First Preview path</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
-              NOVORA will review the submitted details and use them as a starting point for the next conversation.
+              NOVORA automatically begins preparing your First Preview after the Concept Brief is received.
             </p>
             <ol className={submittedStyles.nextStepList}>
               <li>
                 <span className={submittedStyles.stepNumber}>1</span>
                 <div>
-                  <h3>Brief review</h3>
-                  <p>NOVORA reviews the concept brief, references, materials direction, and contact details.</p>
+                  <h3>Automatic generation</h3>
+                  <p>Your first AI hand-drawn concept sketch is generated automatically from the received brief.</p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>2</span>
                 <div>
-                  <h3>Concept direction</h3>
-                  <p>NOVORA reviews the concept direction and follows up to discuss possible next steps.</p>
+                  <h3>Automatic checks</h3>
+                  <p>
+                    Safety, privacy, customer-isolation, asset-validity, and lifecycle gates must pass before the
+                    preview can be shown.
+                  </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>3</span>
                 <div>
-                  <h3>CAD path confirmation</h3>
+                  <h3>Direct website visibility</h3>
                   <p>
-                    If you want production-level CAD, NOVORA will confirm details, CAD fee, and process separately.
+                    Once every automatic gate passes, you can view the First Preview directly on this website.
                   </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>4</span>
                 <div>
-                  <h3>Later feasibility checks</h3>
+                  <h3>Human handling when needed</h3>
                   <p>
-                    Final quote, gemstone sourcing, CAD feasibility, and any production-related decisions are confirmed
-                    later through manual follow-up.
+                    Failed, unsafe, ambiguous, complex, low-confidence, or correction cases may require human handling
+                    and follow-up.
                   </p>
                 </div>
               </li>
             </ol>
             <p className={submittedStyles.contactExpectation}>
-              NOVORA will use the submitted email or contact information for follow-up about this Concept Brief. This
-              receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is
-              sent from this submission flow.
+              NOVORA may use the submitted contact information for exception or correction follow-up. This receipt and
+              the First Preview are not CAD, a quotation, payment confirmation, an order, production approval, or a
+              manufacturability guarantee.
             </p>
-            <div className={submittedStyles.mockPreviewEntry}>
+            <div className={submittedStyles.previewEntry}>
               <div>
-                <p className={submittedStyles.mockPreviewLabel}>Demo mock preview route</p>
-                <h3>Demo navigation testing only</h3>
+                <p className={submittedStyles.previewLabel}>Your First Preview</p>
+                <h3>View your concept direction on the website</h3>
                 <p>
-                  This demo link is for navigation testing only. It is not connected to your submitted Concept Brief,
-                  does not display a generated image, and is not customer-safe final delivery.
+                  Your exact preview page will show the early AI hand-drawn concept sketch only after the automatic
+                  safety, privacy, customer-isolation, asset-validity, and lifecycle gates pass.
                 </p>
               </div>
-              <Link className={styles.secondaryButton} href={MOCK_PREVIEW_HREF}>
-                View demo mock preview
+              <Link className={styles.secondaryButton} href={previewHref}>
+                View First Preview status
               </Link>
-              <p className={submittedStyles.mockPreviewBoundary}>
-                Human review and offline follow-up remain required. This mock preview is not CAD, not a quote, not
-                order approval, not payment approval, and not production approval. first_preview_ready is separate from
-                approved_for_customer.
+              <p className={submittedStyles.previewBoundary}>
+                Human handling is reserved for exception and correction cases. A First Preview is an early concept
+                direction only, not CAD, a quotation, payment confirmation, an order, production approval, or a
+                manufacturability guarantee.
               </p>
             </div>
           </section>
