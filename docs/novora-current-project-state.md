@@ -69,6 +69,27 @@ customer visibility, or limited customer delivery to email. Historical records
 of those earlier rules remain preserved below as transition-era context and
 must not be used as the current operating direction.
 
+### Authoritative First Preview Customer-Visibility Marker
+
+`docs/novora-first-preview-product-contract-v1.md` is the governing First
+Preview customer-visibility contract. Every future Codex task touching First
+Preview behavior and future Agent 72F E2E acceptance must inherit its mandatory
+rule: confirmed persistence starts automatic generation, and all trusted
+automatic gates passing requires direct secure website visibility for the exact
+authorized customer without per-image human pre-approval.
+
+The former internal-only, email-only, human-review-before-display, and
+`approved_for_customer`-before-first-preview rules are superseded historical
+assumptions. Historical references remain project history only and cannot
+override the current contract. `first_preview_ready` remains separate from
+formal downstream human approvals, and failed or untrusted gate evidence must
+fail closed into a human-safe exception path without asset exposure or false
+success.
+
+This documentation alignment records the governing rule; it creates no new MVP
+prerequisite chain, must not delay unrelated safe implementation lanes, and
+does not add an approval gate before already authorized work.
+
 ## 2. Current Production Baseline
 
 - Domain: `novora.design` / `www.novora.design`
