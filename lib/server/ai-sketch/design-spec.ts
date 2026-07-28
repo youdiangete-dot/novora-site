@@ -36,7 +36,27 @@ export const NOVORA_DESIGN_SPEC_STATUS_BOUNDARIES = [
 ] as const;
 
 export const ZODIAC_MOUSE_EYE_GEMSTONE_RULE =
-  "For zodiac mouse jewelry/sculpture designs, do not use ruby or red gemstones for mouse eyes. Use green gemstones, black gemstones, jadeite/emerald tones, or dark neutral stones for eyes instead.";
+  "For zodiac mouse jewelry/sculpture designs, do not use ruby or red gemstones for mouse eyes. Preserve an explicitly requested non-red eye gemstone. If no eye gemstone is specified, keep it unknown and do not select a substitute; green, black, jadeite/emerald tones, or dark neutral stones are allowed only when explicitly requested or later approved by a human reviewer.";
+
+const ZODIAC_MOUSE_EYE_CONTEXT_PATTERN =
+  /\bmouse\b(?:\s+[a-z0-9]+){0,8}\s+\beyes?\b|\beyes?\b(?:\s+[a-z0-9]+){0,8}\s+\bmouse\b/;
+
+function normalizeZodiacMouseEyeContext(rule: string): string {
+  return rule
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[-\u2010-\u2015\u2212]/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function isContradictoryZodiacMouseEyeRule(rule: string): boolean {
+  return (
+    rule !== ZODIAC_MOUSE_EYE_GEMSTONE_RULE &&
+    ZODIAC_MOUSE_EYE_CONTEXT_PATTERN.test(normalizeZodiacMouseEyeContext(rule))
+  );
+}
 
 export type NovoraDesignSpecLanguage = (typeof NOVORA_DESIGN_SPEC_LANGUAGES)[number];
 export type NovoraDesignSpecPieceType = (typeof NOVORA_DESIGN_SPEC_PIECE_TYPES)[number];
@@ -168,7 +188,8 @@ export type NovoraDesignSpecValidationIssueCode =
   | "raw_brief_direct_prompt_not_forbidden"
   | "missing_concept_preview_boundary"
   | "missing_status_separation"
-  | "missing_zodiac_mouse_rule";
+  | "missing_zodiac_mouse_rule"
+  | "contradictory_zodiac_mouse_eye_rule";
 
 export type NovoraDesignSpecValidationIssue = {
   code: NovoraDesignSpecValidationIssueCode;
@@ -472,6 +493,15 @@ export function validateNovoraDesignSpec(value: unknown): NovoraDesignSpecValida
       "missing_zodiac_mouse_rule",
       "$.stones.special_stone_rules",
       "NOVORA Design Spec must include the locked zodiac mouse eye gemstone rule.",
+    );
+  }
+
+  if (specialStoneRules.some(isContradictoryZodiacMouseEyeRule)) {
+    pushIssue(
+      issues,
+      "contradictory_zodiac_mouse_eye_rule",
+      "$.stones.special_stone_rules",
+      "NOVORA Design Spec permits only the exact canonical zodiac mouse eye rule in special stone rules.",
     );
   }
 
