@@ -16,6 +16,56 @@ Agent 69A does not modify app code, tests, schema, SQL, Supabase, Storage,
 provider integration, APIs, UI, environment variables, deployment, Production,
 real image generation, or customer data.
 
+## Authoritative Customer-Visibility Rule And Supersession
+
+This Product Contract is the governing source of truth for First Preview
+customer visibility. Future Codex tasks, reviews, tests, and implementation
+decisions must apply the following rule:
+
+1. After a customer's Concept Brief is successfully and verifiably persisted,
+   NOVORA automatically begins the First Preview generation flow.
+2. When every mandatory automatic gate passes, the generated First Preview must
+   become visible directly on the website to the exact securely authorized
+   customer.
+3. The mandatory automatic gates include, at minimum:
+   - Confirmed Concept Brief persistence.
+   - Valid Concept Brief and `publicReference` identity.
+   - Valid, mutually consistent structured Design Spec and Hand Sketch
+     Instruction.
+   - Valid generation Job and Output identity, lineage, and lifecycle.
+   - A passed automatic content-safety result.
+   - Passed privacy and leakage protection.
+   - Exact customer isolation and access authorization.
+   - Valid private generated-asset ownership, integrity, and availability.
+   - No stale, contradictory, expired, ambiguous, revoked, or false-success
+     lifecycle state.
+4. Per-image human pre-approval and `approved_for_customer` are not
+   prerequisites for `first_preview_ready` or its first customer-visible
+   website display.
+5. Human handling is the exception route for special or non-standard cases;
+   automatic-gate failures; low-confidence, structurally complex, or ambiguous
+   jewelry cases; unsafe or privacy-sensitive cases; customer mismatch;
+   invalid, missing, stale, contradictory, or unavailable evidence;
+   correction, redraw, or regeneration; later formal customer-approved
+   material; and CAD, quotation, sourcing, order, payment, manufacturability,
+   production, or gallery decisions.
+6. If trusted evidence cannot establish safe customer visibility, the system
+   must fail closed, withhold the candidate asset, avoid false success, and
+   route to a bounded human-safe exception path.
+7. Former forward-looking assumptions that the First Preview is internal-only
+   until human approval, that every First Preview requires human review before
+   website display, that delivery is email-only, or that
+   `approved_for_customer` is required before the first early concept preview
+   are superseded. Historical documents may retain those statements as history
+   only; they cannot override this contract.
+
+This customer-visible automatic-gate rule does not remove later human control
+over correction, CAD, quotation, sourcing, payment, order, manufacturability,
+production, formal customer-approved material, or gallery publication.
+`first_preview_ready` remains distinct from `approved_for_customer`,
+`approved_for_gallery`, CAD approval, quotation approval, payment confirmation,
+order approval, production approval, and manufacturability approval.
+
 ## 2. Product Positioning
 
 The first AI preview is part of NOVORA's internal concept-preview process. The

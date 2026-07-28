@@ -51,6 +51,46 @@ remain useful safety history, but future implementation must explicitly design
 new customer preview, review-state, and delivery semantics instead of silently
 reusing the old assumptions.
 
+## Mandatory Codex Instruction Block
+
+Every future Codex task touching First Preview orchestration, Provider use,
+persistence, Storage, customer access, UI, review, or E2E must inherit this
+block:
+
+```text
+Generate the First Preview automatically only after confirmed Concept Brief
+persistence. Show it directly on the website to the exact securely authorized
+customer when every mandatory automatic gate passes; do not require per-image
+human approval before first display. Fail closed and route special, failed,
+low-confidence, structurally complex, or ambiguous cases to bounded human
+handling. Never expose cross-customer, invalid, stale, revoked, private-path,
+prompt, secret, reviewer-note, or false-ready data. Keep first_preview_ready
+separate from approved_for_customer and every formal downstream approval.
+Treat internal-only, email-only, and human-review-before-display rules as
+superseded historical assumptions.
+```
+
+## Agent 72F E2E Acceptance Contract
+
+Future Agent 72F must treat the governing Product Contract and the mandatory
+instruction block above as acceptance requirements. This docs-only task does
+not implement or start Agent 72F tests.
+
+| # | Agent 72F must prove |
+| --- | --- |
+| 1 | A confirmed persisted Concept Brief can enter automatic First Preview generation. |
+| 2 | A non-persisted, false-success, fallback, malformed, or rate-limited submission does not start generation. |
+| 3 | A valid generated Output with every required automatic gate passed becomes `first_preview_ready`. |
+| 4 | The exact securely authorized customer can see that First Preview directly on the website. |
+| 5 | No human-review record or `approved_for_customer` state is required before the first display. |
+| 6 | Another customer, invalid proof, wrong cookie, wrong Brief, wrong Output, expired proof, revoked Output, or ambiguous lineage cannot access it. |
+| 7 | A failed safety, privacy, customer-isolation, asset-validity, or lifecycle gate prevents display and enters a bounded human-safe exception outcome. |
+| 8 | Special, low-confidence, structurally complex, or ambiguous cases receive no automatic customer visibility unless the automatic contract establishes trusted pass evidence. |
+| 9 | Pending states have finite expiry and do not poll forever. |
+| 10 | The browser never receives private Storage paths, Provider payloads, raw prompts, secrets, reviewer/admin notes, internal database identifiers, or other customers' information. |
+| 11 | `first_preview_ready` is visibly labeled as an AI concept preview, not CAD, quotation, payment, order, production, or manufacturability approval. |
+| 12 | Historical internal-only, email-only, or human-review-before-display behavior is not accepted as a passing implementation. |
+
 ## 3. Customer-facing MVP flow
 
 Target customer experience:
