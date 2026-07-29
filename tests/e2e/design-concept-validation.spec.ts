@@ -190,6 +190,299 @@ async function seedConfirmedSubmittedBrief(page: Page) {
   });
 }
 
+type SubmittedReceiptCase =
+  | 'array-record'
+  | 'class-instance-record'
+  | 'custom-prototype-api-submission'
+  | 'date-record'
+  | 'getter-api-submission'
+  | 'getter-concept-brief-id'
+  | 'getter-persisted'
+  | 'getter-public-reference'
+  | 'incomplete-own-receipt'
+  | 'inherited-concept-brief-id'
+  | 'inherited-persisted'
+  | 'inherited-public-reference'
+  | 'malformed-json'
+  | 'non-enumerable-api-submission'
+  | 'non-enumerable-concept-brief-id'
+  | 'non-enumerable-persisted'
+  | 'non-enumerable-public-reference'
+  | 'null-prototype-api-submission'
+  | 'null-prototype-record'
+  | 'object-prototype-api-submission'
+  | 'persisted-false'
+  | 'primitive-record'
+  | 'public-reference-alone'
+  | 'setter-api-submission'
+  | 'setter-backed-authoritative-fields'
+  | 'throwing-descriptor-inspection'
+  | 'throwing-prototype-inspection';
+
+async function seedSubmittedReceiptCase(page: Page, receiptCase: SubmittedReceiptCase) {
+  await page.addInitScript((caseName) => {
+    const storageKey = 'novora_submitted_concept_brief';
+
+    if (caseName === 'malformed-json') {
+      window.localStorage.setItem(storageKey, '{"apiSubmission":');
+      return;
+    }
+
+    const marker = `__NOVORA_SUBMITTED_RECEIPT_CASE__${caseName}`;
+    const originalParse = JSON.parse;
+    const restorers: Array<() => void> = [];
+
+    const restoreMutations = () => {
+      while (restorers.length > 0) {
+        restorers.pop()?.();
+      }
+    };
+
+    Object.defineProperty(window, '__novoraRestoreSubmittedReceiptTestMutations', {
+      configurable: true,
+      value: restoreMutations,
+    });
+
+    const validApiSubmission = () => ({
+      persisted: true,
+      publicReference: 'NOVORA-CB-20260601-HARD',
+      conceptBriefId: '88888888-8888-4888-8888-888888888888',
+    });
+    const validRecord = () => ({
+      submittedAt: '2026-06-01T08:00:00.000Z',
+      customerName: 'Mina Chen',
+      customerEmail: 'mina@example.com',
+      apiSubmission: validApiSubmission(),
+    });
+    const replaceObjectPrototypeProperty = (property: string, value: unknown) => {
+      const previousDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, property);
+
+      Object.defineProperty(Object.prototype, property, {
+        configurable: true,
+        enumerable: false,
+        value,
+        writable: true,
+      });
+      restorers.push(() => {
+        if (previousDescriptor) {
+          Object.defineProperty(Object.prototype, property, previousDescriptor);
+        } else {
+          delete (Object.prototype as Record<string, unknown>)[property];
+        }
+      });
+    };
+    const defineAccessor = (object: object, property: string, getterValue?: unknown) => {
+      Object.defineProperty(object, property, {
+        configurable: true,
+        enumerable: true,
+        ...(getterValue === undefined ? { set: () => undefined } : { get: () => getterValue }),
+      });
+    };
+    const defineNonEnumerable = (object: object, property: string, value: unknown) => {
+      Object.defineProperty(object, property, {
+        configurable: true,
+        enumerable: false,
+        value,
+        writable: true,
+      });
+    };
+
+    JSON.parse = ((text: string, reviver?: (this: unknown, key: string, value: unknown) => unknown) => {
+      if (text !== marker) {
+        return originalParse(text, reviver);
+      }
+
+      JSON.parse = originalParse;
+
+      switch (caseName) {
+        case 'null-prototype-record':
+          return Object.assign(Object.create(null), validRecord());
+        case 'null-prototype-api-submission': {
+          const record = validRecord();
+          record.apiSubmission = Object.assign(Object.create(null), validApiSubmission());
+          return record;
+        }
+        case 'object-prototype-api-submission': {
+          replaceObjectPrototypeProperty('apiSubmission', validApiSubmission());
+          const record = validRecord();
+          delete (record as Partial<typeof record>).apiSubmission;
+          return record;
+        }
+        case 'custom-prototype-api-submission': {
+          const record = validRecord();
+          record.apiSubmission = Object.assign(Object.create({ receiptEvidence: true }), validApiSubmission());
+          return record;
+        }
+        case 'getter-api-submission': {
+          const record = validRecord();
+          delete (record as Partial<typeof record>).apiSubmission;
+          defineAccessor(record, 'apiSubmission', validApiSubmission());
+          return record;
+        }
+        case 'setter-api-submission': {
+          const record = validRecord();
+          delete (record as Partial<typeof record>).apiSubmission;
+          defineAccessor(record, 'apiSubmission');
+          return record;
+        }
+        case 'non-enumerable-api-submission': {
+          const record = validRecord();
+          defineNonEnumerable(record, 'apiSubmission', validApiSubmission());
+          return record;
+        }
+        case 'inherited-persisted': {
+          replaceObjectPrototypeProperty('persisted', true);
+          const record = validRecord();
+          delete (record.apiSubmission as Partial<typeof record.apiSubmission>).persisted;
+          return record;
+        }
+        case 'inherited-public-reference': {
+          replaceObjectPrototypeProperty('publicReference', 'NOVORA-CB-20260601-HARD');
+          const record = validRecord();
+          delete (record.apiSubmission as Partial<typeof record.apiSubmission>).publicReference;
+          return record;
+        }
+        case 'inherited-concept-brief-id': {
+          replaceObjectPrototypeProperty('conceptBriefId', '88888888-8888-4888-8888-888888888888');
+          const record = validRecord();
+          delete (record.apiSubmission as Partial<typeof record.apiSubmission>).conceptBriefId;
+          return record;
+        }
+        case 'getter-persisted': {
+          const record = validRecord();
+          delete (record.apiSubmission as Partial<typeof record.apiSubmission>).persisted;
+          defineAccessor(record.apiSubmission, 'persisted', true);
+          return record;
+        }
+        case 'getter-public-reference': {
+          const record = validRecord();
+          delete (record.apiSubmission as Partial<typeof record.apiSubmission>).publicReference;
+          defineAccessor(record.apiSubmission, 'publicReference', 'NOVORA-CB-20260601-HARD');
+          return record;
+        }
+        case 'getter-concept-brief-id': {
+          const record = validRecord();
+          delete (record.apiSubmission as Partial<typeof record.apiSubmission>).conceptBriefId;
+          defineAccessor(record.apiSubmission, 'conceptBriefId', '88888888-8888-4888-8888-888888888888');
+          return record;
+        }
+        case 'setter-backed-authoritative-fields': {
+          const record = validRecord();
+          for (const property of ['persisted', 'publicReference', 'conceptBriefId']) {
+            delete (record.apiSubmission as Record<string, unknown>)[property];
+            defineAccessor(record.apiSubmission, property);
+          }
+          return record;
+        }
+        case 'non-enumerable-persisted': {
+          const record = validRecord();
+          defineNonEnumerable(record.apiSubmission, 'persisted', true);
+          return record;
+        }
+        case 'non-enumerable-public-reference': {
+          const record = validRecord();
+          defineNonEnumerable(record.apiSubmission, 'publicReference', 'NOVORA-CB-20260601-HARD');
+          return record;
+        }
+        case 'non-enumerable-concept-brief-id': {
+          const record = validRecord();
+          defineNonEnumerable(record.apiSubmission, 'conceptBriefId', '88888888-8888-4888-8888-888888888888');
+          return record;
+        }
+        case 'primitive-record':
+          return 42;
+        case 'array-record':
+          return [validRecord()];
+        case 'date-record':
+          return new Date('2026-06-01T08:00:00.000Z');
+        case 'class-instance-record': {
+          class SubmittedRecord {
+            apiSubmission = validApiSubmission();
+            submittedAt = '2026-06-01T08:00:00.000Z';
+          }
+
+          return new SubmittedRecord();
+        }
+        case 'incomplete-own-receipt':
+          return {
+            ...validRecord(),
+            apiSubmission: {
+              persisted: true,
+              publicReference: 'NOVORA-CB-20260601-HARD',
+            },
+          };
+        case 'persisted-false':
+          return {
+            ...validRecord(),
+            apiSubmission: {
+              ...validApiSubmission(),
+              persisted: false,
+            },
+          };
+        case 'public-reference-alone':
+          return {
+            ...validRecord(),
+            apiSubmission: {
+              publicReference: 'NOVORA-CB-20260601-HARD',
+            },
+          };
+        case 'throwing-prototype-inspection':
+          return new Proxy(validRecord(), {
+            getPrototypeOf() {
+              throw new Error('prototype inspection denied');
+            },
+          });
+        case 'throwing-descriptor-inspection':
+          return new Proxy(validRecord(), {
+            getOwnPropertyDescriptor(target, property) {
+              if (property === 'apiSubmission') {
+                throw new Error('descriptor inspection denied');
+              }
+
+              return Reflect.getOwnPropertyDescriptor(target, property);
+            },
+          });
+      }
+    }) as typeof JSON.parse;
+    restorers.push(() => {
+      JSON.parse = originalParse;
+    });
+    window.localStorage.setItem(storageKey, marker);
+  }, receiptCase);
+}
+
+async function restoreSubmittedReceiptTestMutations(page: Page) {
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      __novoraRestoreSubmittedReceiptTestMutations?: () => void;
+    };
+
+    testWindow.__novoraRestoreSubmittedReceiptTestMutations?.();
+    delete testWindow.__novoraRestoreSubmittedReceiptTestMutations;
+  });
+}
+
+async function expectRejectedSubmittedReceipt(page: Page, receiptCase: SubmittedReceiptCase) {
+  let protectedAssetRequestCount = 0;
+
+  await page.route('**/api/first-preview-assets/**', async (route) => {
+    protectedAssetRequestCount += 1;
+    await route.abort();
+  });
+  await seedSubmittedReceiptCase(page, receiptCase);
+
+  try {
+    await page.goto('/design/submitted');
+
+    await expect(page.getByRole('heading', { name: 'Server receipt not confirmed' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'View demo mock preview' })).toHaveCount(0);
+    expect(protectedAssetRequestCount).toBe(0);
+  } finally {
+    await restoreSubmittedReceiptTestMutations(page);
+  }
+}
+
 function delay(milliseconds: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
@@ -440,6 +733,77 @@ test.describe('/design/preview mock boundaries', () => {
     await expect(page.getByText('not customer-safe final delivery', { exact: false })).toBeVisible();
     await expect(page.getByText('Human review and offline follow-up remain required.', { exact: false })).toBeVisible();
   });
+});
+
+test.describe('/design/submitted receipt JSON authority', () => {
+  test('accepts one valid normal JSON receipt without changing the confirmed page', async ({ page }) => {
+    await seedConfirmedSubmittedBrief(page);
+
+    await page.goto('/design/submitted');
+
+    await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-20260601-LINK')).toBeVisible();
+    await expect(page.getByText('Jun 1, 2026', { exact: false })).toBeVisible();
+    await expectTextsVisible(page, ['Mina Chen', 'mina@example.com']);
+    await expect(page.getByRole('heading', { name: 'Important boundary' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'View demo mock preview' })).toHaveAttribute(
+      'href',
+      '/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready',
+    );
+  });
+
+  for (const receiptCase of ['null-prototype-record', 'null-prototype-api-submission'] as const) {
+    test(`accepts a valid ${receiptCase.replaceAll('-', ' ')}`, async ({ page }) => {
+      await seedSubmittedReceiptCase(page, receiptCase);
+
+      try {
+        await page.goto('/design/submitted');
+
+        await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+        await expect(page.getByText('NOVORA-CB-20260601-HARD')).toBeVisible();
+        await expect(page.getByRole('link', { name: 'View demo mock preview' })).toBeVisible();
+      } finally {
+        await restoreSubmittedReceiptTestMutations(page);
+      }
+    });
+  }
+
+  const rejectedReceiptCases: ReadonlyArray<{
+    receiptCase: SubmittedReceiptCase;
+    title: string;
+  }> = [
+    { receiptCase: 'object-prototype-api-submission', title: 'rejects Object.prototype apiSubmission' },
+    { receiptCase: 'custom-prototype-api-submission', title: 'rejects custom-prototype apiSubmission' },
+    { receiptCase: 'getter-api-submission', title: 'rejects getter apiSubmission' },
+    { receiptCase: 'setter-api-submission', title: 'rejects setter-only apiSubmission' },
+    { receiptCase: 'non-enumerable-api-submission', title: 'rejects non-enumerable apiSubmission' },
+    { receiptCase: 'inherited-persisted', title: 'rejects inherited persisted' },
+    { receiptCase: 'inherited-public-reference', title: 'rejects inherited publicReference' },
+    { receiptCase: 'inherited-concept-brief-id', title: 'rejects inherited conceptBriefId' },
+    { receiptCase: 'getter-persisted', title: 'rejects getter persisted' },
+    { receiptCase: 'getter-public-reference', title: 'rejects getter publicReference' },
+    { receiptCase: 'getter-concept-brief-id', title: 'rejects getter conceptBriefId' },
+    { receiptCase: 'setter-backed-authoritative-fields', title: 'rejects setter-backed authoritative fields' },
+    { receiptCase: 'non-enumerable-persisted', title: 'rejects non-enumerable persisted' },
+    { receiptCase: 'non-enumerable-public-reference', title: 'rejects non-enumerable publicReference' },
+    { receiptCase: 'non-enumerable-concept-brief-id', title: 'rejects non-enumerable conceptBriefId' },
+    { receiptCase: 'primitive-record', title: 'rejects a primitive record' },
+    { receiptCase: 'array-record', title: 'rejects an array record' },
+    { receiptCase: 'date-record', title: 'rejects a Date record' },
+    { receiptCase: 'class-instance-record', title: 'rejects a class-instance record' },
+    { receiptCase: 'malformed-json', title: 'rejects malformed JSON' },
+    { receiptCase: 'incomplete-own-receipt', title: 'rejects an incomplete own receipt' },
+    { receiptCase: 'persisted-false', title: 'rejects persisted false' },
+    { receiptCase: 'public-reference-alone', title: 'rejects publicReference alone' },
+    { receiptCase: 'throwing-prototype-inspection', title: 'rejects throwing prototype inspection' },
+    { receiptCase: 'throwing-descriptor-inspection', title: 'rejects throwing descriptor inspection' },
+  ];
+
+  for (const { receiptCase, title } of rejectedReceiptCases) {
+    test(title, async ({ page }) => {
+      await expectRejectedSubmittedReceipt(page, receiptCase);
+    });
+  }
 });
 
 test.describe('P0 public copy boundaries', () => {
