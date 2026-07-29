@@ -69,13 +69,56 @@ type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   };
 };
 
-function hasConfirmedServerReceipt(submittedBrief: SubmittedConceptBrief): submittedBrief is ConfirmedSubmittedConceptBrief {
+type OrdinaryObject = Record<PropertyKey, unknown>;
+
+function isOrdinaryObject(value: unknown): value is OrdinaryObject {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
+}
+
+function getEnumerableOwnDataValue(object: OrdinaryObject, property: PropertyKey): unknown | undefined {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, property);
+
+    if (!descriptor?.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+      return undefined;
+    }
+
+    return descriptor.value;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasConfirmedServerReceipt(submittedBrief: unknown): submittedBrief is ConfirmedSubmittedConceptBrief {
+  if (!isOrdinaryObject(submittedBrief)) {
+    return false;
+  }
+
+  const apiSubmission = getEnumerableOwnDataValue(submittedBrief, 'apiSubmission');
+
+  if (!isOrdinaryObject(apiSubmission)) {
+    return false;
+  }
+
+  const persisted = getEnumerableOwnDataValue(apiSubmission, 'persisted');
+  const publicReference = getEnumerableOwnDataValue(apiSubmission, 'publicReference');
+  const conceptBriefId = getEnumerableOwnDataValue(apiSubmission, 'conceptBriefId');
+
   return (
-    submittedBrief.apiSubmission?.persisted === true &&
-    /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(submittedBrief.apiSubmission.publicReference || '') &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      submittedBrief.apiSubmission.conceptBriefId || '',
-    )
+    persisted === true &&
+    typeof publicReference === 'string' &&
+    /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(publicReference) &&
+    typeof conceptBriefId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conceptBriefId)
   );
 }
 
@@ -93,15 +136,17 @@ function formatSubmittedTime(value: string) {
 }
 
 export default function DesignSubmittedPage() {
-  const [submittedBrief, setSubmittedBrief] = useState<SubmittedConceptBrief | null>(null);
+  const [submittedBrief, setSubmittedBrief] = useState<unknown>(null);
+  const [hasStoredBrief, setHasStoredBrief] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     try {
       const rawBrief = window.localStorage.getItem(SUBMITTED_BRIEF_STORAGE_KEY);
 
-      if (rawBrief) {
-        setSubmittedBrief(JSON.parse(rawBrief) as SubmittedConceptBrief);
+      if (rawBrief !== null) {
+        setHasStoredBrief(true);
+        setSubmittedBrief(JSON.parse(rawBrief) as unknown);
       }
     } catch {
       setSubmittedBrief(null);
@@ -114,7 +159,7 @@ export default function DesignSubmittedPage() {
     return <main className={styles.pageBackground} />;
   }
 
-  if (!submittedBrief) {
+  if (!hasStoredBrief) {
     return (
       <main className={styles.pageBackground}>
         <section className={`${styles.shell} ${styles.emptyShell}`}>
