@@ -1,5 +1,17 @@
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
+import { request as httpRequest } from 'node:http';
+import { createServer } from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 
@@ -11,6 +23,8 @@ import ts from 'typescript';
 const PUBLIC_REFERENCE = 'NOVORA-CB-20260729-A72D';
 const OTHER_PUBLIC_REFERENCE = 'NOVORA-CB-20260729-B72D';
 const OUTPUT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const DENIED_REFERENCE_SENTINEL = 'NOVORA-CB-DENIED';
+const DENIED_ROUTE = `/design/preview/${DENIED_REFERENCE_SENTINEL}`;
 const SUBMITTED_STORAGE_KEY = 'novora_submitted_concept_brief';
 const PREVIEW_PAGE_PATH = path.join(
   process.cwd(),
@@ -167,6 +181,300 @@ async function mountSyntheticMarkup(page: Page, markup: string, baseURL: string)
       </head>
       <body>${markup}</body>
     </html>`);
+}
+
+type ProductionServer = {
+  baseURL: string;
+  port: number;
+  process: ChildProcess;
+  projectPath: string;
+  output: () => string;
+};
+
+const CLEARED_TEST_ENVIRONMENT = [
+  'DATABASE_URL',
+  'DIRECT_URL',
+  'KV_REST_API_TOKEN',
+  'KV_REST_API_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'NOVORA_ADMIN_NOTIFICATION_EMAIL',
+  'NOVORA_EMAIL_FROM',
+  'NOVORA_EMAIL_REPLY_TO',
+  'NOVORA_FIRST_PREVIEW_ACCESS_SIGNING_SECRET',
+  'NOVORA_FIRST_PREVIEW_ASSET_BUCKET',
+  'NOVORA_FIRST_PREVIEW_SIGNING_SECRET',
+  'NOVORA_INTERNAL_SIGNING_SECRET',
+  'OPENAI_API_KEY',
+  'OPENAI_ORGANIZATION',
+  'OPENAI_PROJECT',
+  'REDIS_URL',
+  'RESEND_API_KEY',
+  'STORAGE_ACCESS_KEY_ID',
+  'STORAGE_SECRET_ACCESS_KEY',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_DATABASE_URL',
+  'SUPABASE_JWT_SECRET',
+  'SUPABASE_STORAGE_BUCKET_AI_SKETCHES',
+  'SUPABASE_STORAGE_BUCKET_CAD_PREVIEWS',
+  'SUPABASE_STORAGE_BUCKET_ORDER_ATTACHMENTS',
+  'SUPABASE_STORAGE_BUCKET_REFERENCES',
+  'UPSTASH_REDIS_REST_TOKEN',
+  'UPSTASH_REDIS_REST_URL',
+] as const;
+
+function syntheticTestEnvironment() {
+  const environment = { ...process.env };
+
+  for (const variableName of CLEARED_TEST_ENVIRONMENT) {
+    delete environment[variableName];
+  }
+
+  return {
+    ...environment,
+    CI: '1',
+    NEXT_TELEMETRY_DISABLED: '1',
+    NEXT_PUBLIC_SUPABASE_URL: 'not-a-valid-supabase-url',
+    NOVORA_ADMIN_ACCESS_KEY: 'synthetic-local-admin-key-pr248-correction',
+    NOVORA_EXPECT_MALFORMED_SUPABASE_URL_TEST: '1',
+    SUPABASE_SERVICE_ROLE_KEY: 'synthetic-local-service-role-pr248-correction',
+  };
+}
+
+function copyTrackedProject(sourceRoot: string, destinationRoot: string) {
+  const trackedFiles = spawnSync('git', ['ls-files', '-z'], {
+    cwd: sourceRoot,
+    encoding: 'buffer',
+  });
+
+  if (trackedFiles.status !== 0) {
+    throw new Error(`Unable to enumerate tracked Production test files: ${trackedFiles.stderr.toString('utf8')}`);
+  }
+
+  const relativePaths = trackedFiles.stdout
+    .toString('utf8')
+    .split('\0')
+    .filter(Boolean);
+
+  if (!relativePaths.includes('proxy.ts')) {
+    relativePaths.push('proxy.ts');
+  }
+
+  for (const relativePath of relativePaths) {
+    const sourcePath = path.join(sourceRoot, relativePath);
+    const destinationPath = path.join(destinationRoot, relativePath);
+    mkdirSync(path.dirname(destinationPath), { recursive: true });
+    copyFileSync(sourcePath, destinationPath);
+  }
+
+  const sourceNodeModules = path.join(sourceRoot, 'node_modules');
+  if (!existsSync(sourceNodeModules)) {
+    throw new Error('Production route tests require the existing local node_modules installation.');
+  }
+
+  cpSync(
+    sourceNodeModules,
+    path.join(destinationRoot, 'node_modules'),
+    { dereference: true, recursive: true },
+  );
+}
+
+function removeProductionProject(projectPath: string) {
+  const resolvedProjectPath = path.resolve(projectPath);
+  const expectedPrefix = path.resolve(os.tmpdir(), 'novora-pr248-production-');
+  const comparableProjectPath = process.platform === 'win32'
+    ? resolvedProjectPath.toLowerCase()
+    : resolvedProjectPath;
+  const comparablePrefix = process.platform === 'win32'
+    ? expectedPrefix.toLowerCase()
+    : expectedPrefix;
+
+  if (!comparableProjectPath.startsWith(comparablePrefix)) {
+    throw new Error('Refusing to remove an unexpected Production test directory.');
+  }
+
+  rmSync(projectPath, { force: true, maxRetries: 5, recursive: true, retryDelay: 100 });
+}
+
+async function reserveLoopbackPort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Unable to reserve a loopback port for the Production route tests.'));
+        return;
+      }
+
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve(address.port);
+      });
+    });
+  });
+}
+
+async function waitForProductionServer(server: ProductionServer) {
+  const deadline = Date.now() + 60_000;
+
+  while (Date.now() < deadline) {
+    if (server.process.exitCode !== null) {
+      throw new Error(`Production server exited before readiness.\n${server.output()}`);
+    }
+
+    try {
+      const response = await fetch(`${server.baseURL}/design/start`);
+      if (response.status < 500) return;
+    } catch {
+      // The controlled server has not bound its loopback port yet.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`Production server readiness timed out.\n${server.output()}`);
+}
+
+async function startProductionServer(): Promise<ProductionServer> {
+  const sourceRoot = process.cwd();
+  const projectPath = mkdtempSync(path.join(os.tmpdir(), 'novora-pr248-production-'));
+  copyTrackedProject(sourceRoot, projectPath);
+
+  const environment = syntheticTestEnvironment();
+  const nextBin = path.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next');
+  const build = spawnSync(process.execPath, [nextBin, 'build'], {
+    cwd: projectPath,
+    encoding: 'utf8',
+    env: environment,
+    timeout: 180_000,
+  });
+
+  if (build.status !== 0) {
+    removeProductionProject(projectPath);
+    throw new Error(`Production build failed.\n${build.stdout}\n${build.stderr}`);
+  }
+
+  const port = await reserveLoopbackPort();
+  const chunks: string[] = [];
+  const serverProcess = spawn(
+    process.execPath,
+    [nextBin, 'start', '--hostname', '127.0.0.1', '--port', String(port)],
+    {
+      cwd: projectPath,
+      env: environment,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  const recordOutput = (chunk: Buffer) => {
+    chunks.push(chunk.toString('utf8'));
+    if (chunks.join('').length > 64_000) chunks.shift();
+  };
+  serverProcess.stdout?.on('data', recordOutput);
+  serverProcess.stderr?.on('data', recordOutput);
+
+  const server: ProductionServer = {
+    baseURL: `http://127.0.0.1:${port}`,
+    output: () => chunks.join(''),
+    port,
+    process: serverProcess,
+    projectPath,
+  };
+
+  try {
+    await waitForProductionServer(server);
+    return server;
+  } catch (error) {
+    serverProcess.kill();
+    removeProductionProject(projectPath);
+    throw error;
+  }
+}
+
+async function stopProductionServer(server: ProductionServer | undefined) {
+  if (!server) return;
+
+  if (server.process.exitCode === null) {
+    const exited = new Promise<void>((resolve) => server.process.once('exit', () => resolve()));
+    server.process.kill();
+    await Promise.race([
+      exited,
+      new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+    ]);
+    if (server.process.exitCode === null) {
+      server.process.kill('SIGKILL');
+      await exited;
+    }
+  }
+
+  removeProductionProject(server.projectPath);
+}
+
+async function requestRawProductionPath(server: ProductionServer, rawPath: string) {
+  return new Promise<{ body: string; status: number }>((resolve, reject) => {
+    const request = httpRequest(
+      {
+        headers: {
+          Accept: 'text/html',
+          Connection: 'close',
+          Host: `127.0.0.1:${server.port}`,
+        },
+        hostname: '127.0.0.1',
+        method: 'GET',
+        path: rawPath,
+        port: server.port,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => {
+          resolve({
+            body: Buffer.concat(chunks).toString('utf8'),
+            status: response.statusCode || 0,
+          });
+        });
+      },
+    );
+
+    request.once('error', reject);
+    request.end();
+  });
+}
+
+async function expectProductionDenied(
+  page: Page,
+  server: ProductionServer,
+  routePath: string,
+) {
+  const protectedAssetRequests: string[] = [];
+  const observeRequest = (request: { url: () => string }) => {
+    if (request.url().includes('/api/first-preview-assets/')) {
+      protectedAssetRequests.push(request.url());
+    }
+  };
+  page.on('request', observeRequest);
+
+  try {
+    const response = await page.goto(`${server.baseURL}${routePath}`);
+    expect(response).not.toBeNull();
+    expect(response!.status()).not.toBe(500);
+    await expect(page.getByRole('heading', { name: 'We cannot display this First Preview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'First Preview is unavailable' })).toHaveCount(0);
+    await expect(page.getByText(/404|This page could not be found|Application error|internal server error/i)).toHaveCount(0);
+    await expect(
+      page.getByText(/stack|digest|URI malformed|decodeURIComponent|Supabase|Storage|Provider|signed URL|proof|Job ID|Output ID|customer identity/i),
+    ).toHaveCount(0);
+    await expect(page.locator('img')).toHaveCount(0);
+    expect(protectedAssetRequests).toEqual([]);
+
+    return {
+      customerPresentation: await page.locator('section[role="status"]').innerText(),
+      status: response!.status(),
+      visibleURL: page.url(),
+    };
+  } finally {
+    page.off('request', observeRequest);
+  }
 }
 
 test.describe('Agent 72D hardened customer First Preview UI', () => {
@@ -499,5 +807,104 @@ test.describe('Agent 72D hardened customer First Preview UI', () => {
     expect(customerSources).not.toMatch(
       /internal-only delivery|email-only delivery|per-image human pre-approval|human review is required before customer-facing delivery|approved_for_customer|demo mock preview|mock-ready/i,
     );
+  });
+});
+
+test.describe('Correction 01 real Production Preview routing boundary', () => {
+  test.describe.configure({ mode: 'serial', timeout: 240_000 });
+
+  let productionServer: ProductionServer | undefined;
+
+  test.beforeAll(async () => {
+    productionServer = await startProductionServer();
+  });
+
+  test.afterAll(async () => {
+    await stopProductionServer(productionServer);
+  });
+
+  test('literal extra segment internally rewrites to the canonical generic denied presentation', async ({ page }) => {
+    const canonicalDenied = await expectProductionDenied(page, productionServer!, DENIED_ROUTE);
+    const extraSegment = await expectProductionDenied(
+      page,
+      productionServer!,
+      `/design/preview/${PUBLIC_REFERENCE}/EXTRA?state=ready&outputId=${OUTPUT_ID}`,
+    );
+
+    expect(extraSegment.status).not.toBe(404);
+    expect(extraSegment.customerPresentation).toBe(canonicalDenied.customerPresentation);
+    expect(extraSegment.visibleURL).toBe(
+      `${productionServer!.baseURL}/design/preview/${PUBLIC_REFERENCE}/EXTRA?state=ready&outputId=${OUTPUT_ID}`,
+    );
+  });
+
+  test('raw malformed percent reaches Production unchanged and renders the same generic denied presentation', async ({
+    page,
+  }) => {
+    const malformedPercentPath = `/design/preview/${PUBLIC_REFERENCE.slice(0, -1)}%ZZ`;
+    const rawResponse = await requestRawProductionPath(productionServer!, malformedPercentPath);
+    const customerVisibleHtml = rawResponse.body.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+
+    expect(rawResponse.status).not.toBe(500);
+    expect(customerVisibleHtml).toContain('We cannot display this First Preview');
+    expect(customerVisibleHtml).not.toMatch(
+      /This page could not be found|Application error|internal server error|URI malformed|decodeURIComponent|digest|stack/i,
+    );
+    expect(customerVisibleHtml).not.toMatch(
+      /\/api\/first-preview-assets\/|Supabase|Storage|Provider|signed URL|proof|Job ID|Output ID|customer identity/i,
+    );
+
+    const canonicalDenied = await expectProductionDenied(page, productionServer!, DENIED_ROUTE);
+    const malformedPercent = await expectProductionDenied(page, productionServer!, malformedPercentPath);
+
+    expect(malformedPercent.customerPresentation).toBe(canonicalDenied.customerPresentation);
+    expect(malformedPercent.visibleURL).toBe(`${productionServer!.baseURL}${malformedPercentPath}`);
+  });
+
+  test('canonical sentinel does not loop while a valid exact route passes through to unavailable', async ({ page }) => {
+    const canonicalDenied = await expectProductionDenied(
+      page,
+      productionServer!,
+      `${DENIED_ROUTE}?state=ready&outputId=${OUTPUT_ID}`,
+    );
+    expect(canonicalDenied.status).not.toBe(500);
+
+    const protectedAssetRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/api/first-preview-assets/')) {
+        protectedAssetRequests.push(request.url());
+      }
+    });
+    const response = await page.goto(`${productionServer!.baseURL}/design/preview/${PUBLIC_REFERENCE}`);
+
+    expect(response).not.toBeNull();
+    expect(response!.status()).not.toBe(500);
+    await expect(page.getByRole('heading', { name: 'First Preview is unavailable' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'We cannot display this First Preview' })).toHaveCount(0);
+    expect(protectedAssetRequests).toEqual([]);
+  });
+
+  test('existing malformed single segments and empty Preview forms stay denied while unrelated routes are unaffected', async ({
+    page,
+  }) => {
+    const canonicalDenied = await expectProductionDenied(page, productionServer!, DENIED_ROUTE);
+
+    for (const malformedPath of [
+      '/design/preview',
+      '/design/preview/novora-cb-20260729-a72d',
+      '/design/preview/NOVORA-XX-20260729-A72D',
+      '/design/preview/NOVORA-CB-20260729-A72D%2FEXTRA',
+      '/design/preview/%20NOVORA-CB-20260729-A72D',
+    ]) {
+      const malformed = await expectProductionDenied(page, productionServer!, malformedPath);
+      expect(malformed.customerPresentation).toBe(canonicalDenied.customerPresentation);
+    }
+
+    for (const unaffectedPath of ['/design/submitted', '/design/start']) {
+      const response = await page.goto(`${productionServer!.baseURL}${unaffectedPath}`);
+      expect(response).not.toBeNull();
+      expect(response!.status()).not.toBe(500);
+      await expect(page.getByRole('heading', { name: 'We cannot display this First Preview' })).toHaveCount(0);
+    }
   });
 });
