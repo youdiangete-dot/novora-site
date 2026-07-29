@@ -66,13 +66,61 @@ type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   };
 };
 
-function hasConfirmedServerReceipt(submittedBrief: SubmittedConceptBrief): submittedBrief is ConfirmedSubmittedConceptBrief {
+function isOrdinaryObject(value: unknown): value is Record<PropertyKey, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
+}
+
+function readOwnDataProperty(
+  value: Record<PropertyKey, unknown>,
+  property: PropertyKey,
+  requireEnumerable = false,
+): unknown {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, property);
+
+    if (
+      !descriptor ||
+      !Object.prototype.hasOwnProperty.call(descriptor, 'value') ||
+      (requireEnumerable && descriptor.enumerable !== true)
+    ) {
+      return undefined;
+    }
+
+    return descriptor.value;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasConfirmedServerReceipt(submittedBrief: unknown): submittedBrief is ConfirmedSubmittedConceptBrief {
+  if (!isOrdinaryObject(submittedBrief)) {
+    return false;
+  }
+
+  const apiSubmission = readOwnDataProperty(submittedBrief, 'apiSubmission', true);
+  if (!isOrdinaryObject(apiSubmission)) {
+    return false;
+  }
+
+  const persisted = readOwnDataProperty(apiSubmission, 'persisted');
+  const publicReference = readOwnDataProperty(apiSubmission, 'publicReference');
+  const conceptBriefId = readOwnDataProperty(apiSubmission, 'conceptBriefId');
+
   return (
-    submittedBrief.apiSubmission?.persisted === true &&
-    /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(submittedBrief.apiSubmission.publicReference || '') &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      submittedBrief.apiSubmission.conceptBriefId || '',
-    )
+    persisted === true &&
+    typeof publicReference === 'string' &&
+    /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(publicReference) &&
+    typeof conceptBriefId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conceptBriefId)
   );
 }
 
@@ -90,7 +138,7 @@ function formatSubmittedTime(value: string) {
 }
 
 export default function DesignSubmittedPage() {
-  const [submittedBrief, setSubmittedBrief] = useState<SubmittedConceptBrief | null>(null);
+  const [submittedBrief, setSubmittedBrief] = useState<unknown>(undefined);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -98,7 +146,7 @@ export default function DesignSubmittedPage() {
       const rawBrief = window.localStorage.getItem(SUBMITTED_BRIEF_STORAGE_KEY);
 
       if (rawBrief) {
-        setSubmittedBrief(JSON.parse(rawBrief) as SubmittedConceptBrief);
+        setSubmittedBrief(JSON.parse(rawBrief) as unknown);
       }
     } catch {
       setSubmittedBrief(null);
@@ -111,7 +159,7 @@ export default function DesignSubmittedPage() {
     return <main className={styles.pageBackground} />;
   }
 
-  if (!submittedBrief) {
+  if (submittedBrief === undefined) {
     return (
       <main className={styles.pageBackground}>
         <section className={`${styles.shell} ${styles.emptyShell}`}>
