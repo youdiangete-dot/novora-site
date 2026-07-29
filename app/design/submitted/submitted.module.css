@@ -91,7 +91,7 @@
   padding-top: 0.75rem;
 }
 
-.mockPreviewEntry {
+.previewStatusEntry {
   background: rgba(248, 243, 234, 0.78);
   border: 1px solid rgba(232, 224, 211, 0.86);
   border-radius: 8px;
@@ -100,21 +100,21 @@
   padding: 0.9rem;
 }
 
-.mockPreviewEntry h3 {
+.previewStatusEntry h3 {
   color: #334b38;
   font-size: 1rem;
   line-height: 1.3;
   margin: 0 0 0.25rem;
 }
 
-.mockPreviewEntry p {
+.previewStatusEntry p {
   color: #4f4a41;
   font-size: 0.93rem;
   line-height: 1.6;
   margin: 0;
 }
 
-.mockPreviewEntry .mockPreviewLabel {
+.previewStatusEntry .previewStatusLabel {
   color: #6f5522;
   font-size: 0.78rem;
   font-weight: 750;
@@ -123,9 +123,14 @@
   text-transform: uppercase;
 }
 
-.mockPreviewBoundary {
+.previewStatusBoundary {
   border-top: 1px solid rgba(199, 181, 145, 0.54);
   padding-top: 0.75rem;
+}
+
+.previewStatusEntry a:focus-visible {
+  outline: 3px solid #8f6b2c;
+  outline-offset: 3px;
 }
 
 @media (max-width: 960px) {
