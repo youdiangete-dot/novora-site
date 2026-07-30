@@ -416,26 +416,231 @@ jobs:
           if ($audit.metadata.vulnerabilities.high -ne 0) { throw "Production High is not zero" }
 
           Assert-ExactNpm -NpmPath $npmCommand
-          $playwrightOutput = & $npmCommand run test:e2e 2>&1 |
-            Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "playwright.log")
-          $playwrightExit = $LASTEXITCODE
-          if ($playwrightExit -ne 0) { throw "Playwright failed" }
-          $playwrightText = $playwrightOutput -join "`n"
-          if ($playwrightText -notmatch "635 passed") { throw "Playwright count mismatch" }
-          if ($playwrightText -match "\d+\s+skipped") { throw "Playwright reported skipped tests" }
+          $playwrightArguments = @("run", "test:e2e")
+          $playwrightStdoutPath = Join-Path $env:RUNNER_TEMP "playwright.stdout.log"
+          $playwrightStderrPath = Join-Path $env:RUNNER_TEMP "playwright.stderr.log"
+          $playwrightQuotedArguments = ($playwrightArguments | ForEach-Object {
+            '"' + ($_ -replace '"', '\"') + '"'
+          }) -join " "
+          $playwrightCommandLine = '""{0}" {1}"' -f `
+            $npmCommand, $playwrightQuotedArguments
 
-          node -e "const net=require('net');const socket=net.connect(3000,'127.0.0.1');socket.once('connect',()=>process.exit(1));socket.once('error',()=>process.exit(0));setTimeout(()=>process.exit(0),1000)"
-          if ($LASTEXITCODE -ne 0) { throw "Playwright server still owns port 3000" }
+          $playwrightStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+          $playwrightStartInfo.FileName = $env:ComSpec
+          $playwrightStartInfo.Arguments = "/d /s /c $playwrightCommandLine"
+          $playwrightStartInfo.UseShellExecute = $false
+          $playwrightStartInfo.CreateNoWindow = $true
+          $playwrightStartInfo.RedirectStandardOutput = $true
+          $playwrightStartInfo.RedirectStandardError = $true
+
+          Write-Host "Playwright process wrapper: $($playwrightStartInfo.FileName)"
+          Write-Host "Playwright npm binary: $npmCommand"
+          Write-Host "Playwright npm arguments: $($playwrightArguments -join ' ')"
+          Write-Host "Playwright stdout file: $playwrightStdoutPath"
+          Write-Host "Playwright stderr file: $playwrightStderrPath"
+
+          $playwrightProcess = [System.Diagnostics.Process]::new()
+          $playwrightProcess.StartInfo = $playwrightStartInfo
+          $playwrightStartedAt = [DateTimeOffset]::UtcNow
+          $playwrightStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+          if (-not $playwrightProcess.Start()) {
+            throw "Playwright process did not start"
+          }
+
+          $playwrightStdoutTask = $playwrightProcess.StandardOutput.ReadToEndAsync()
+          $playwrightStderrTask = $playwrightProcess.StandardError.ReadToEndAsync()
+          $playwrightProcess.WaitForExit()
+          $playwrightStdoutText = $playwrightStdoutTask.GetAwaiter().GetResult()
+          $playwrightStderrText = $playwrightStderrTask.GetAwaiter().GetResult()
+          $playwrightExit = $playwrightProcess.ExitCode
+          $playwrightProcess.Dispose()
+          $playwrightStopwatch.Stop()
+          $playwrightFinishedAt = [DateTimeOffset]::UtcNow
+
+          [System.IO.File]::WriteAllText(
+            $playwrightStdoutPath,
+            $playwrightStdoutText,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+          [System.IO.File]::WriteAllText(
+            $playwrightStderrPath,
+            $playwrightStderrText,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+
+          $playwrightStdoutBytes = [System.Text.Encoding]::UTF8.GetByteCount(
+            $playwrightStdoutText
+          )
+          $playwrightStderrBytes = [System.Text.Encoding]::UTF8.GetByteCount(
+            $playwrightStderrText
+          )
+
+          Write-Host "Playwright started UTC: $($playwrightStartedAt.ToString('o'))"
+          Write-Host "Playwright finished UTC: $($playwrightFinishedAt.ToString('o'))"
+          Write-Host "Playwright elapsed milliseconds: $($playwrightStopwatch.ElapsedMilliseconds)"
+          Write-Host "Playwright exit code: $playwrightExit"
+          Write-Host "Playwright stdout byte count: $playwrightStdoutBytes"
+          Write-Host "Playwright stderr byte count: $playwrightStderrBytes"
+          Write-Host "Playwright complete stdout:"
+          if ([string]::IsNullOrEmpty($playwrightStdoutText)) {
+            Write-Host "<empty>"
+          } else {
+            Get-Content -Raw -LiteralPath $playwrightStdoutPath | Write-Host
+          }
+          Write-Host "Playwright complete stderr:"
+          if ([string]::IsNullOrEmpty($playwrightStderrText)) {
+            Write-Host "<empty>"
+          } else {
+            Get-Content -Raw -LiteralPath $playwrightStderrPath | Write-Host
+          }
+
+          $playwrightText = "$playwrightStdoutText`n$playwrightStderrText"
+          $playwrightNormalized = [regex]::Replace(
+            $playwrightText,
+            "`e\[[0-?]*[ -/]*[@-~]",
+            ""
+          )
+          $passedMatches = [regex]::Matches(
+            $playwrightNormalized,
+            "(?m)^\s*(\d+)\s+passed(?:\s+\(|\s*$)"
+          )
+          $failedMatches = [regex]::Matches(
+            $playwrightNormalized,
+            "(?m)^\s*(\d+)\s+failed(?:\s+\(|\s*$)"
+          )
+          $skippedMatches = [regex]::Matches(
+            $playwrightNormalized,
+            "(?m)^\s*(\d+)\s+skipped(?:\s+\(|\s*$)"
+          )
+          $passedCount = 0
+          foreach ($match in $passedMatches) {
+            $passedCount += [int]$match.Groups[1].Value
+          }
+          $failedCount = 0
+          foreach ($match in $failedMatches) {
+            $failedCount += [int]$match.Groups[1].Value
+          }
+          $skippedCount = 0
+          foreach ($match in $skippedMatches) {
+            $skippedCount += [int]$match.Groups[1].Value
+          }
+          $reconciledCount = $passedCount + $failedCount + $skippedCount
+          $failedTests = @([regex]::Matches(
+            $playwrightNormalized,
+            "(?m)^\s*\d+\)\s+\[[^\]]+\]\s+›\s+.+$"
+          ) | ForEach-Object { $_.Value.Trim() })
+          $playwrightHasTimeout = $playwrightNormalized -match `
+            "(?im)Test timeout of \d+ms exceeded|TimeoutError:|Timed out waiting|timed out after"
+          $playwrightWasForced = $playwrightNormalized -match `
+            "(?im)\bSIGTERM\b|\bSIGKILL\b|force(?:d)? termination|run was interrupted"
+
+          Write-Host "Playwright passed count: $passedCount"
+          Write-Host "Playwright failed count: $failedCount"
+          Write-Host "Playwright skipped count: $skippedCount"
+          Write-Host "Playwright reconciled count: $reconciledCount"
+          Write-Host "Playwright parsed failing test count: $($failedTests.Count)"
+          foreach ($failedTest in $failedTests) {
+            Write-Host "Playwright failing test: $failedTest"
+          }
+          Write-Host "Playwright timeout evidence: $playwrightHasTimeout"
+          Write-Host "Playwright forced-termination evidence: $playwrightWasForced"
 
           $workspacePattern = [regex]::Escape($env:GITHUB_WORKSPACE)
-          $remainingProcesses = @(Get-CimInstance Win32_Process |
+          $playwrightProcessPattern = "(?i)playwright|ms-playwright"
+          $allProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+          $taskNodeProcesses = @($allProcesses |
             Where-Object {
-              $_.Name -match "^(node|chrome|chromium|msedge|cmd)(\.exe)?$" -and
+              $_.ProcessId -ne $PID -and
+              $_.Name -match "^node(\.exe)?$" -and
               $_.CommandLine -match $workspacePattern
             })
-          Write-Host "Workspace-related remaining process count: $($remainingProcesses.Count)"
+          $browserProcesses = @($allProcesses |
+            Where-Object {
+              $_.ProcessId -ne $PID -and
+              $_.Name -match "^(chrome|chromium|msedge)(\.exe)?$"
+            })
+          $playwrightProcesses = @($allProcesses |
+            Where-Object {
+              $_.ProcessId -ne $PID -and
+              $_.Name -match "^(node|cmd|chrome|chromium|msedge)(\.exe)?$" -and
+              $_.CommandLine -match $playwrightProcessPattern
+            })
+          $remainingProcesses = @($allProcesses |
+            Where-Object {
+              $_.ProcessId -ne $PID -and
+              (
+                (
+                  $_.Name -match "^(node|cmd)(\.exe)?$" -and
+                  $_.CommandLine -match $workspacePattern
+                ) -or
+                (
+                  $_.Name -match "^(chrome|chromium|msedge)(\.exe)?$" -and
+                  $_.CommandLine -match $playwrightProcessPattern
+                )
+              )
+            })
+
+          Write-Host "Task-owned Node process count: $($taskNodeProcesses.Count)"
+          foreach ($taskNodeProcess in $taskNodeProcesses) {
+            Write-Host "Task Node: PID=$($taskNodeProcess.ProcessId) Name=$($taskNodeProcess.Name) CommandLine=$($taskNodeProcess.CommandLine)"
+          }
+          Write-Host "Browser process count: $($browserProcesses.Count)"
+          foreach ($browserProcess in $browserProcesses) {
+            Write-Host "Browser: PID=$($browserProcess.ProcessId) Name=$($browserProcess.Name) CommandLine=$($browserProcess.CommandLine)"
+          }
+          Write-Host "Playwright process count: $($playwrightProcesses.Count)"
+          foreach ($remainingPlaywrightProcess in $playwrightProcesses) {
+            Write-Host "Playwright process: PID=$($remainingPlaywrightProcess.ProcessId) Name=$($remainingPlaywrightProcess.Name) CommandLine=$($remainingPlaywrightProcess.CommandLine)"
+          }
+          Write-Host "Task-owned remaining test process count: $($remainingProcesses.Count)"
           foreach ($remainingProcess in $remainingProcesses) {
-            Write-Host "$($remainingProcess.ProcessId) $($remainingProcess.Name) $($remainingProcess.CommandLine)"
+            Write-Host "Remaining task process: PID=$($remainingProcess.ProcessId) Name=$($remainingProcess.Name) CommandLine=$($remainingProcess.CommandLine)"
+          }
+
+          $port3000Listeners = @(Get-NetTCPConnection `
+            -State Listen `
+            -LocalPort 3000 `
+            -ErrorAction SilentlyContinue)
+          Write-Host "Repository test ports: 3000 only"
+          Write-Host "Port 3000 listener count: $($port3000Listeners.Count)"
+          foreach ($port3000Listener in $port3000Listeners) {
+            $portOwner = $allProcesses |
+              Where-Object { $_.ProcessId -eq $port3000Listener.OwningProcess } |
+              Select-Object -First 1
+            Write-Host "Port 3000 owner: PID=$($port3000Listener.OwningProcess) Name=$($portOwner.Name) CommandLine=$($portOwner.CommandLine)"
+          }
+
+          if ($playwrightExit -ne 0) {
+            Write-Host "Playwright process returned non-zero exit code $playwrightExit"
+            if ($failedTests.Count -eq 0) {
+              Write-Host "Playwright failing tests: none could be parsed from the complete output"
+            }
+            exit $playwrightExit
+          }
+          if ($passedMatches.Count -ne 1) {
+            throw "Playwright final passed summary is missing or ambiguous"
+          }
+          if ($passedCount -ne 635 -or $reconciledCount -ne 635) {
+            throw "Playwright count reconciliation failed"
+          }
+          if ($failedCount -ne 0) {
+            throw "Playwright reported failed tests"
+          }
+          if ($skippedCount -ne 0) {
+            throw "Playwright reported skipped tests"
+          }
+          if ($playwrightHasTimeout) {
+            throw "Playwright reported timeout evidence"
+          }
+          if ($playwrightWasForced) {
+            throw "Playwright reported forced termination"
+          }
+          if ($playwrightFinishedAt -lt $playwrightStartedAt -or
+            $playwrightStopwatch.IsRunning) {
+            throw "Playwright process completion was not controlled"
+          }
+          if ($port3000Listeners.Count -ne 0) {
+            throw "Playwright server still owns port 3000"
           }
           if ($remainingProcesses.Count -ne 0) {
             throw "Playwright left workspace-related processes running"
