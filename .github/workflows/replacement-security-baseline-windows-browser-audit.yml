@@ -392,7 +392,20 @@ jobs:
 
           $sharpProbe = Join-Path $env:RUNNER_TEMP "sharp-native-probe.cjs"
           @'
-          const sharp = require("sharp");
+          const fs = require("node:fs");
+          const { createRequire } = require("node:module");
+          const path = require("node:path");
+
+          const workspace = process.env.GITHUB_WORKSPACE;
+          if (!workspace) {
+            throw new Error("GITHUB_WORKSPACE is unavailable");
+          }
+          const workspacePackageJson = path.join(workspace, "package.json");
+          if (!fs.existsSync(workspacePackageJson)) {
+            throw new Error(`Workspace package.json is unavailable: ${workspacePackageJson}`);
+          }
+          const workspaceRequire = createRequire(workspacePackageJson);
+          const sharp = workspaceRequire("sharp");
           process.stdout.write(JSON.stringify({
             sharp: sharp.versions.sharp,
             libvips: sharp.versions.vips
@@ -492,7 +505,20 @@ jobs:
 
           $pathProbe = Join-Path $env:RUNNER_TEMP "playwright-executable-path.cjs"
           @'
-          const { chromium } = require("@playwright/test");
+          const fs = require("node:fs");
+          const { createRequire } = require("node:module");
+          const path = require("node:path");
+
+          const workspace = process.env.GITHUB_WORKSPACE;
+          if (!workspace) {
+            throw new Error("GITHUB_WORKSPACE is unavailable");
+          }
+          const workspacePackageJson = path.join(workspace, "package.json");
+          if (!fs.existsSync(workspacePackageJson)) {
+            throw new Error(`Workspace package.json is unavailable: ${workspacePackageJson}`);
+          }
+          const workspaceRequire = createRequire(workspacePackageJson);
+          const { chromium } = workspaceRequire("@playwright/test");
           process.stdout.write(JSON.stringify({ executablePath: chromium.executablePath() }));
           '@ | Set-Content -LiteralPath $pathProbe -Encoding utf8
           $pathCapture = Invoke-NativeCapture -FilePath (Get-Command node.exe).Source -Arguments @($pathProbe) -Label "playwright-executable-path"
@@ -559,7 +585,20 @@ jobs:
 
           $smokeScript = Join-Path $env:RUNNER_TEMP "locked-chromium-smoke.cjs"
           @'
-          const { chromium } = require("@playwright/test");
+          const fs = require("node:fs");
+          const { createRequire } = require("node:module");
+          const path = require("node:path");
+
+          const workspace = process.env.GITHUB_WORKSPACE;
+          if (!workspace) {
+            throw new Error("GITHUB_WORKSPACE is unavailable");
+          }
+          const workspacePackageJson = path.join(workspace, "package.json");
+          if (!fs.existsSync(workspacePackageJson)) {
+            throw new Error(`Workspace package.json is unavailable: ${workspacePackageJson}`);
+          }
+          const workspaceRequire = createRequire(workspacePackageJson);
+          const { chromium } = workspaceRequire("@playwright/test");
 
           (async () => {
             let browser;
