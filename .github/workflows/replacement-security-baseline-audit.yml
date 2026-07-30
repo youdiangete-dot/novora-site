@@ -1,0 +1,273 @@
+name: Replacement security baseline audit
+
+on:
+  push:
+    branches:
+      - codex/replacement-security-baseline-audit
+
+permissions:
+  contents: read
+
+env:
+  CI: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+  NOVORA_ADMIN_ACCESS_KEY: synthetic-local-admin-key-replacement-security
+  NEXT_PUBLIC_SUPABASE_URL: not-a-valid-supabase-url
+  SUPABASE_SERVICE_ROLE_KEY: synthetic-local-service-role-replacement-security
+  NOVORA_EXPECT_MALFORMED_SUPABASE_URL_TEST: "1"
+
+jobs:
+  linux-cycle:
+    name: Linux clean cycle ${{ matrix.cycle }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cycle:
+          - 1
+          - 2
+    steps:
+      - name: Set up Node 24.15.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+
+      - name: Pin npm 11.13.0 before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.13.0
+          test "$(node --version)" = "v24.15.0"
+          test "$(npm --version)" = "11.13.0"
+
+      - name: Check out exact replacement source commit
+        uses: actions/checkout@v4
+        with:
+          ref: a88c88af50115eabf86f358227b429693bf51a5a
+          persist-credentials: false
+
+      - name: Validate clean install, audit, build, and TypeScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="a88c88af50115eabf86f358227b429693bf51a5a"
+          test "$(git rev-parse HEAD)" = "$source_sha"
+          test "$(node --version)" = "v24.15.0"
+          test "$(node -p 'process.arch')" = "x64"
+          test "$(npm --version)" = "11.13.0"
+
+          package_before="$(sha256sum package.json | cut -d ' ' -f1)"
+          lock_before="$(sha256sum package-lock.json | cut -d ' ' -f1)"
+
+          npx --yes npm@11.13.0 ci
+
+          test "$(sha256sum package.json | cut -d ' ' -f1)" = "$package_before"
+          test "$(sha256sum package-lock.json | cut -d ' ' -f1)" = "$lock_before"
+
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const vercel = JSON.parse(fs.readFileSync("vercel.json", "utf8"));
+            if (pkg.packageManager !== "npm@11.13.0") process.exit(1);
+            if (pkg.devEngines?.packageManager?.name !== "npm") process.exit(1);
+            if (pkg.devEngines?.packageManager?.version !== "11.13.0") process.exit(1);
+            if (pkg.devEngines?.packageManager?.onFail !== "error") process.exit(1);
+            if (vercel.installCommand !== "npx --yes npm@11.13.0 ci") process.exit(1);
+            if (vercel.buildCommand !== "npx --yes npm@11.13.0 run build") process.exit(1);
+          '
+
+          npx --yes npm@11.13.0 query ':extraneous' --json > "$RUNNER_TEMP/extraneous.json"
+          node -e '
+            const rows = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            if (!Array.isArray(rows) || rows.length !== 0) process.exit(1);
+          ' "$RUNNER_TEMP/extraneous.json"
+
+          npx --yes npm@11.13.0 ls --all > "$RUNNER_TEMP/npm-ls.txt"
+          if grep -Eiq 'extraneous|invalid' "$RUNNER_TEMP/npm-ls.txt"; then
+            exit 1
+          fi
+
+          npx --yes npm@11.13.0 ls --all --json > "$RUNNER_TEMP/npm-ls.json"
+          node -e '
+            const tree = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            if (tree.problems && tree.problems.length !== 0) process.exit(1);
+          ' "$RUNNER_TEMP/npm-ls.json"
+
+          npx --yes npm@11.13.0 ls next postcss sharp --all --json > "$RUNNER_TEMP/version-tree.json"
+          node -e '
+            const tree = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const next = tree.dependencies?.next;
+            if (next?.version !== "16.2.12") process.exit(1);
+            if (next?.dependencies?.postcss?.version !== "8.5.18") process.exit(1);
+            if (next?.dependencies?.sharp?.version !== "0.35.3") process.exit(1);
+          ' "$RUNNER_TEMP/version-tree.json"
+
+          node -e '
+            const sharp = require("sharp");
+            if (sharp.versions.sharp !== "0.35.3") process.exit(1);
+            if (!sharp.versions.vips) process.exit(1);
+            console.log(`sharp=${sharp.versions.sharp} libvips=${sharp.versions.vips}`);
+          '
+
+          npx --yes npm@11.13.0 audit --omit=dev --json > "$RUNNER_TEMP/audit.json"
+          node -e '
+            const audit = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            if (audit.metadata?.vulnerabilities?.critical !== 0) process.exit(1);
+            if (audit.metadata?.vulnerabilities?.high !== 0) process.exit(1);
+          ' "$RUNNER_TEMP/audit.json"
+
+          npx --yes npm@11.13.0 run build
+          npx --yes npm@11.13.0 exec tsc -- --noEmit --incremental false
+
+          test "$(sha256sum package.json | cut -d ' ' -f1)" = "$package_before"
+          test "$(sha256sum package-lock.json | cut -d ' ' -f1)" = "$lock_before"
+
+          {
+            echo "## Linux clean cycle ${{ matrix.cycle }}"
+            echo
+            echo "- Runner image: ubuntu-24.04"
+            echo "- Source commit: $source_sha"
+            echo "- Node: $(node --version)"
+            echo "- Architecture: $(node -p 'process.arch')"
+            echo "- npm: $(npm --version)"
+            echo "- Extraneous: 0"
+            echo "- npm ls problems: 0"
+            echo "- Next.js: 16.2.12"
+            echo "- PostCSS: 8.5.18"
+            echo "- Sharp: 0.35.3"
+            echo "- Production Critical: 0"
+            echo "- Production High: 0"
+            echo "- Build: passed"
+            echo "- TypeScript: passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  windows-validation:
+    name: Windows Server 2025 validation
+    runs-on: windows-2025
+    steps:
+      - name: Set up Node 24.15.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+
+      - name: Pin npm 11.13.0 before checkout
+        shell: pwsh
+        run: |
+          npm.cmd install --global npm@11.13.0
+          if ((node --version) -ne "v24.15.0") { throw "unexpected Node version" }
+          if ((npm.cmd --version) -ne "11.13.0") { throw "unexpected npm version" }
+
+      - name: Check out exact replacement source commit
+        uses: actions/checkout@v4
+        with:
+          ref: a88c88af50115eabf86f358227b429693bf51a5a
+          persist-credentials: false
+
+      - name: Validate install, audit, Playwright, build, and TypeScript
+        shell: pwsh
+        run: |
+          $sourceSha = "a88c88af50115eabf86f358227b429693bf51a5a"
+          if ((git rev-parse HEAD) -ne $sourceSha) { throw "wrong source commit" }
+          if ((node --version) -ne "v24.15.0") { throw "unexpected Node version" }
+          if ((node -p process.arch) -ne "x64") { throw "unexpected architecture" }
+          if ((npm.cmd --version) -ne "11.13.0") { throw "unexpected npm version" }
+
+          $packageBefore = (Get-FileHash -Algorithm SHA256 package.json).Hash
+          $lockBefore = (Get-FileHash -Algorithm SHA256 package-lock.json).Hash
+
+          npx.cmd --yes npm@11.13.0 ci
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+
+          if ((Get-FileHash -Algorithm SHA256 package.json).Hash -ne $packageBefore) {
+            throw "package.json changed"
+          }
+          if ((Get-FileHash -Algorithm SHA256 package-lock.json).Hash -ne $lockBefore) {
+            throw "package-lock.json changed"
+          }
+
+          $package = Get-Content -Raw package.json | ConvertFrom-Json
+          $vercel = Get-Content -Raw vercel.json | ConvertFrom-Json
+          if ($package.packageManager -ne "npm@11.13.0") { throw "wrong packageManager" }
+          if ($package.devEngines.packageManager.name -ne "npm") { throw "wrong package-manager name" }
+          if ($package.devEngines.packageManager.version -ne "11.13.0") { throw "wrong package-manager version" }
+          if ($package.devEngines.packageManager.onFail -ne "error") { throw "wrong enforcement mode" }
+          if ($vercel.installCommand -ne "npx --yes npm@11.13.0 ci") { throw "wrong Vercel install command" }
+          if ($vercel.buildCommand -ne "npx --yes npm@11.13.0 run build") { throw "wrong Vercel build command" }
+
+          $extraneousRaw = npx.cmd --yes npm@11.13.0 query ':extraneous' --json
+          if ($LASTEXITCODE -ne 0) { throw "npm query failed" }
+          $extraneous = ($extraneousRaw -join "`n") | ConvertFrom-Json
+          if (@($extraneous).Count -ne 0) { throw "extraneous packages found" }
+
+          $lsText = npx.cmd --yes npm@11.13.0 ls --all 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "npm ls text failed" }
+          if (($lsText -join "`n") -match "(?i)extraneous|invalid") {
+            throw "npm ls text contains an invalid marker"
+          }
+
+          $lsJsonRaw = npx.cmd --yes npm@11.13.0 ls --all --json
+          if ($LASTEXITCODE -ne 0) { throw "npm ls JSON failed" }
+          $lsJson = ($lsJsonRaw -join "`n") | ConvertFrom-Json
+          if ($null -ne $lsJson.problems -and $lsJson.problems.Count -ne 0) {
+            throw "npm ls JSON contains problems"
+          }
+
+          $versionTreeRaw = npx.cmd --yes npm@11.13.0 ls next postcss sharp --all --json
+          if ($LASTEXITCODE -ne 0) { throw "version tree failed" }
+          $versionTree = ($versionTreeRaw -join "`n") | ConvertFrom-Json
+          if ($versionTree.dependencies.next.version -ne "16.2.12") { throw "wrong Next.js version" }
+          if ($versionTree.dependencies.next.dependencies.postcss.version -ne "8.5.18") { throw "wrong PostCSS version" }
+          if ($versionTree.dependencies.next.dependencies.sharp.version -ne "0.35.3") { throw "wrong Sharp version" }
+
+          node -e "const sharp=require('sharp');if(sharp.versions.sharp!=='0.35.3'||!sharp.versions.vips)process.exit(1);console.log(JSON.stringify({sharp:sharp.versions.sharp,libvips:sharp.versions.vips}))"
+          if ($LASTEXITCODE -ne 0) { throw "Sharp native import failed" }
+
+          $auditRaw = npx.cmd --yes npm@11.13.0 audit --omit=dev --json
+          if ($LASTEXITCODE -ne 0) { throw "Production audit failed" }
+          $audit = ($auditRaw -join "`n") | ConvertFrom-Json
+          if ($audit.metadata.vulnerabilities.critical -ne 0) { throw "Production Critical is not zero" }
+          if ($audit.metadata.vulnerabilities.high -ne 0) { throw "Production High is not zero" }
+
+          $playwrightOutput = npx.cmd --yes npm@11.13.0 run test:e2e 2>&1 |
+            Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "playwright.log")
+          if ($LASTEXITCODE -ne 0) { throw "Playwright failed" }
+          $playwrightText = $playwrightOutput -join "`n"
+          if ($playwrightText -notmatch "635 passed") { throw "Playwright count mismatch" }
+          if ($playwrightText -match "\d+\s+skipped") { throw "Playwright reported skipped tests" }
+
+          node -e "const net=require('net');const socket=net.connect(3000,'127.0.0.1');socket.once('connect',()=>process.exit(1));socket.once('error',()=>process.exit(0));setTimeout(()=>process.exit(0),1000)"
+          if ($LASTEXITCODE -ne 0) { throw "Playwright server still owns port 3000" }
+
+          npx.cmd --yes npm@11.13.0 run build
+          if ($LASTEXITCODE -ne 0) { throw "Production build failed" }
+
+          npx.cmd --yes npm@11.13.0 exec tsc -- --noEmit --incremental false
+          if ($LASTEXITCODE -ne 0) { throw "TypeScript failed" }
+
+          if ((Get-FileHash -Algorithm SHA256 package.json).Hash -ne $packageBefore) {
+            throw "package.json changed after validation"
+          }
+          if ((Get-FileHash -Algorithm SHA256 package-lock.json).Hash -ne $lockBefore) {
+            throw "package-lock.json changed after validation"
+          }
+
+          @"
+          ## Windows Server 2025 validation
+
+          - Runner image: windows-2025
+          - Source commit: $sourceSha
+          - Node: $(node --version)
+          - Architecture: $(node -p process.arch)
+          - npm: $(npm.cmd --version)
+          - Extraneous: 0
+          - npm ls problems: 0
+          - Next.js: 16.2.12
+          - PostCSS: 8.5.18
+          - Sharp: 0.35.3
+          - Production Critical: 0
+          - Production High: 0
+          - Playwright: 635 passed, 0 failed, 0 skipped, normal exit 0
+          - Loopback port 3000: closed after Playwright
+          - Build: passed
+          - TypeScript: passed
+          "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
