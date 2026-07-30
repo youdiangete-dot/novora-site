@@ -82,7 +82,6 @@ jobs:
           import path from "node:path";
           import process from "node:process";
           import { spawnSync } from "node:child_process";
-          import { createRequire } from "node:module";
 
           const platformLabel = process.env.AUDIT_PLATFORM;
           const expectedHead = process.env.EXPECTED_HEAD;
@@ -257,27 +256,104 @@ jobs:
             return { problems, invalidEntries, extraneousEntries };
           }
 
-          function resolvedVersions(directory) {
+          function collectExactPackageVersions(tree, packageName) {
+            if (!tree || typeof tree !== "object" || Array.isArray(tree)) {
+              throw new Error(`Malformed npm dependency tree for ${packageName}`);
+            }
+            const findings = [];
+            const visited = new WeakSet();
+            function visit(node, dependencyName, ancestry) {
+              if (!node || typeof node !== "object" || Array.isArray(node)) return;
+              if (visited.has(node)) return;
+              visited.add(node);
+              if (dependencyName === packageName) {
+                if (
+                  typeof node.version !== "string" ||
+                  !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(node.version)
+                ) {
+                  throw new Error(
+                    `Malformed installed ${packageName} version at ${ancestry.join(" > ")}`,
+                  );
+                }
+                findings.push({
+                  version: node.version,
+                  path: typeof node.path === "string" ? node.path : null,
+                  ancestry,
+                });
+              }
+              if (node.dependencies !== undefined) {
+                if (
+                  !node.dependencies ||
+                  typeof node.dependencies !== "object" ||
+                  Array.isArray(node.dependencies)
+                ) {
+                  throw new Error(
+                    `Malformed dependencies object while locating ${packageName}`,
+                  );
+                }
+                for (const [name, dependency] of Object.entries(node.dependencies)) {
+                  visit(dependency, name, [...ancestry, name]);
+                }
+              }
+            }
+            visit(tree, null, []);
+            return findings;
+          }
+
+          function resolvedVersions(candidateVersion, directory) {
             const versions = { next: null, postcss: null, sharp: null };
             const errors = [];
-            try {
-              const rootRequire = createRequire(path.join(directory, "package.json"));
-              const nextManifestPath = rootRequire.resolve("next/package.json");
-              const nextManifest = JSON.parse(fs.readFileSync(nextManifestPath, "utf8"));
-              versions.next = nextManifest.version;
-              const nextRequire = createRequire(nextManifestPath);
-              const postcssManifest = JSON.parse(
-                fs.readFileSync(nextRequire.resolve("postcss/package.json"), "utf8"),
+            const trees = {};
+            const findings = {};
+            for (const packageName of Object.keys(versions)) {
+              const treeResult = runCandidateNpm(
+                candidateVersion,
+                ["ls", packageName, "--json"],
+                directory,
               );
-              const sharpManifest = JSON.parse(
-                fs.readFileSync(nextRequire.resolve("sharp/package.json"), "utf8"),
+              printResult(
+                `${candidateVersion} npm ls ${packageName} --json for exact version`,
+                treeResult,
               );
-              versions.postcss = postcssManifest.version;
-              versions.sharp = sharpManifest.version;
-            } catch (error) {
-              errors.push(String(error.stack || error));
+              const parsed = parseJson(treeResult.stdout);
+              trees[packageName] = { ...treeResult, parseError: parsed.error };
+              if (treeResult.exitCode !== 0) {
+                errors.push(
+                  `npm ls ${packageName} --json exited ${treeResult.exitCode}`,
+                );
+                continue;
+              }
+              if (parsed.value === null) {
+                errors.push(
+                  `npm ls ${packageName} --json was malformed: ${parsed.error}`,
+                );
+                continue;
+              }
+              try {
+                const packageFindings = collectExactPackageVersions(
+                  parsed.value,
+                  packageName,
+                );
+                findings[packageName] = packageFindings;
+                if (packageFindings.length === 0) {
+                  errors.push(`Installed package ${packageName} was not found`);
+                  continue;
+                }
+                const uniqueVersions = [
+                  ...new Set(packageFindings.map((item) => item.version)),
+                ].sort(numericVersionCompare);
+                if (uniqueVersions.length !== 1) {
+                  errors.push(
+                    `Conflicting installed ${packageName} versions: ${uniqueVersions.join(",")}`,
+                  );
+                  continue;
+                }
+                versions[packageName] = uniqueVersions[0];
+              } catch (error) {
+                errors.push(String(error.stack || error));
+              }
             }
-            return { versions, errors };
+            return { versions, errors, trees, findings };
           }
 
           function bytesEqual(left, right) {
@@ -311,6 +387,8 @@ jobs:
               invalidDependencyEntries: [],
               resolvedVersions: { next: null, postcss: null, sharp: null },
               resolutionErrors: [],
+              npmVersionTrees: {},
+              npmVersionFindings: {},
               packageJsonChanged: null,
               packageLockJsonChanged: null,
               platformResult: null,
@@ -378,9 +456,11 @@ jobs:
               record.invalidDependencyEntries = treeFacts.invalidEntries;
               record.treeExtraneousEntries = treeFacts.extraneousEntries;
 
-              const resolution = resolvedVersions(directory);
+              const resolution = resolvedVersions(version, directory);
               record.resolvedVersions = resolution.versions;
               record.resolutionErrors = resolution.errors;
+              record.npmVersionTrees = resolution.trees;
+              record.npmVersionFindings = resolution.findings;
               console.log(`${version} RESOLVED_NEXT=${resolution.versions.next}`);
               console.log(`${version} RESOLVED_POSTCSS=${resolution.versions.postcss}`);
               console.log(`${version} RESOLVED_SHARP=${resolution.versions.sharp}`);
