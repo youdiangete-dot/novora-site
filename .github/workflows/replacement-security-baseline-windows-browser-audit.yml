@@ -1,0 +1,916 @@
+name: Replacement security baseline Windows browser audit
+
+on:
+  push:
+    branches:
+      - codex/replacement-security-baseline-windows-browser-audit
+
+permissions:
+  contents: read
+
+env:
+  CI: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+  NOVORA_ADMIN_ACCESS_KEY: synthetic-local-admin-key-browser-audit
+  NEXT_PUBLIC_SUPABASE_URL: not-a-valid-supabase-url
+  SUPABASE_SERVICE_ROLE_KEY: synthetic-local-service-role-browser-audit
+  NOVORA_EXPECT_MALFORMED_SUPABASE_URL_TEST: "1"
+
+jobs:
+  windows-browser-validation:
+    runs-on: windows-2025
+    timeout-minutes: 60
+
+    steps:
+      - name: Set up exact Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+
+      - name: Install and verify exact npm
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $bootstrapNpm = (Get-Command npm.cmd -ErrorAction Stop).Source
+          & $bootstrapNpm install --global npm@11.13.0
+          if ($LASTEXITCODE -ne 0) {
+            throw "Global npm 11.13.0 installation failed with exit code $LASTEXITCODE"
+          }
+
+          $nodeVersion = (& node.exe --version).Trim()
+          if ($nodeVersion -ne "v24.15.0") {
+            throw "Expected Node v24.15.0, received $nodeVersion"
+          }
+
+          $npmCmd = (Get-Command npm.cmd -ErrorAction Stop).Source
+          $npmVersion = (& $npmCmd --version).Trim()
+          Write-Host "Node identity: $nodeVersion"
+          Write-Host "Resolved npm.cmd binary: $npmCmd"
+          Write-Host "Direct npm.cmd version: $npmVersion"
+
+          if ($npmVersion -ne "11.13.0") {
+            throw "Expected direct npm.cmd 11.13.0, received $npmVersion"
+          }
+
+          $npxCmd = (Get-Command npx.cmd -ErrorAction Stop).Source
+          "VERIFIED_NPM_CMD=$npmCmd" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VERIFIED_NPX_CMD=$npxCmd" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Check out exact replacement source
+        uses: actions/checkout@v6
+        with:
+          ref: a88c88af50115eabf86f358227b429693bf51a5a
+          persist-credentials: false
+          fetch-depth: 1
+          clean: true
+
+      - name: Verify source identity and isolate synthetic environment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $expectedSource = "a88c88af50115eabf86f358227b429693bf51a5a"
+          $actualSource = (git rev-parse HEAD).Trim()
+          Write-Host "Exact replacement source checkout: $actualSource"
+          if ($actualSource -ne $expectedSource) {
+            throw "Replacement source identity mismatch"
+          }
+
+          $variablesToClear = @(
+            "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+            "SUPABASE_URL",
+            "SUPABASE_ANON_KEY",
+            "SUPABASE_DATABASE_URL",
+            "SUPABASE_DB_URL",
+            "SUPABASE_STORAGE_BUCKET_REFERENCES",
+            "SUPABASE_STORAGE_BUCKET_AI_SKETCHES",
+            "SUPABASE_STORAGE_BUCKET_CAD_PREVIEWS",
+            "SUPABASE_STORAGE_BUCKET_ORDER_ATTACHMENTS",
+            "DATABASE_URL",
+            "DIRECT_URL",
+            "POSTGRES_URL",
+            "POSTGRES_PRISMA_URL",
+            "POSTGRES_URL_NON_POOLING",
+            "PGHOST",
+            "PGUSER",
+            "PGPASSWORD",
+            "PGDATABASE",
+            "PGPORT",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_REGION",
+            "S3_BUCKET",
+            "AZURE_STORAGE_CONNECTION_STRING",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "OPENAI_API_KEY",
+            "OPENAI_ORG_ID",
+            "OPENAI_PROJECT_ID",
+            "PROVIDER_API_KEY",
+            "IMAGE_PROVIDER_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY",
+            "RESEND_API_KEY",
+            "NOVORA_ADMIN_NOTIFICATION_EMAIL",
+            "NOVORA_EMAIL_FROM",
+            "NOVORA_EMAIL_REPLY_TO",
+            "REDIS_URL",
+            "REDIS_TOKEN",
+            "UPSTASH_REDIS_REST_URL",
+            "UPSTASH_REDIS_REST_TOKEN",
+            "KV_URL",
+            "KV_REST_API_URL",
+            "KV_REST_API_TOKEN",
+            "KV_REST_API_READ_ONLY_TOKEN",
+            "NEXTAUTH_SECRET",
+            "AUTH_SECRET",
+            "JWT_SECRET",
+            "SIGNING_SECRET",
+            "NOVORA_FIRST_PREVIEW_ACCESS_SIGNING_SECRET",
+            "NOVORA_PREVIEW_SIGNING_SECRET",
+            "ADMIN_COOKIE_SIGNING_SECRET",
+            "VERCEL_TOKEN",
+            "VERCEL_ORG_ID",
+            "VERCEL_PROJECT_ID",
+            "VERCEL_ENV",
+            "CUSTOMER_DATA_URL",
+            "CUSTOMER_DATA_TOKEN",
+            "NOVORA_CUSTOMER_DATA_URL",
+            "NOVORA_CUSTOMER_DATA_TOKEN"
+          )
+
+          foreach ($name in $variablesToClear) {
+            [Environment]::SetEnvironmentVariable($name, $null, "Process")
+            "$name=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+          Write-Host "Live-capable Supabase, Storage, database, provider, Resend, Redis/KV, signing, Vercel, and customer-data variables were explicitly cleared."
+          Write-Host "Only the six approved process-scoped synthetic test values remain configured."
+
+      - name: Verify committed install contract and fresh workspace
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if (Test-Path -LiteralPath "node_modules") {
+            throw "node_modules must be absent before the fresh install"
+          }
+
+          $packageHash = (Get-FileHash -LiteralPath "package.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $lockHash = (Get-FileHash -LiteralPath "package-lock.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $vercelHash = (Get-FileHash -LiteralPath "vercel.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          $package = Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json
+          if ($package.packageManager -ne "npm@11.13.0") {
+            throw "packageManager must be exactly npm@11.13.0"
+          }
+          if ($package.devEngines.packageManager.name -ne "npm" -or
+              $package.devEngines.packageManager.version -ne "11.13.0" -or
+              $package.devEngines.packageManager.onFail -ne "error") {
+            throw "devEngines package-manager enforcement does not match the locked contract"
+          }
+
+          $vercel = Get-Content -LiteralPath "vercel.json" -Raw | ConvertFrom-Json
+          if ($vercel.installCommand -ne "npx --yes npm@11.13.0 ci") {
+            throw "Unexpected committed Vercel install command"
+          }
+          if ($vercel.buildCommand -ne "npx --yes npm@11.13.0 run build") {
+            throw "Unexpected committed Vercel build command"
+          }
+
+          Write-Host "Initial package.json SHA-256: $packageHash"
+          Write-Host "Initial package-lock.json SHA-256: $lockHash"
+          Write-Host "Initial vercel.json SHA-256: $vercelHash"
+          Write-Host "packageManager: $($package.packageManager)"
+          Write-Host "devEngines package manager: $($package.devEngines.packageManager | ConvertTo-Json -Compress)"
+          Write-Host "Vercel install command: $($vercel.installCommand)"
+          Write-Host "Vercel build command: $($vercel.buildCommand)"
+
+          "INITIAL_PACKAGE_SHA256=$packageHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "INITIAL_LOCK_SHA256=$lockHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "INITIAL_VERCEL_SHA256=$vercelHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run exact committed Vercel install command
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Invoke-NativeCapture {
+            param(
+              [Parameter(Mandatory = $true)][string]$FilePath,
+              [Parameter(Mandatory = $true)][string[]]$Arguments,
+              [Parameter(Mandatory = $true)][string]$Label
+            )
+            $stdoutPath = Join-Path $env:RUNNER_TEMP "$Label.stdout.log"
+            $stderrPath = Join-Path $env:RUNNER_TEMP "$Label.stderr.log"
+            $started = [DateTimeOffset]::UtcNow
+            $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+            $finished = [DateTimeOffset]::UtcNow
+            $stdout = [IO.File]::ReadAllText($stdoutPath)
+            $stderr = [IO.File]::ReadAllText($stderrPath)
+            Write-Host "Capture label: $Label"
+            Write-Host "Binary: $FilePath"
+            Write-Host "Arguments: $($Arguments -join ' ')"
+            Write-Host "Started UTC: $($started.ToString('o'))"
+            Write-Host "Finished UTC: $($finished.ToString('o'))"
+            Write-Host "Exit code: $($process.ExitCode)"
+            Write-Host "--- stdout begin ---"
+            Write-Host $stdout
+            Write-Host "--- stdout end ---"
+            Write-Host "--- stderr begin ---"
+            Write-Host $stderr
+            Write-Host "--- stderr end ---"
+            return [pscustomobject]@{
+              ExitCode = $process.ExitCode
+              Stdout = $stdout
+              Stderr = $stderr
+            }
+          }
+
+          $install = Invoke-NativeCapture -FilePath $env:VERIFIED_NPX_CMD -Arguments @("--yes", "npm@11.13.0", "ci") -Label "vercel-install"
+          if ($install.ExitCode -ne 0) {
+            throw "Exact committed Vercel install command failed"
+          }
+
+          $packageHash = (Get-FileHash -LiteralPath "package.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $lockHash = (Get-FileHash -LiteralPath "package-lock.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($packageHash -ne $env:INITIAL_PACKAGE_SHA256) {
+            throw "package.json changed during install"
+          }
+          if ($lockHash -ne $env:INITIAL_LOCK_SHA256) {
+            throw "package-lock.json changed during install"
+          }
+
+          $npmVersion = (& $env:VERIFIED_NPM_CMD --version).Trim()
+          Write-Host "Direct npm.cmd version after install: $npmVersion"
+          if ($npmVersion -ne "11.13.0") {
+            throw "npm identity changed during install"
+          }
+
+      - name: Validate dependency tree, production audit, and Sharp native load
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Invoke-NativeCapture {
+            param(
+              [Parameter(Mandatory = $true)][string]$FilePath,
+              [Parameter(Mandatory = $true)][string[]]$Arguments,
+              [Parameter(Mandatory = $true)][string]$Label
+            )
+            $stdoutPath = Join-Path $env:RUNNER_TEMP "$Label.stdout.log"
+            $stderrPath = Join-Path $env:RUNNER_TEMP "$Label.stderr.log"
+            $started = [DateTimeOffset]::UtcNow
+            $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+            $finished = [DateTimeOffset]::UtcNow
+            $stdout = [IO.File]::ReadAllText($stdoutPath)
+            $stderr = [IO.File]::ReadAllText($stderrPath)
+            Write-Host "Capture label: $Label"
+            Write-Host "Binary: $FilePath"
+            Write-Host "Arguments: $($Arguments -join ' ')"
+            Write-Host "Started UTC: $($started.ToString('o'))"
+            Write-Host "Finished UTC: $($finished.ToString('o'))"
+            Write-Host "Exit code: $($process.ExitCode)"
+            Write-Host "--- stdout begin ---"
+            Write-Host $stdout
+            Write-Host "--- stdout end ---"
+            Write-Host "--- stderr begin ---"
+            Write-Host $stderr
+            Write-Host "--- stderr end ---"
+            return [pscustomobject]@{
+              ExitCode = $process.ExitCode
+              Stdout = $stdout
+              Stderr = $stderr
+            }
+          }
+
+          function Get-InvalidCount {
+            param($Value)
+            if ($null -eq $Value) {
+              return 0
+            }
+            $count = 0
+            if ($Value -is [pscustomobject]) {
+              foreach ($property in $Value.PSObject.Properties) {
+                if ($property.Name -eq "invalid" -and $property.Value -eq $true) {
+                  $count += 1
+                }
+                $count += Get-InvalidCount -Value $property.Value
+              }
+            } elseif ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+              foreach ($item in $Value) {
+                $count += Get-InvalidCount -Value $item
+              }
+            }
+            return $count
+          }
+
+          function Get-PackageVersions {
+            param(
+              $Value,
+              [string]$PackageName,
+              [System.Collections.Generic.List[string]]$Versions
+            )
+            if ($null -eq $Value) {
+              return
+            }
+            if ($Value -is [pscustomobject]) {
+              foreach ($property in $Value.PSObject.Properties) {
+                if ($property.Name -eq $PackageName -and
+                    $property.Value -is [pscustomobject] -and
+                    $property.Value.PSObject.Properties.Name -contains "version") {
+                  $Versions.Add([string]$property.Value.version)
+                }
+                Get-PackageVersions -Value $property.Value -PackageName $PackageName -Versions $Versions
+              }
+            } elseif ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+              foreach ($item in $Value) {
+                Get-PackageVersions -Value $item -PackageName $PackageName -Versions $Versions
+              }
+            }
+          }
+
+          $extraneous = Invoke-NativeCapture -FilePath $env:VERIFIED_NPM_CMD -Arguments @("query", ":extraneous", "--json") -Label "npm-query-extraneous"
+          $lsText = Invoke-NativeCapture -FilePath $env:VERIFIED_NPM_CMD -Arguments @("ls", "--all") -Label "npm-ls-all-text"
+          $lsJsonCapture = Invoke-NativeCapture -FilePath $env:VERIFIED_NPM_CMD -Arguments @("ls", "--all", "--json") -Label "npm-ls-all-json"
+          $versionsCapture = Invoke-NativeCapture -FilePath $env:VERIFIED_NPM_CMD -Arguments @("ls", "next", "postcss", "sharp", "--all", "--json") -Label "npm-ls-versions-json"
+          $auditCapture = Invoke-NativeCapture -FilePath $env:VERIFIED_NPM_CMD -Arguments @("audit", "--omit=dev", "--json") -Label "npm-audit-production-json"
+
+          if ($extraneous.ExitCode -ne 0 -or $lsText.ExitCode -ne 0 -or $lsJsonCapture.ExitCode -ne 0 -or $versionsCapture.ExitCode -ne 0) {
+            throw "A required dependency-tree command failed"
+          }
+
+          $extraneousJson = $extraneous.Stdout | ConvertFrom-Json
+          $lsJson = $lsJsonCapture.Stdout | ConvertFrom-Json
+          $versionsJson = $versionsCapture.Stdout | ConvertFrom-Json
+          $auditJson = $auditCapture.Stdout | ConvertFrom-Json
+
+          $extraneousCount = @($extraneousJson).Count
+          $problemCount = if ($null -eq $lsJson.problems) { 0 } else { @($lsJson.problems).Count }
+          $invalidCount = Get-InvalidCount -Value $lsJson
+
+          $nextVersions = [System.Collections.Generic.List[string]]::new()
+          $postcssVersions = [System.Collections.Generic.List[string]]::new()
+          $sharpVersions = [System.Collections.Generic.List[string]]::new()
+          Get-PackageVersions -Value $versionsJson -PackageName "next" -Versions $nextVersions
+          Get-PackageVersions -Value $versionsJson -PackageName "postcss" -Versions $postcssVersions
+          Get-PackageVersions -Value $versionsJson -PackageName "sharp" -Versions $sharpVersions
+          $nextUnique = @($nextVersions | Sort-Object -Unique)
+          $postcssUnique = @($postcssVersions | Sort-Object -Unique)
+          $sharpUnique = @($sharpVersions | Sort-Object -Unique)
+
+          $critical = [int]$auditJson.metadata.vulnerabilities.critical
+          $high = [int]$auditJson.metadata.vulnerabilities.high
+
+          Write-Host "Extraneous dependency count: $extraneousCount"
+          Write-Host "Invalid dependency count: $invalidCount"
+          Write-Host "npm ls problems count: $problemCount"
+          Write-Host "Next.js versions: $($nextUnique -join ', ')"
+          Write-Host "PostCSS versions: $($postcssUnique -join ', ')"
+          Write-Host "Sharp versions: $($sharpUnique -join ', ')"
+          Write-Host "Production Critical vulnerabilities: $critical"
+          Write-Host "Production High vulnerabilities: $high"
+          Write-Host "npm audit exact exit code: $($auditCapture.ExitCode)"
+
+          if ($extraneousCount -ne 0 -or $invalidCount -ne 0 -or $problemCount -ne 0) {
+            throw "Dependency tree is not clean"
+          }
+          if ($nextUnique.Count -ne 1 -or $nextUnique[0] -ne "16.2.12") {
+            throw "Next.js must resolve only to 16.2.12"
+          }
+          if ($postcssUnique.Count -ne 1 -or $postcssUnique[0] -ne "8.5.18") {
+            throw "PostCSS must resolve only to 8.5.18"
+          }
+          if ($sharpUnique.Count -ne 1 -or $sharpUnique[0] -ne "0.35.3") {
+            throw "Sharp must resolve only to 0.35.3"
+          }
+          if ($critical -ne 0 -or $high -ne 0) {
+            throw "Production audit Critical/High gate failed"
+          }
+
+          $sharpProbe = Join-Path $env:RUNNER_TEMP "sharp-native-probe.cjs"
+          @'
+          const sharp = require("sharp");
+          process.stdout.write(JSON.stringify({
+            sharp: sharp.versions.sharp,
+            libvips: sharp.versions.vips
+          }));
+          '@ | Set-Content -LiteralPath $sharpProbe -Encoding utf8
+
+          $sharpCapture = Invoke-NativeCapture -FilePath (Get-Command node.exe).Source -Arguments @($sharpProbe) -Label "sharp-native-load"
+          if ($sharpCapture.ExitCode -ne 0) {
+            throw "Sharp native import failed"
+          }
+          $sharpResult = $sharpCapture.Stdout | ConvertFrom-Json
+          if ($sharpResult.sharp -ne "0.35.3" -or [string]::IsNullOrWhiteSpace([string]$sharpResult.libvips)) {
+            throw "Sharp/libvips identity gate failed"
+          }
+          Write-Host "Sharp native import: PASS"
+          Write-Host "Sharp version: $($sharpResult.sharp)"
+          Write-Host "libvips version: $($sharpResult.libvips)"
+
+      - name: Verify locked Playwright and install locked Chromium
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Invoke-NativeCapture {
+            param(
+              [Parameter(Mandatory = $true)][string]$FilePath,
+              [Parameter(Mandatory = $true)][string[]]$Arguments,
+              [Parameter(Mandatory = $true)][string]$Label
+            )
+            $stdoutPath = Join-Path $env:RUNNER_TEMP "$Label.stdout.log"
+            $stderrPath = Join-Path $env:RUNNER_TEMP "$Label.stderr.log"
+            $started = [DateTimeOffset]::UtcNow
+            $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+            $finished = [DateTimeOffset]::UtcNow
+            $stdout = [IO.File]::ReadAllText($stdoutPath)
+            $stderr = [IO.File]::ReadAllText($stderrPath)
+            Write-Host "Capture label: $Label"
+            Write-Host "Binary: $FilePath"
+            Write-Host "Arguments: $($Arguments -join ' ')"
+            Write-Host "Started UTC: $($started.ToString('o'))"
+            Write-Host "Finished UTC: $($finished.ToString('o'))"
+            Write-Host "Elapsed seconds: $(($finished - $started).TotalSeconds)"
+            Write-Host "Exit code: $($process.ExitCode)"
+            Write-Host "--- stdout begin ---"
+            Write-Host $stdout
+            Write-Host "--- stdout end ---"
+            Write-Host "--- stderr begin ---"
+            Write-Host $stderr
+            Write-Host "--- stderr end ---"
+            return [pscustomobject]@{
+              ExitCode = $process.ExitCode
+              Stdout = $stdout
+              Stderr = $stderr
+            }
+          }
+
+          $playwrightCmd = Join-Path $env:GITHUB_WORKSPACE "node_modules\.bin\playwright.cmd"
+          if (-not (Test-Path -LiteralPath $playwrightCmd -PathType Leaf)) {
+            throw "Locked local Playwright CLI does not exist: $playwrightCmd"
+          }
+
+          $versionCapture = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("--version") -Label "playwright-version"
+          if ($versionCapture.ExitCode -ne 0) {
+            throw "Locked Playwright version command failed"
+          }
+          $versionMatch = [regex]::Match($versionCapture.Stdout.Trim(), "^Version\s+(.+)$")
+          if (-not $versionMatch.Success) {
+            throw "Could not parse the locked Playwright version"
+          }
+          $lockedPlaywrightVersion = $versionMatch.Groups[1].Value.Trim()
+          Write-Host "Locked local Playwright version: $lockedPlaywrightVersion"
+
+          $configuredBrowsersPath = $env:PLAYWRIGHT_BROWSERS_PATH
+          if ([string]::IsNullOrWhiteSpace($configuredBrowsersPath)) {
+            Write-Host "PLAYWRIGHT_BROWSERS_PATH before install: <not set>"
+            $browserCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
+          } else {
+            Write-Host "PLAYWRIGHT_BROWSERS_PATH before install: $configuredBrowsersPath"
+            $browserCache = [Environment]::ExpandEnvironmentVariables($configuredBrowsersPath)
+          }
+          Write-Host "Expected Playwright browser cache location: $browserCache"
+
+          $beforeList = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "--list") -Label "playwright-browser-list-before"
+          if ($beforeList.ExitCode -ne 0) {
+            throw "Playwright browser list before install failed"
+          }
+
+          $install = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "chromium") -Label "playwright-install-locked-chromium"
+          if ($install.ExitCode -ne 0) {
+            throw "Locked Chromium installation failed"
+          }
+
+          $afterList = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "--list") -Label "playwright-browser-list-after"
+          if ($afterList.ExitCode -ne 0) {
+            throw "Playwright browser list after install failed"
+          }
+
+          $pathProbe = Join-Path $env:RUNNER_TEMP "playwright-executable-path.cjs"
+          @'
+          const { chromium } = require("@playwright/test");
+          process.stdout.write(JSON.stringify({ executablePath: chromium.executablePath() }));
+          '@ | Set-Content -LiteralPath $pathProbe -Encoding utf8
+          $pathCapture = Invoke-NativeCapture -FilePath (Get-Command node.exe).Source -Arguments @($pathProbe) -Label "playwright-executable-path"
+          if ($pathCapture.ExitCode -ne 0) {
+            throw "Could not resolve the locked Chromium executable"
+          }
+          $pathResult = $pathCapture.Stdout | ConvertFrom-Json
+          $chromiumExecutable = [string]$pathResult.executablePath
+          if ([string]::IsNullOrWhiteSpace($chromiumExecutable) -or -not (Test-Path -LiteralPath $chromiumExecutable -PathType Leaf)) {
+            throw "Resolved Chromium headless-shell executable is missing: $chromiumExecutable"
+          }
+          if ($chromiumExecutable -notmatch "chromium_headless_shell-(\d+)") {
+            throw "Resolved executable is not in a locked Chromium headless-shell revision directory"
+          }
+          $chromiumRevision = $Matches[1]
+          Write-Host "Installed Chromium headless-shell revision: $chromiumRevision"
+          Write-Host "Installed Chromium headless-shell executable: $chromiumExecutable"
+
+          $repoStatus = @(git status --porcelain --untracked-files=all)
+          if ($repoStatus.Count -ne 0) {
+            $repoStatus | ForEach-Object { Write-Host $_ }
+            throw "Repository files changed during locked Chromium installation"
+          }
+
+          "LOCKED_PLAYWRIGHT_VERSION=$lockedPlaywrightVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LOCKED_CHROMIUM_EXECUTABLE=$chromiumExecutable" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LOCKED_CHROMIUM_REVISION=$chromiumRevision" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run locked Chromium headless launch smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Invoke-NativeCapture {
+            param(
+              [Parameter(Mandatory = $true)][string]$FilePath,
+              [Parameter(Mandatory = $true)][string[]]$Arguments,
+              [Parameter(Mandatory = $true)][string]$Label
+            )
+            $stdoutPath = Join-Path $env:RUNNER_TEMP "$Label.stdout.log"
+            $stderrPath = Join-Path $env:RUNNER_TEMP "$Label.stderr.log"
+            $started = [DateTimeOffset]::UtcNow
+            $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+            $finished = [DateTimeOffset]::UtcNow
+            $stdout = [IO.File]::ReadAllText($stdoutPath)
+            $stderr = [IO.File]::ReadAllText($stderrPath)
+            Write-Host "Binary: $FilePath"
+            Write-Host "Arguments: $($Arguments -join ' ')"
+            Write-Host "Started UTC: $($started.ToString('o'))"
+            Write-Host "Finished UTC: $($finished.ToString('o'))"
+            Write-Host "Exit code: $($process.ExitCode)"
+            Write-Host "--- stdout begin ---"
+            Write-Host $stdout
+            Write-Host "--- stdout end ---"
+            Write-Host "--- stderr begin ---"
+            Write-Host $stderr
+            Write-Host "--- stderr end ---"
+            return [pscustomobject]@{
+              ExitCode = $process.ExitCode
+              Stdout = $stdout
+              Stderr = $stderr
+            }
+          }
+
+          $smokeScript = Join-Path $env:RUNNER_TEMP "locked-chromium-smoke.cjs"
+          @'
+          const { chromium } = require("@playwright/test");
+
+          (async () => {
+            let browser;
+            let context;
+            let page;
+            try {
+              browser = await chromium.launch({ headless: true });
+              context = await browser.newContext();
+              page = await context.newPage();
+              await page.setContent("<!doctype html><title>NOVORA audit</title><main id='result'>locked chromium</main>");
+              const evaluated = await page.evaluate(() => ({
+                title: document.title,
+                text: document.querySelector("#result")?.textContent,
+                arithmetic: 21 * 2
+              }));
+              process.stdout.write(JSON.stringify({
+                browserVersion: browser.version(),
+                executablePath: chromium.executablePath(),
+                evaluated
+              }));
+            } finally {
+              if (page) await page.close();
+              if (context) await context.close();
+              if (browser) await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          '@ | Set-Content -LiteralPath $smokeScript -Encoding utf8
+
+          $smoke = Invoke-NativeCapture -FilePath (Get-Command node.exe).Source -Arguments @($smokeScript) -Label "locked-chromium-smoke"
+          if ($smoke.ExitCode -ne 0) {
+            throw "Locked Chromium launch smoke test failed"
+          }
+          $smokeResult = $smoke.Stdout | ConvertFrom-Json
+          if ($smokeResult.evaluated.title -ne "NOVORA audit" -or
+              $smokeResult.evaluated.text -ne "locked chromium" -or
+              [int]$smokeResult.evaluated.arithmetic -ne 42) {
+            throw "Chromium smoke-test JavaScript evaluation failed"
+          }
+          if ($smokeResult.executablePath -ne $env:LOCKED_CHROMIUM_EXECUTABLE) {
+            throw "Smoke test launched a different Chromium executable"
+          }
+
+          Start-Sleep -Seconds 3
+          $browserProcesses = @(Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -match "^(chrome|chromium|headless_shell|chrome-headless-shell)(\.exe)?$"
+          })
+          if ($browserProcesses.Count -ne 0) {
+            $browserProcesses | Select-Object ProcessId, Name, CommandLine | Format-List | Out-String | Write-Host
+            throw "Chromium process remained after normal smoke-test teardown"
+          }
+
+          Write-Host "Chromium browser version: $($smokeResult.browserVersion)"
+          Write-Host "Chromium launch smoke test: PASS"
+          Write-Host "Chromium normal close and zero leftover browser process: PASS"
+
+      - name: Run authoritative 635-test Playwright suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $npmVersion = (& $env:VERIFIED_NPM_CMD --version).Trim()
+          if ($npmVersion -ne "11.13.0") {
+            throw "npm identity changed before Playwright"
+          }
+
+          $playwrightCmd = Join-Path $env:GITHUB_WORKSPACE "node_modules\.bin\playwright.cmd"
+          $playwrightVersion = (& $playwrightCmd --version).Trim()
+          if ($LASTEXITCODE -ne 0 -or $playwrightVersion -ne "Version $($env:LOCKED_PLAYWRIGHT_VERSION)") {
+            throw "Locked Playwright identity changed before the authoritative suite"
+          }
+          if (-not (Test-Path -LiteralPath $env:LOCKED_CHROMIUM_EXECUTABLE -PathType Leaf)) {
+            throw "Locked Chromium executable is missing before the authoritative suite"
+          }
+
+          $port3000Before = @(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue)
+          if ($port3000Before.Count -ne 0) {
+            throw "Port 3000 is not free before the authoritative suite"
+          }
+
+          $workspacePattern = [regex]::Escape($env:GITHUB_WORKSPACE)
+          $taskProcessesBefore = @(Get-CimInstance Win32_Process | Where-Object {
+            ($_.Name -match "^(node|playwright|chrome|chromium|headless_shell|chrome-headless-shell)(\.exe)?$") -and
+            (($_.CommandLine -match $workspacePattern) -or ($_.CommandLine -match "ms-playwright"))
+          })
+          if ($taskProcessesBefore.Count -ne 0) {
+            $taskProcessesBefore | Select-Object ProcessId, Name, CommandLine | Format-List | Out-String | Write-Host
+            throw "Task-owned Node, Playwright, or Chromium process exists before the authoritative suite"
+          }
+
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "authoritative-playwright.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "authoritative-playwright.stderr.log"
+          $arguments = @("run", "test:e2e")
+          $started = [DateTimeOffset]::UtcNow
+          $process = Start-Process -FilePath $env:VERIFIED_NPM_CMD -ArgumentList $arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+          $finished = [DateTimeOffset]::UtcNow
+          $elapsed = $finished - $started
+          $stdoutBytes = (Get-Item -LiteralPath $stdoutPath).Length
+          $stderrBytes = (Get-Item -LiteralPath $stderrPath).Length
+          $stdout = [IO.File]::ReadAllText($stdoutPath)
+          $stderr = [IO.File]::ReadAllText($stderrPath)
+
+          Write-Host "Authoritative npm.cmd path: $env:VERIFIED_NPM_CMD"
+          Write-Host "Authoritative arguments: $($arguments -join ' ')"
+          Write-Host "Started UTC: $($started.ToString('o'))"
+          Write-Host "Finished UTC: $($finished.ToString('o'))"
+          Write-Host "Elapsed: $($elapsed.ToString())"
+          Write-Host "Stdout byte count: $stdoutBytes"
+          Write-Host "Stderr byte count: $stderrBytes"
+          Write-Host "Exact exit code: $($process.ExitCode)"
+          Write-Host "===== PLAYWRIGHT RAW STDOUT BEGIN ====="
+          Write-Host $stdout
+          Write-Host "===== PLAYWRIGHT RAW STDOUT END ====="
+          Write-Host "===== PLAYWRIGHT RAW STDERR BEGIN ====="
+          Write-Host $stderr
+          Write-Host "===== PLAYWRIGHT RAW STDERR END ====="
+
+          $passedMatches = [regex]::Matches($stdout, "(?m)^\s*(\d+)\s+passed(?:\s+\([^)]+\))?\s*$")
+          $failedMatches = [regex]::Matches($stdout, "(?m)^\s*(\d+)\s+failed(?:\s+\([^)]+\))?\s*$")
+          $skippedMatches = [regex]::Matches($stdout, "(?m)^\s*(\d+)\s+skipped(?:\s+\([^)]+\))?\s*$")
+          $passed = if ($passedMatches.Count -eq 0) { -1 } else { [int]$passedMatches[$passedMatches.Count - 1].Groups[1].Value }
+          $failed = if ($failedMatches.Count -eq 0) { 0 } else { [int]$failedMatches[$failedMatches.Count - 1].Groups[1].Value }
+          $skipped = if ($skippedMatches.Count -eq 0) { 0 } else { [int]$skippedMatches[$skippedMatches.Count - 1].Groups[1].Value }
+          $combined = "$stdout`n$stderr"
+
+          $missingBrowser = $combined -match "(?i)executable doesn't exist|browser executable.*missing|please run.*playwright install"
+          $timedOut = $combined -match "(?i)timed out|timeout of \d+ms exceeded"
+          $browserCrash = $combined -match "(?i)browser.*(crash|closed unexpectedly)|target page, context or browser has been closed"
+          $forcedTermination = $false
+
+          Write-Host "Reconciled Playwright ledger: passed=$passed failed=$failed skipped=$skipped total=$($passed + $failed + $skipped)"
+          Write-Host "Missing-browser signal: $missingBrowser"
+          Write-Host "Timeout signal: $timedOut"
+          Write-Host "Browser-crash signal: $browserCrash"
+          Write-Host "Forced termination used: $forcedTermination"
+
+          Start-Sleep -Seconds 5
+          $browserProcessesAfter = @(Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -match "^(chrome|chromium|headless_shell|chrome-headless-shell)(\.exe)?$"
+          })
+          $taskProcessesAfter = @(Get-CimInstance Win32_Process | Where-Object {
+            ($_.Name -match "^(node|playwright)(\.exe)?$") -and
+            (($_.CommandLine -match $workspacePattern) -or ($_.CommandLine -match "ms-playwright"))
+          })
+          $port3000After = @(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue)
+          $taskOwnedListeners = @()
+          foreach ($taskProcess in $taskProcessesAfter) {
+            $taskOwnedListeners += @(Get-NetTCPConnection -State Listen -OwningProcess $taskProcess.ProcessId -ErrorAction SilentlyContinue)
+          }
+
+          Write-Host "Task-owned Node/Playwright processes after suite: $($taskProcessesAfter.Count)"
+          Write-Host "Chromium/browser processes after suite: $($browserProcessesAfter.Count)"
+          Write-Host "Port 3000 listeners after suite: $($port3000After.Count)"
+          Write-Host "Other task-owned test-server listeners after suite: $($taskOwnedListeners.Count)"
+          Write-Host "Controlled teardown without forced kill: $($taskProcessesAfter.Count -eq 0 -and $browserProcessesAfter.Count -eq 0 -and $port3000After.Count -eq 0 -and $taskOwnedListeners.Count -eq 0)"
+
+          if ($taskProcessesAfter.Count -ne 0) {
+            $taskProcessesAfter | Select-Object ProcessId, Name, CommandLine | Format-List | Out-String | Write-Host
+          }
+          if ($browserProcessesAfter.Count -ne 0) {
+            $browserProcessesAfter | Select-Object ProcessId, Name, CommandLine | Format-List | Out-String | Write-Host
+          }
+
+          if ($process.ExitCode -ne 0 -or
+              $passed -ne 635 -or
+              $failed -ne 0 -or
+              $skipped -ne 0 -or
+              ($passed + $failed + $skipped) -ne 635 -or
+              $missingBrowser -or
+              $timedOut -or
+              $browserCrash -or
+              $taskProcessesAfter.Count -ne 0 -or
+              $browserProcessesAfter.Count -ne 0 -or
+              $port3000After.Count -ne 0 -or
+              $taskOwnedListeners.Count -ne 0) {
+            throw "Authoritative Playwright gate failed"
+          }
+
+          Write-Host "Authoritative Playwright 635/635 gate: PASS"
+          Write-Host "Controlled process and port cleanup gate: PASS"
+
+      - name: Run exact Vercel build command
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "vercel-build.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "vercel-build.stderr.log"
+          $arguments = @("--yes", "npm@11.13.0", "run", "build")
+          $started = [DateTimeOffset]::UtcNow
+          $process = Start-Process -FilePath $env:VERIFIED_NPX_CMD -ArgumentList $arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+          $finished = [DateTimeOffset]::UtcNow
+          $stdout = [IO.File]::ReadAllText($stdoutPath)
+          $stderr = [IO.File]::ReadAllText($stderrPath)
+
+          Write-Host "Exact Vercel build binary: $env:VERIFIED_NPX_CMD"
+          Write-Host "Exact Vercel build arguments: $($arguments -join ' ')"
+          Write-Host "Started UTC: $($started.ToString('o'))"
+          Write-Host "Finished UTC: $($finished.ToString('o'))"
+          Write-Host "Exit code: $($process.ExitCode)"
+          Write-Host "--- build stdout begin ---"
+          Write-Host $stdout
+          Write-Host "--- build stdout end ---"
+          Write-Host "--- build stderr begin ---"
+          Write-Host $stderr
+          Write-Host "--- build stderr end ---"
+
+          if ($process.ExitCode -ne 0) {
+            throw "Exact Vercel build command failed"
+          }
+          if ("$stdout`n$stderr" -notmatch "Next\.js\s+16\.2\.12") {
+            throw "Build output did not identify Next.js 16.2.12"
+          }
+
+          $forbiddenBuildErrors = @(
+            "App Router[^\r\n]*(error|failed)",
+            "Server Action[^\r\n]*(error|failed)",
+            "PostCSS[^\r\n]*(error|failed)",
+            "Sharp[^\r\n]*(error|failed)"
+          )
+          foreach ($pattern in $forbiddenBuildErrors) {
+            if ("$stdout`n$stderr" -match "(?i)$pattern") {
+              throw "Forbidden build error signal matched: $pattern"
+            }
+          }
+
+          $prerenderManifest = Join-Path $env:GITHUB_WORKSPACE ".next\prerender-manifest.json"
+          if (-not (Test-Path -LiteralPath $prerenderManifest -PathType Leaf)) {
+            throw "Next.js prerender manifest is missing"
+          }
+          $prerender = Get-Content -LiteralPath $prerenderManifest -Raw | ConvertFrom-Json
+          $staticRoutes = @($prerender.routes.PSObject.Properties.Name)
+          Write-Host "Generated static pages ($($staticRoutes.Count)):"
+          $staticRoutes | Sort-Object | ForEach-Object { Write-Host $_ }
+          if ($staticRoutes.Count -ne 13) {
+            throw "Expected exactly 13 generated static pages"
+          }
+
+          Write-Host "Windows Production build gate: PASS"
+
+      - name: Run Windows TypeScript validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $stdoutPath = Join-Path $env:RUNNER_TEMP "typescript.stdout.log"
+          $stderrPath = Join-Path $env:RUNNER_TEMP "typescript.stderr.log"
+          $arguments = @("exec", "tsc", "--", "--noEmit", "--incremental", "false")
+          $started = [DateTimeOffset]::UtcNow
+          $process = Start-Process -FilePath $env:VERIFIED_NPM_CMD -ArgumentList $arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+          $finished = [DateTimeOffset]::UtcNow
+          $stdout = [IO.File]::ReadAllText($stdoutPath)
+          $stderr = [IO.File]::ReadAllText($stderrPath)
+
+          Write-Host "TypeScript binary: $env:VERIFIED_NPM_CMD"
+          Write-Host "TypeScript arguments: $($arguments -join ' ')"
+          Write-Host "Started UTC: $($started.ToString('o'))"
+          Write-Host "Finished UTC: $($finished.ToString('o'))"
+          Write-Host "Exit code: $($process.ExitCode)"
+          Write-Host "--- TypeScript stdout begin ---"
+          Write-Host $stdout
+          Write-Host "--- TypeScript stdout end ---"
+          Write-Host "--- TypeScript stderr begin ---"
+          Write-Host $stderr
+          Write-Host "--- TypeScript stderr end ---"
+
+          if ($process.ExitCode -ne 0) {
+            throw "Windows TypeScript validation failed"
+          }
+          Write-Host "Windows TypeScript gate: PASS"
+
+      - name: Verify final immutability and cleanup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $source = (git rev-parse HEAD).Trim()
+          if ($source -ne "a88c88af50115eabf86f358227b429693bf51a5a") {
+            throw "Replacement source commit changed"
+          }
+
+          $packageHash = (Get-FileHash -LiteralPath "package.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $lockHash = (Get-FileHash -LiteralPath "package-lock.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $vercelHash = (Get-FileHash -LiteralPath "vercel.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($packageHash -ne $env:INITIAL_PACKAGE_SHA256) {
+            throw "package.json final immutability failed"
+          }
+          if ($lockHash -ne $env:INITIAL_LOCK_SHA256) {
+            throw "package-lock.json final immutability failed"
+          }
+          if ($vercelHash -ne $env:INITIAL_VERCEL_SHA256) {
+            throw "vercel.json final immutability failed"
+          }
+
+          $environmentFiles = @(Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force -Recurse -File -ErrorAction Stop | Where-Object {
+            $_.Name -like ".env*" -and
+            $_.FullName -notmatch "\\node_modules\\" -and
+            $_.FullName -notmatch "\\.next\\"
+          })
+          if ($environmentFiles.Count -ne 0) {
+            $environmentFiles.FullName | ForEach-Object { Write-Host $_ }
+            throw "An environment file exists or was created in the repository"
+          }
+
+          $status = @(git status --porcelain --untracked-files=all)
+          $unexpectedStatus = @($status | Where-Object {
+            $_ -notmatch "^\s*M\s+next-env\.d\.ts$"
+          })
+          Write-Host "Final git status --porcelain:"
+          if ($status.Count -eq 0) {
+            Write-Host "<clean>"
+          } else {
+            $status | ForEach-Object { Write-Host $_ }
+          }
+          if ($unexpectedStatus.Count -ne 0) {
+            throw "Unexpected repository change after validation"
+          }
+
+          $browserProcesses = @(Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -match "^(chrome|chromium|headless_shell|chrome-headless-shell)(\.exe)?$"
+          })
+          $workspacePattern = [regex]::Escape($env:GITHUB_WORKSPACE)
+          $taskProcesses = @(Get-CimInstance Win32_Process | Where-Object {
+            ($_.Name -match "^(node|playwright)(\.exe)?$") -and
+            (($_.CommandLine -match $workspacePattern) -or ($_.CommandLine -match "ms-playwright"))
+          })
+          $port3000 = @(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue)
+          $taskOwnedListeners = @()
+          foreach ($taskProcess in $taskProcesses) {
+            $taskOwnedListeners += @(Get-NetTCPConnection -State Listen -OwningProcess $taskProcess.ProcessId -ErrorAction SilentlyContinue)
+          }
+
+          Write-Host "Final task-owned Node/Playwright processes: $($taskProcesses.Count)"
+          Write-Host "Final Chromium/browser processes: $($browserProcesses.Count)"
+          Write-Host "Final port 3000 listeners: $($port3000.Count)"
+          Write-Host "Final other task-owned listeners: $($taskOwnedListeners.Count)"
+          Write-Host "Forced process termination used: false"
+
+          if ($taskProcesses.Count -ne 0 -or
+              $browserProcesses.Count -ne 0 -or
+              $port3000.Count -ne 0 -or
+              $taskOwnedListeners.Count -ne 0) {
+            throw "Final process or port cleanup gate failed"
+          }
+
+          Write-Host "Final replacement source: $source"
+          Write-Host "Final package.json SHA-256: $packageHash"
+          Write-Host "Final package-lock.json SHA-256: $lockHash"
+          Write-Host "Final vercel.json SHA-256: $vercelHash"
+          Write-Host "Final dependency/config immutability: PASS"
+          Write-Host "Final environment-file exclusion: PASS"
+          Write-Host "Final process and port cleanup: PASS"
