@@ -1,0 +1,825 @@
+name: PR249 npm version matrix audit
+
+on:
+  push:
+    branches:
+      - codex/pr249-npm-version-matrix-audit
+
+permissions:
+  contents: read
+
+jobs:
+  npm-version-matrix:
+    name: npm matrix - ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - label: ubuntu-24.04
+            os: ubuntu-24.04
+          - label: windows-2025
+            os: windows-2025
+
+    steps:
+      - name: Checkout exact PR249 dependency candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 325921ca3d23df172276e354ce19c1a020a56ba3
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact application source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualHead = (git rev-parse HEAD).Trim()
+          Write-Output "ACTUAL_HEAD=$actualHead"
+          if ($actualHead -ne '325921ca3d23df172276e354ce19c1a020a56ba3') {
+            throw "Unexpected application source: $actualHead"
+          }
+
+      - name: Use exact Node version
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+
+      - name: Print runner and bundled toolchain identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Output "MATRIX_LABEL=${{ matrix.label }}"
+          Write-Output "RUNNER_OS=$env:RUNNER_OS"
+          Write-Output "RUNNER_ARCH=$env:RUNNER_ARCH"
+          Write-Output "RUNNER_IMAGE_OS=$env:ImageOS"
+          Write-Output "RUNNER_IMAGE_VERSION=$env:ImageVersion"
+          Write-Output "OS_DESCRIPTION=$([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)"
+          Write-Output "OS_ARCHITECTURE=$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)"
+          Write-Output "PROCESS_ARCHITECTURE=$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)"
+          $nodeVersion = (node --version).Trim()
+          $bundledNpmVersion = (npm --version).Trim()
+          Write-Output "NODE_VERSION=$nodeVersion"
+          Write-Output "INITIALLY_BUNDLED_NPM_VERSION=$bundledNpmVersion"
+          if ($nodeVersion -ne 'v24.15.0') {
+            throw "Unexpected Node version: $nodeVersion"
+          }
+
+      - name: Assess every discovered npm candidate in fresh isolation
+        id: assess
+        shell: pwsh
+        env:
+          AUDIT_PLATFORM: ${{ matrix.label }}
+          EXPECTED_HEAD: 325921ca3d23df172276e354ce19c1a020a56ba3
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = Join-Path $env:RUNNER_TEMP "pr249-npm-version-matrix-$env:AUDIT_PLATFORM.mjs"
+          @'
+          import fs from "node:fs";
+          import os from "node:os";
+          import path from "node:path";
+          import process from "node:process";
+          import { spawnSync } from "node:child_process";
+          import { createRequire } from "node:module";
+
+          const platformLabel = process.env.AUDIT_PLATFORM;
+          const expectedHead = process.env.EXPECTED_HEAD;
+          const sourceRoot = process.env.GITHUB_WORKSPACE;
+          const runnerTemp = process.env.RUNNER_TEMP;
+          const isWindows = process.platform === "win32";
+          const npmCommand = isWindows ? "npm.cmd" : "npm";
+          const npxCommand = isWindows ? "npx.cmd" : "npx";
+          const resultPath = path.join(runnerTemp, `pr249-npm-version-matrix-${platformLabel}.json`);
+          const summaryPath = path.join(runnerTemp, `pr249-npm-version-matrix-${platformLabel}.md`);
+          const maxBuffer = 128 * 1024 * 1024;
+
+          function run(command, args, cwd, env = {}) {
+            const result = spawnSync(command, args, {
+              cwd,
+              env: { ...process.env, ...env },
+              encoding: "utf8",
+              maxBuffer,
+              shell: isWindows && command.toLowerCase().endsWith(".cmd"),
+              windowsHide: true,
+            });
+            return {
+              command: [command, ...args].join(" "),
+              exitCode: result.status ?? -1,
+              signal: result.signal ?? null,
+              error: result.error ? String(result.error.stack || result.error) : null,
+              stdout: result.stdout ?? "",
+              stderr: result.stderr ?? "",
+            };
+          }
+
+          function runCandidateNpm(version, args, cwd, env = {}) {
+            return run(npxCommand, ["--yes", `npm@${version}`, ...args], cwd, env);
+          }
+
+          function printResult(label, result) {
+            console.log(`\n===== ${label} =====`);
+            console.log(`COMMAND=${result.command}`);
+            console.log(`EXIT_CODE=${result.exitCode}`);
+            if (result.signal) console.log(`SIGNAL=${result.signal}`);
+            if (result.error) console.log(`SPAWN_ERROR=${result.error}`);
+            if (result.stdout) console.log(result.stdout.trimEnd());
+            if (result.stderr) console.error(result.stderr.trimEnd());
+          }
+
+          function parseJson(text) {
+            try {
+              return { value: JSON.parse(text), error: null };
+            } catch (error) {
+              return { value: null, error: String(error) };
+            }
+          }
+
+          function numericVersionCompare(left, right) {
+            const a = left.split(".").map(Number);
+            const b = right.split(".").map(Number);
+            for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+              const difference = (a[index] ?? 0) - (b[index] ?? 0);
+              if (difference !== 0) return difference;
+            }
+            return 0;
+          }
+
+          function trackedFiles() {
+            const result = spawnSync("git", ["ls-files", "-z"], {
+              cwd: sourceRoot,
+              encoding: "buffer",
+              maxBuffer,
+              windowsHide: true,
+            });
+            if (result.status !== 0) {
+              throw new Error(`git ls-files failed: ${String(result.stderr)}`);
+            }
+            return result.stdout
+              .toString("utf8")
+              .split("\0")
+              .filter(Boolean);
+          }
+
+          const sourceTrackedFiles = trackedFiles();
+
+          function populateTrackedFiles(destination) {
+            for (const relativePath of sourceTrackedFiles) {
+              const source = path.join(sourceRoot, relativePath);
+              const target = path.join(destination, relativePath);
+              fs.mkdirSync(path.dirname(target), { recursive: true });
+              fs.cpSync(source, target, {
+                recursive: true,
+                dereference: false,
+                force: false,
+                errorOnExist: true,
+              });
+            }
+          }
+
+          function prepareFreshDirectory(prefix) {
+            const directory = fs.mkdtempSync(path.join(runnerTemp, `${prefix}-`));
+            populateTrackedFiles(directory);
+            const trackedNodeModules = sourceTrackedFiles.filter((item) =>
+              item.split(/[\\/]/).includes("node_modules"),
+            );
+            const trackedEnvFiles = sourceTrackedFiles.filter(
+              (item) => path.basename(item) === ".env",
+            );
+            const rootNodeModulesPresent = fs.existsSync(path.join(directory, "node_modules"));
+            if (trackedNodeModules.length !== 0 || rootNodeModulesPresent) {
+              throw new Error(
+                `Fresh directory contains node_modules: ${JSON.stringify(trackedNodeModules)}`,
+              );
+            }
+            if (trackedEnvFiles.length !== 0 || fs.existsSync(path.join(directory, ".env"))) {
+              throw new Error(
+                `Fresh directory contains .env: ${JSON.stringify(trackedEnvFiles)}`,
+              );
+            }
+            return directory;
+          }
+
+          function countInstalledPackages(nodeModulesPath) {
+            if (!fs.existsSync(nodeModulesPath)) return 0;
+            let count = 0;
+            for (const entry of fs.readdirSync(nodeModulesPath, { withFileTypes: true })) {
+              if (!entry.isDirectory() || entry.name === ".bin") continue;
+              const entryPath = path.join(nodeModulesPath, entry.name);
+              if (entry.name.startsWith("@")) {
+                for (const scopedEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+                  if (!scopedEntry.isDirectory()) continue;
+                  const packagePath = path.join(entryPath, scopedEntry.name);
+                  if (fs.existsSync(path.join(packagePath, "package.json"))) count += 1;
+                  count += countInstalledPackages(path.join(packagePath, "node_modules"));
+                }
+              } else {
+                if (fs.existsSync(path.join(entryPath, "package.json"))) count += 1;
+                count += countInstalledPackages(path.join(entryPath, "node_modules"));
+              }
+            }
+            return count;
+          }
+
+          function dependencyTreeFacts(tree) {
+            const problems = Array.isArray(tree?.problems) ? [...tree.problems] : [];
+            const invalidEntries = [];
+            const extraneousEntries = [];
+            function visit(node, ancestry) {
+              if (!node || typeof node !== "object") return;
+              if (node.invalid === true) {
+                invalidEntries.push({
+                  name: node.name ?? ancestry.at(-1) ?? null,
+                  version: node.version ?? null,
+                  path: node.path ?? null,
+                });
+              }
+              if (node.extraneous === true) {
+                extraneousEntries.push({
+                  name: node.name ?? ancestry.at(-1) ?? null,
+                  version: node.version ?? null,
+                  path: node.path ?? null,
+                });
+              }
+              if (node.dependencies && typeof node.dependencies === "object") {
+                for (const [name, dependency] of Object.entries(node.dependencies)) {
+                  visit(dependency, [...ancestry, name]);
+                }
+              }
+            }
+            visit(tree, []);
+            for (const problem of problems) {
+              if (/\binvalid\b/i.test(String(problem))) {
+                invalidEntries.push({ problem: String(problem) });
+              }
+            }
+            return { problems, invalidEntries, extraneousEntries };
+          }
+
+          function resolvedVersions(directory) {
+            const versions = { next: null, postcss: null, sharp: null };
+            const errors = [];
+            try {
+              const rootRequire = createRequire(path.join(directory, "package.json"));
+              const nextManifestPath = rootRequire.resolve("next/package.json");
+              const nextManifest = JSON.parse(fs.readFileSync(nextManifestPath, "utf8"));
+              versions.next = nextManifest.version;
+              const nextRequire = createRequire(nextManifestPath);
+              const postcssManifest = JSON.parse(
+                fs.readFileSync(nextRequire.resolve("postcss/package.json"), "utf8"),
+              );
+              const sharpManifest = JSON.parse(
+                fs.readFileSync(nextRequire.resolve("sharp/package.json"), "utf8"),
+              );
+              versions.postcss = postcssManifest.version;
+              versions.sharp = sharpManifest.version;
+            } catch (error) {
+              errors.push(String(error.stack || error));
+            }
+            return { versions, errors };
+          }
+
+          function bytesEqual(left, right) {
+            return Buffer.compare(left, right) === 0;
+          }
+
+          function readOptional(filePath) {
+            return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+          }
+
+          function optionalBytesEqual(before, after) {
+            if (before === null && after === null) return true;
+            if (before === null || after === null) return false;
+            return bytesEqual(before, after);
+          }
+
+          function assessCandidate(version) {
+            const directory = prepareFreshDirectory(`pr249-${platformLabel}-matrix-${version}`);
+            const record = {
+              version,
+              directoryWasFresh: true,
+              npmVersionVerification: null,
+              npmCi: null,
+              installPackageCount: 0,
+              npmQueryExtraneous: null,
+              extraneousCount: null,
+              extraneousNames: [],
+              npmLsText: null,
+              npmLsJson: null,
+              problems: [],
+              invalidDependencyEntries: [],
+              resolvedVersions: { next: null, postcss: null, sharp: null },
+              resolutionErrors: [],
+              packageJsonChanged: null,
+              packageLockJsonChanged: null,
+              platformResult: null,
+              reasons: [],
+              cleanup: null,
+            };
+            try {
+              const packageJsonBefore = fs.readFileSync(path.join(directory, "package.json"));
+              const packageLockBefore = fs.readFileSync(path.join(directory, "package-lock.json"));
+              const versionCheck = runCandidateNpm(version, ["--version"], directory);
+              printResult(`${version} candidate npm version verification`, versionCheck);
+              record.npmVersionVerification = versionCheck;
+              const invokedVersion = versionCheck.stdout.trim();
+              if (versionCheck.exitCode !== 0 || invokedVersion !== version) {
+                record.platformResult = "VERSION_RESOLUTION_FAILURE";
+                record.reasons.push(
+                  `Invoked npm version ${JSON.stringify(invokedVersion)} did not equal ${version}`,
+                );
+                return record;
+              }
+
+              const ci = runCandidateNpm(version, ["ci"], directory);
+              printResult(`${version} ordinary fresh npm ci`, ci);
+              record.npmCi = ci;
+              record.installPackageCount = countInstalledPackages(
+                path.join(directory, "node_modules"),
+              );
+              if (ci.exitCode !== 0) {
+                record.platformResult = "INSTALL_FAILURE";
+                record.reasons.push(`npm ci exit ${ci.exitCode}`);
+              }
+
+              const query = runCandidateNpm(version, ["query", ":extraneous", "--json"], directory);
+              printResult(`${version} npm query :extraneous --json`, query);
+              const queryJson = parseJson(query.stdout);
+              const queryEntries = Array.isArray(queryJson.value) ? queryJson.value : null;
+              record.npmQueryExtraneous = { ...query, parseError: queryJson.error };
+              if (queryEntries) {
+                record.extraneousCount = queryEntries.length;
+                record.extraneousNames = [
+                  ...new Set(
+                    queryEntries.map((entry) => String(entry?.name ?? "<unnamed>")),
+                  ),
+                ].sort();
+                record.extraneousEntries = queryEntries.map((entry) => ({
+                  name: entry?.name ?? null,
+                  version: entry?.version ?? null,
+                  location: entry?.location ?? null,
+                  path: entry?.path ?? null,
+                }));
+              } else {
+                record.reasons.push("npm query output was not a JSON array");
+              }
+
+              const lsText = runCandidateNpm(version, ["ls", "--all"], directory);
+              printResult(`${version} npm ls --all`, lsText);
+              record.npmLsText = lsText;
+
+              const lsJson = runCandidateNpm(version, ["ls", "--all", "--json"], directory);
+              printResult(`${version} npm ls --all --json`, lsJson);
+              const treeJson = parseJson(lsJson.stdout);
+              record.npmLsJson = { ...lsJson, parseError: treeJson.error };
+              const treeFacts = dependencyTreeFacts(treeJson.value);
+              record.problems = treeFacts.problems;
+              record.invalidDependencyEntries = treeFacts.invalidEntries;
+              record.treeExtraneousEntries = treeFacts.extraneousEntries;
+
+              const resolution = resolvedVersions(directory);
+              record.resolvedVersions = resolution.versions;
+              record.resolutionErrors = resolution.errors;
+              console.log(`${version} RESOLVED_NEXT=${resolution.versions.next}`);
+              console.log(`${version} RESOLVED_POSTCSS=${resolution.versions.postcss}`);
+              console.log(`${version} RESOLVED_SHARP=${resolution.versions.sharp}`);
+
+              record.packageJsonChanged = !bytesEqual(
+                packageJsonBefore,
+                fs.readFileSync(path.join(directory, "package.json")),
+              );
+              record.packageLockJsonChanged = !bytesEqual(
+                packageLockBefore,
+                fs.readFileSync(path.join(directory, "package-lock.json")),
+              );
+              console.log(`${version} PACKAGE_JSON_CHANGED=${record.packageJsonChanged}`);
+              console.log(`${version} PACKAGE_LOCK_JSON_CHANGED=${record.packageLockJsonChanged}`);
+              console.log(`${version} INSTALL_PACKAGE_COUNT=${record.installPackageCount}`);
+              console.log(`${version} EXTRANEOUS_COUNT=${record.extraneousCount}`);
+              console.log(
+                `${version} EXTRANEOUS_NAMES=${record.extraneousNames.join(",") || "<none>"}`,
+              );
+              console.log(`${version} PROBLEMS=${JSON.stringify(record.problems)}`);
+              console.log(
+                `${version} INVALID_DEPENDENCY_ENTRIES=${JSON.stringify(record.invalidDependencyEntries)}`,
+              );
+
+              const versionMismatch =
+                resolution.versions.next !== "16.2.12" ||
+                resolution.versions.postcss !== "8.5.18" ||
+                resolution.versions.sharp !== "0.35.3";
+              const queryInvalid =
+                query.exitCode !== 0 || queryEntries === null || queryEntries.length !== 0;
+              const textInvalid = /\b(?:extraneous|invalid)\b/i.test(
+                `${lsText.stdout}\n${lsText.stderr}`,
+              );
+              const jsonInvalid =
+                treeJson.value === null ||
+                treeFacts.problems.length !== 0 ||
+                treeFacts.invalidEntries.length !== 0 ||
+                treeFacts.extraneousEntries.length !== 0;
+              const metadataChanged =
+                record.packageJsonChanged || record.packageLockJsonChanged;
+
+              if (record.platformResult === "INSTALL_FAILURE") {
+                // Preserve the install classification.
+              } else if (versionMismatch || resolution.errors.length !== 0) {
+                record.platformResult = "VERSION_RESOLUTION_FAILURE";
+                record.reasons.push("Required dependency version resolution failed");
+              } else if (treeFacts.invalidEntries.length !== 0) {
+                record.platformResult = "INVALID_TREE";
+                record.reasons.push("Invalid dependency entry detected");
+              } else if (
+                (queryEntries && queryEntries.length !== 0) ||
+                treeFacts.extraneousEntries.length !== 0 ||
+                /\bextraneous\b/i.test(`${lsText.stdout}\n${lsText.stderr}`)
+              ) {
+                record.platformResult = "EXTRANEOUS";
+                record.reasons.push("Extraneous dependency detected");
+              } else if (
+                ci.exitCode === 0 &&
+                !queryInvalid &&
+                !textInvalid &&
+                !jsonInvalid &&
+                !metadataChanged
+              ) {
+                record.platformResult = "CLEAN";
+              } else {
+                record.platformResult = "INVALID_TREE";
+                if (queryInvalid) record.reasons.push("npm query failed or was not empty");
+                if (textInvalid) record.reasons.push("npm ls text reported a problem");
+                if (jsonInvalid) record.reasons.push("npm ls JSON reported a problem");
+                if (metadataChanged) record.reasons.push("Dependency metadata changed");
+              }
+              return record;
+            } finally {
+              fs.rmSync(directory, { recursive: true, force: true });
+              record.cleanup = "ENTIRE_TEMPORARY_DIRECTORY_REMOVED";
+              console.log(`${version} MATRIX_TEMP_CLEANUP=${record.cleanup}`);
+            }
+          }
+
+          function deepValidate(version) {
+            const directory = prepareFreshDirectory(`pr249-${platformLabel}-deep-${version}`);
+            const record = {
+              version,
+              npmVersionVerification: null,
+              npmCi: null,
+              npmQueryExtraneous: null,
+              npmLsText: null,
+              npmLsJson: null,
+              npmLsNext: null,
+              npmExplainNext: null,
+              npmExplainPostcss: null,
+              npmExplainSharp: null,
+              sharpNative: null,
+              productionAudit: null,
+              productionCritical: null,
+              productionHigh: null,
+              productionBuild: null,
+              typescript: null,
+              packageJsonChanged: null,
+              packageLockJsonChanged: null,
+              nextEnvDtsChanged: null,
+              pass: false,
+              reasons: [],
+              cleanup: null,
+            };
+            try {
+              const packageJsonBefore = fs.readFileSync(path.join(directory, "package.json"));
+              const packageLockBefore = fs.readFileSync(path.join(directory, "package-lock.json"));
+              const nextEnvPath = path.join(directory, "next-env.d.ts");
+              const nextEnvBefore = readOptional(nextEnvPath);
+
+              const versionCheck = runCandidateNpm(version, ["--version"], directory);
+              printResult(`${version} deep candidate npm version verification`, versionCheck);
+              record.npmVersionVerification = versionCheck;
+              if (versionCheck.exitCode !== 0 || versionCheck.stdout.trim() !== version) {
+                record.reasons.push("Deep cycle invoked npm version mismatch");
+                return record;
+              }
+
+              const ci = runCandidateNpm(version, ["ci"], directory);
+              printResult(`${version} deep ordinary fresh npm ci`, ci);
+              record.npmCi = ci;
+
+              const query = runCandidateNpm(version, ["query", ":extraneous", "--json"], directory);
+              printResult(`${version} deep npm query :extraneous --json`, query);
+              const queryJson = parseJson(query.stdout);
+              const queryEntries = Array.isArray(queryJson.value) ? queryJson.value : null;
+              record.npmQueryExtraneous = { ...query, parseError: queryJson.error };
+
+              const lsText = runCandidateNpm(version, ["ls", "--all"], directory);
+              printResult(`${version} deep npm ls --all`, lsText);
+              record.npmLsText = lsText;
+
+              const lsJson = runCandidateNpm(version, ["ls", "--all", "--json"], directory);
+              printResult(`${version} deep npm ls --all --json`, lsJson);
+              const treeJson = parseJson(lsJson.stdout);
+              const treeFacts = dependencyTreeFacts(treeJson.value);
+              record.npmLsJson = {
+                ...lsJson,
+                parseError: treeJson.error,
+                problems: treeFacts.problems,
+                invalidDependencyEntries: treeFacts.invalidEntries,
+                extraneousEntries: treeFacts.extraneousEntries,
+              };
+
+              record.npmLsNext = runCandidateNpm(version, ["ls", "next", "--all"], directory);
+              printResult(`${version} npm ls next --all`, record.npmLsNext);
+              record.npmExplainNext = runCandidateNpm(version, ["explain", "next"], directory);
+              printResult(`${version} npm explain next`, record.npmExplainNext);
+              record.npmExplainPostcss = runCandidateNpm(version, ["explain", "postcss"], directory);
+              printResult(`${version} npm explain postcss`, record.npmExplainPostcss);
+              record.npmExplainSharp = runCandidateNpm(version, ["explain", "sharp"], directory);
+              printResult(`${version} npm explain sharp`, record.npmExplainSharp);
+
+              const sharpScript =
+                "const sharp=require('sharp');" +
+                "console.log('SHARP_NATIVE_LOAD=success');" +
+                "console.log('SHARP_PACKAGE_VERSION='+sharp.versions.sharp);" +
+                "console.log('LIBVIPS_VERSION='+sharp.versions.vips);" +
+                "if(sharp.versions.sharp!=='0.35.3'||!sharp.versions.vips)process.exit(1);";
+              record.sharpNative = run("node", ["-e", sharpScript], directory);
+              printResult(`${version} native Sharp validation`, record.sharpNative);
+
+              const audit = runCandidateNpm(
+                version,
+                ["audit", "--omit=dev", "--json"],
+                directory,
+              );
+              printResult(`${version} npm audit --omit=dev --json`, audit);
+              const auditJson = parseJson(audit.stdout);
+              const vulnerabilities = auditJson.value?.metadata?.vulnerabilities ?? null;
+              record.productionAudit = { ...audit, parseError: auditJson.error };
+              record.productionCritical = vulnerabilities?.critical ?? null;
+              record.productionHigh = vulnerabilities?.high ?? null;
+              console.log(`${version} PRODUCTION_CRITICAL=${record.productionCritical}`);
+              console.log(`${version} PRODUCTION_HIGH=${record.productionHigh}`);
+
+              record.productionBuild = runCandidateNpm(
+                version,
+                ["run", "build"],
+                directory,
+                { NEXT_TELEMETRY_DISABLED: "1" },
+              );
+              printResult(`${version} npm run build`, record.productionBuild);
+
+              record.typescript = runCandidateNpm(
+                version,
+                ["exec", "--", "tsc", "--noEmit", "--incremental", "false"],
+                directory,
+              );
+              printResult(
+                `${version} npx npm@${version} exec -- tsc --noEmit --incremental false`,
+                record.typescript,
+              );
+
+              record.packageJsonChanged = !bytesEqual(
+                packageJsonBefore,
+                fs.readFileSync(path.join(directory, "package.json")),
+              );
+              record.packageLockJsonChanged = !bytesEqual(
+                packageLockBefore,
+                fs.readFileSync(path.join(directory, "package-lock.json")),
+              );
+              record.nextEnvDtsChanged = !optionalBytesEqual(
+                nextEnvBefore,
+                readOptional(nextEnvPath),
+              );
+              console.log(`${version} DEEP_PACKAGE_JSON_CHANGED=${record.packageJsonChanged}`);
+              console.log(
+                `${version} DEEP_PACKAGE_LOCK_JSON_CHANGED=${record.packageLockJsonChanged}`,
+              );
+              console.log(
+                `${version} NEXT_ENV_D_TS_CHANGED_DISPOSABLE_RUNNER=${record.nextEnvDtsChanged}`,
+              );
+              console.log(
+                `${version} NEXT_ENV_D_TS_CLASSIFICATION=OBSERVATIONAL_NOT_A_PACKAGE_MANAGER_CLEANLINESS_GATE`,
+              );
+
+              const queryClean =
+                query.exitCode === 0 && queryEntries !== null && queryEntries.length === 0;
+              const textClean = !/\b(?:extraneous|invalid)\b/i.test(
+                `${lsText.stdout}\n${lsText.stderr}`,
+              );
+              const jsonClean =
+                treeJson.value !== null &&
+                treeFacts.problems.length === 0 &&
+                treeFacts.invalidEntries.length === 0 &&
+                treeFacts.extraneousEntries.length === 0;
+              const explanationsClean = [
+                record.npmLsNext,
+                record.npmExplainNext,
+                record.npmExplainPostcss,
+                record.npmExplainSharp,
+              ].every((item) => item.exitCode === 0);
+              record.pass =
+                ci.exitCode === 0 &&
+                queryClean &&
+                textClean &&
+                jsonClean &&
+                explanationsClean &&
+                record.sharpNative.exitCode === 0 &&
+                record.productionCritical === 0 &&
+                record.productionHigh === 0 &&
+                record.productionBuild.exitCode === 0 &&
+                record.typescript.exitCode === 0 &&
+                !record.packageJsonChanged &&
+                !record.packageLockJsonChanged;
+              if (!record.pass) {
+                if (ci.exitCode !== 0) record.reasons.push("Deep npm ci failed");
+                if (!queryClean) record.reasons.push("Deep extraneous query was not clean");
+                if (!textClean || !jsonClean) record.reasons.push("Deep dependency tree was not clean");
+                if (!explanationsClean) record.reasons.push("Deep dependency explanation failed");
+                if (record.sharpNative.exitCode !== 0) record.reasons.push("Sharp native load failed");
+                if (
+                  record.productionCritical !== 0 ||
+                  record.productionHigh !== 0
+                ) {
+                  record.reasons.push("Production Critical or High was not zero");
+                }
+                if (record.productionBuild.exitCode !== 0) record.reasons.push("Production build failed");
+                if (record.typescript.exitCode !== 0) record.reasons.push("TypeScript failed");
+                if (record.packageJsonChanged || record.packageLockJsonChanged) {
+                  record.reasons.push("Tracked dependency metadata changed");
+                }
+              }
+              return record;
+            } finally {
+              fs.rmSync(directory, { recursive: true, force: true });
+              record.cleanup = "ENTIRE_TEMPORARY_DIRECTORY_REMOVED";
+              console.log(`${version} DEEP_TEMP_CLEANUP=${record.cleanup}`);
+            }
+          }
+
+          function markdownSummary(report) {
+            const lines = [
+              `# PR249 npm version matrix - ${report.platform}`,
+              "",
+              `- Application source: \`${report.applicationHead}\``,
+              `- Node: \`${report.nodeVersion}\``,
+              `- Initially bundled npm: \`${report.initiallyBundledNpmVersion}\``,
+              `- Candidate list: ${report.candidates.map((item) => `\`${item}\``).join(", ")}`,
+              "",
+              "| npm | platform result | npm ci | packages | extraneous | next | postcss | sharp | metadata unchanged |",
+              "| --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |",
+            ];
+            for (const item of report.matrix) {
+              lines.push(
+                `| ${item.version} | ${item.platformResult} | ${item.npmCi?.exitCode ?? "not run"} | ${item.installPackageCount} | ${item.extraneousCount ?? "unknown"} | ${item.resolvedVersions.next ?? "unresolved"} | ${item.resolvedVersions.postcss ?? "unresolved"} | ${item.resolvedVersions.sharp ?? "unresolved"} | ${item.packageJsonChanged === false && item.packageLockJsonChanged === false ? "yes" : "no"} |`,
+              );
+            }
+            lines.push("", "## Deep validation for locally clean candidates", "");
+            if (report.deepValidation.length === 0) {
+              lines.push("No locally clean candidate reached deep validation.");
+            } else {
+              lines.push(
+                "| npm | pass | Sharp | libvips | Critical | High | build | TypeScript | next-env.d.ts drift |",
+                "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+              );
+              for (const item of report.deepValidation) {
+                const sharpOutput = `${item.sharpNative?.stdout ?? ""}\n${item.sharpNative?.stderr ?? ""}`;
+                const sharpVersion = sharpOutput.match(/SHARP_PACKAGE_VERSION=([^\s]+)/)?.[1] ?? "unavailable";
+                const libvipsVersion = sharpOutput.match(/LIBVIPS_VERSION=([^\s]+)/)?.[1] ?? "unavailable";
+                lines.push(
+                  `| ${item.version} | ${item.pass ? "PASS" : "FAIL"} | ${sharpVersion} | ${libvipsVersion} | ${item.productionCritical ?? "unknown"} | ${item.productionHigh ?? "unknown"} | ${item.productionBuild?.exitCode ?? "not run"} | ${item.typescript?.exitCode ?? "not run"} | ${item.nextEnvDtsChanged} |`,
+                );
+              }
+            }
+            lines.push(
+              "",
+              "The `next-env.d.ts` value is observational only. Package-manager immutability is limited to `package.json` and `package-lock.json`.",
+              "",
+            );
+            return lines.join("\n");
+          }
+
+          let report = null;
+          try {
+            const headResult = run("git", ["rev-parse", "HEAD"], sourceRoot);
+            printResult("application source verification", headResult);
+            const actualHead = headResult.stdout.trim();
+            if (headResult.exitCode !== 0 || actualHead !== expectedHead) {
+              throw new Error(`Application source mismatch: ${actualHead}`);
+            }
+
+            const nodeVersionResult = run("node", ["--version"], sourceRoot);
+            const bundledNpmResult = run(npmCommand, ["--version"], sourceRoot);
+            printResult("Node identity", nodeVersionResult);
+            printResult("initially bundled npm identity", bundledNpmResult);
+            if (nodeVersionResult.stdout.trim() !== "v24.15.0") {
+              throw new Error(`Unexpected Node version: ${nodeVersionResult.stdout.trim()}`);
+            }
+
+            const discovery = run(
+              npmCommand,
+              ["view", "npm", "versions", "--json", "--registry=https://registry.npmjs.org/"],
+              sourceRoot,
+            );
+            printResult("official npm registry version discovery", discovery);
+            const publishedJson = parseJson(discovery.stdout);
+            if (discovery.exitCode !== 0 || !Array.isArray(publishedJson.value)) {
+              throw new Error(
+                `Could not discover official npm versions: ${publishedJson.error ?? discovery.stderr}`,
+              );
+            }
+            const publishedVersions = publishedJson.value;
+            const stable10 = publishedVersions
+              .filter((version) => /^10\.\d+\.\d+$/.test(version))
+              .sort(numericVersionCompare);
+            const stable11 = publishedVersions
+              .filter((version) => /^11\.\d+\.\d+$/.test(version))
+              .sort(numericVersionCompare);
+            const controlVersion = "11.12.1";
+            if (!stable11.includes(controlVersion)) {
+              throw new Error(`Control npm ${controlVersion} is not published`);
+            }
+            if (stable10.length === 0) {
+              throw new Error("No stable npm 10.x fallback is published");
+            }
+            const candidates = [
+              controlVersion,
+              ...stable11.filter(
+                (version) => numericVersionCompare(version, controlVersion) > 0,
+              ),
+              stable10.at(-1),
+            ];
+            console.log(`EXACT_CANDIDATE_LIST=${candidates.join(",")}`);
+            console.log(`LATEST_STABLE_NPM_10=${stable10.at(-1)}`);
+            console.log(`LATEST_STABLE_NPM_11=${stable11.at(-1)}`);
+            console.log("PRERELEASES_INCLUDED=0");
+            console.log("NPM_12_INCLUDED=0");
+
+            const matrix = candidates.map(assessCandidate);
+            const locallyCleanVersions = matrix
+              .filter((item) => item.platformResult === "CLEAN")
+              .map((item) => item.version);
+            const deepValidation = locallyCleanVersions.map(deepValidate);
+            report = {
+              schemaVersion: 1,
+              platform: platformLabel,
+              runnerOs: process.env.RUNNER_OS,
+              runnerArch: process.env.RUNNER_ARCH,
+              runnerImageOs: process.env.ImageOS ?? null,
+              runnerImageVersion: process.env.ImageVersion ?? null,
+              osDescription: `${os.type()} ${os.release()}`,
+              processPlatform: process.platform,
+              processArchitecture: process.arch,
+              applicationHead: actualHead,
+              nodeVersion: nodeVersionResult.stdout.trim(),
+              initiallyBundledNpmVersion: bundledNpmResult.stdout.trim(),
+              registry: "https://registry.npmjs.org/",
+              controlVersion,
+              latestStableNpm10: stable10.at(-1),
+              latestStableNpm11: stable11.at(-1),
+              candidates,
+              matrix,
+              locallyCleanVersions,
+              deepValidation,
+              nextEnvDtsClassification:
+                "OBSERVATIONAL_NOT_A_PACKAGE_MANAGER_CLEANLINESS_GATE",
+              dependencyImmutabilityFiles: ["package.json", "package-lock.json"],
+            };
+            const summary = markdownSummary(report);
+            fs.writeFileSync(resultPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+            fs.writeFileSync(summaryPath, `${summary}\n`, "utf8");
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`, "utf8");
+            }
+            console.log("\n===== PLATFORM_RESULT_JSON =====");
+            console.log(JSON.stringify(report, null, 2));
+            console.log(`RESULT_JSON=${resultPath}`);
+            console.log(`RESULT_SUMMARY=${summaryPath}`);
+          } catch (error) {
+            const fatal = {
+              schemaVersion: 1,
+              platform: platformLabel,
+              fatalInfrastructureOrHarnessFailure: String(error.stack || error),
+            };
+            fs.writeFileSync(resultPath, `${JSON.stringify(fatal, null, 2)}\n`, "utf8");
+            fs.writeFileSync(
+              summaryPath,
+              `# PR249 npm version matrix - ${platformLabel}\n\nFATAL: ${fatal.fatalInfrastructureOrHarnessFailure}\n`,
+              "utf8",
+            );
+            console.error(error.stack || error);
+            process.exitCode = 1;
+          }
+          '@ | Set-Content -LiteralPath $scriptPath -Encoding utf8NoBOM
+          node $scriptPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "npm version matrix harness failed with exit $LASTEXITCODE"
+          }
+
+      - name: Upload complete platform assessment
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr249-npm-version-matrix-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/pr249-npm-version-matrix-${{ matrix.label }}.json
+            ${{ runner.temp }}/pr249-npm-version-matrix-${{ matrix.label }}.md
+          if-no-files-found: error
+          retention-days: 30
