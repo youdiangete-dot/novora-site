@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
-    "next": "16.2.6",
+    "next": "16.2.12",
     "react": "latest",
     "react-dom": "latest"
   },
@@ -18,5 +18,9 @@
     "@types/react": "latest",
     "@types/node": "latest",
     "@playwright/test": "latest"
+  },
+  "overrides": {
+    "postcss": "8.5.18",
+    "sharp": "0.35.3"
   }
 }
