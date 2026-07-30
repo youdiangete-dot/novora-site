@@ -1,0 +1,422 @@
+name: PR249 cross-platform audit
+
+on:
+  push:
+    branches:
+      - codex/pr249-cross-platform-audit-runner
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    name: Linux x64 cycle ${{ matrix.cycle }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        cycle:
+          - 1
+          - 2
+
+    steps:
+      - name: Checkout exact reviewed PR head
+        uses: actions/checkout@v4
+        with:
+          ref: 325921ca3d23df172276e354ce19c1a020a56ba3
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact reviewed PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_head="$(git rev-parse HEAD)"
+          echo "ACTUAL_HEAD=$actual_head"
+          test "$actual_head" = "325921ca3d23df172276e354ce19c1a020a56ba3"
+
+      - name: Print runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "MATRIX_CYCLE=${{ matrix.cycle }}"
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          echo "RUNNER_IMAGE_OS=${ImageOS:-unknown}"
+          echo "RUNNER_IMAGE_VERSION=${ImageVersion:-unknown}"
+          uname -a
+          uname -m
+          cat /etc/os-release
+
+      - name: Use exact Node version
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+
+      - name: Install and verify exact npm version
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.12.1
+          echo "NODE_VERSION=$(node --version)"
+          echo "NPM_VERSION=$(npm --version)"
+          echo "NODE_PLATFORM=$(node -p 'process.platform')"
+          echo "NODE_ARCH=$(node -p 'process.arch')"
+          test "$(node --version)" = "v24.15.0"
+          test "$(npm --version)" = "11.12.1"
+          test "$(node -p 'process.arch')" = "x64"
+
+      - name: Fresh ordinary npm ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e node_modules
+          npm ci
+          git diff --exit-code -- package.json package-lock.json
+
+      - name: Require no extraneous dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          query_json="$RUNNER_TEMP/npm-query-extraneous-linux-${{ matrix.cycle }}.json"
+          npm query ':extraneous' --json | tee "$query_json"
+          node -e "const fs=require('fs'); const value=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); if (!Array.isArray(value) || value.length !== 0) { console.error('Expected an empty extraneous array.'); process.exit(1); } console.log('LINUX_X64_EXTRANEOUS_COUNT=0');" "$query_json"
+
+      - name: Require a valid complete dependency tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree_text="$RUNNER_TEMP/npm-ls-all-linux-${{ matrix.cycle }}.txt"
+          npm ls --all | tee "$tree_text"
+          if grep -Eiq 'extraneous|invalid' "$tree_text"; then
+            echo "Dependency tree contains an extraneous or invalid entry." >&2
+            exit 1
+          fi
+
+          tree_json="$RUNNER_TEMP/npm-ls-all-linux-${{ matrix.cycle }}.json"
+          npm ls --all --json | tee "$tree_json"
+          node -e "const fs=require('fs'); const value=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); if (Array.isArray(value.problems) && value.problems.length !== 0) { console.error(value.problems); process.exit(1); } console.log('LINUX_X64_DEPENDENCY_PROBLEMS=0');" "$tree_json"
+
+      - name: Explain audited dependency ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ls next --all
+          npm explain next
+          npm explain postcss
+          npm explain sharp
+          set +e
+          npm explain @img/sharp-wasm32
+          sharp_wasm32_explain_exit=$?
+          npm explain @emnapi/runtime
+          emnapi_runtime_explain_exit=$?
+          set -e
+          echo "SHARP_WASM32_EXPLAIN_EXIT=$sharp_wasm32_explain_exit"
+          echo "EMNAPI_RUNTIME_EXPLAIN_EXIT=$emnapi_runtime_explain_exit"
+
+      - name: Verify exact resolved versions and native Sharp
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('fs'); const expected={next:'16.2.12',postcss:'8.5.18',sharp:'0.35.3'}; for (const [name,version] of Object.entries(expected)) { const actual=JSON.parse(fs.readFileSync('node_modules/'+name+'/package.json','utf8')).version; console.log(name.toUpperCase()+'_VERSION='+actual); if (actual !== version) process.exitCode=1; }"
+          node -e "const sharp=require('sharp'); console.log('SHARP_NATIVE_LOAD=success'); console.log('SHARP_VERSION='+sharp.versions.sharp); console.log('LIBVIPS_VERSION='+sharp.versions.vips); if (sharp.versions.sharp !== '0.35.3' || !sharp.versions.vips) process.exit(1);"
+
+      - name: Require Production Critical and High zero
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_json="$RUNNER_TEMP/npm-audit-production-linux-${{ matrix.cycle }}.json"
+          set +e
+          npm audit --omit=dev --json > "$audit_json"
+          audit_exit=$?
+          set -e
+          cat "$audit_json"
+          echo "NPM_AUDIT_EXIT=$audit_exit"
+          node -e "const fs=require('fs'); const value=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); const counts=value.metadata && value.metadata.vulnerabilities; if (!counts) { console.error('Missing npm audit vulnerability counts.'); process.exit(1); } console.log('PRODUCTION_CRITICAL='+counts.critical); console.log('PRODUCTION_HIGH='+counts.high); if (counts.critical !== 0 || counts.high !== 0) process.exit(1);" "$audit_json"
+
+      - name: Production build
+        shell: bash
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          npm run build
+
+      - name: Require no tracked file change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test -z "$(git status --short --untracked-files=no)"
+          echo "TRACKED_FILE_CHANGE_COUNT=0"
+
+  windows-playwright:
+    name: Windows 2025 complete Playwright
+    runs-on: windows-2025
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact reviewed PR head
+        uses: actions/checkout@v4
+        with:
+          ref: 325921ca3d23df172276e354ce19c1a020a56ba3
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact reviewed PR head
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualHead = (git rev-parse HEAD).Trim()
+          Write-Output "ACTUAL_HEAD=$actualHead"
+          if ($actualHead -ne '325921ca3d23df172276e354ce19c1a020a56ba3') {
+            throw "Unexpected checkout head: $actualHead"
+          }
+
+      - name: Print runner identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Output "RUNNER_OS=$env:RUNNER_OS"
+          Write-Output "RUNNER_ARCH=$env:RUNNER_ARCH"
+          Write-Output "RUNNER_IMAGE_OS=$env:ImageOS"
+          Write-Output "RUNNER_IMAGE_VERSION=$env:ImageVersion"
+          Write-Output "OS_DESCRIPTION=$([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)"
+          Write-Output "OS_ARCHITECTURE=$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)"
+          Write-Output "PROCESS_ARCHITECTURE=$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)"
+          Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption, Version, BuildNumber, OSArchitecture |
+            Format-List
+
+      - name: Use exact Node version
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+
+      - name: Install and verify exact npm version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm.cmd install --global npm@11.12.1
+          $nodeVersion = (node.exe --version).Trim()
+          $npmVersion = (npm.cmd --version).Trim()
+          $nodePlatform = (node.exe -p 'process.platform').Trim()
+          $nodeArch = (node.exe -p 'process.arch').Trim()
+          Write-Output "NODE_VERSION=$nodeVersion"
+          Write-Output "NPM_VERSION=$npmVersion"
+          Write-Output "NODE_PLATFORM=$nodePlatform"
+          Write-Output "NODE_ARCH=$nodeArch"
+          if ($nodeVersion -ne 'v24.15.0') { throw "Unexpected Node version: $nodeVersion" }
+          if ($npmVersion -ne '11.12.1') { throw "Unexpected npm version: $npmVersion" }
+          if ($nodeArch -ne 'x64') { throw "Unexpected Node architecture: $nodeArch" }
+
+      - name: Verify clean process and port baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $projectServers = @(
+            Get-CimInstance Win32_Process |
+              Where-Object {
+                $_.Name -eq 'node.exe' -and
+                $_.CommandLine -match '(?i)(next(?:\.cmd)?\s+dev|novora-site)'
+              }
+          )
+          if ($projectServers.Count -ne 0) {
+            $projectServers | Select-Object ProcessId, Name, CommandLine | Format-List
+            throw 'An inherited project server exists.'
+          }
+
+          $listeners = @(
+            Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+              Where-Object { $_.LocalPort -eq 3000 }
+          )
+          if ($listeners.Count -ne 0) {
+            $listeners | Format-Table -AutoSize
+            throw 'Expected local test port 3000 is not free.'
+          }
+          Write-Output 'INHERITED_PROJECT_SERVER_COUNT=0'
+          Write-Output 'EXPECTED_TEST_PORT_3000=free'
+
+      - name: Fresh ordinary npm ci
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path -LiteralPath 'node_modules') {
+            throw 'node_modules must be absent before npm ci.'
+          }
+          npm.cmd ci
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed with exit $LASTEXITCODE" }
+          git diff --exit-code -- package.json package-lock.json
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci changed package metadata.' }
+          Write-Output 'WINDOWS_FRESH_NPM_CI=pass'
+
+      - name: Record Windows dependency tree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $allowedExtraneous = @('@img/sharp-wasm32', '@emnapi/runtime')
+
+          $queryPath = Join-Path $env:RUNNER_TEMP 'npm-query-extraneous-windows.json'
+          npm.cmd query ':extraneous' --json | Tee-Object -FilePath $queryPath
+          $queryExit = $LASTEXITCODE
+          Write-Output "WINDOWS_NPM_QUERY_EXIT=$queryExit"
+          if ($queryExit -ne 0) { throw "npm query failed with exit $queryExit" }
+          $query = Get-Content -Raw -LiteralPath $queryPath | ConvertFrom-Json
+          $unexpectedQuery = @($query | Where-Object { $_.name -notin $allowedExtraneous })
+          if ($unexpectedQuery.Count -ne 0) {
+            $unexpectedQuery | ConvertTo-Json -Depth 10
+            throw 'Windows npm query found an unexplained extraneous package.'
+          }
+          $queryNames = @($query | ForEach-Object { $_.name } | Sort-Object -Unique)
+          Write-Output "WINDOWS_EXTRANEOUS_NAMES=$($queryNames -join ',')"
+
+          $treeTextPath = Join-Path $env:RUNNER_TEMP 'npm-ls-all-windows.txt'
+          npm.cmd ls --all 2>&1 | Tee-Object -FilePath $treeTextPath
+          $treeTextExit = $LASTEXITCODE
+          Write-Output "WINDOWS_NPM_LS_TEXT_EXIT=$treeTextExit"
+          $treeText = Get-Content -Raw -LiteralPath $treeTextPath
+          if ($treeText -match '(?i)\binvalid\b') {
+            throw 'Windows npm ls contains an invalid dependency.'
+          }
+          $extraneousLines = @(
+            $treeText -split "`r?`n" |
+              Where-Object { $_ -match '(?i)\bextraneous\b' }
+          )
+          $unexpectedLines = @(
+            $extraneousLines |
+              Where-Object {
+                $_ -notmatch '@img/sharp-wasm32@' -and
+                $_ -notmatch '@emnapi/runtime@'
+              }
+          )
+          if ($unexpectedLines.Count -ne 0) {
+            $unexpectedLines | ForEach-Object { Write-Output $_ }
+            throw 'Windows npm ls contains an unexplained extraneous entry.'
+          }
+
+          $treeJsonPath = Join-Path $env:RUNNER_TEMP 'npm-ls-all-windows.json'
+          npm.cmd ls --all --json | Tee-Object -FilePath $treeJsonPath
+          $treeJsonExit = $LASTEXITCODE
+          Write-Output "WINDOWS_NPM_LS_JSON_EXIT=$treeJsonExit"
+          $tree = Get-Content -Raw -LiteralPath $treeJsonPath | ConvertFrom-Json
+          $problems = @($tree.problems)
+          $unexpectedProblems = @(
+            $problems |
+              Where-Object {
+                $_ -notmatch '^extraneous: @img/sharp-wasm32@' -and
+                $_ -notmatch '^extraneous: @emnapi/runtime@'
+              }
+          )
+          if ($unexpectedProblems.Count -ne 0) {
+            $unexpectedProblems | ForEach-Object { Write-Output $_ }
+            throw 'Windows npm ls JSON contains an unexplained problem.'
+          }
+          Write-Output "WINDOWS_DEPENDENCY_PROBLEM_COUNT=$($problems.Count)"
+          exit 0
+
+      - name: Install only Chromium
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npx.cmd playwright install chromium
+          if ($LASTEXITCODE -ne 0) { throw "Chromium install failed with exit $LASTEXITCODE" }
+
+      - name: Run one authoritative complete Playwright suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $livePatterns = '^(NEXT_PUBLIC_SUPABASE_|SUPABASE_|OPENAI_|RESEND_|UPSTASH_|REDIS_|VERCEL|NOVORA_)'
+          Get-ChildItem Env: |
+            Where-Object { $_.Name -match $livePatterns } |
+            ForEach-Object {
+              [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process')
+            }
+
+          $env:NOVORA_ADMIN_ACCESS_KEY = 'synthetic-local-admin-key-pr249-actions'
+          $env:NEXT_PUBLIC_SUPABASE_URL = 'not-a-valid-supabase-url'
+          $env:SUPABASE_SERVICE_ROLE_KEY = 'synthetic-local-service-role-pr249-actions'
+          $env:NOVORA_EXPECT_MALFORMED_SUPABASE_URL_TEST = '1'
+          $env:NEXT_TELEMETRY_DISABLED = '1'
+          Write-Output 'SYNTHETIC_ENV_NAMES=NOVORA_ADMIN_ACCESS_KEY,NEXT_PUBLIC_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,NOVORA_EXPECT_MALFORMED_SUPABASE_URL_TEST,NEXT_TELEMETRY_DISABLED'
+
+          $envFilesBefore = @(Get-ChildItem -Force -File -Filter '.env*')
+          if ($envFilesBefore.Count -ne 0) {
+            $envFilesBefore | Select-Object -ExpandProperty Name
+            throw 'An environment file exists before Playwright.'
+          }
+
+          $testLog = Join-Path $env:RUNNER_TEMP 'playwright-authoritative-windows.log'
+          npm.cmd run test:e2e 2>&1 | Tee-Object -FilePath $testLog
+          $testExit = $LASTEXITCODE
+          Write-Output "PLAYWRIGHT_PROCESS_EXIT=$testExit"
+
+          $testText = Get-Content -Raw -LiteralPath $testLog
+          $summaryLines = @(
+            $testText -split "`r?`n" |
+              Where-Object {
+                $_ -match '^\s*\d+\s+(passed|failed|skipped|flaky|interrupted)\b'
+              }
+          )
+          Write-Output 'PLAYWRIGHT_FINAL_SUMMARY_BEGIN'
+          $summaryLines | ForEach-Object { Write-Output $_ }
+          Write-Output 'PLAYWRIGHT_FINAL_SUMMARY_END'
+
+          $passedMatch = [regex]::Match($testText, '(?m)^\s*(\d+)\s+passed\s+\(')
+          $failedMatch = [regex]::Match($testText, '(?m)^\s*(\d+)\s+failed\b')
+          $skippedMatch = [regex]::Match($testText, '(?m)^\s*(\d+)\s+skipped\b')
+          if (-not $passedMatch.Success) { throw 'The final Playwright passed summary is missing.' }
+
+          $passed = [int]$passedMatch.Groups[1].Value
+          $failed = if ($failedMatch.Success) { [int]$failedMatch.Groups[1].Value } else { 0 }
+          $skipped = if ($skippedMatch.Success) { [int]$skippedMatch.Groups[1].Value } else { 0 }
+          Write-Output "PLAYWRIGHT_PASSED=$passed"
+          Write-Output "PLAYWRIGHT_FAILED=$failed"
+          Write-Output "PLAYWRIGHT_SKIPPED=$skipped"
+
+          if ($testExit -ne 0) { throw "Playwright exited with $testExit" }
+          if ($passed -ne 635) { throw "Expected 635 passed tests, found $passed" }
+          if ($failed -ne 0) { throw "Expected zero failed tests, found $failed" }
+          if ($skipped -ne 0) { throw "Expected zero skipped tests, found $skipped" }
+
+          Start-Sleep -Seconds 5
+
+          $projectServers = @(
+            Get-CimInstance Win32_Process |
+              Where-Object {
+                $_.Name -eq 'node.exe' -and
+                $_.CommandLine -match '(?i)(next(?:\.cmd)?\s+dev|novora-site)'
+              }
+          )
+          if ($projectServers.Count -ne 0) {
+            $projectServers | Select-Object ProcessId, Name, CommandLine | Format-List
+            throw 'A project server remains after Playwright.'
+          }
+
+          $listeners = @(
+            Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+              Where-Object { $_.LocalPort -eq 3000 }
+          )
+          if ($listeners.Count -ne 0) {
+            $listeners | Format-Table -AutoSize
+            throw 'Port 3000 remains occupied after Playwright.'
+          }
+
+          $envFilesAfter = @(Get-ChildItem -Force -File -Filter '.env*')
+          if ($envFilesAfter.Count -ne 0) {
+            $envFilesAfter | Select-Object -ExpandProperty Name
+            throw 'An environment file exists after Playwright.'
+          }
+
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Playwright changed a tracked repository file.' }
+          if ((git status --short --untracked-files=no).Length -ne 0) {
+            throw 'Playwright left a tracked repository change.'
+          }
+
+          Write-Output 'PLAYWRIGHT_WRAPPER_TIMEOUT=none'
+          Write-Output 'FORCED_PROCESS_TERMINATION=none'
+          Write-Output 'PROJECT_SERVER_TEARDOWN=controlled'
+          Write-Output 'EXPECTED_TEST_PORT_3000_AFTER=free'
+          Write-Output 'TRACKED_FILE_CHANGE_COUNT=0'
