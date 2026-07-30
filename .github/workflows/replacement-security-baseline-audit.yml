@@ -172,6 +172,117 @@ jobs:
           if ((node -p process.arch) -ne "x64") { throw "unexpected architecture" }
           if ((npm.cmd --version) -ne "11.13.0") { throw "unexpected npm version" }
 
+          $npmCommand = (Get-Command npm.cmd -CommandType Application |
+            Select-Object -First 1).Source
+          if ([string]::IsNullOrWhiteSpace($npmCommand)) {
+            throw "npm.cmd could not be resolved"
+          }
+
+          function Assert-ExactNpm {
+            param([Parameter(Mandatory = $true)][string]$NpmPath)
+
+            $npmVersion = & $NpmPath --version
+            if ($LASTEXITCODE -ne 0 -or $npmVersion -ne "11.13.0") {
+              throw "direct npm binary is not npm 11.13.0"
+            }
+
+            Write-Host "Verified direct npm binary: $NpmPath"
+            Write-Host "Verified direct npm version: $npmVersion"
+          }
+
+          function Invoke-CapturedNpmJson {
+            param(
+              [Parameter(Mandatory = $true)][string]$NpmPath,
+              [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+              [Parameter(Mandatory = $true)][string]$StdoutPath,
+              [Parameter(Mandatory = $true)][string]$StderrPath,
+              [Parameter(Mandatory = $true)][string]$Label
+            )
+
+            $quotedArguments = ($ArgumentList | ForEach-Object {
+              '"' + ($_ -replace '"', '\"') + '"'
+            }) -join " "
+            $commandLine = '""{0}" {1}"' -f $NpmPath, $quotedArguments
+
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = $env:ComSpec
+            $startInfo.Arguments = "/d /s /c $commandLine"
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+
+            Write-Host "$Label wrapper: $($startInfo.FileName)"
+            Write-Host "$Label npm binary: $NpmPath"
+            Write-Host "$Label npm arguments: $($ArgumentList -join ' ')"
+
+            $process = [System.Diagnostics.Process]::new()
+            $process.StartInfo = $startInfo
+            if (-not $process.Start()) {
+              throw "$Label process did not start"
+            }
+
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $stderrTask = $process.StandardError.ReadToEndAsync()
+            $process.WaitForExit()
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
+            $exitCode = $process.ExitCode
+            $process.Dispose()
+
+            [System.IO.File]::WriteAllText(
+              $StdoutPath,
+              $stdout,
+              [System.Text.UTF8Encoding]::new($false)
+            )
+            [System.IO.File]::WriteAllText(
+              $StderrPath,
+              $stderr,
+              [System.Text.UTF8Encoding]::new($false)
+            )
+
+            Write-Host "$Label raw stdout:"
+            Write-Host $stdout
+            Write-Host "$Label raw stderr:"
+            Write-Host $stderr
+            Write-Host "$Label exit code: $exitCode"
+
+            [pscustomobject]@{
+              ExitCode = $exitCode
+              Stdout = $stdout
+              Stderr = $stderr
+              BinaryPath = $NpmPath
+              Arguments = @($ArgumentList)
+            }
+          }
+
+          function Get-NpmDependencyVersions {
+            param(
+              [Parameter(Mandatory = $true)][object]$Node,
+              [Parameter(Mandatory = $true)][string]$DependencyName
+            )
+
+            $dependenciesProperty = $Node.PSObject.Properties["dependencies"]
+            if ($null -eq $dependenciesProperty -or
+              $null -eq $dependenciesProperty.Value) {
+              return
+            }
+
+            foreach ($dependency in $dependenciesProperty.Value.PSObject.Properties) {
+              if ($dependency.Name -eq $DependencyName) {
+                $versionProperty = $dependency.Value.PSObject.Properties["version"]
+                if ($null -ne $versionProperty -and
+                  -not [string]::IsNullOrWhiteSpace([string]$versionProperty.Value)) {
+                  [string]$versionProperty.Value
+                }
+              }
+
+              Get-NpmDependencyVersions `
+                -Node $dependency.Value `
+                -DependencyName $DependencyName
+            }
+          }
+
           $packageBefore = (Get-FileHash -Algorithm SHA256 package.json).Hash
           $lockBefore = (Get-FileHash -Algorithm SHA256 package-lock.json).Hash
 
@@ -194,43 +305,121 @@ jobs:
           if ($vercel.installCommand -ne "npx --yes npm@11.13.0 ci") { throw "wrong Vercel install command" }
           if ($vercel.buildCommand -ne "npx --yes npm@11.13.0 run build") { throw "wrong Vercel build command" }
 
-          $extraneousRaw = npx.cmd --yes npm@11.13.0 query ':extraneous' --json
-          if ($LASTEXITCODE -ne 0) { throw "npm query failed" }
+          Assert-ExactNpm -NpmPath $npmCommand
+          $extraneousRaw = & $npmCommand query ":extraneous" --json
+          $extraneousExit = $LASTEXITCODE
+          Write-Host "npm query raw output:"
+          Write-Host ($extraneousRaw -join "`n")
+          if ($extraneousExit -ne 0) { throw "npm query failed" }
           $extraneous = ($extraneousRaw -join "`n") | ConvertFrom-Json
           if (@($extraneous).Count -ne 0) { throw "extraneous packages found" }
 
-          $lsText = npx.cmd --yes npm@11.13.0 ls --all 2>&1
-          if ($LASTEXITCODE -ne 0) { throw "npm ls text failed" }
+          Assert-ExactNpm -NpmPath $npmCommand
+          $lsText = & $npmCommand ls --all 2>&1
+          $lsTextExit = $LASTEXITCODE
+          Write-Host "npm ls text raw output:"
+          Write-Host ($lsText -join "`n")
+          if ($lsTextExit -ne 0) { throw "npm ls text failed" }
           if (($lsText -join "`n") -match "(?i)extraneous|invalid") {
             throw "npm ls text contains an invalid marker"
           }
 
-          $lsJsonRaw = npx.cmd --yes npm@11.13.0 ls --all --json
-          if ($LASTEXITCODE -ne 0) { throw "npm ls JSON failed" }
-          $lsJson = ($lsJsonRaw -join "`n") | ConvertFrom-Json
-          if ($null -ne $lsJson.problems -and $lsJson.problems.Count -ne 0) {
+          Assert-ExactNpm -NpmPath $npmCommand
+          $lsCapture = Invoke-CapturedNpmJson `
+            -NpmPath $npmCommand `
+            -ArgumentList @("ls", "--all", "--json") `
+            -StdoutPath (Join-Path $env:RUNNER_TEMP "npm-ls-all.json") `
+            -StderrPath (Join-Path $env:RUNNER_TEMP "npm-ls-all.stderr.log") `
+            -Label "npm ls full JSON"
+          if ($lsCapture.ExitCode -ne 0) {
+            throw "direct npm ls full JSON failed with exit code $($lsCapture.ExitCode)"
+          }
+          if ([string]::IsNullOrWhiteSpace($lsCapture.Stdout)) {
+            throw "npm ls full JSON stdout is empty"
+          }
+          try {
+            $lsJson = $lsCapture.Stdout | ConvertFrom-Json -ErrorAction Stop
+          } catch {
+            throw "npm ls full JSON stdout is not valid JSON: $($_.Exception.Message)"
+          }
+          if ($lsJson -isnot [pscustomobject]) {
+            throw "npm ls full JSON root is not an object"
+          }
+          $problemsProperty = $lsJson.PSObject.Properties["problems"]
+          if ($null -ne $problemsProperty -and
+            $null -ne $problemsProperty.Value -and
+            @($problemsProperty.Value).Count -ne 0) {
             throw "npm ls JSON contains problems"
           }
+          if ($lsCapture.Stdout -match '"extraneous"\s*:\s*true') {
+            throw "npm ls JSON contains an extraneous package"
+          }
+          if ($lsCapture.Stdout -match '"invalid"\s*:\s*true') {
+            throw "npm ls JSON contains an invalid package"
+          }
 
-          $versionTreeRaw = npx.cmd --yes npm@11.13.0 ls next postcss sharp --all --json
-          if ($LASTEXITCODE -ne 0) { throw "version tree failed" }
-          $versionTree = ($versionTreeRaw -join "`n") | ConvertFrom-Json
-          if ($versionTree.dependencies.next.version -ne "16.2.12") { throw "wrong Next.js version" }
-          if ($versionTree.dependencies.next.dependencies.postcss.version -ne "8.5.18") { throw "wrong PostCSS version" }
-          if ($versionTree.dependencies.next.dependencies.sharp.version -ne "0.35.3") { throw "wrong Sharp version" }
+          Assert-ExactNpm -NpmPath $npmCommand
+          $versionCapture = Invoke-CapturedNpmJson `
+            -NpmPath $npmCommand `
+            -ArgumentList @("ls", "next", "postcss", "sharp", "--all", "--json") `
+            -StdoutPath (Join-Path $env:RUNNER_TEMP "npm-version-tree.json") `
+            -StderrPath (Join-Path $env:RUNNER_TEMP "npm-version-tree.stderr.log") `
+            -Label "npm version tree JSON"
+          if ($versionCapture.ExitCode -ne 0) {
+            throw "direct npm version tree JSON failed with exit code $($versionCapture.ExitCode)"
+          }
+          if ([string]::IsNullOrWhiteSpace($versionCapture.Stdout)) {
+            throw "npm version tree JSON stdout is empty"
+          }
+          try {
+            $versionTree = $versionCapture.Stdout | ConvertFrom-Json -ErrorAction Stop
+          } catch {
+            throw "npm version tree JSON stdout is not valid JSON: $($_.Exception.Message)"
+          }
+          if ($versionTree -isnot [pscustomobject]) {
+            throw "npm version tree JSON root is not an object"
+          }
+
+          $nextVersions = @(Get-NpmDependencyVersions `
+            -Node $versionTree `
+            -DependencyName "next" | Sort-Object -Unique)
+          $postcssVersions = @(Get-NpmDependencyVersions `
+            -Node $versionTree `
+            -DependencyName "postcss" | Sort-Object -Unique)
+          $sharpVersions = @(Get-NpmDependencyVersions `
+            -Node $versionTree `
+            -DependencyName "sharp" | Sort-Object -Unique)
+          Write-Host "Next.js versions: $($nextVersions -join ', ')"
+          Write-Host "PostCSS versions: $($postcssVersions -join ', ')"
+          Write-Host "Sharp versions: $($sharpVersions -join ', ')"
+          if ($nextVersions.Count -ne 1 -or $nextVersions[0] -ne "16.2.12") {
+            throw "wrong or conflicting Next.js versions"
+          }
+          if ($postcssVersions.Count -ne 1 -or $postcssVersions[0] -ne "8.5.18") {
+            throw "wrong or conflicting PostCSS versions"
+          }
+          if ($sharpVersions.Count -ne 1 -or $sharpVersions[0] -ne "0.35.3") {
+            throw "wrong or conflicting Sharp versions"
+          }
 
           node -e "const sharp=require('sharp');if(sharp.versions.sharp!=='0.35.3'||!sharp.versions.vips)process.exit(1);console.log(JSON.stringify({sharp:sharp.versions.sharp,libvips:sharp.versions.vips}))"
           if ($LASTEXITCODE -ne 0) { throw "Sharp native import failed" }
 
-          $auditRaw = npx.cmd --yes npm@11.13.0 audit --omit=dev --json
-          if ($LASTEXITCODE -ne 0) { throw "Production audit failed" }
+          Assert-ExactNpm -NpmPath $npmCommand
+          $auditRaw = & $npmCommand audit --omit=dev --json
+          $auditExit = $LASTEXITCODE
+          Write-Host "npm audit raw output:"
+          Write-Host ($auditRaw -join "`n")
+          if ($auditExit -ne 0) { throw "Production audit failed" }
           $audit = ($auditRaw -join "`n") | ConvertFrom-Json
           if ($audit.metadata.vulnerabilities.critical -ne 0) { throw "Production Critical is not zero" }
           if ($audit.metadata.vulnerabilities.high -ne 0) { throw "Production High is not zero" }
 
-          $playwrightOutput = npx.cmd --yes npm@11.13.0 run test:e2e 2>&1 |
+          Assert-ExactNpm -NpmPath $npmCommand
+          $playwrightOutput = & $npmCommand run test:e2e 2>&1 |
             Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "playwright.log")
-          if ($LASTEXITCODE -ne 0) { throw "Playwright failed" }
+          $playwrightExit = $LASTEXITCODE
+          if ($playwrightExit -ne 0) { throw "Playwright failed" }
           $playwrightText = $playwrightOutput -join "`n"
           if ($playwrightText -notmatch "635 passed") { throw "Playwright count mismatch" }
           if ($playwrightText -match "\d+\s+skipped") { throw "Playwright reported skipped tests" }
@@ -238,11 +427,27 @@ jobs:
           node -e "const net=require('net');const socket=net.connect(3000,'127.0.0.1');socket.once('connect',()=>process.exit(1));socket.once('error',()=>process.exit(0));setTimeout(()=>process.exit(0),1000)"
           if ($LASTEXITCODE -ne 0) { throw "Playwright server still owns port 3000" }
 
+          $workspacePattern = [regex]::Escape($env:GITHUB_WORKSPACE)
+          $remainingProcesses = @(Get-CimInstance Win32_Process |
+            Where-Object {
+              $_.Name -match "^(node|chrome|chromium|msedge|cmd)(\.exe)?$" -and
+              $_.CommandLine -match $workspacePattern
+            })
+          Write-Host "Workspace-related remaining process count: $($remainingProcesses.Count)"
+          foreach ($remainingProcess in $remainingProcesses) {
+            Write-Host "$($remainingProcess.ProcessId) $($remainingProcess.Name) $($remainingProcess.CommandLine)"
+          }
+          if ($remainingProcesses.Count -ne 0) {
+            throw "Playwright left workspace-related processes running"
+          }
+
           npx.cmd --yes npm@11.13.0 run build
           if ($LASTEXITCODE -ne 0) { throw "Production build failed" }
 
-          npx.cmd --yes npm@11.13.0 exec tsc -- --noEmit --incremental false
-          if ($LASTEXITCODE -ne 0) { throw "TypeScript failed" }
+          Assert-ExactNpm -NpmPath $npmCommand
+          & $npmCommand exec tsc -- --noEmit --incremental false
+          $typescriptExit = $LASTEXITCODE
+          if ($typescriptExit -ne 0) { throw "TypeScript failed" }
 
           if ((Get-FileHash -Algorithm SHA256 package.json).Hash -ne $packageBefore) {
             throw "package.json changed after validation"
@@ -258,9 +463,12 @@ jobs:
           - Source commit: $sourceSha
           - Node: $(node --version)
           - Architecture: $(node -p process.arch)
-          - npm: $(npm.cmd --version)
+          - npm binary: $npmCommand
+          - npm: $(& $npmCommand --version)
           - Extraneous: 0
           - npm ls problems: 0
+          - npm ls full JSON exit: $($lsCapture.ExitCode)
+          - npm version tree JSON exit: $($versionCapture.ExitCode)
           - Next.js: 16.2.12
           - PostCSS: 8.5.18
           - Sharp: 0.35.3
@@ -268,6 +476,7 @@ jobs:
           - Production High: 0
           - Playwright: 635 passed, 0 failed, 0 skipped, normal exit 0
           - Loopback port 3000: closed after Playwright
+          - Workspace-related remaining processes: $($remainingProcesses.Count)
           - Build: passed
           - TypeScript: passed
           "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
