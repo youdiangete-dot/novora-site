@@ -57,9 +57,6 @@ type SubmittedConceptBrief = {
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 const SERVER_RECEIPT_WARNING =
   'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
-const MOCK_PREVIEW_PUBLIC_REFERENCE = 'NOVORA-CB-MOCK-001';
-const MOCK_PREVIEW_STATE = 'first_preview_ready';
-const MOCK_PREVIEW_HREF = `/design/preview/${MOCK_PREVIEW_PUBLIC_REFERENCE}?state=${MOCK_PREVIEW_STATE}`;
 
 type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   apiSubmission: {
@@ -196,6 +193,7 @@ export default function DesignSubmittedPage() {
   }
 
   const displayedConceptBriefId = submittedBrief.apiSubmission.publicReference;
+  const previewStatusHref = `/design/preview/${encodeURIComponent(displayedConceptBriefId)}`;
 
   return (
     <main className={styles.pageBackground}>
@@ -364,22 +362,27 @@ export default function DesignSubmittedPage() {
               receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is
               sent from this submission flow.
             </p>
-            <div className={submittedStyles.mockPreviewEntry}>
+            <div className={submittedStyles.previewStatusEntry}>
               <div>
-                <p className={submittedStyles.mockPreviewLabel}>Demo mock preview route</p>
-                <h3>Demo navigation testing only</h3>
+                <p className={submittedStyles.previewStatusLabel}>First Preview status</p>
+                <h3>Your first concept preview starts automatically</h3>
                 <p>
-                  This demo link is for navigation testing only. It is not connected to your submitted Concept Brief,
-                  does not display a generated image, and is not customer-safe final delivery.
+                  First Preview generation begins automatically after NOVORA confirms receipt of your Concept Brief.
+                  Your AI hand-drawn concept sketch becomes visible on this website after automatic safety, privacy,
+                  customer-isolation, asset-validity, and lifecycle gates pass.
                 </p>
               </div>
-              <Link className={styles.secondaryButton} href={MOCK_PREVIEW_HREF}>
-                View demo mock preview
+              <Link
+                aria-label={`View First Preview status for ${displayedConceptBriefId}`}
+                className={styles.secondaryButton}
+                href={previewStatusHref}
+              >
+                View First Preview status
               </Link>
-              <p className={submittedStyles.mockPreviewBoundary}>
-                Human review and offline follow-up remain required. This mock preview is not CAD, not a quote, not
-                order approval, not payment approval, and not production approval. first_preview_ready is separate from
-                approved_for_customer.
+              <p className={submittedStyles.previewStatusBoundary}>
+                Failed, unsafe, ambiguous, complex, low-confidence, or correction cases may require human handling.
+                This early concept preview is not CAD, a quotation, payment confirmation, an order, production
+                approval, or a manufacturability guarantee. Paid CAD and formal decisions come later.
               </p>
             </div>
           </section>
