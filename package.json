@@ -23,12 +23,5 @@
     "postcss": "8.5.18",
     "sharp": "0.35.3"
   },
-  "packageManager": "npm@11.13.0",
-  "devEngines": {
-    "packageManager": {
-      "name": "npm",
-      "version": "11.13.0",
-      "onFail": "error"
-    }
-  }
+  "packageManager": "npm@11.13.0"
 }
