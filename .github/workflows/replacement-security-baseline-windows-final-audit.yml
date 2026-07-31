@@ -1,0 +1,384 @@
+name: Replacement security baseline final Windows audit
+
+on:
+  push:
+    branches:
+      - codex/replacement-security-baseline-windows-final-audit
+
+permissions:
+  contents: read
+
+jobs:
+  final-windows-audit:
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout locked replacement source
+        uses: actions/checkout@v6
+        with:
+          ref: a88c88af50115eabf86f358227b429693bf51a5a
+          persist-credentials: false
+
+      - name: Use locked Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.15.0
+
+      - name: Verify metadata and perform fresh install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if (Test-Path -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'node_modules')) {
+            throw 'node_modules must be absent before the fresh install.'
+          }
+
+          $nodeVersion = (& node --version).Trim()
+          $npmVersion = (& npm.cmd --version).Trim()
+          if ($nodeVersion -ne 'v24.15.0') { throw "Unexpected Node version: $nodeVersion" }
+          if ($npmVersion -ne '11.13.0') { throw "Unexpected npm version: $npmVersion" }
+
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE 'package.json'
+          $lockPath = Join-Path $env:GITHUB_WORKSPACE 'package-lock.json'
+          $vercelPath = Join-Path $env:GITHUB_WORKSPACE 'vercel.json'
+          $package = Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json
+          $vercel = Get-Content -Raw -LiteralPath $vercelPath | ConvertFrom-Json
+
+          if ($package.packageManager -ne 'npm@11.13.0') { throw 'packageManager is not npm@11.13.0.' }
+          if ($package.devEngines.packageManager.name -ne 'npm') { throw 'devEngines package manager name is not npm.' }
+          if ($package.devEngines.packageManager.version -ne '11.13.0') { throw 'devEngines npm version is not 11.13.0.' }
+          if ($package.devEngines.packageManager.onFail -ne 'error') { throw 'devEngines onFail is not error.' }
+          if ($vercel.installCommand -ne 'npx --yes npm@11.13.0 ci') { throw 'Unexpected Vercel install command.' }
+          if ($vercel.buildCommand -ne 'npx --yes npm@11.13.0 run build') { throw 'Unexpected Vercel build command.' }
+
+          $packageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $packagePath).Hash
+          $lockHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $lockPath).Hash
+          $vercelHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $vercelPath).Hash
+          @(
+            "PACKAGE_JSON_SHA256=$packageHash"
+            "PACKAGE_LOCK_SHA256=$lockHash"
+            "VERCEL_JSON_SHA256=$vercelHash"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          & npx.cmd --yes npm@11.13.0 ci
+          if ($LASTEXITCODE -ne 0) { throw "Fresh install exited $LASTEXITCODE." }
+
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $packagePath).Hash -ne $packageHash) { throw 'package.json changed during install.' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $lockPath).Hash -ne $lockHash) { throw 'package-lock.json changed during install.' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $vercelPath).Hash -ne $vercelHash) { throw 'vercel.json changed during install.' }
+
+      - name: Install locked Playwright Chromium
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $playwright = Join-Path $env:GITHUB_WORKSPACE 'node_modules\.bin\playwright.cmd'
+          if (-not (Test-Path -LiteralPath $playwright -PathType Leaf)) { throw 'Workspace Playwright command is missing.' }
+
+          $playwrightVersion = (& $playwright --version).Trim()
+          if ($playwrightVersion -ne 'Version 1.59.1') { throw "Unexpected Playwright version: $playwrightVersion" }
+
+          $stdoutPath = Join-Path $env:RUNNER_TEMP 'playwright-install.stdout.log'
+          $stderrPath = Join-Path $env:RUNNER_TEMP 'playwright-install.stderr.log'
+          $process = Start-Process -FilePath $playwright -ArgumentList @('install', 'chromium') -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+          '===== PLAYWRIGHT INSTALL STDOUT ====='
+          Get-Content -Raw -LiteralPath $stdoutPath
+          '===== PLAYWRIGHT INSTALL STDERR ====='
+          Get-Content -Raw -LiteralPath $stderrPath
+          "PLAYWRIGHT_INSTALL_EXIT_CODE=$($process.ExitCode)"
+          if ($process.ExitCode -ne 0) { throw "Chromium installation exited $($process.ExitCode)." }
+
+      - name: Resolve and validate locked Chromium executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $resolverPath = Join-Path $env:RUNNER_TEMP 'resolve-locked-chromium.cjs'
+          @'
+          const path = require('node:path');
+          const { createRequire } = require('node:module');
+          const workspacePackage = path.join(process.env.GITHUB_WORKSPACE, 'package.json');
+          const workspaceRequire = createRequire(workspacePackage);
+          const { chromium } = workspaceRequire('@playwright/test');
+          process.stdout.write(chromium.executablePath());
+          '@ | Set-Content -LiteralPath $resolverPath -Encoding utf8
+
+          $executable = (& node $resolverPath).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "Chromium resolution exited $LASTEXITCODE." }
+          $cacheRoot = Join-Path $env:LOCALAPPDATA 'ms-playwright'
+
+          function Assert-LockedChromiumPath {
+            param(
+              [string] $Candidate,
+              [string] $BrowserCacheRoot,
+              [bool] $RequireFile = $true
+            )
+
+            if ([string]::IsNullOrWhiteSpace($Candidate)) { throw 'Chromium executable path is empty.' }
+            if ($Candidate -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+[\\/])') {
+              throw 'Chromium executable path is not absolute.'
+            }
+            $fullCandidate = [IO.Path]::GetFullPath($Candidate)
+            $fullCacheRoot = [IO.Path]::GetFullPath($BrowserCacheRoot).TrimEnd('\', '/')
+            $separator = [IO.Path]::DirectorySeparatorChar
+            $cachePrefix = "$fullCacheRoot$separator"
+            if (-not $fullCandidate.StartsWith($cachePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+              throw 'Chromium executable is outside the Playwright browser cache.'
+            }
+            $relative = $fullCandidate.Substring($cachePrefix.Length)
+
+            $segments = $relative -split '[\\/]'
+            if ($segments.Count -lt 2) { throw 'Chromium executable has no revision directory.' }
+            $revisionMatch = [regex]::Match(
+              $segments[0],
+              '^(chromium|chromium_headless_shell)-(?<revision>\d+)$',
+              [Text.RegularExpressions.RegexOptions]::CultureInvariant
+            )
+            if (-not $revisionMatch.Success) { throw "Unexpected Chromium revision directory: $($segments[0])" }
+            if ($revisionMatch.Groups['revision'].Value -ne '1217') {
+              throw "Unexpected Chromium revision: $($revisionMatch.Groups['revision'].Value)"
+            }
+
+            if ($RequireFile) {
+              $item = Get-Item -LiteralPath $fullCandidate -ErrorAction Stop
+              if ($item.PSIsContainer) { throw 'Chromium executable path is not a regular file.' }
+            }
+            return $fullCandidate
+          }
+
+          $validated = Assert-LockedChromiumPath -Candidate $executable -BrowserCacheRoot $cacheRoot
+          if (-not [StringComparer]::OrdinalIgnoreCase.Equals($validated, [IO.Path]::GetFullPath($executable))) {
+            throw 'Validated executable differs from the locked runtime value.'
+          }
+          "LOCKED_CHROMIUM_EXECUTABLE=$validated"
+          "PLAYWRIGHT_BROWSER_CACHE=$([IO.Path]::GetFullPath($cacheRoot))"
+          @(
+            "CHROMIUM_EXECUTABLE=$validated"
+            "PLAYWRIGHT_BROWSER_CACHE=$([IO.Path]::GetFullPath($cacheRoot))"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Launch locked Chromium smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $trackedNames = @('node', 'chrome', 'chrome-headless-shell', 'playwright')
+          $baselinePids = @(Get-Process -Name $trackedNames -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+
+          $smokePath = Join-Path $env:RUNNER_TEMP 'locked-chromium-smoke.cjs'
+          @'
+          const path = require('node:path');
+          const { createRequire } = require('node:module');
+          const workspaceRequire = createRequire(path.join(process.env.GITHUB_WORKSPACE, 'package.json'));
+          const { chromium } = workspaceRequire('@playwright/test');
+
+          (async () => {
+            const locked = path.resolve(process.env.CHROMIUM_EXECUTABLE);
+            const runtimeExecutable = path.resolve(chromium.executablePath());
+            if (runtimeExecutable.toLowerCase() !== locked.toLowerCase()) {
+              throw new Error(`Runtime executable mismatch: ${runtimeExecutable}`);
+            }
+
+            let browser;
+            let context;
+            let page;
+            try {
+              browser = await chromium.launch({ headless: true });
+              context = await browser.newContext();
+              page = await context.newPage();
+              await page.setContent('<!doctype html><title>NOVORA Windows smoke</title><main>local only</main>');
+              const result = await page.evaluate(() => 6 * 7);
+              if (result !== 42) throw new Error(`Unexpected JavaScript result: ${result}`);
+              console.log(`BROWSER_VERSION=${browser.version()}`);
+              console.log(`ACTUAL_EXECUTABLE_PATH=${runtimeExecutable}`);
+              console.log(`JAVASCRIPT_RESULT=${result}`);
+            } finally {
+              if (page) await page.close();
+              if (context) await context.close();
+              if (browser) await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          '@ | Set-Content -LiteralPath $smokePath -Encoding utf8
+
+          & node $smokePath
+          if ($LASTEXITCODE -ne 0) { throw "Chromium smoke test exited $LASTEXITCODE." }
+          Start-Sleep -Seconds 2
+
+          $remaining = @(Get-Process -Name $trackedNames -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $baselinePids })
+          if ($remaining.Count -ne 0) {
+            $remaining | Format-Table -AutoSize Id, ProcessName
+            throw 'Chromium smoke test left a browser or Node process running.'
+          }
+
+      - name: Run authoritative Playwright suite
+        shell: pwsh
+        env:
+          CI: 'true'
+          NOVORA_ADMIN_ACCESS_KEY: synthetic-windows-final-audit-admin-key
+          NOVORA_EXPECT_MALFORMED_SUPABASE_URL_TEST: '1'
+          NEXT_PUBLIC_SUPABASE_URL: not-a-valid-supabase-url
+          SUPABASE_SERVICE_ROLE_KEY: synthetic-test-only-service-role-key
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $npmVersion = (& npm.cmd --version).Trim()
+          $playwright = Join-Path $env:GITHUB_WORKSPACE 'node_modules\.bin\playwright.cmd'
+          $playwrightVersion = (& $playwright --version).Trim()
+          if ($npmVersion -ne '11.13.0') { throw "Unexpected npm version before testing: $npmVersion" }
+          if ($playwrightVersion -ne 'Version 1.59.1') { throw "Unexpected Playwright version before testing: $playwrightVersion" }
+          if (-not (Test-Path -LiteralPath $env:CHROMIUM_EXECUTABLE -PathType Leaf)) { throw 'Locked Chromium executable is missing before testing.' }
+          if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) { throw 'Port 3000 is already in use.' }
+
+          $trackedNames = @('node', 'chrome', 'chrome-headless-shell', 'playwright')
+          $baselinePids = @(Get-Process -Name $trackedNames -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+          $baselineListeners = @(
+            Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+              ForEach-Object { "$($_.LocalAddress)|$($_.LocalPort)|$($_.OwningProcess)" }
+          )
+
+          $stdoutPath = Join-Path $env:RUNNER_TEMP 'playwright-suite.stdout.log'
+          $stderrPath = Join-Path $env:RUNNER_TEMP 'playwright-suite.stderr.log'
+          $process = Start-Process -FilePath 'npm.cmd' -ArgumentList @('run', 'test:e2e') -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+
+          '===== PLAYWRIGHT TEST STDOUT ====='
+          $stdout = Get-Content -Raw -LiteralPath $stdoutPath
+          $stdout
+          '===== PLAYWRIGHT TEST STDERR ====='
+          $stderr = Get-Content -Raw -LiteralPath $stderrPath
+          $stderr
+          "PLAYWRIGHT_TEST_EXIT_CODE=$($process.ExitCode)"
+
+          $combined = "$stdout`n$stderr"
+          $summaryMatches = [regex]::Matches($combined, '(?m)^\s*(?<passed>\d+)\s+passed(?:\s+\([^)]+\))?\s*$')
+          $passed = if ($summaryMatches.Count -gt 0) { [int]$summaryMatches[$summaryMatches.Count - 1].Groups['passed'].Value } else { -1 }
+          $failedMatch = [regex]::Match($combined, '(?m)^\s*(?<count>\d+)\s+failed\b')
+          $skippedMatch = [regex]::Match($combined, '(?m)^\s*(?<count>\d+)\s+skipped\b')
+          $failed = if ($failedMatch.Success) { [int]$failedMatch.Groups['count'].Value } else { 0 }
+          $skipped = if ($skippedMatch.Success) { [int]$skippedMatch.Groups['count'].Value } else { 0 }
+
+          if ($process.ExitCode -ne 0) { throw "Playwright suite exited $($process.ExitCode)." }
+          if ($summaryMatches.Count -eq 0) { throw 'Final Playwright summary is missing.' }
+          if ($passed -ne 635 -or $failed -ne 0 -or $skipped -ne 0 -or ($passed + $failed + $skipped) -ne 635) {
+            throw "Unexpected Playwright ledger: passed=$passed failed=$failed skipped=$skipped"
+          }
+          if ($combined -match '(?i)executable doesn.t exist|browser.*not found|please run.*playwright install|browser.*crash|forced termination|timed out|timeout exceeded') {
+            throw 'Playwright output contains a missing-browser, crash, forced-termination, or timeout signal.'
+          }
+          "PLAYWRIGHT_LEDGER=passed:$passed failed:$failed skipped:$skipped total:$($passed + $failed + $skipped)"
+
+          $deadline = [DateTime]::UtcNow.AddSeconds(15)
+          do {
+            $remaining = @(Get-Process -Name $trackedNames -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $baselinePids })
+            $port3000 = @(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue)
+            if ($remaining.Count -eq 0 -and $port3000.Count -eq 0) { break }
+            Start-Sleep -Seconds 1
+          } while ([DateTime]::UtcNow -lt $deadline)
+
+          $newListeners = @(
+            Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+              ForEach-Object { "$($_.LocalAddress)|$($_.LocalPort)|$($_.OwningProcess)" } |
+              Where-Object { $_ -notin $baselineListeners }
+          )
+          if ($remaining.Count -ne 0) {
+            $remaining | Format-Table -AutoSize Id, ProcessName
+            throw 'Playwright left a task-owned Node or browser process running.'
+          }
+          if ($port3000.Count -ne 0) { throw 'Playwright did not release port 3000.' }
+          if ($newListeners.Count -ne 0) {
+            $newListeners
+            throw 'Playwright left a task-owned listener running.'
+          }
+
+      - name: Run locked Production build and TypeScript
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $buildStdoutPath = Join-Path $env:RUNNER_TEMP 'build.stdout.log'
+          $buildStderrPath = Join-Path $env:RUNNER_TEMP 'build.stderr.log'
+          $build = Start-Process -FilePath 'npx.cmd' -ArgumentList @('--yes', 'npm@11.13.0', 'run', 'build') -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $buildStdoutPath -RedirectStandardError $buildStderrPath
+          '===== BUILD STDOUT ====='
+          $buildStdout = Get-Content -Raw -LiteralPath $buildStdoutPath
+          $buildStdout
+          '===== BUILD STDERR ====='
+          $buildStderr = Get-Content -Raw -LiteralPath $buildStderrPath
+          $buildStderr
+          "BUILD_EXIT_CODE=$($build.ExitCode)"
+
+          $buildOutput = "$buildStdout`n$buildStderr"
+          if ($build.ExitCode -ne 0) { throw "Production build exited $($build.ExitCode)." }
+          if ($buildOutput -notmatch 'Next\.js\s+16\.2\.12') { throw 'Build did not report Next.js 16.2.12.' }
+          if ($buildOutput -notmatch 'Generating static pages[^\r\n]*\(13/13\)') { throw 'Build did not report 13 static pages.' }
+          if ($buildOutput -match '(?i)(sharp|postcss|app router|server action)[^\r\n]*\berror\b') {
+            throw 'Build output contains a Sharp, PostCSS, App Router, or Server Action error.'
+          }
+
+          $tsStdoutPath = Join-Path $env:RUNNER_TEMP 'typescript.stdout.log'
+          $tsStderrPath = Join-Path $env:RUNNER_TEMP 'typescript.stderr.log'
+          $typescript = Start-Process -FilePath 'npm.cmd' -ArgumentList @('exec', 'tsc', '--', '--noEmit', '--incremental', 'false') `
+            -NoNewWindow -Wait -PassThru -RedirectStandardOutput $tsStdoutPath -RedirectStandardError $tsStderrPath
+          '===== TYPESCRIPT STDOUT ====='
+          Get-Content -Raw -LiteralPath $tsStdoutPath
+          '===== TYPESCRIPT STDERR ====='
+          Get-Content -Raw -LiteralPath $tsStderrPath
+          "TYPESCRIPT_EXIT_CODE=$($typescript.ExitCode)"
+          if ($typescript.ExitCode -ne 0) { throw "TypeScript exited $($typescript.ExitCode)." }
+
+      - name: Verify final source immutability
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceHead = (git rev-parse HEAD).Trim()
+          if ($sourceHead -ne 'a88c88af50115eabf86f358227b429693bf51a5a') { throw "Source checkout moved to $sourceHead." }
+
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE 'package.json'
+          $lockPath = Join-Path $env:GITHUB_WORKSPACE 'package-lock.json'
+          $vercelPath = Join-Path $env:GITHUB_WORKSPACE 'vercel.json'
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $packagePath).Hash -ne $env:PACKAGE_JSON_SHA256) { throw 'package.json changed.' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $lockPath).Hash -ne $env:PACKAGE_LOCK_SHA256) { throw 'package-lock.json changed.' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $vercelPath).Hash -ne $env:VERCEL_JSON_SHA256) { throw 'vercel.json changed.' }
+          git diff --quiet -- package.json package-lock.json vercel.json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Locked source files have a Git diff.'
+          }
+
+          $envFiles = @(Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force -Recurse -File -ErrorAction Stop |
+            Where-Object {
+              ($_.Name -eq '.env' -or $_.Name -like '.env.*') -and
+              $_.FullName -notlike "$env:GITHUB_WORKSPACE\node_modules\*" -and
+              $_.FullName -notlike "$env:GITHUB_WORKSPACE\.next\*"
+            })
+          if ($envFiles.Count -ne 0) {
+            $envFiles.FullName
+            throw 'An environment file exists in the repository.'
+          }
+
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $cache = [IO.Path]::GetFullPath($env:PLAYWRIGHT_BROWSER_CACHE)
+          $cacheRelative = [IO.Path]::GetRelativePath($workspace, $cache)
+          if (-not $cacheRelative.StartsWith('..', [StringComparison]::Ordinal)) {
+            throw 'Playwright browser cache is inside the repository.'
+          }
+          $browserArtifacts = @(Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force -Recurse -ErrorAction Stop |
+            Where-Object {
+              $_.Name -eq 'ms-playwright' -or
+              $_.Name -match '^(chromium|chromium_headless_shell)-\d+$' -or
+              $_.Name -in @('chrome.exe', 'chrome-headless-shell.exe')
+            })
+          if ($browserArtifacts.Count -ne 0) {
+            $browserArtifacts.FullName
+            throw 'A browser binary or Playwright browser cache exists inside the repository.'
+          }
+
+          if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) {
+            throw 'Port 3000 is still in use.'
+          }
+          $remainingProcesses = @(Get-Process -Name @('node', 'chrome', 'chrome-headless-shell', 'playwright') -ErrorAction SilentlyContinue)
+          if ($remainingProcesses.Count -ne 0) {
+            $remainingProcesses | Format-Table -AutoSize Id, ProcessName
+            throw 'A Node or browser process remains after final validation.'
+          }
+          git status --short
