@@ -476,7 +476,7 @@ async function expectRejectedSubmittedReceipt(page: Page, receiptCase: Submitted
 
     await expect(page.getByRole('heading', { name: 'Server receipt not confirmed' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Concept brief received' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'View demo mock preview' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Open your First Preview' })).toHaveCount(0);
     expect(protectedAssetRequestCount).toBe(0);
   } finally {
     await restoreSubmittedReceiptTestMutations(page);
@@ -564,30 +564,30 @@ test.describe('/design/start conversion flow', () => {
         'NOVORA received your Concept Brief for studio review and may follow up using the contact details you provided.',
       ),
     ).toBeVisible();
-    const mockPreviewLink = page.getByRole('link', { name: 'View demo mock preview' });
+    const previewLink = page.getByRole('link', { name: 'Open your First Preview' });
 
-    await expect(mockPreviewLink).toBeVisible();
-    await expect(mockPreviewLink).toHaveAttribute(
+    await expect(previewLink).toBeVisible();
+    await expect(previewLink).toHaveAttribute(
       'href',
-      '/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready',
+      '/design/preview/NOVORA-CB-20260601-STRT',
     );
-    await expect(page.getByText('Demo mock preview route')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Demo navigation testing only' })).toBeVisible();
+    await expect(page.getByText('Customer First Preview')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Follow your automatic concept-preview progress' })).toBeVisible();
     await expect(
       page.getByText(
-        'This demo link is for navigation testing only. It is not connected to your submitted Concept Brief, does not display a generated image, and is not customer-safe final delivery.',
+        'This secure, query-free link is tied only to your validated customer reference.',
+        { exact: false },
       ),
     ).toBeVisible();
     await expect(
-      page.getByText('Human review and offline follow-up remain required.', { exact: false }),
+      page.getByText('Human handling is exception-only when the system cannot safely converge.', { exact: false }),
     ).toBeVisible();
-    await expect(page.getByText('not CAD, not a quote', { exact: false })).toBeVisible();
-    await expect(page.getByText('first_preview_ready is separate from approved_for_customer.')).toBeVisible();
+    await expect(page.getByText('It is not CAD, a final quote, an order', { exact: false })).toBeVisible();
     await expect(page.getByText('generated image is ready', { exact: false })).toHaveCount(0);
     await expect(page.getByText('image API completed', { exact: false })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'View AI Sketch Preview' })).toHaveCount(0);
     await expect(page.locator('a[href="/design/sketch"]')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'What NOVORA reviews next' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your automatic First Preview workflow' })).toBeVisible();
     await expect(
       page.getByText(
         'NOVORA will use the submitted email or contact information for follow-up about this Concept Brief. This receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is sent from this submission flow.',
@@ -630,108 +630,64 @@ test.describe('/design/start conversion flow', () => {
     expect(conceptBriefRequestCount).toBe(1);
 
     await Promise.all([
-      page.waitForURL('**/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready'),
-      mockPreviewLink.click(),
+      page.waitForURL('**/design/preview/NOVORA-CB-20260601-STRT'),
+      previewLink.click(),
     ]);
 
-    await expect(page.getByRole('heading', { name: 'Customer concept preview' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Mock first concept preview' })).toBeVisible();
-    await expect(page.getByText('no real generated image exists here', { exact: false })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Customer First Preview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'First Preview unavailable' })).toBeVisible();
     expect(conceptBriefRequestCount).toBe(1);
   });
 });
 
-test.describe('/design/preview mock boundaries', () => {
-  test('preview valid mock route renders the successful MVP mock state', async ({ page }) => {
-    await page.goto('/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready');
+test.describe('/design/preview customer boundaries', () => {
+  test('normal canonical request fails closed to unavailable', async ({ page }) => {
+    await page.goto('/design/preview/NOVORA-CB-20260731-AB12');
 
-    await expect(page.getByRole('heading', { name: 'Mock first concept preview' })).toBeVisible();
-    await expect(page.getByText('This is a mock preview for MVP flow testing only.')).toBeVisible();
-    await expect(page.getByText('It is not generated by a live image provider', { exact: false })).toBeVisible();
-    await expect(page.getByText('no real generated image exists here', { exact: false })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'First Preview unavailable' })).toBeVisible();
     await expect(
-      page.getByText(
-        'This is not customer-safe final delivery. Human review is required before any customer-facing delivery, and first_preview_ready is separate from approved_for_customer.',
-      ),
-    ).toBeVisible();
-    await expect(page.getByText('Human review is required before any customer-facing delivery')).toBeVisible();
+      page.getByRole('img', {
+        name: 'Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction',
+      }),
+    ).toHaveCount(0);
+    await expect(page.getByText('provider, database, storage', { exact: false })).toBeVisible();
+  });
+
+  test('query state cannot select ready and is removed from the canonical URL', async ({ page }) => {
+    await page.goto('/design/preview/NOVORA-CB-20260731-AB12?state=ready&next=https://example.com');
+
+    await expect(page).toHaveURL('/design/preview/NOVORA-CB-20260731-AB12');
+    await expect(page.getByRole('heading', { name: 'First Preview unavailable' })).toBeVisible();
     await expect(
-      page.getByText('first_preview_ready is separate from approved_for_customer', { exact: true }),
-    ).toBeVisible();
-    await expect(page.getByText('Not CAD', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not a quote', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not order approval', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not payment approval', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not production approval', { exact: true })).toBeVisible();
-    await expect(page.getByText('Mock bridge preview data')).toHaveCount(0);
-    await expect(page.getByText('Image URL')).toHaveCount(0);
-    await expect(page.getByText('Provider output')).toHaveCount(0);
-    await expect(page.getByText('Prompt chain')).toHaveCount(0);
+      page.getByRole('img', {
+        name: 'Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction',
+      }),
+    ).toHaveCount(0);
   });
 
-  test('preview missing state renders the safe unavailable state', async ({ page }) => {
-    await page.goto('/design/preview/NOVORA-CB-MOCK-001');
+  test('malformed reference fails closed without reflecting it as a customer reference', async ({ page }) => {
+    await page.goto('/design/preview/NOVORA-CB-NOT-REAL');
 
-    await expect(page.getByRole('heading', { name: 'Preview unavailable' })).toBeVisible();
-    await expect(page.getByText('This preview is unavailable or the demo link is invalid.')).toBeVisible();
-    await expect(page.getByText('This does not mean a real customer record was found.')).toBeVisible();
-    await expect(page.getByText('No generated image is available here.')).toBeVisible();
-    await expect(page.getByText('No Supabase or database lookup happened', { exact: false })).toBeVisible();
-    await expect(page.getByText('no GPT, OpenAI, or image-provider work happened', { exact: false })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Mock first concept preview' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'First Preview unavailable' })).toBeVisible();
+    await expect(page.getByText('Reference unavailable', { exact: true })).toBeVisible();
+    await expect(page.getByText('NOVORA-CB-NOT-REAL', { exact: true })).toHaveCount(0);
   });
 
-  test('preview unsupported state renders the safe unavailable state', async ({ page }) => {
-    await page.goto('/design/preview/NOVORA-CB-MOCK-001?state=unexpected_state');
-
-    await expect(page.getByRole('heading', { name: 'Preview unavailable' })).toBeVisible();
-    await expect(page.getByText('This preview is unavailable or the demo link is invalid.')).toBeVisible();
-    await expect(page.getByText('No generated image is available here.')).toBeVisible();
-    await expect(page.getByText('Not CAD', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not a quote', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not order approval', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not payment approval', { exact: true })).toBeVisible();
-    await expect(page.getByText('Not production approval', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Mock first concept preview' })).toHaveCount(0);
-  });
-
-  test('preview approved_for_customer does not render first_preview_ready', async ({ page }) => {
-    await page.goto('/design/preview/NOVORA-CB-MOCK-001?state=approved_for_customer');
-
-    await expect(page.getByRole('heading', { name: 'Preview unavailable' })).toBeVisible();
-    await expect(page.getByText('First preview ready', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Mock first concept preview' })).toHaveCount(0);
-    await expect(page.getByText('This does not mean a real customer record was found.')).toBeVisible();
-  });
-
-  test('preview unsupported public reference renders the safe unavailable state', async ({ page }) => {
-    await page.goto('/design/preview/NOVORA-CB-NOT-REAL?state=first_preview_ready');
-
-    await expect(page.getByRole('heading', { name: 'Preview unavailable' })).toBeVisible();
-    await expect(page.getByText('NOVORA-CB-NOT-REAL')).toBeVisible();
-    await expect(page.getByText('This does not mean a real customer record was found.')).toBeVisible();
-    await expect(page.getByText('No Supabase or database lookup happened', { exact: false })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Mock first concept preview' })).toHaveCount(0);
-  });
-
-  test('preview submitted page demo link copy is hardened and target remains exact', async ({ page }) => {
+  test('submitted receipt Preview link copy is bounded and target remains exact', async ({ page }) => {
     await seedConfirmedSubmittedBrief(page);
 
     await page.goto('/design/submitted');
 
-    const mockPreviewLink = page.getByRole('link', { name: 'View demo mock preview' });
+    const previewLink = page.getByRole('link', { name: 'Open your First Preview' });
 
-    await expect(mockPreviewLink).toBeVisible();
-    await expect(mockPreviewLink).toHaveAttribute(
+    await expect(previewLink).toBeVisible();
+    await expect(previewLink).toHaveAttribute(
       'href',
-      '/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready',
+      '/design/preview/NOVORA-CB-20260601-LINK',
     );
-    await expect(page.getByText('Demo mock preview route')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Demo navigation testing only' })).toBeVisible();
-    await expect(page.getByText('not connected to your submitted Concept Brief', { exact: false })).toBeVisible();
-    await expect(page.getByText('does not display a generated image', { exact: false })).toBeVisible();
-    await expect(page.getByText('not customer-safe final delivery', { exact: false })).toBeVisible();
-    await expect(page.getByText('Human review and offline follow-up remain required.', { exact: false })).toBeVisible();
+    await expect(page.getByText('Customer First Preview')).toBeVisible();
+    await expect(page.getByText('query-free link', { exact: false })).toBeVisible();
+    await expect(page.getByText('not CAD, a final quote, an order', { exact: false })).toBeVisible();
   });
 });
 
@@ -746,9 +702,9 @@ test.describe('/design/submitted receipt JSON authority', () => {
     await expect(page.getByText('Jun 1, 2026', { exact: false })).toBeVisible();
     await expectTextsVisible(page, ['Mina Chen', 'mina@example.com']);
     await expect(page.getByRole('heading', { name: 'Important boundary' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'View demo mock preview' })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'Open your First Preview' })).toHaveAttribute(
       'href',
-      '/design/preview/NOVORA-CB-MOCK-001?state=first_preview_ready',
+      '/design/preview/NOVORA-CB-20260601-LINK',
     );
   });
 
@@ -761,7 +717,10 @@ test.describe('/design/submitted receipt JSON authority', () => {
 
         await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
         await expect(page.getByText('NOVORA-CB-20260601-HARD')).toBeVisible();
-        await expect(page.getByRole('link', { name: 'View demo mock preview' })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Open your First Preview' })).toHaveAttribute(
+          'href',
+          '/design/preview/NOVORA-CB-20260601-HARD',
+        );
       } finally {
         await restoreSubmittedReceiptTestMutations(page);
       }

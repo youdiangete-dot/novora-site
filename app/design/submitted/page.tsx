@@ -57,9 +57,6 @@ type SubmittedConceptBrief = {
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 const SERVER_RECEIPT_WARNING =
   'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
-const MOCK_PREVIEW_PUBLIC_REFERENCE = 'NOVORA-CB-MOCK-001';
-const MOCK_PREVIEW_STATE = 'first_preview_ready';
-const MOCK_PREVIEW_HREF = `/design/preview/${MOCK_PREVIEW_PUBLIC_REFERENCE}?state=${MOCK_PREVIEW_STATE}`;
 
 type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   apiSubmission: {
@@ -196,6 +193,7 @@ export default function DesignSubmittedPage() {
   }
 
   const displayedConceptBriefId = submittedBrief.apiSubmission.publicReference;
+  const previewHref = `/design/preview/${submittedBrief.apiSubmission.publicReference}`;
 
   return (
     <main className={styles.pageBackground}>
@@ -319,42 +317,43 @@ export default function DesignSubmittedPage() {
           <section className={submittedStyles.nextSteps}>
             <div>
               <p className={styles.eyebrow}>What happens next</p>
-              <h2>What NOVORA reviews next</h2>
+              <h2>Your automatic First Preview workflow</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
-              NOVORA will review the submitted details and use them as a starting point for the next conversation.
+              Your confirmed Concept Brief automatically enters the First Preview workflow. You do not need to start
+              generation yourself.
             </p>
             <ol className={submittedStyles.nextStepList}>
               <li>
                 <span className={submittedStyles.stepNumber}>1</span>
                 <div>
-                  <h3>Brief review</h3>
-                  <p>NOVORA reviews the concept brief, references, materials direction, and contact details.</p>
+                  <h3>Automatic preparation</h3>
+                  <p>NOVORA prepares the first AI hand-drawn concept sketch from the confirmed design direction.</p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>2</span>
                 <div>
-                  <h3>Concept direction</h3>
-                  <p>NOVORA reviews the concept direction and follows up to discuss possible next steps.</p>
+                  <h3>Automatic gates</h3>
+                  <p>Safety, privacy, access-control, and output-validity gates run before website visibility.</p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>3</span>
                 <div>
-                  <h3>CAD path confirmation</h3>
+                  <h3>Secure website visibility</h3>
                   <p>
-                    If you want production-level CAD, NOVORA will confirm details, CAD fee, and process separately.
+                    The Preview becomes visible on your customer page only after every required automatic gate passes.
                   </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>4</span>
                 <div>
-                  <h3>Later feasibility checks</h3>
+                  <h3>Refinement and paid CAD later</h3>
                   <p>
-                    Final quote, gemstone sourcing, CAD feasibility, and any production-related decisions are confirmed
-                    later through manual follow-up.
+                    Human handling is exception-only when the system cannot safely converge. Refinement, paid CAD,
+                    quoting, and production-feasibility decisions remain later steps.
                   </p>
                 </div>
               </li>
@@ -364,22 +363,22 @@ export default function DesignSubmittedPage() {
               receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is
               sent from this submission flow.
             </p>
-            <div className={submittedStyles.mockPreviewEntry}>
+            <div className={submittedStyles.previewEntry}>
               <div>
-                <p className={submittedStyles.mockPreviewLabel}>Demo mock preview route</p>
-                <h3>Demo navigation testing only</h3>
+                <p className={submittedStyles.previewLabel}>Customer First Preview</p>
+                <h3>Follow your automatic concept-preview progress</h3>
                 <p>
-                  This demo link is for navigation testing only. It is not connected to your submitted Concept Brief,
-                  does not display a generated image, and is not customer-safe final delivery.
+                  This secure, query-free link is tied only to your validated customer reference. The page fails closed
+                  until a trusted customer view is available and all required gates pass.
                 </p>
               </div>
-              <Link className={styles.secondaryButton} href={MOCK_PREVIEW_HREF}>
-                View demo mock preview
+              <Link className={styles.secondaryButton} href={previewHref}>
+                Open your First Preview
               </Link>
-              <p className={submittedStyles.mockPreviewBoundary}>
-                Human review and offline follow-up remain required. This mock preview is not CAD, not a quote, not
-                order approval, not payment approval, and not production approval. first_preview_ready is separate from
-                approved_for_customer.
+              <p className={submittedStyles.previewBoundary}>
+                The First Preview is an early concept communication asset. It is not CAD, a final quote, an order,
+                payment approval, production approval, or a manufacturability guarantee, and it may still need later
+                refinement and production-feasibility review.
               </p>
             </div>
           </section>
