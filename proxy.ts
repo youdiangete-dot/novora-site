@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_REFERENCE_PATTERN = /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/;
+const PUBLIC_REFERENCE_PATTERN =
+  /^NOVORA-CB-(\d{4})(\d{2})(\d{2})-[A-Z0-9]{4}$/;
 const OUTPUT_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const PREVIEW_ROUTE_PATTERN =
-  /^\/design\/preview\/(NOVORA-CB-\d{8}-[A-Z0-9]{4})(\/)?$/;
+const PREVIEW_LIKE_PATTERN = /^\/design\/+preview(?:\/|$)/;
+const PREVIEW_CANONICAL_CANDIDATE_PATTERN =
+  /^\/design\/+preview\/+(NOVORA-CB-\d{8}-[A-Z0-9]{4})(?:\/+)?$/;
 const CUSTOMER_ASSET_PATTERN =
   /^\/api\/first-preview-assets\/(NOVORA-CB-\d{8}-[A-Z0-9]{4})\/current$/;
+const ENCODED_SEPARATOR_PATTERN = /%(?:2f|5c)/i;
 
 const TEST_TOKEN = "novora-first-preview-ui-focused-test-v1";
 const EXTERNAL_TEST_HEADERS = {
@@ -33,6 +36,35 @@ function isTestState(value: string | null): value is TestState {
     value === "unavailable" ||
     value === "denied"
   );
+}
+
+function isValidPublicReference(value: string): boolean {
+  const match = PUBLIC_REFERENCE_PATTERN.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year === 0 || month < 1 || month > 12 || day < 1) return false;
+
+  const isLeapYear =
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    isLeapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+
+  return day <= daysInMonth[month - 1];
 }
 
 function sanitizedForwardHeaders(request: NextRequest): Headers {
@@ -69,11 +101,18 @@ function sanitizedForwardHeaders(request: NextRequest): Headers {
 }
 
 function redirectWithoutUnsafeState(request: NextRequest, pathname: string) {
-  const canonical = request.nextUrl.clone();
-  canonical.pathname = pathname;
-  canonical.search = "";
-  canonical.hash = "";
+  const canonical = new URL(pathname, request.url);
   return NextResponse.redirect(canonical, 308);
+}
+
+function safeNotFound() {
+  return new NextResponse(null, {
+    status: 404,
+    headers: {
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 function legacyAuditBoundaryList() {
@@ -178,18 +217,26 @@ export function proxy(request: NextRequest) {
   if (auditHarnessResponse) return auditHarnessResponse;
 
   const pathname = request.nextUrl.pathname;
-  const previewMatch = PREVIEW_ROUTE_PATTERN.exec(pathname);
+  const previewLike = PREVIEW_LIKE_PATTERN.test(pathname);
+  const previewMatch = PREVIEW_CANONICAL_CANDIDATE_PATTERN.exec(pathname);
+
+  if (
+    previewLike &&
+    (ENCODED_SEPARATOR_PATTERN.test(pathname) || pathname.includes("\\"))
+  ) {
+    return safeNotFound();
+  }
 
   if (previewMatch) {
+    if (!isValidPublicReference(previewMatch[1])) {
+      return safeNotFound();
+    }
     const canonicalPath = `/design/preview/${previewMatch[1]}`;
-    if (previewMatch[2] === "/" || request.nextUrl.search !== "") {
+    if (pathname !== canonicalPath || request.nextUrl.search !== "") {
       return redirectWithoutUnsafeState(request, canonicalPath);
     }
-  } else if (
-    pathname.startsWith("/design/preview") &&
-    request.nextUrl.search !== ""
-  ) {
-    return redirectWithoutUnsafeState(request, pathname);
+  } else if (previewLike && request.nextUrl.search !== "") {
+    return safeNotFound();
   }
 
   const forwarded = sanitizedForwardHeaders(request);
@@ -204,17 +251,11 @@ export function proxy(request: NextRequest) {
     if (
       trustedState !== "ready" ||
       trustedReference !== routeReference ||
-      !PUBLIC_REFERENCE_PATTERN.test(routeReference) ||
+      !isValidPublicReference(routeReference) ||
       trustedOutput === null ||
       !OUTPUT_UUID_PATTERN.test(trustedOutput)
     ) {
-      return new NextResponse(null, {
-        status: 404,
-        headers: {
-          "Cache-Control": "private, no-store",
-          "X-Content-Type-Options": "nosniff",
-        },
-      });
+      return safeNotFound();
     }
 
     const protectedAsset = request.nextUrl.clone();
@@ -225,17 +266,23 @@ export function proxy(request: NextRequest) {
 
     return NextResponse.rewrite(protectedAsset, {
       request: { headers: forwarded },
+      headers: {
+        "Cache-Control": "private, no-store",
+      },
     });
   }
 
-  return NextResponse.next({
+  const response = NextResponse.next({
     request: { headers: forwarded },
   });
+  if (previewLike) {
+    response.headers.set("Cache-Control", "private, no-store");
+  }
+  return response;
 }
 
 export const config = {
   matcher: [
-    "/design/preview/:path*",
-    "/api/first-preview-assets/:publicReference/current",
+    "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };

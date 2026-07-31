@@ -1,7 +1,16 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, type Page, test } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Page,
+  test,
+} from "@playwright/test";
+import {
+  getRewrittenUrl,
+  isRewrite,
+} from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
 
 import {
@@ -11,6 +20,16 @@ import { proxy } from "../../proxy";
 
 const PUBLIC_REFERENCE = "NOVORA-CB-20260731-AB12";
 const OTHER_PUBLIC_REFERENCE = "NOVORA-CB-20260731-ZZ99";
+const IMPOSSIBLE_PUBLIC_REFERENCE = "NOVORA-CB-20260230-AB12";
+const IMPOSSIBLE_PUBLIC_REFERENCES = [
+  "NOVORA-CB-20260229-AB12",
+  IMPOSSIBLE_PUBLIC_REFERENCE,
+  "NOVORA-CB-20260431-AB12",
+  "NOVORA-CB-20260001-AB12",
+  "NOVORA-CB-20261301-AB12",
+  "NOVORA-CB-20260100-AB12",
+  "NOVORA-CB-00000101-AB12",
+] as const;
 const OUTPUT_ID = "423e4567-e89b-42d3-a456-426614174000";
 const TEST_TOKEN = "novora-first-preview-ui-focused-test-v1";
 const PREVIEW_PATH = `/design/preview/${PUBLIC_REFERENCE}`;
@@ -20,6 +39,8 @@ const PROTECTED_ASSET_PATH =
   `/api/first-preview-assets/${PUBLIC_REFERENCE}/${OUTPUT_ID}`;
 const CONCEPT_IMAGE_NAME =
   "Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction";
+const READY_HEADING = "Your early concept direction is ready";
+const PENDING_HEADING = "Your First Preview is being prepared";
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
@@ -87,6 +108,77 @@ async function seedStoredValue(page: Page, value: string) {
 
 async function seedReceipt(page: Page, receipt: Record<string, unknown>) {
   await seedStoredValue(page, JSON.stringify(receipt));
+}
+
+type RedirectHop = Readonly<{
+  status: number;
+  requestUrl: URL;
+  location: URL | null;
+  headers: Record<string, string>;
+  body: string;
+}>;
+
+async function followRedirectChain(
+  request: APIRequestContext,
+  initialPath: string,
+  maximumHops = 6,
+): Promise<RedirectHop[]> {
+  const hops: RedirectHop[] = [];
+  let nextUrl = new URL(initialPath, "http://localhost:3000");
+
+  for (let index = 0; index < maximumHops; index += 1) {
+    const response = await request.get(nextUrl.href, { maxRedirects: 0 });
+    const headers = response.headers();
+    const rawLocation = headers.location;
+    const location =
+      rawLocation === undefined ? null : new URL(rawLocation, nextUrl);
+    hops.push({
+      status: response.status(),
+      requestUrl: nextUrl,
+      location,
+      headers,
+      body: await response.text(),
+    });
+
+    if (
+      location === null ||
+      ![301, 302, 303, 307, 308].includes(response.status())
+    ) {
+      return hops;
+    }
+    nextUrl = location;
+  }
+
+  throw new Error(`redirect chain exceeded ${maximumHops} hops`);
+}
+
+function expectSafePreviewRedirectChain(hops: RedirectHop[]) {
+  expect(hops.length).toBeGreaterThan(0);
+
+  for (const hop of hops) {
+    if (hop.location !== null) {
+      expect(hop.location.origin).toBe("http://localhost:3000");
+      expect(hop.location.pathname).not.toContain(OUTPUT_ID);
+      expect(hop.location.pathname).not.toContain("/current");
+    }
+    const serialized = JSON.stringify({
+      headers: hop.headers,
+      body: hop.body,
+    });
+    expect(serialized).not.toContain(OUTPUT_ID);
+    expect(serialized).not.toContain(PROTECTED_ASSET_PATH);
+    expect(serialized).not.toContain(CUSTOMER_ASSET_PATH);
+    expect(hop.body).not.toContain(READY_HEADING);
+    expect(hop.body).not.toContain(PENDING_HEADING);
+    expect(hop.body).not.toContain(CONCEPT_IMAGE_NAME);
+  }
+
+  const finalHop = hops.at(-1)!;
+  expect(finalHop.location).toBeNull();
+  expect([200, 400, 404]).toContain(finalHop.status);
+  if (finalHop.status === 200) {
+    expect(finalHop.body).toContain("First Preview unavailable");
+  }
 }
 
 async function seedMutatedReceipt(
@@ -204,6 +296,22 @@ test.describe("submitted receipt authority for Customer First Preview", () => {
 
   test("malformed stored JSON is rejected", async ({ page }) => {
     await seedStoredValue(page, '{"apiSubmission":');
+    await expectNoPreviewAuthority(page);
+  });
+
+  test("impossible calendar date cannot create a submitted Preview link", async ({
+    page,
+  }) => {
+    await seedReceipt(
+      page,
+      validReceipt({
+        apiSubmission: {
+          persisted: true,
+          publicReference: IMPOSSIBLE_PUBLIC_REFERENCE,
+          conceptBriefId: "88888888-8888-4888-8888-888888888888",
+        },
+      }),
+    );
     await expectNoPreviewAuthority(page);
   });
 });
@@ -328,6 +436,123 @@ test.describe("four-state Customer First Preview presentation", () => {
     }
   });
 
+  test("Production semantically hard-disables hostile test and trusted headers", async () => {
+    const mutableEnvironment = process.env as Record<
+      string,
+      string | undefined
+    >;
+    const originalNodeEnv = mutableEnvironment.NODE_ENV;
+    const hostileHeaders = new Headers();
+    hostileHeaders.append("X-Novora-Preview-Ui-Test-Token", TEST_TOKEN);
+    hostileHeaders.append("x-novora-preview-ui-test-state", "ready");
+    hostileHeaders.append(
+      "X-NOVORA-PREVIEW-UI-TEST-REFERENCE",
+      PUBLIC_REFERENCE,
+    );
+    hostileHeaders.append("x-novora-preview-ui-test-output", OUTPUT_ID);
+    hostileHeaders.append("X-Novora-Preview-Ui-Trusted-State", "ready");
+    hostileHeaders.append(
+      "x-novora-preview-ui-trusted-reference",
+      PUBLIC_REFERENCE,
+    );
+    hostileHeaders.append("X-NOVORA-PREVIEW-UI-TRUSTED-OUTPUT", OUTPUT_ID);
+    hostileHeaders.append("x-novora-preview-ui-trusted-output", OUTPUT_ID);
+
+    try {
+      mutableEnvironment.NODE_ENV = "production";
+      const response = proxy(
+        new NextRequest(`http://localhost${CUSTOMER_ASSET_PATH}`, {
+          headers: hostileHeaders,
+        }),
+      );
+      const serializedHeaders = JSON.stringify(
+        Object.fromEntries(response.headers.entries()),
+      );
+
+      expect(isRewrite(response)).toBe(false);
+      expect(getRewrittenUrl(response)).toBeNull();
+      expect(response.status).toBe(404);
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(serializedHeaders).not.toContain(OUTPUT_ID);
+      expect(serializedHeaders).not.toContain(
+        "x-novora-preview-ui-trusted-state",
+      );
+      expect(serializedHeaders).not.toContain(
+        "x-novora-preview-ui-trusted-output",
+      );
+      expect(await response.text()).not.toContain(OUTPUT_ID);
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete mutableEnvironment.NODE_ENV;
+      } else {
+        mutableEnvironment.NODE_ENV = originalNodeEnv;
+      }
+    }
+  });
+
+  test("trusted ready response cannot be replayed by an untrusted request", () => {
+    const trustedResponse = proxy(
+      new NextRequest(`http://localhost${CUSTOMER_ASSET_PATH}`, {
+        headers: trustedHeaders("ready"),
+      }),
+    );
+    expect(isRewrite(trustedResponse)).toBe(true);
+    expect(trustedResponse.headers.get("cache-control")).toBe(
+      "private, no-store",
+    );
+
+    const untrustedResponse = proxy(
+      new NextRequest(`http://localhost${CUSTOMER_ASSET_PATH}`),
+    );
+    expect(isRewrite(untrustedResponse)).toBe(false);
+    expect(untrustedResponse.status).toBe(404);
+    expect(untrustedResponse.headers.get("cache-control")).toBe(
+      "private, no-store",
+    );
+    expect(JSON.stringify(
+      Object.fromEntries(untrustedResponse.headers.entries()),
+    )).not.toContain(OUTPUT_ID);
+  });
+
+  test("trusted ready page is private no-store and cannot replay after authority is removed", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders(trustedHeaders("ready"));
+    await page.route(`**${CUSTOMER_ASSET_PATH}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: TRANSPARENT_PNG,
+      });
+    });
+
+    const trustedResponse = await page.goto(PREVIEW_PATH);
+    expect([
+      "private, no-store",
+      "no-cache, must-revalidate",
+    ]).toContain(trustedResponse?.headers()["cache-control"]);
+    await expect(
+      page.getByRole("heading", { name: READY_HEADING }),
+    ).toBeVisible();
+
+    await page.setExtraHTTPHeaders({});
+    const untrustedResponse = await page.reload();
+    expect([
+      "private, no-store",
+      "no-cache, must-revalidate",
+    ]).toContain(untrustedResponse?.headers()["cache-control"]);
+    await expect(
+      page.getByRole("heading", { name: "First Preview unavailable" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: READY_HEADING }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: PENDING_HEADING }),
+    ).toHaveCount(0);
+  });
+
   test("Output UUID is absent from visible HTML and customer URL", async ({
     page,
   }) => {
@@ -370,6 +595,77 @@ test.describe("public-reference and canonical-route safety", () => {
     ).toHaveCount(0);
   });
 
+  test("impossible calendar date cannot produce ready or a protected asset request", async ({
+    request,
+  }) => {
+    const previewResponse = await request.get(
+      `/design/preview/${IMPOSSIBLE_PUBLIC_REFERENCE}?state=ready`,
+      {
+        headers: trustedHeaders("ready", {
+          publicReference: IMPOSSIBLE_PUBLIC_REFERENCE,
+        }),
+        maxRedirects: 0,
+      },
+    );
+    expect(previewResponse.status()).toBe(404);
+    expect(previewResponse.headers().location).toBeUndefined();
+    const previewBody = await previewResponse.text();
+    expect(previewBody).not.toContain(CONCEPT_IMAGE_NAME);
+    expect(previewBody).not.toContain(OUTPUT_ID);
+
+    const assetResponse = proxy(
+      new NextRequest(
+        `http://localhost/api/first-preview-assets/${IMPOSSIBLE_PUBLIC_REFERENCE}/current`,
+        {
+          headers: trustedHeaders("ready", {
+            publicReference: IMPOSSIBLE_PUBLIC_REFERENCE,
+          }),
+        },
+      ),
+    );
+    expect(isRewrite(assetResponse)).toBe(false);
+    expect(assetResponse.status).toBe(404);
+    expect(assetResponse.headers.get("cache-control")).toBe(
+      "private, no-store",
+    );
+    expect(getRewrittenUrl(assetResponse)).toBeNull();
+  });
+
+  for (const impossibleReference of IMPOSSIBLE_PUBLIC_REFERENCES) {
+    test(`Proxy rejects impossible Preview and current-alias date ${impossibleReference}`, () => {
+      const previewResponse = proxy(
+        new NextRequest(
+          `http://localhost/design/preview/${impossibleReference}`,
+          {
+            headers: trustedHeaders("ready", {
+              publicReference: impossibleReference,
+            }),
+          },
+        ),
+      );
+      expect(previewResponse.status).toBe(404);
+      expect(isRewrite(previewResponse)).toBe(false);
+      expect(getRewrittenUrl(previewResponse)).toBeNull();
+
+      const assetResponse = proxy(
+        new NextRequest(
+          `http://localhost/api/first-preview-assets/${impossibleReference}/current`,
+          {
+            headers: trustedHeaders("ready", {
+              publicReference: impossibleReference,
+            }),
+          },
+        ),
+      );
+      expect(assetResponse.status).toBe(404);
+      expect(isRewrite(assetResponse)).toBe(false);
+      expect(getRewrittenUrl(assetResponse)).toBeNull();
+      expect(assetResponse.headers.get("cache-control")).toBe(
+        "private, no-store",
+      );
+    });
+  }
+
   for (const malformedReference of [
     "novora-CB-20260731-AB12",
     "WRONG-CB-20260731-AB12",
@@ -400,24 +696,17 @@ test.describe("public-reference and canonical-route safety", () => {
     "%2f",
     "%5C",
     "%5c",
+    "%2F%5c",
+    "%5C%2f",
   ]) {
-    test(`rejects encoded separator ${encodedSeparator}`, async ({
+    test(`encoded separator ${encodedSeparator} cannot authorize a reference`, async ({
       request,
     }) => {
-      const response = await request.get(
-        `/design/preview/NOVORA-CB-20260731-${encodedSeparator}AB12`,
-        { maxRedirects: 0 },
+      const hops = await followRedirectChain(
+        request,
+        `/design/preview/NOVORA-CB-20260731-${encodedSeparator}AB12?state=ready&next=https://example.com`,
       );
-      expect([200, 307, 308, 404]).toContain(response.status());
-      const location = response.headers().location ?? "";
-      expect(location).not.toContain("?state=");
-      expect(location).not.toContain("http://example");
-      if (response.status() === 200) {
-        const body = await response.text();
-        expect(body).toContain("First Preview unavailable");
-        expect(body).not.toContain(CONCEPT_IMAGE_NAME);
-        expect(body).not.toContain(OUTPUT_ID);
-      }
+      expectSafePreviewRedirectChain(hops);
     });
   }
 
@@ -449,33 +738,54 @@ test.describe("public-reference and canonical-route safety", () => {
     ).toBe("unavailable");
   });
 
-  test("trailing slash canonical behavior is safe", async ({ page }) => {
-    await page.goto(`${PREVIEW_PATH}/`);
-
-    await expect(page).toHaveURL(PREVIEW_PATH);
-    await expect(
-      page.getByRole("heading", { name: "First Preview unavailable" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("img", { name: CONCEPT_IMAGE_NAME }),
-    ).toHaveCount(0);
+  test("one trailing slash is same-origin and fails closed", async ({
+    request,
+  }) => {
+    const hops = await followRedirectChain(
+      request,
+      `${PREVIEW_PATH}/?state=ready&proof=secret&next=https://example.com`,
+    );
+    expect(hops[0].status).toBe(308);
+    expect(hops[0].location?.origin).toBe("http://localhost:3000");
+    expectSafePreviewRedirectChain(hops);
+    expect(hops.at(-1)?.requestUrl.href).toBe(
+      `http://localhost:3000${PREVIEW_PATH}`,
+    );
   });
+
+  for (const trailingSlashes of ["//", "///"]) {
+    test(`framework-owned ${trailingSlashes.length}-slash normalization remains same-origin and fails closed`, async ({
+      request,
+    }) => {
+      const initialPath =
+        `${PREVIEW_PATH}${trailingSlashes}` +
+        "?state=ready&proof=secret&next=https://example.com";
+      const hops = await followRedirectChain(request, initialPath);
+
+      expect(hops[0].status).toBe(308);
+      expect(hops[0].location?.origin).toBe("http://localhost:3000");
+      // Next.js 16.2.12 normalizes repeated separators before Proxy. Its
+      // framework-owned first 308 may preserve the hostile query; application
+      // authorization never consumes that query, and the full chain fails closed.
+      expectSafePreviewRedirectChain(hops);
+    });
+  }
 
   for (const repeatedSeparatorPath of [
     `/design/preview//${PUBLIC_REFERENCE}`,
     `/design//preview/${PUBLIC_REFERENCE}`,
-    `${PREVIEW_PATH}//`,
   ]) {
-    test(`double-separator behavior is safe for ${repeatedSeparatorPath}`, async ({
+    test(`framework-owned separator normalization fails closed for ${repeatedSeparatorPath}`, async ({
       request,
     }) => {
-      const response = await request.get(repeatedSeparatorPath, {
-        maxRedirects: 0,
-      });
-      expect([200, 307, 308, 404]).toContain(response.status());
-      const location = response.headers().location ?? "";
-      expect(location).not.toMatch(/^https?:\/\/(?!localhost:3000)/);
-      expect(location).not.toContain("?state=");
+      const hops = await followRedirectChain(
+        request,
+        `${repeatedSeparatorPath}?state=ready&next=https://example.com`,
+      );
+
+      expect(hops[0].status).toBe(308);
+      expect(hops[0].location?.origin).toBe("http://localhost:3000");
+      expectSafePreviewRedirectChain(hops);
     });
   }
 
@@ -508,6 +818,51 @@ test.describe("public-reference and canonical-route safety", () => {
     expect(location.origin).toBe("http://localhost:3000");
     expect(location.pathname).toBe(PREVIEW_PATH);
     expect(location.search).toBe("");
+  });
+
+  test("representative non-Preview routes keep canonical and trailing-slash behavior", async ({
+    request,
+  }) => {
+    for (const route of ["/", "/design/start", "/design/submitted"]) {
+      const canonical = await request.get(`${route}?keep=unrelated`, {
+        maxRedirects: 0,
+      });
+      expect(canonical.status()).toBe(200);
+      expect(canonical.headers().location).toBeUndefined();
+
+      const trailingPath = route === "/" ? "/" : `${route}/`;
+      const trailingHops = await followRedirectChain(
+        request,
+        `${trailingPath}?keep=unrelated`,
+      );
+      expect(trailingHops.at(-1)?.status).toBe(200);
+      for (const hop of trailingHops) {
+        expect(hop.location?.origin ?? "http://localhost:3000").toBe(
+          "http://localhost:3000",
+        );
+      }
+    }
+
+    for (const apiPath of ["/api/concept-briefs", "/api/concept-briefs/"]) {
+      const apiHops = await followRedirectChain(
+        request,
+        `${apiPath}?keep=unrelated`,
+      );
+      expect(apiHops.at(-1)?.status).toBe(405);
+      for (const hop of apiHops) {
+        expect(hop.location?.origin ?? "http://localhost:3000").toBe(
+          "http://localhost:3000",
+        );
+      }
+    }
+
+    const home = await request.get("/");
+    const scriptPath = (await home.text()).match(
+      /src="([^"]*\/_next\/static\/[^"]+\.js[^"]*)"/,
+    )?.[1];
+    expect(scriptPath).toBeTruthy();
+    const staticAsset = await request.get(scriptPath!);
+    expect(staticAsset.status()).toBe(200);
   });
 });
 

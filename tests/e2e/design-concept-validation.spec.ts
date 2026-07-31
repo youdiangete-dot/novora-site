@@ -171,9 +171,12 @@ async function fillValidContactFields(page: Page) {
   await page.getByLabel('Additional contact note optional').fill('Please follow up in the afternoon.');
 }
 
-async function seedConfirmedSubmittedBrief(page: Page) {
+async function seedConfirmedSubmittedBrief(
+  page: Page,
+  publicReference = 'NOVORA-CB-20260601-LINK',
+) {
   await page.goto('/');
-  await page.evaluate(() => {
+  await page.evaluate((reference) => {
     window.localStorage.setItem(
       'novora_submitted_concept_brief',
       JSON.stringify({
@@ -182,12 +185,12 @@ async function seedConfirmedSubmittedBrief(page: Page) {
         customerEmail: 'mina@example.com',
         apiSubmission: {
           persisted: true,
-          publicReference: 'NOVORA-CB-20260601-LINK',
+          publicReference: reference,
           conceptBriefId: '77777777-7777-4777-8777-777777777777',
         },
       }),
     );
-  });
+  }, publicReference);
 }
 
 type SubmittedReceiptCase =
@@ -707,6 +710,42 @@ test.describe('/design/submitted receipt JSON authority', () => {
       '/design/preview/NOVORA-CB-20260601-LINK',
     );
   });
+
+  for (const publicReference of [
+    'NOVORA-CB-20260228-AB12',
+    'NOVORA-CB-20240229-AB12',
+  ]) {
+    test(`accepts a persisted receipt with real calendar date ${publicReference}`, async ({ page }) => {
+      await seedConfirmedSubmittedBrief(page, publicReference);
+
+      await page.goto('/design/submitted');
+
+      await expect(page.getByRole('heading', { name: 'Concept brief received' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Open your First Preview' })).toHaveAttribute(
+        'href',
+        `/design/preview/${publicReference}`,
+      );
+    });
+  }
+
+  for (const publicReference of [
+    'NOVORA-CB-20260229-AB12',
+    'NOVORA-CB-20260230-AB12',
+    'NOVORA-CB-20260431-AB12',
+    'NOVORA-CB-20260001-AB12',
+    'NOVORA-CB-20261301-AB12',
+    'NOVORA-CB-20260100-AB12',
+    'NOVORA-CB-00000101-AB12',
+  ]) {
+    test(`rejects a persisted receipt with impossible calendar date ${publicReference}`, async ({ page }) => {
+      await seedConfirmedSubmittedBrief(page, publicReference);
+
+      await page.goto('/design/submitted');
+
+      await expect(page.getByRole('heading', { name: 'Server receipt not confirmed' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Open your First Preview' })).toHaveCount(0);
+    });
+  }
 
   for (const receiptCase of ['null-prototype-record', 'null-prototype-api-submission'] as const) {
     test(`accepts a valid ${receiptCase.replaceAll('-', ' ')}`, async ({ page }) => {
