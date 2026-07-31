@@ -471,11 +471,11 @@ jobs:
           if ($versionCapture.ExitCode -ne 0) {
             throw "Locked Playwright version command failed"
           }
-          $versionMatch = [regex]::Match($versionCapture.Stdout.Trim(), "^Version\s+(.+)$")
-          if (-not $versionMatch.Success) {
-            throw "Could not parse the locked Playwright version"
+          $expectedPlaywrightVersionOutput = "Version 1.59.1"
+          if ($versionCapture.Stdout.Trim() -ne $expectedPlaywrightVersionOutput) {
+            throw "Expected locked Playwright identity '$expectedPlaywrightVersionOutput', received '$($versionCapture.Stdout.Trim())'"
           }
-          $lockedPlaywrightVersion = $versionMatch.Groups[1].Value.Trim()
+          $lockedPlaywrightVersion = "1.59.1"
           Write-Host "Locked local Playwright version: $lockedPlaywrightVersion"
 
           $configuredBrowsersPath = $env:PLAYWRIGHT_BROWSERS_PATH
@@ -488,19 +488,24 @@ jobs:
           }
           Write-Host "Expected Playwright browser cache location: $browserCache"
 
-          $beforeList = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "--list") -Label "playwright-browser-list-before"
-          if ($beforeList.ExitCode -ne 0) {
-            throw "Playwright browser list before install failed"
-          }
-
-          $install = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "chromium") -Label "playwright-install-locked-chromium"
-          if ($install.ExitCode -ne 0) {
-            throw "Locked Chromium installation failed"
-          }
-
-          $afterList = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "--list") -Label "playwright-browser-list-after"
-          if ($afterList.ExitCode -ne 0) {
-            throw "Playwright browser list after install failed"
+          $browserCacheExists = Test-Path -LiteralPath $browserCache -PathType Container
+          $linksDirectory = Join-Path $browserCache ".links"
+          $linksDirectoryExists = Test-Path -LiteralPath $linksDirectory -PathType Container
+          Write-Host "Browser cache directory exists before install: $browserCacheExists"
+          Write-Host "Playwright .links directory: $linksDirectory"
+          Write-Host "Playwright .links directory exists before install: $linksDirectoryExists"
+          if ($browserCacheExists) {
+            $browserCacheListing = @(Get-ChildItem -LiteralPath $browserCache -Force -ErrorAction Stop)
+            Write-Host "Browser cache directory listing before install:"
+            if ($browserCacheListing.Count -eq 0) {
+              Write-Host "<empty>"
+            } else {
+              $browserCacheListing |
+                Select-Object Mode, Length, LastWriteTimeUtc, Name |
+                Format-Table -AutoSize |
+                Out-String |
+                Write-Host
+            }
           }
 
           $pathProbe = Join-Path $env:RUNNER_TEMP "playwright-executable-path.cjs"
@@ -521,6 +526,56 @@ jobs:
           const { chromium } = workspaceRequire("@playwright/test");
           process.stdout.write(JSON.stringify({ executablePath: chromium.executablePath() }));
           '@ | Set-Content -LiteralPath $pathProbe -Encoding utf8
+
+          $beforePathCapture = Invoke-NativeCapture -FilePath (Get-Command node.exe).Source -Arguments @($pathProbe) -Label "playwright-executable-path-before-install"
+          if ($beforePathCapture.ExitCode -ne 0) {
+            throw "Could not resolve the expected locked Chromium executable before install"
+          }
+          $beforePathResult = $beforePathCapture.Stdout | ConvertFrom-Json
+          $expectedChromiumExecutable = [string]$beforePathResult.executablePath
+          if ([string]::IsNullOrWhiteSpace($expectedChromiumExecutable)) {
+            throw "Locked Chromium executable path was empty before install"
+          }
+          Write-Host "Expected locked Chromium executable before install: $expectedChromiumExecutable"
+          $lockedChromiumExistsBeforeInstall = Test-Path -LiteralPath $expectedChromiumExecutable -PathType Leaf
+          Write-Host "Locked Chromium executable exists before install: $lockedChromiumExistsBeforeInstall"
+          if ($lockedChromiumExistsBeforeInstall) {
+            throw "Locked Chromium executable unexpectedly exists before installation"
+          }
+          Write-Host "No locked Chromium executable exists before install: PASS"
+
+          $packageHashBeforeChromiumInstall = (Get-FileHash -LiteralPath "package.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $lockHashBeforeChromiumInstall = (Get-FileHash -LiteralPath "package-lock.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "package.json SHA-256 immediately before Chromium install: $packageHashBeforeChromiumInstall"
+          Write-Host "package-lock.json SHA-256 immediately before Chromium install: $lockHashBeforeChromiumInstall"
+          if ($packageHashBeforeChromiumInstall -ne $env:INITIAL_PACKAGE_SHA256) {
+            throw "package.json changed before locked Chromium installation"
+          }
+          if ($lockHashBeforeChromiumInstall -ne $env:INITIAL_LOCK_SHA256) {
+            throw "package-lock.json changed before locked Chromium installation"
+          }
+
+          if (-not (Test-Path -LiteralPath $playwrightCmd -PathType Leaf)) {
+            throw "Locked local Playwright CLI disappeared before Chromium installation"
+          }
+          $playwrightVersionImmediatelyBeforeInstall = (& $playwrightCmd --version).Trim()
+          if ($LASTEXITCODE -ne 0 -or $playwrightVersionImmediatelyBeforeInstall -ne "Version 1.59.1") {
+            throw "Locked Playwright identity changed immediately before Chromium installation"
+          }
+          Write-Host "Locked Playwright identity immediately before Chromium install: $playwrightVersionImmediatelyBeforeInstall"
+
+          $install = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "chromium") -Label "playwright-install-locked-chromium"
+          if ($install.ExitCode -ne 0) {
+            throw "Locked Chromium installation failed"
+          }
+
+          $afterList = Invoke-NativeCapture -FilePath $playwrightCmd -Arguments @("install", "--list") -Label "playwright-browser-list-after"
+          if ($afterList.ExitCode -ne 0) {
+            Write-Warning "Post-install 'playwright install --list' diagnostic failed with exit code $($afterList.ExitCode). Authoritative executable-path, revision, launch, and test gates continue."
+          } else {
+            Write-Host "Post-install Playwright browser-list diagnostic: PASS"
+          }
+
           $pathCapture = Invoke-NativeCapture -FilePath (Get-Command node.exe).Source -Arguments @($pathProbe) -Label "playwright-executable-path"
           if ($pathCapture.ExitCode -ne 0) {
             throw "Could not resolve the locked Chromium executable"
@@ -530,10 +585,21 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($chromiumExecutable) -or -not (Test-Path -LiteralPath $chromiumExecutable -PathType Leaf)) {
             throw "Resolved Chromium headless-shell executable is missing: $chromiumExecutable"
           }
-          if ($chromiumExecutable -notmatch "chromium_headless_shell-(\d+)") {
+          if ($chromiumExecutable -ne $expectedChromiumExecutable) {
+            throw "Resolved Chromium executable changed from the locked pre-install path"
+          }
+          $normalizedBrowserCache = [IO.Path]::GetFullPath($browserCache).TrimEnd("\") + "\"
+          $normalizedChromiumExecutable = [IO.Path]::GetFullPath($chromiumExecutable)
+          if (-not $normalizedChromiumExecutable.StartsWith($normalizedBrowserCache, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Resolved Chromium executable is outside the expected Playwright browser cache"
+          }
+          $revisionDirectory = Split-Path -Parent (Split-Path -Parent $chromiumExecutable)
+          $revisionDirectoryName = Split-Path -Leaf $revisionDirectory
+          if ($revisionDirectoryName -notmatch "^chromium_headless_shell-(\d+)$") {
             throw "Resolved executable is not in a locked Chromium headless-shell revision directory"
           }
           $chromiumRevision = $Matches[1]
+          Write-Host "Installed Chromium headless-shell revision directory: $revisionDirectory"
           Write-Host "Installed Chromium headless-shell revision: $chromiumRevision"
           Write-Host "Installed Chromium headless-shell executable: $chromiumExecutable"
 
