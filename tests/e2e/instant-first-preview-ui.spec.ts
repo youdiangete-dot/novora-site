@@ -372,6 +372,51 @@ test.describe("four-state Customer First Preview presentation", () => {
       page.getByRole("heading", { name: "First Preview unavailable" }),
     ).toBeVisible();
     await expect(
+      page.getByText(
+        "A confirmed persisted receipt or opening this route alone does not mean generation has started.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Automatic First Preview preparation can begin only when NOVORA enables the live workflow for this submission.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "The normal unavailable state is not evidence of active generation",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Human intervention during automatic First Preview preparation is exception-only",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "structural logic, gemstone orientation, composition, jewelry construction, manufacturability",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Paid CAD and formal production decisions happen later; these steps, along with gemstone and material confirmation, quotation, order, and payment decisions, remain human-controlled.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(
+      "Automatic generation begins after confirmed persistence.",
+    );
+    await expect(page.locator("body")).not.toContainText(
+      "Human handling is exception-only when the system cannot safely converge.",
+    );
+    await expect(page.locator("body")).not.toContainText(
+      /generation (?:begins|starts) after confirmed persistence/i,
+    );
+    await expect(
       page.getByRole("img", { name: CONCEPT_IMAGE_NAME }),
     ).toHaveCount(0);
   });
@@ -392,6 +437,19 @@ test.describe("four-state Customer First Preview presentation", () => {
       }),
     ).toBeVisible();
     await expect(
+      page.getByText("required automatic gates are still running", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("no per-image human pre-approval is required", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(
+      "Human handling is exception-only when the system cannot safely converge.",
+    );
+    await expect(
       page.getByRole("img", { name: CONCEPT_IMAGE_NAME }),
     ).toHaveCount(0);
   });
@@ -409,6 +467,18 @@ test.describe("four-state Customer First Preview presentation", () => {
         name: CONCEPT_IMAGE_NAME,
       }),
     ).toHaveAttribute("src", CUSTOMER_ASSET_PATH);
+    await expect(
+      page.getByText(
+        "After the First Preview, structural logic, gemstone orientation, composition, jewelry construction, manufacturability",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Paid CAD and formal production decisions happen later; these steps, along with gemstone and material confirmation, quotation, order, and payment decisions, remain human-controlled.",
+        { exact: false },
+      ),
+    ).toBeVisible();
   });
 
   test("unavailable presentation is customer-safe", async ({ page }) => {

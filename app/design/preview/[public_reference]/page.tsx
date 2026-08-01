@@ -314,17 +314,43 @@ export default async function CustomerPreviewPage({
             CAD, a final quote, an order, payment approval, production approval,
             or a manufacturability guarantee.
           </p>
+          <p>
+            A confirmed persisted receipt or opening this route alone does not
+            mean generation has started. Automatic First Preview preparation can
+            begin only when NOVORA enables the live workflow for this submission.
+            A trusted customer-view state and all mandatory gates are required
+            before website visibility. The normal unavailable state is not
+            evidence of active generation, and current Production may safely
+            keep this route unavailable.
+          </p>
           <ul>
-            <li>Automatic generation begins after confirmed persistence.</li>
+            {preview.state !== "denied" ? (
+              <li>
+                When the live workflow is enabled for a confirmed submission,
+                automatic First Preview preparation uses mandatory safety,
+                privacy, access-control, output-validity, and safe-failure gates.
+              </li>
+            ) : null}
             <li>
-              Website visibility occurs only after all required automatic
-              gates pass.
+              Website visibility occurs only after a trusted customer-view
+              state and every required automatic gate pass.
             </li>
             <li>
-              Human handling is exception-only when the system cannot safely
-              converge.
+              Human intervention during automatic First Preview preparation is
+              exception-only when the automatic preparation system cannot safely
+              converge; no per-image human pre-approval is required.
             </li>
-            <li>Paid CAD and formal production decisions happen later.</li>
+            <li>
+              After the First Preview, structural logic, gemstone orientation,
+              composition, jewelry construction, manufacturability, correction
+              and regeneration, and customer-feedback interpretation remain
+              human-reviewed.
+            </li>
+            <li>
+              Paid CAD and formal production decisions happen later; these
+              steps, along with gemstone and material confirmation, quotation,
+              order, and payment decisions, remain human-controlled.
+            </li>
           </ul>
         </section>
 
