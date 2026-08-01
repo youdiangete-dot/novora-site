@@ -349,44 +349,56 @@ export default function DesignSubmittedPage() {
 
           <section className={submittedStyles.nextSteps}>
             <div>
-              <p className={styles.eyebrow}>What happens next</p>
-              <h2>Your automatic First Preview workflow</h2>
+              <p className={styles.eyebrow}>What happens after your Concept Brief</p>
+              <h2>Current First Preview status</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
-              Your confirmed Concept Brief automatically enters the First Preview workflow. You do not need to start
-              generation yourself.
+              Your Concept Brief was received and validated. Current Production has not connected live AI generation
+              or a trusted customer-view connection, so this receipt does not mean generation has started.
             </p>
             <ol className={submittedStyles.nextStepList}>
               <li>
                 <span className={submittedStyles.stepNumber}>1</span>
                 <div>
-                  <h3>Automatic preparation</h3>
-                  <p>NOVORA prepares the first AI hand-drawn concept sketch from the confirmed design direction.</p>
+                  <h3>Current Production limitation</h3>
+                  <p>
+                    The live First Preview workflow is not yet connected. Opening the query-free Preview page does not
+                    mean generation has started.
+                  </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>2</span>
                 <div>
-                  <h3>Automatic gates</h3>
-                  <p>Safety, privacy, access-control, and output-validity gates run before website visibility.</p>
+                  <h3>Guarded status entry</h3>
+                  <p>
+                    The current entry is a guarded preview-status/demo entry, not proof of an active live workflow. The
+                    route may remain safely unavailable until NOVORA enables the workflow for this submission.
+                  </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>3</span>
                 <div>
-                  <h3>Secure website visibility</h3>
+                  <h3>Automatic preparation when enabled</h3>
                   <p>
-                    The Preview becomes visible on your customer page only after every required automatic gate passes.
+                    When the workflow is enabled for your submission, NOVORA may automatically prepare an AI
+                    hand-drawn First Preview. Safety, privacy, access-control, output-validity, and safe-failure gates
+                    remain mandatory before website visibility. This future automatic preparation does not require
+                    per-image human pre-approval.
                   </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>4</span>
                 <div>
-                  <h3>Refinement and paid CAD later</h3>
+                  <h3>Human review and formal decisions</h3>
                   <p>
-                    Human handling is exception-only when the system cannot safely converge. Refinement, paid CAD,
-                    quoting, and production-feasibility decisions remain later steps.
+                    Human intervention during automatic First Preview preparation is exception-only when the system
+                    cannot safely converge. After the preview, structural logic, gemstone orientation and composition,
+                    jewelry construction, manufacturability, correction or regeneration, and customer-feedback
+                    interpretation remain human-reviewed. Paid CAD, gemstone and material confirmation, quotation,
+                    order, payment, and production decisions remain human-controlled.
                   </p>
                 </div>
               </li>
@@ -399,10 +411,11 @@ export default function DesignSubmittedPage() {
             <div className={submittedStyles.previewEntry}>
               <div>
                 <p className={submittedStyles.previewLabel}>Customer First Preview</p>
-                <h3>Follow your automatic concept-preview progress</h3>
+                <h3>Open the guarded First Preview status</h3>
                 <p>
-                  This secure, query-free link is tied only to your validated customer reference. The page fails closed
-                  until a trusted customer view is available and all required gates pass.
+                  This exact, query-free link is tied only to your validated customer reference. Opening it does not
+                  mean generation has started; it remains a guarded status/demo entry, not proof of an active live
+                  workflow.
                 </p>
               </div>
               <Link className={styles.secondaryButton} href={previewHref}>

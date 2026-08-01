@@ -575,22 +575,62 @@ test.describe('/design/start conversion flow', () => {
       '/design/preview/NOVORA-CB-20260601-STRT',
     );
     await expect(page.getByText('Customer First Preview')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Follow your automatic concept-preview progress' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Current First Preview status' })).toBeVisible();
+    await expect(
+      page.getByText('Your Concept Brief was received and validated. Current Production has not connected live AI generation', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Opening the query-free Preview page does not mean generation has started.', { exact: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('The current entry is a guarded preview-status/demo entry, not proof of an active live workflow.', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('The route may remain safely unavailable until NOVORA enables the workflow for this submission.', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('When the workflow is enabled for your submission', { exact: false }),
+    ).toBeVisible();
     await expect(
       page.getByText(
-        'This secure, query-free link is tied only to your validated customer reference.',
+        'This exact, query-free link is tied only to your validated customer reference.',
         { exact: false },
       ),
     ).toBeVisible();
     await expect(
-      page.getByText('Human handling is exception-only when the system cannot safely converge.', { exact: false }),
+      page.getByText(
+        'Human intervention during automatic First Preview preparation is exception-only when the system cannot safely converge.',
+        { exact: false },
+      ),
     ).toBeVisible();
+    await expect(page.getByText('structural logic, gemstone orientation and composition', { exact: false })).toBeVisible();
+    await expect(
+      page.getByText(
+        'Paid CAD, gemstone and material confirmation, quotation, order, payment, and production decisions remain human-controlled.',
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(page.getByText('per-image human pre-approval', { exact: false })).toBeVisible();
     await expect(page.getByText('It is not CAD, a final quote, an order', { exact: false })).toBeVisible();
     await expect(page.getByText('generated image is ready', { exact: false })).toHaveCount(0);
     await expect(page.getByText('image API completed', { exact: false })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'View AI Sketch Preview' })).toHaveCount(0);
     await expect(page.locator('a[href="/design/sketch"]')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Your automatic First Preview workflow' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Open the guarded First Preview status' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your automatic First Preview workflow' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Follow your automatic concept-preview progress' })).toHaveCount(0);
+    await expect(
+      page.getByText('Your confirmed Concept Brief automatically enters the First Preview workflow.', { exact: false }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText('Human handling is exception-only when the system cannot safely converge.', { exact: true }),
+    ).toHaveCount(0);
     await expect(
       page.getByText(
         'NOVORA will use the submitted email or contact information for follow-up about this Concept Brief. This receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is sent from this submission flow.',
@@ -690,7 +730,14 @@ test.describe('/design/preview customer boundaries', () => {
     );
     await expect(page.getByText('Customer First Preview')).toBeVisible();
     await expect(page.getByText('query-free link', { exact: false })).toBeVisible();
+    await expect(page.getByText('live First Preview workflow is not yet connected', { exact: false })).toBeVisible();
+    await expect(page.getByText('does not mean generation has started', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('guarded preview-status/demo entry', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('structural logic, gemstone orientation and composition', { exact: false })).toBeVisible();
+    await expect(page.getByText('quotation, order, payment, and production decisions remain human-controlled', { exact: false })).toBeVisible();
     await expect(page.getByText('not CAD, a final quote, an order', { exact: false })).toBeVisible();
+    await expect(page.getByText('automatically enters the First Preview workflow', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('Human handling is exception-only', { exact: false })).toHaveCount(0);
   });
 });
 

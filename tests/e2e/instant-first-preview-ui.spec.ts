@@ -249,7 +249,7 @@ async function expectNoPreviewAuthority(page: Page) {
 }
 
 test.describe("submitted receipt authority for Customer First Preview", () => {
-  test("valid receipt creates the exact query-free Preview link", async ({
+  test("valid receipt creates only an exact guarded query-free Preview status link", async ({
     page,
   }) => {
     await seedReceipt(page, validReceipt());
@@ -263,6 +263,52 @@ test.describe("submitted receipt authority for Customer First Preview", () => {
     expect(href).not.toContain("?");
     expect(href).not.toContain("88888888");
     expect(href).not.toContain("@");
+
+    await expect(
+      page.getByText(
+        "Current Production has not connected live AI generation",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Opening the query-free Preview page does not mean generation has started.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText("guarded preview-status/demo entry", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Human intervention during automatic First Preview preparation is exception-only",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "structural logic, gemstone orientation and composition",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "quotation, order, payment, and production decisions remain human-controlled",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Your confirmed Concept Brief automatically enters the First Preview workflow. You do not need to start generation yourself.",
+        { exact: true },
+      ),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(
+        "Human handling is exception-only when the system cannot safely converge.",
+        { exact: true },
+      ),
+    ).toHaveCount(0);
   });
 
   test("invalid receipt creates no Preview link", async ({ page }) => {
