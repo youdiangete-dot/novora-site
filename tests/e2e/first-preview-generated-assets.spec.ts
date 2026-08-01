@@ -6,6 +6,7 @@ import {
   FIRST_PREVIEW_GENERATED_ASSET_CACHE_CONTROL,
   FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES,
   deriveFirstPreviewGeneratedAssetId,
+  isValidFirstPreviewPublicReference,
   sha256FirstPreviewAsset,
   type FirstPreviewAuthorizedAssetDescriptor,
   type FirstPreviewStoredAssetMetadata,
@@ -222,6 +223,29 @@ function actualAdapterHarness(
 }
 
 test.describe("server-only private First Preview generated assets", () => {
+  for (const reference of [
+    "NOVORA-CB-20260228-AB12",
+    "NOVORA-CB-20240229-AB12",
+  ]) {
+    test(`accepts real Gregorian public-reference date ${reference}`, () => {
+      expect(isValidFirstPreviewPublicReference(reference)).toBe(true);
+    });
+  }
+
+  for (const reference of [
+    "NOVORA-CB-20260229-AB12",
+    "NOVORA-CB-20260230-AB12",
+    "NOVORA-CB-20260431-AB12",
+    "NOVORA-CB-20260001-AB12",
+    "NOVORA-CB-20261301-AB12",
+    "NOVORA-CB-20260100-AB12",
+    "NOVORA-CB-00000101-AB12",
+  ]) {
+    test(`rejects impossible Gregorian public-reference date ${reference}`, () => {
+      expect(isValidFirstPreviewPublicReference(reference)).toBe(false);
+    });
+  }
+
   test("persists to one deterministic private object without upsert, then validates the stored bytes", async () => {
     const { storage, store } = harness();
     const result = await store.persistValidatedPng(input());

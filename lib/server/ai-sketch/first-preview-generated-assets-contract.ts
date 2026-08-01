@@ -105,7 +105,8 @@ export interface FirstPreviewGeneratedAssetStore {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const PUBLIC_REFERENCE_PATTERN = /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/;
+const PUBLIC_REFERENCE_PATTERN =
+  /^NOVORA-CB-(\d{4})(\d{2})(\d{2})-[A-Z0-9]{4}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export function isValidFirstPreviewAssetUuid(value: string): boolean {
@@ -134,7 +135,32 @@ export function deriveFirstPreviewGeneratedAssetId(input: {
 }
 
 export function isValidFirstPreviewPublicReference(value: string): boolean {
-  return PUBLIC_REFERENCE_PATTERN.test(value);
+  const match = PUBLIC_REFERENCE_PATTERN.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year === 0 || month < 1 || month > 12 || day < 1) return false;
+
+  const isLeapYear =
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    isLeapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+
+  return day <= daysInMonth[month - 1];
 }
 
 export function isValidFirstPreviewContentSha256(value: string): boolean {

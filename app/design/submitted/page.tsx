@@ -57,9 +57,6 @@ type SubmittedConceptBrief = {
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 const SERVER_RECEIPT_WARNING =
   'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
-const MOCK_PREVIEW_PUBLIC_REFERENCE = 'NOVORA-CB-MOCK-001';
-const MOCK_PREVIEW_STATE = 'first_preview_ready';
-const MOCK_PREVIEW_HREF = `/design/preview/${MOCK_PREVIEW_PUBLIC_REFERENCE}?state=${MOCK_PREVIEW_STATE}`;
 
 type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   apiSubmission: {
@@ -98,6 +95,39 @@ function getEnumerableOwnDataValue(object: OrdinaryObject, property: PropertyKey
   }
 }
 
+function isValidFirstPreviewPublicReference(value: string): boolean {
+  const match = /^NOVORA-CB-(\d{4})(\d{2})(\d{2})-[A-Z0-9]{4}$/.exec(value);
+  if (!match) {
+    return false;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year === 0 || month < 1 || month > 12 || day < 1) {
+    return false;
+  }
+
+  const isLeapYear =
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    isLeapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+
+  return day <= daysInMonth[month - 1];
+}
+
 function hasConfirmedServerReceipt(submittedBrief: unknown): submittedBrief is ConfirmedSubmittedConceptBrief {
   if (!isOrdinaryObject(submittedBrief)) {
     return false;
@@ -116,7 +146,7 @@ function hasConfirmedServerReceipt(submittedBrief: unknown): submittedBrief is C
   return (
     persisted === true &&
     typeof publicReference === 'string' &&
-    /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(publicReference) &&
+    isValidFirstPreviewPublicReference(publicReference) &&
     typeof conceptBriefId === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conceptBriefId)
   );
@@ -196,6 +226,7 @@ export default function DesignSubmittedPage() {
   }
 
   const displayedConceptBriefId = submittedBrief.apiSubmission.publicReference;
+  const previewHref = `/design/preview/${submittedBrief.apiSubmission.publicReference}`;
 
   return (
     <main className={styles.pageBackground}>
@@ -318,43 +349,56 @@ export default function DesignSubmittedPage() {
 
           <section className={submittedStyles.nextSteps}>
             <div>
-              <p className={styles.eyebrow}>What happens next</p>
-              <h2>What NOVORA reviews next</h2>
+              <p className={styles.eyebrow}>What happens after your Concept Brief</p>
+              <h2>Current First Preview status</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
-              NOVORA will review the submitted details and use them as a starting point for the next conversation.
+              Your Concept Brief was received and validated. Current Production has not connected live AI generation
+              or a trusted customer-view connection, so this receipt does not mean generation has started.
             </p>
             <ol className={submittedStyles.nextStepList}>
               <li>
                 <span className={submittedStyles.stepNumber}>1</span>
                 <div>
-                  <h3>Brief review</h3>
-                  <p>NOVORA reviews the concept brief, references, materials direction, and contact details.</p>
+                  <h3>Current Production limitation</h3>
+                  <p>
+                    The live First Preview workflow is not yet connected. Opening the query-free Preview page does not
+                    mean generation has started.
+                  </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>2</span>
                 <div>
-                  <h3>Concept direction</h3>
-                  <p>NOVORA reviews the concept direction and follows up to discuss possible next steps.</p>
+                  <h3>Guarded status entry</h3>
+                  <p>
+                    The current entry is a guarded preview-status/demo entry, not proof of an active live workflow. The
+                    route may remain safely unavailable until NOVORA enables the workflow for this submission.
+                  </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>3</span>
                 <div>
-                  <h3>CAD path confirmation</h3>
+                  <h3>Automatic preparation when enabled</h3>
                   <p>
-                    If you want production-level CAD, NOVORA will confirm details, CAD fee, and process separately.
+                    When the workflow is enabled for your submission, NOVORA may automatically prepare an AI
+                    hand-drawn First Preview. Safety, privacy, access-control, output-validity, and safe-failure gates
+                    remain mandatory before website visibility. This future automatic preparation does not require
+                    per-image human pre-approval.
                   </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>4</span>
                 <div>
-                  <h3>Later feasibility checks</h3>
+                  <h3>Human review and formal decisions</h3>
                   <p>
-                    Final quote, gemstone sourcing, CAD feasibility, and any production-related decisions are confirmed
-                    later through manual follow-up.
+                    Human intervention during automatic First Preview preparation is exception-only when the system
+                    cannot safely converge. After the preview, structural logic, gemstone orientation and composition,
+                    jewelry construction, manufacturability, correction or regeneration, and customer-feedback
+                    interpretation remain human-reviewed. Paid CAD, gemstone and material confirmation, quotation,
+                    order, payment, and production decisions remain human-controlled.
                   </p>
                 </div>
               </li>
@@ -364,22 +408,23 @@ export default function DesignSubmittedPage() {
               receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is
               sent from this submission flow.
             </p>
-            <div className={submittedStyles.mockPreviewEntry}>
+            <div className={submittedStyles.previewEntry}>
               <div>
-                <p className={submittedStyles.mockPreviewLabel}>Demo mock preview route</p>
-                <h3>Demo navigation testing only</h3>
+                <p className={submittedStyles.previewLabel}>Customer First Preview</p>
+                <h3>Open the guarded First Preview status</h3>
                 <p>
-                  This demo link is for navigation testing only. It is not connected to your submitted Concept Brief,
-                  does not display a generated image, and is not customer-safe final delivery.
+                  This exact, query-free link is tied only to your validated customer reference. Opening it does not
+                  mean generation has started; it remains a guarded status/demo entry, not proof of an active live
+                  workflow.
                 </p>
               </div>
-              <Link className={styles.secondaryButton} href={MOCK_PREVIEW_HREF}>
-                View demo mock preview
+              <Link className={styles.secondaryButton} href={previewHref}>
+                Open your First Preview
               </Link>
-              <p className={submittedStyles.mockPreviewBoundary}>
-                Human review and offline follow-up remain required. This mock preview is not CAD, not a quote, not
-                order approval, not payment approval, and not production approval. first_preview_ready is separate from
-                approved_for_customer.
+              <p className={submittedStyles.previewBoundary}>
+                The First Preview is an early concept communication asset. It is not CAD, a final quote, an order,
+                payment approval, production approval, or a manufacturability guarantee, and it may still need later
+                refinement and production-feasibility review.
               </p>
             </div>
           </section>

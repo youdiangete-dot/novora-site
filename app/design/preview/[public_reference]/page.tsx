@@ -1,406 +1,363 @@
-import Link from 'next/link';
+import { types as nodeUtilTypes } from "node:util";
+
+import Link from "next/link";
+import { headers } from "next/headers";
 
 import {
-  type NovoraPreviewGenerationMockLifecycleState,
-} from '../../../../lib/server/ai-sketch/preview-generation';
-import sharedStyles from '../../brief/brief.module.css';
-import styles from './preview.module.css';
+  isValidFirstPreviewAssetUuid,
+  isValidFirstPreviewPublicReference,
+} from "../../../../lib/server/ai-sketch/first-preview-generated-assets-contract";
+import sharedStyles from "../../brief/brief.module.css";
+import styles from "./preview.module.css";
 
-type PreviewState = NovoraPreviewGenerationMockLifecycleState;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-type PreviewLocale = 'en' | 'zh-Hant';
+export type CustomerPreviewState =
+  | "pending"
+  | "ready"
+  | "unavailable"
+  | "denied";
+
+type TrustedCustomerPreview =
+  | Readonly<{ state: "pending" }>
+  | Readonly<{
+      state: "ready";
+      publicReference: string;
+      outputId: string;
+    }>
+  | Readonly<{ state: "unavailable" }>
+  | Readonly<{ state: "denied" }>;
+
+type ResolvedCustomerPreview =
+  | Readonly<{
+      state: "pending" | "unavailable" | "denied";
+      publicReference: string | null;
+    }>
+  | Readonly<{
+      state: "ready";
+      publicReference: string;
+      customerAssetSrc: string;
+    }>;
 
 type PreviewPageProps = {
   params: Promise<{
     public_reference: string;
   }>;
-  searchParams?: Promise<{
-    state?: string;
-    lang?: string;
-  }>;
 };
 
-type StateCopy = {
+type StateCopy = Readonly<{
   badge: string;
   title: string;
   lead: string;
   detail: string;
+}>;
+
+const INTERNAL_TRUSTED_HEADERS = {
+  state: "x-novora-preview-ui-trusted-state",
+  reference: "x-novora-preview-ui-trusted-reference",
+  output: "x-novora-preview-ui-trusted-output",
+} as const;
+
+const COPY: Record<CustomerPreviewState, StateCopy> = {
+  pending: {
+    badge: "Preparing automatically",
+    title: "Your First Preview is being prepared",
+    lead:
+      "NOVORA has started preparing your first AI hand-drawn concept sketch automatically. Generation and the required automatic gates are still running.",
+    detail:
+      "You do not need to trigger anything. We cannot promise an exact completion time, and human handling is used only when the system cannot safely converge.",
+  },
+  ready: {
+    badge: "First Preview ready",
+    title: "Your early concept direction is ready",
+    lead:
+      "The first AI hand-drawn concept sketch passed the required automatic safety, privacy, access-control, and output-validity gates for this customer view.",
+    detail:
+      "Use it to discuss the design direction. It may still need refinement and a later production-feasibility review.",
+  },
+  unavailable: {
+    badge: "Unavailable",
+    title: "First Preview unavailable",
+    lead:
+      "We cannot safely show a First Preview for this link right now.",
+    detail:
+      "Please return to your submitted Concept Brief receipt or contact NOVORA. No provider, database, storage, or internal error details are disclosed here.",
+  },
+  denied: {
+    badge: "Access unavailable",
+    title: "You cannot access this First Preview",
+    lead:
+      "This customer link cannot open the requested First Preview.",
+    detail:
+      "Please use the Preview link from your confirmed Concept Brief receipt or contact NOVORA for help.",
+  },
 };
 
-const MOCK_PREVIEW_PUBLIC_REFERENCE = 'NOVORA-CB-MOCK-001';
-const MOCK_PREVIEW_READY_STATE = 'first_preview_ready';
+function snapshotOwnDataRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+): Record<string, unknown> | null {
+  try {
+    if (
+      (typeof value === "object" || typeof value === "function") &&
+      value !== null &&
+      nodeUtilTypes.isProxy(value)
+    ) {
+      return null;
+    }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return null;
+    }
 
-const feedbackCategories: Record<PreviewLocale, string[]> = {
-  en: ['Structure issue', 'Style mismatch', 'Stone or setting issue', 'Proportion issue', 'Request human follow-up'],
-  'zh-Hant': ['結構問題', '風格不符合', '寶石或鑲嵌問題', '比例問題', '需要人工跟進'],
-};
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
 
-const copy: Record<
-  PreviewLocale,
-  {
-    eyebrow: string;
-    brandTitle: string;
-    referenceLabel: string;
-    mockBadge: string;
-    languageNote: string;
-    state: Record<PreviewState, StateCopy>;
-    boundaryTitle: string;
-    boundaryIntro: string;
-    boundaryItems: string[];
-    sketchEyebrow: string;
-    sketchTitle: string;
-    sketchTags: string[];
-    mockLabel: string;
-    mockTitle: string;
-    mockStamp: string;
-    mockFooter: string;
-    annotationOne: string;
-    annotationTwo: string;
-    annotationThree: string;
-    previewNote: string;
-    feedbackEyebrow: string;
-    feedbackTitle: string;
-    feedbackIntro: string;
-    feedbackPlaceholder: string;
-    feedbackDisabled: string;
-    feedbackNote: string;
-    actionsTitle: string;
-    actionsBody: string;
-    backToStart: string;
-    submittedLink: string;
+    const ownKeys = Reflect.ownKeys(value);
+    if (
+      ownKeys.some(
+        (key) => typeof key !== "string" || !allowedKeys.includes(key),
+      )
+    ) {
+      return null;
+    }
+
+    const snapshot: Record<string, unknown> = Object.create(null);
+    for (const key of ownKeys) {
+      if (typeof key !== "string") return null;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        !descriptor ||
+        descriptor.enumerable !== true ||
+        !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+        Object.prototype.hasOwnProperty.call(descriptor, "get") ||
+        Object.prototype.hasOwnProperty.call(descriptor, "set")
+      ) {
+        return null;
+      }
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
   }
-> = {
-  en: {
-    eyebrow: 'NOVORA concept preview',
-    brandTitle: 'Customer concept preview',
-    referenceLabel: 'Customer reference',
-    mockBadge: 'Mock route skeleton',
-    languageNote: 'English preview copy',
-    state: {
-      processing: {
-        badge: 'Processing',
-        title: 'Your concept preview is being prepared',
-        lead:
-          'NOVORA is preparing the future first AI hand-drawn concept sketch preview experience for this Concept Brief.',
-        detail:
-          'This mock page does not read a database or generate an image. In the future, this state would reassure the customer while the concept direction is prepared.',
-      },
-      first_preview_ready: {
-        badge: 'First preview ready',
-        title: 'Mock first concept preview',
-        lead:
-          'This is a mock preview for MVP flow testing only. It is not generated by a live image provider, and no real generated image exists here.',
-        detail:
-          'This is not customer-safe final delivery. Human review is required before any customer-facing delivery, and first_preview_ready is separate from approved_for_customer.',
-      },
-      generation_delayed: {
-        badge: 'Taking longer',
-        title: 'The preview is taking longer than expected',
-        lead:
-          'NOVORA may continue preparing the concept direction or route the brief for human follow-up if needed.',
-        detail:
-          'This safe delay state avoids promising an exact timeline and keeps the customer informed without exposing provider or system details.',
-      },
-      generation_failed: {
-        badge: 'Temporarily unavailable',
-        title: 'The preview is temporarily unavailable',
-        lead:
-          'NOVORA can still continue the concept review path and may follow up manually if the preview cannot be prepared.',
-        detail:
-          'This customer-facing failure state does not blame a provider, expose internal errors, or imply the design process has ended.',
-      },
-      preview_unavailable: {
-        badge: 'Unavailable',
-        title: 'Preview unavailable',
-        lead:
-          'This preview is unavailable or the demo link is invalid. This does not mean a real customer record was found.',
-        detail:
-          'No generated image is available here. No Supabase or database lookup happened, and no GPT, OpenAI, or image-provider work happened.',
-      },
-      feedback_submitted: {
-        badge: 'Mock feedback received',
-        title: 'Feedback acknowledgement placeholder',
-        lead:
-          'This mock acknowledgement shows the future customer response after feedback is captured.',
-        detail:
-          'No feedback is saved from this page. Future feedback would support human correction, regeneration, or follow-up without becoming CAD or production approval.',
-      },
-      human_followup_needed: {
-        badge: 'Human follow-up needed',
-        title: 'A human review step is needed',
-        lead:
-          'NOVORA may need to review structure, setting logic, proportions, feasibility, or customer-request match before the next step.',
-        detail:
-          'This state keeps human correction separate from automated preview status and from any CAD, quote, order, payment, or production decision.',
-      },
-    },
-    boundaryTitle: 'Concept preview boundary',
-    boundaryIntro:
-      'This mock preview is for MVP flow testing and navigation checks only. It is not customer-safe final delivery, not CAD, not a quote, not order approval, not payment approval, and not production approval.',
-    boundaryItems: [
-      'Mock preview only',
-      'No live image provider',
-      'No real generated image',
-      'No Supabase or database lookup',
-      'No GPT, OpenAI, or image-provider work',
-      'Not CAD',
-      'Not a quote',
-      'Not order approval',
-      'Not payment approval',
-      'Not production approval',
-      'Human review is required before customer-facing delivery',
-      'first_preview_ready is separate from approved_for_customer',
-    ],
-    sketchEyebrow: 'Mock sketch sheet',
-    sketchTitle: 'Placeholder visual, no generated image',
-    sketchTags: ['Concept preview', 'CSS placeholder', 'No live image generation'],
-    mockLabel: 'Mock placeholder',
-    mockTitle: 'NOVORA concept preview',
-    mockStamp: 'Placeholder visual only',
-    mockFooter: 'NOVORA / concept preview sheet / mock only',
-    annotationOne: 'proportion note',
-    annotationTwo: 'setting callout',
-    annotationThree: 'structure review',
-    previewNote:
-      'This mock sketch area visually suggests the future NOVORA preview sheet. It is not an uploaded asset, not a generated image, and not part of a live customer workflow.',
-    feedbackEyebrow: 'Feedback entry point',
-    feedbackTitle: 'Mock feedback controls',
-    feedbackIntro:
-      'Future feedback can help NOVORA identify structure issues, style mismatch, stone or setting concerns, proportion problems, or a need for human follow-up.',
-    feedbackPlaceholder: 'Feedback text entry is disabled in this mock route.',
-    feedbackDisabled: 'Feedback submission coming later',
-    feedbackNote:
-      'No feedback is submitted, stored, emailed, or sent to an API from this page.',
-    actionsTitle: 'Mock-only route',
-    actionsBody:
-      'This direct preview URL is intentionally not wired into the live Concept Brief submission flow yet.',
-    backToStart: 'Back to design start',
-    submittedLink: 'View submitted receipt page',
-  },
-  'zh-Hant': {
-    eyebrow: 'NOVORA 概念預覽',
-    brandTitle: '客戶概念預覽',
-    referenceLabel: '客戶參考編號',
-    mockBadge: '模擬路由骨架',
-    languageNote: '繁體中文預覽文案',
-    state: {
-      processing: {
-        badge: '準備中',
-        title: '正在準備您的概念預覽',
-        lead: 'NOVORA 正在示範未來第一張 AI 手繪概念草圖預覽的等待狀態。',
-        detail: '此模擬頁面不讀取資料庫，也不產生圖片。未來此狀態會用來讓客戶了解概念方向仍在準備中。',
-      },
-      first_preview_ready: {
-        badge: '第一張預覽已就緒',
-        title: '模擬第一張概念預覽',
-        lead: '此狀態示範未來第一張客戶可見概念草圖會出現的位置。',
-        detail: '下方視覺僅為 CSS 佔位示意，不是真正的 AI 生成圖片，也不使用即時客戶資料。',
-      },
-      generation_delayed: {
-        badge: '時間較長',
-        title: '預覽準備時間比預期更久',
-        lead: 'NOVORA 可能會繼續整理概念方向，必要時也可能改由人工跟進。',
-        detail: '此安全延遲狀態不承諾精確時間，也不揭露供應商或系統內部細節。',
-      },
-      generation_failed: {
-        badge: '暫時無法使用',
-        title: '目前暫時無法顯示預覽',
-        lead: '即使預覽無法準備，NOVORA 仍可繼續概念審閱流程，並可能以人工方式跟進。',
-        detail: '此客戶可見失敗狀態不責怪任何供應商、不揭露內部錯誤，也不代表設計流程結束。',
-      },
-      preview_unavailable: {
-        badge: '無法顯示',
-        title: '目前無法顯示此預覽',
-        lead: '此模擬狀態下沒有客戶安全預覽可顯示，但仍會顯示 Concept Brief 參考編號。',
-        detail: '未來正式功能只會在存取與可見性規則通過後，顯示客戶安全的預覽資料。',
-      },
-      feedback_submitted: {
-        badge: '模擬回饋已收到',
-        title: '回饋確認佔位狀態',
-        lead: '此模擬確認示範未來客戶送出回饋後的回應狀態。',
-        detail: '此頁面不會儲存任何回饋。未來回饋會支援人工修正、重新生成或跟進，但不代表 CAD 或生產核准。',
-      },
-      human_followup_needed: {
-        badge: '需要人工跟進',
-        title: '下一步需要人工審閱',
-        lead: 'NOVORA 可能需要檢查結構、鑲嵌邏輯、比例、可行性，或是否符合客戶需求。',
-        detail: '此狀態將人工修正與自動預覽狀態分開，也與 CAD、報價、訂單、付款或生產決定分開。',
-      },
-    },
-    boundaryTitle: '概念預覽界線',
-    boundaryIntro:
-      '此客戶預覽僅用於早期視覺方向與回饋。它不是 CAD、不是報價、不是訂單核准、不是付款核准，也不是生產核准。',
-    boundaryItems: ['不是 CAD', '不是報價', '不是訂單核准', '不是付款核准', '不是生產核准', '仍可能需要人工修正'],
-    sketchEyebrow: '模擬草圖版面',
-    sketchTitle: '佔位視覺，沒有生成圖片',
-    sketchTags: ['概念預覽', 'CSS 佔位', '沒有即時圖片生成'],
-    mockLabel: '模擬佔位',
-    mockTitle: 'NOVORA 概念預覽',
-    mockStamp: '僅為佔位視覺',
-    mockFooter: 'NOVORA / 概念預覽版面 / 僅供模擬',
-    annotationOne: '比例提示',
-    annotationTwo: '鑲嵌標註',
-    annotationThree: '結構審閱',
-    previewNote:
-      '此模擬草圖區域示意未來 NOVORA 預覽版面的視覺方向。它不是上傳素材、不是生成圖片，也不是即時客戶流程的一部分。',
-    feedbackEyebrow: '回饋入口',
-    feedbackTitle: '模擬回饋控制',
-    feedbackIntro:
-      '未來回饋可協助 NOVORA 判斷結構問題、風格不符合、寶石或鑲嵌疑慮、比例問題，或是否需要人工跟進。',
-    feedbackPlaceholder: '此模擬路由已停用回饋文字輸入。',
-    feedbackDisabled: '回饋提交功能稍後加入',
-    feedbackNote: '此頁面不會提交、儲存、寄送電子郵件，或呼叫 API。',
-    actionsTitle: '僅供模擬的路由',
-    actionsBody: '此直接預覽網址尚未接入正式 Concept Brief 提交流程。',
-    backToStart: '返回設計開始',
-    submittedLink: '查看提交收據頁',
-  },
-};
-
-function canShowSuccessfulMockPreview(publicReference: string, state: string | undefined) {
-  return publicReference === MOCK_PREVIEW_PUBLIC_REFERENCE && state === MOCK_PREVIEW_READY_STATE;
 }
 
-function normalizeLocale(value: string | undefined): PreviewLocale {
-  return value === 'zh-Hant' || value === 'zh-TW' ? 'zh-Hant' : 'en';
-}
-
-function MockSketchSheet({ labels }: { labels: (typeof copy)['en'] }) {
+function hasExactKeys(
+  snapshot: Record<string, unknown>,
+  keys: readonly string[],
+) {
+  const actual = Object.keys(snapshot).sort();
+  const expected = [...keys].sort();
   return (
-    <div className={styles.paperCard} aria-label={labels.sketchTitle}>
-      <span className={styles.mockLabel}>{labels.mockLabel}</span>
-      <span className={styles.cardTitle}>{labels.mockTitle}</span>
-      <span className={styles.guideVertical} />
-      <span className={styles.guideHorizontal} />
-      <span className={styles.ringOuter} />
-      <span className={styles.ringInner} />
-      <span className={styles.ringShoulderLeft} />
-      <span className={styles.ringShoulderRight} />
-      <span className={styles.centerStone} />
-      <span className={styles.stoneFacetOne} />
-      <span className={styles.stoneFacetTwo} />
-      <span className={styles.sideProfile} />
-      <span className={styles.sideStone} />
-      <span className={styles.noteLineOne} />
-      <span className={styles.noteLineTwo} />
-      <span className={styles.noteLineThree} />
-      <span className={styles.noteOne}>{labels.annotationOne}</span>
-      <span className={styles.noteTwo}>{labels.annotationTwo}</span>
-      <span className={styles.noteThree}>{labels.annotationThree}</span>
-      <span className={styles.mockStamp}>{labels.mockStamp}</span>
-      <span className={styles.watermark}>NOVORA</span>
-      <span className={styles.footerMark}>{labels.mockFooter}</span>
-    </div>
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
   );
 }
 
-export default async function CustomerPreviewPage({ params, searchParams }: PreviewPageProps) {
-  const { public_reference: rawPublicReference } = await params;
-  const resolvedSearchParams = await searchParams;
-  const locale = normalizeLocale(resolvedSearchParams?.lang);
-  const labels = copy[locale];
-  const publicReference = decodeURIComponent(rawPublicReference);
-  const previewState = canShowSuccessfulMockPreview(publicReference, resolvedSearchParams?.state)
-    ? MOCK_PREVIEW_READY_STATE
-    : 'preview_unavailable';
-  const stateCopy = labels.state[previewState];
-  const shouldShowSketch = previewState === 'first_preview_ready';
+function safePublicReference(value: unknown): string | null {
+  return (
+    typeof value === "string" &&
+    value.length <= 27 &&
+    isValidFirstPreviewPublicReference(value)
+  )
+    ? value
+    : null;
+}
+
+export function resolveCustomerPreview(
+  routePublicReference: unknown,
+  trustedResult: unknown,
+): ResolvedCustomerPreview {
+  const publicReference = safePublicReference(routePublicReference);
+  if (publicReference === null) {
+    return { state: "unavailable", publicReference: null };
+  }
+
+  const trusted = snapshotOwnDataRecord(trustedResult, [
+    "state",
+    "publicReference",
+    "outputId",
+  ]);
+  if (!trusted || typeof trusted.state !== "string") {
+    return { state: "unavailable", publicReference };
+  }
+
+  if (
+    (trusted.state === "pending" ||
+      trusted.state === "unavailable" ||
+      trusted.state === "denied") &&
+    hasExactKeys(trusted, ["state"])
+  ) {
+    return { state: trusted.state, publicReference };
+  }
+
+  if (
+    trusted.state !== "ready" ||
+    !hasExactKeys(trusted, ["state", "publicReference", "outputId"]) ||
+    trusted.publicReference !== publicReference ||
+    typeof trusted.outputId !== "string" ||
+    !isValidFirstPreviewAssetUuid(trusted.outputId)
+  ) {
+    return { state: "unavailable", publicReference };
+  }
+
+  return {
+    state: "ready",
+    publicReference,
+    customerAssetSrc:
+      `/api/first-preview-assets/${publicReference}/current`,
+  };
+}
+
+async function readTrustedTestResult(): Promise<TrustedCustomerPreview | null> {
+  if (process.env.NODE_ENV === "production") return null;
+
+  const requestHeaders = await headers();
+  const state = requestHeaders.get(INTERNAL_TRUSTED_HEADERS.state);
+  if (
+    state === "pending" ||
+    state === "unavailable" ||
+    state === "denied"
+  ) {
+    return { state };
+  }
+  if (state !== "ready") return null;
+
+  return {
+    state,
+    publicReference:
+      requestHeaders.get(INTERNAL_TRUSTED_HEADERS.reference) ?? "",
+    outputId: requestHeaders.get(INTERNAL_TRUSTED_HEADERS.output) ?? "",
+  };
+}
+
+export default async function CustomerPreviewPage({
+  params,
+}: PreviewPageProps) {
+  const { public_reference: routePublicReference } = await params;
+  const trustedResult = await readTrustedTestResult();
+  const preview = resolveCustomerPreview(
+    routePublicReference,
+    trustedResult,
+  );
+  const stateCopy = COPY[preview.state];
 
   return (
     <main className={sharedStyles.pageBackground}>
       <section className={`${sharedStyles.shell} ${styles.previewShell}`}>
-        <div className={styles.layout}>
-          <section className={styles.hero} aria-labelledby="preview-heading">
-            <div className={styles.heroHeader}>
+        <header className={styles.hero}>
+          <div>
+            <p className={sharedStyles.eyebrow}>NOVORA First Preview</p>
+            <h1>Customer First Preview</h1>
+            <p className={styles.heroLead}>
+              A private early concept view for your submitted design direction.
+            </p>
+          </div>
+          <div className={styles.referenceCard}>
+            <span>Customer reference</span>
+            <strong>
+              {preview.publicReference ?? "Reference unavailable"}
+            </strong>
+          </div>
+        </header>
+
+        <section
+          className={`${styles.statusCard} ${styles[preview.state]}`}
+          aria-labelledby="preview-status-heading"
+          role="status"
+        >
+          <span className={styles.statusBadge}>{stateCopy.badge}</span>
+          <h2 id="preview-status-heading">{stateCopy.title}</h2>
+          <p>{stateCopy.lead}</p>
+          <p>{stateCopy.detail}</p>
+        </section>
+
+        {preview.state === "ready" ? (
+          <section
+            className={styles.previewCard}
+            aria-labelledby="concept-preview-heading"
+          >
+            <div className={styles.sectionHeading}>
               <div>
-                <p className={sharedStyles.eyebrow}>{labels.eyebrow}</p>
-                <h1 id="preview-heading">{labels.brandTitle}</h1>
+                <p className={sharedStyles.eyebrow}>Concept direction</p>
+                <h2 id="concept-preview-heading">
+                  AI hand-drawn concept sketch
+                </h2>
               </div>
-              <div className={styles.badges} aria-label="Preview metadata">
-                <span>{labels.mockBadge}</span>
-                <span>{labels.languageNote}</span>
-              </div>
+              <span>Early preview</span>
             </div>
-            <div className={styles.referencePanel}>
-              <span>{labels.referenceLabel}</span>
-              <strong>{publicReference}</strong>
-            </div>
-            <div className={styles.statusPanel} role="status" aria-live="polite">
-              <span className={styles.statusBadge}>{stateCopy.badge}</span>
-              <h2>{stateCopy.title}</h2>
-              <p>{stateCopy.lead}</p>
-              <p>{stateCopy.detail}</p>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className={styles.previewImage}
+              src={preview.customerAssetSrc}
+              alt="Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction"
+            />
+            <p className={styles.imageNote}>
+              This visual is an early communication asset. Details, structure,
+              gemstone orientation, and construction may change during later
+              refinement and production-feasibility review.
+            </p>
           </section>
+        ) : null}
 
-          {shouldShowSketch ? (
-            <section className={styles.previewPanel} aria-labelledby="mock-sketch-heading">
-              <div className={styles.sectionHeader}>
-                <div>
-                  <p className={sharedStyles.eyebrow}>{labels.sketchEyebrow}</p>
-                  <h2 id="mock-sketch-heading">{labels.sketchTitle}</h2>
-                </div>
-                <div className={styles.previewTags} aria-label="Mock preview limits">
-                  {labels.sketchTags.map((tag) => (
-                    <span key={tag}>{tag}</span>
-                  ))}
-                </div>
-              </div>
-              <MockSketchSheet labels={labels} />
-              <p className={styles.previewNote}>{labels.previewNote}</p>
-            </section>
-          ) : null}
+        <section
+          className={styles.boundaryCard}
+          aria-labelledby="preview-boundary-heading"
+        >
+          <p className={sharedStyles.eyebrow}>What this Preview means</p>
+          <h2 id="preview-boundary-heading">
+            Concept communication before paid CAD
+          </h2>
+          <p>
+            A First Preview is an early AI hand-drawn concept sketch. It is not
+            CAD, a final quote, an order, payment approval, production approval,
+            or a manufacturability guarantee.
+          </p>
+          <p>
+            A confirmed persisted receipt or opening this route alone does not
+            mean generation has started. Automatic First Preview preparation can
+            begin only when NOVORA enables the live workflow for this submission.
+            A trusted customer-view state and all mandatory gates are required
+            before website visibility. The normal unavailable state is not
+            evidence of active generation, and current Production may safely
+            keep this route unavailable.
+          </p>
+          <ul>
+            {preview.state !== "denied" ? (
+              <li>
+                When the live workflow is enabled for a confirmed submission,
+                automatic First Preview preparation uses mandatory safety,
+                privacy, access-control, output-validity, and safe-failure gates.
+              </li>
+            ) : null}
+            <li>
+              Website visibility occurs only after a trusted customer-view
+              state and every required automatic gate pass.
+            </li>
+            <li>
+              Human intervention during automatic First Preview preparation is
+              exception-only when the automatic preparation system cannot safely
+              converge; no per-image human pre-approval is required.
+            </li>
+            <li>
+              After the First Preview, structural logic, gemstone orientation,
+              composition, jewelry construction, manufacturability, correction
+              and regeneration, and customer-feedback interpretation remain
+              human-reviewed.
+            </li>
+            <li>
+              Paid CAD and formal production decisions happen later; these
+              steps, along with gemstone and material confirmation, quotation,
+              order, and payment decisions, remain human-controlled.
+            </li>
+          </ul>
+        </section>
 
-          <section className={styles.feedbackPanel} aria-labelledby="feedback-heading">
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={sharedStyles.eyebrow}>{labels.feedbackEyebrow}</p>
-                <h2 id="feedback-heading">{labels.feedbackTitle}</h2>
-              </div>
-              <span className={styles.disabledPill}>{labels.feedbackDisabled}</span>
-            </div>
-            <p>{labels.feedbackIntro}</p>
-            <div className={styles.feedbackCategories} aria-label={labels.feedbackTitle}>
-              {feedbackCategories[locale].map((category) => (
-                <button key={category} type="button" disabled>
-                  {category}
-                </button>
-              ))}
-            </div>
-            <label className={styles.mockField}>
-              <span>{labels.feedbackPlaceholder}</span>
-              <textarea disabled value="" aria-label={labels.feedbackPlaceholder} readOnly />
-            </label>
-            <p className={styles.previewNote}>{labels.feedbackNote}</p>
-          </section>
-
-          <section className={styles.boundaryPanel} aria-labelledby="boundary-heading">
-            <p className={sharedStyles.eyebrow}>{labels.boundaryTitle}</p>
-            <h2 id="boundary-heading">{labels.boundaryTitle}</h2>
-            <p>{labels.boundaryIntro}</p>
-            <ul>
-              {labels.boundaryItems.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-
-          <section className={styles.actionsPanel} aria-labelledby="mock-route-heading">
-            <div>
-              <p className={sharedStyles.eyebrow}>{labels.actionsTitle}</p>
-              <h2 id="mock-route-heading">{labels.actionsTitle}</h2>
-              <p>{labels.actionsBody}</p>
-            </div>
-            <div className={sharedStyles.actions}>
-              <Link className={sharedStyles.primaryButton} href="/design/start">
-                {labels.backToStart}
-              </Link>
-              <Link className={sharedStyles.secondaryButton} href="/design/submitted">
-                {labels.submittedLink}
-              </Link>
-            </div>
-          </section>
-        </div>
+        <nav className={styles.actions} aria-label="Preview actions">
+          <Link href="/design/submitted">Back to submitted receipt</Link>
+          <Link href="/design/start">Start another design direction</Link>
+        </nav>
       </section>
     </main>
   );
