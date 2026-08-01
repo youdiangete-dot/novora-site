@@ -15,21 +15,32 @@ from previous conversations conflict with this ledger and the current GitHub
 
 ### Current implemented Production state
 
-- Production does not have a real AI image-generation API.
-- `/design/preview/[public_reference]` remains mock-only.
-- The submitted-page preview entry remains a demo/mock connection.
+- Production does not have a real AI image-generation API or live generation
+  connection.
+- `/design/submitted` has a hardened Preview entry that appears only for a
+  receipt with confirmed persistence, a canonical `publicReference`, and a
+  valid Concept Brief UUID.
+- `/design/preview/[public_reference]` implements the real customer First
+  Preview UI contract with exactly `pending`, `ready`, `unavailable`, and
+  `denied` states. Normal untrusted Production requests fail closed to
+  `unavailable`.
+- Production has no trusted live customer-view binding or Production adapter.
+  Opening the Preview route or possessing a persisted receipt does not mean
+  generation started; the current entry is guarded status/demo behavior until
+  the live workflow is separately enabled.
 - No real generated customer preview is currently live.
 - The target direction below is a locked product decision, not evidence of
   completed implementation or deployment.
 
 ### Locked target MVP direction
 
-After a customer's Concept Brief is successfully persisted, NOVORA should
-automatically begin generating the first AI hand-drawn concept sketch. Once the
-first result is generated and passes the required automatic safety, privacy,
-access-control, output-validity, and safe-failure gates, it becomes immediately
-visible on the customer's securely accessed website preview page without
-waiting for per-image human pre-approval.
+Once the live workflow and trusted gates are separately implemented and enabled
+for a successfully persisted Concept Brief, NOVORA should automatically prepare
+the first AI hand-drawn concept sketch. Once the first result is generated and
+passes the required automatic safety, privacy, access-control, output-validity,
+and safe-failure gates, it becomes immediately visible on the customer's
+securely accessed website preview page without waiting for per-image human
+pre-approval. This is the future target, not current Production behavior.
 
 The mandatory automatic gates include:
 
@@ -74,9 +85,11 @@ must not be used as the current operating direction.
 `docs/novora-first-preview-product-contract-v1.md` is the governing First
 Preview customer-visibility contract. Every future Codex task touching First
 Preview behavior and future Agent 72F E2E acceptance must inherit its mandatory
-rule: confirmed persistence starts automatic generation, and all trusted
-automatic gates passing requires direct secure website visibility for the exact
-authorized customer without per-image human pre-approval.
+future-target rule: after the live workflow is enabled for a confirmed persisted
+submission, automatic preparation may begin, and all trusted automatic gates
+passing requires direct secure website visibility for the exact authorized
+customer without per-image human pre-approval. Confirmed persistence alone does
+not prove that generation has started in current Production.
 
 The former internal-only, email-only, human-review-before-display, and
 `approved_for_customer`-before-first-preview rules are superseded historical
@@ -103,10 +116,11 @@ does not add an approval gate before already authorized work.
   Agent 69B reuse-first data-model and candidate SQL plan. It also includes the
   merged Agent 69C OpenAI GPT Image 2 provider, privacy, safety-evidence, cost,
   retry, and rate-limit decision. It also includes the merged Agent 70A
-  server-only, dependency-injected OpenAI GPT Image 2 adapter foundation. Real
-  provider client construction/configuration/calls, persistent preview
-  lifecycle, private generated-asset delivery, secure customer access, and
-  customer route wiring remain unimplemented.
+  server-only, dependency-injected OpenAI GPT Image 2 adapter foundation. PR
+  #251's customer First Preview UI is currently integration-only and is not on
+  `main`. Real provider client construction/configuration/calls, a live
+  generation connection, and trusted Production customer-view binding remain
+  unimplemented.
 - Supabase project: `novora-production`
 - Resend sending domain: `notify.novora.design`
 - Admin email notification sender: `NOVORA <briefs@notify.novora.design>`
@@ -2016,8 +2030,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   CAD, quotation, payment, order, or production approval. Agent 68A does not
   implement a real provider, real image generation, SQL or persistent preview
   lifecycle, private Storage, customer authentication, customer submission or
-  preview route wiring, deployment, or Production changes. Current customer
-  preview behavior remains mock-only.
+  preview route wiring, deployment, or Production changes. At that historical
+  Agent 68A point, customer preview behavior remained mock-only.
 
 - Agent 69A / PR #193 merged at
   `a368505413b244aace0a8d3dc84df5af9175d1f6`. It adds
@@ -3271,6 +3285,69 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   and post-MVP hardening deferred/not executed. No later planning-only loop may
   block real repository integration. This documentation authorizes no SQL.
 
+- Agent 72D / PR #251 (2026-08-01): PR #251, `Rebuild customer First Preview
+  UI on security baseline`, was normally merged into
+  `integration/instant-first-preview-agent` at 2026-08-01 18:38:35
+  Asia/Shanghai. Its original integration Base was
+  `23b4e8270b56e54fa29877dba93fad2a39ddd75d`, its independently approved Head
+  was `953dd047a46c430074e7694c2c2cd0317a805889`, and its normal merge commit was
+  `d9265c646f50171e992d8c1bb88e42bc7ae10b38`. PR #251 is merged into the
+  integration branch only; `main` did not receive it and remained unchanged at
+  `f58b06766bd02922cf3740a71df0aa618cfefe87`.
+
+  `PR_251_POST_MERGE_VALIDATION_PASS` records the accepted post-merge result.
+  The merge tree equals approved Head
+  `953dd047a46c430074e7694c2c2cd0317a805889`, and integration equals merge
+  commit `d9265c646f50171e992d8c1bb88e42bc7ae10b38`. The complete authoritative
+  Playwright run passed 717/717 with zero failures or skips; the dependency tree
+  was valid; the Production audit reported Info 0, Low 0, Moderate 0, High 0,
+  and Critical 0; the Production build passed on Next.js 16.2.12; explicit
+  TypeScript passed; and the built hostile Production runtime passed. `main`
+  and parked Draft PRs #248, #246, #242, and #249 remained unchanged. The PR
+  #251 source branch and all review worktrees were preserved. No real
+  credential, customer data, Supabase, Storage, Provider, OpenAI, Resend,
+  Vercel, or Cloudflare operation occurred during the accepted validation.
+
+  The merged customer boundary is receipt-gated and fail-closed. Receipt
+  authority requires confirmed persistence, a canonical public reference, and
+  a valid Concept Brief UUID. Malformed, inherited, accessor-backed,
+  non-enumerable, incomplete, false-persistence, array, `Date`, class-instance,
+  and reflection-failure receipt shapes fail closed. Canonical public
+  references enforce real Gregorian dates. Query parameters cannot select
+  `pending` or `ready`, or inject proof, Output UUID, customer identity, or
+  external redirect authority. Production test seams and trusted-header
+  behavior are hard-disabled. Ready imagery uses only the protected,
+  reference-bound customer alias
+  `/api/first-preview-assets/<publicReference>/current`; Output UUID is not
+  exposed in customer-visible HTML, URLs, text, alt text, or client data.
+  Responses retain private/no-store and replay-safe behavior. Malformed
+  references and hostile separator or redirect inputs fail closed or remain
+  same-origin.
+
+  The current `/design/submitted` Preview entry and
+  `/design/preview/[public_reference]` UI do not provide live AI generation or a
+  trusted Production customer-view adapter. A receipt or route visit does not
+  mean generation started. Current behavior remains guarded status/demo
+  behavior that normally fails closed to `unavailable`; the future automatic
+  First Preview target applies only after the live workflow and trusted gates
+  are separately implemented and enabled, without per-image human pre-approval.
+
+  First Preview is an early concept communication asset, not CAD, a final
+  quote, an order, payment approval, production approval, or a manufacturability
+  guarantee. After First Preview, human responsibility remains required for
+  structural logic, gemstone orientation, composition and stacking, jewelry
+  construction, manufacturability, correction and regeneration,
+  customer-feedback interpretation, gemstone and material confirmation, paid
+  CAD, quotation, order, payment, and production decisions. Any
+  `exception-only` wording applies only to human intervention during automatic
+  First Preview preparation when the automatic system cannot safely converge.
+
+  PR #251 and its post-merge validation are complete. Production customer-view
+  binding, a live AI generation connection, Agent 72B, Agent 72F, Production
+  deployment, SQL or schema work, and live Supabase, Storage, or Provider
+  verification did not start during PR #251. The next implementation stage
+  requires a separately authorized planning and execution decision.
+
 ## 7. Current Non-Goals And Boundaries
 
 - No customer login system yet.
@@ -3281,6 +3358,8 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - No real AI sketch generation API is implemented in Production yet. This is a
   current implementation gap, not a prohibition on the locked instant first
   customer-preview direction.
+- No trusted live Production customer-view binding or Production adapter is
+  connected to the First Preview UI yet.
 - No automatic retry tooling for failed or reserved admin notifications yet.
 - A Concept Brief is not a final order, final pricing, CAD approval, or production confirmation.
 
@@ -3309,6 +3388,12 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - Do not do SQL, schema, grant, Supabase, Vercel, Resend, Cloudflare, or environment-variable work without explicit approval for that specific task.
 - For docs-only tasks, no build is required unless code changes.
 - For app-code tasks, run `npm run build` and focused tests.
+- On Windows hostile-runtime validation, explicitly load `System.Net.Http` when
+  using PowerShell HTTP types, or use `curl`. Track every task-owned server PID,
+  port, and log path; stop every task-owned server deterministically; verify
+  each selected port can be rebound; and remove only task-created logs and
+  runtime artifacts. Never clean or delete pre-existing artifacts merely to
+  simplify validation.
 - Do not show customer-facing received or submitted confirmation unless server
   persistence, a valid `publicReference`, and a valid Concept Brief UUID are
   confirmed. Local fallback may preserve draft or summary state only.
@@ -3392,6 +3477,20 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   explicitly approved.
 
 ## 10. Recommended Next Step
+
+As of 2026-08-01, PR #251 and its post-merge validation are complete on
+`integration/instant-first-preview-agent` at
+`d9265c646f50171e992d8c1bb88e42bc7ae10b38`; `main` remains unchanged at
+`f58b06766bd02922cf3740a71df0aa618cfefe87`. Production customer-view binding,
+live AI generation connection, Agent 72B, Agent 72F, Production deployment, SQL
+or schema work, and live Supabase, Storage, or Provider verification have not
+started. The next implementation stage requires a separately authorized
+planning and execution decision; this ledger does not select a later workstream
+or authorize implementation.
+
+The dated database and application-integration sequence below is preserved as
+historical project context. Where it names a next step, the current boundary
+above supersedes that recommendation.
 
 As of 2026-07-17, Stage A existing-table ACL correction and Stage B `postgres`
 future-public-table default-privilege correction are complete. Their immediate
