@@ -13,6 +13,7 @@ type Operation =
   | "findActiveJob"
   | "findJobByProviderRequestId"
   | "updateJob"
+  | "claimProviderDispatch"
   | "claimProviderRequestIdentity"
   | "insertOutput"
   | "findOutputById"
@@ -121,6 +122,21 @@ export class FakeFirstPreviewDatabaseClient implements FirstPreviewDatabaseClien
     const job = this.jobs.get(id);
     if (!job || !allowedStatuses.includes(job.status)) return { data: null, error: null };
     const updated = { ...job, ...patch } as FirstPreviewJobRow;
+    this.jobs.set(id, updated);
+    return { data: { ...updated }, error: null };
+  }
+
+  async claimProviderDispatch(id: string, actualCostMicros: number, updatedAt: string) {
+    if (this.failed("claimProviderDispatch")) return { data: null, error: FAKE_ERROR };
+    const job = this.jobs.get(id);
+    if (!job || job.status !== "processing" || job.actual_cost_micros !== null) {
+      return { data: null, error: null };
+    }
+    const updated = {
+      ...job,
+      actual_cost_micros: actualCostMicros,
+      updated_at: updatedAt,
+    } as FirstPreviewJobRow;
     this.jobs.set(id, updated);
     return { data: { ...updated }, error: null };
   }
