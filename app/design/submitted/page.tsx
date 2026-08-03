@@ -353,8 +353,8 @@ export default function DesignSubmittedPage() {
               <h2>Current First Preview status</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
-              Your Concept Brief was received and validated. Current Production has not connected live AI generation
-              or a trusted customer-view connection, so this receipt does not mean generation has started.
+              Your Concept Brief was received and validated. This secure status connection does not add live AI
+              generation, so this receipt does not mean generation has started.
             </p>
             <ol className={submittedStyles.nextStepList}>
               <li>
@@ -362,7 +362,7 @@ export default function DesignSubmittedPage() {
                 <div>
                   <h3>Current Production limitation</h3>
                   <p>
-                    The live First Preview workflow is not yet connected. Opening the query-free Preview page does not
+                    Live First Preview generation is not yet connected. Opening the query-free Preview page does not
                     mean generation has started.
                   </p>
                 </div>
@@ -370,22 +370,22 @@ export default function DesignSubmittedPage() {
               <li>
                 <span className={submittedStyles.stepNumber}>2</span>
                 <div>
-                  <h3>Guarded status entry</h3>
+                  <h3>Secure customer status</h3>
                   <p>
-                    The current entry is a guarded preview-status/demo entry, not proof of an active live workflow. The
-                    route may remain safely unavailable until NOVORA enables the workflow for this submission.
+                    The customer link reads only a trusted server-mediated state. It may safely show pending, ready,
+                    unavailable, or denied, and a receipt cannot manufacture a ready result.
                   </p>
                 </div>
               </li>
               <li>
                 <span className={submittedStyles.stepNumber}>3</span>
                 <div>
-                  <h3>Automatic preparation when enabled</h3>
+                  <h3>Automatic preparation in the live workflow</h3>
                   <p>
-                    When the workflow is enabled for your submission, NOVORA may automatically prepare an AI
-                    hand-drawn First Preview. Safety, privacy, access-control, output-validity, and safe-failure gates
-                    remain mandatory before website visibility. This future automatic preparation does not require
-                    per-image human pre-approval.
+                    Once live generation is operating, successful and verifiable persistence automatically starts an AI
+                    hand-drawn First Preview for every eligible submission. Safety, privacy, access-control,
+                    output-validity, and safe-failure gates remain mandatory before website visibility. No per-image
+                    human pre-approval is required.
                   </p>
                 </div>
               </li>
@@ -413,9 +413,9 @@ export default function DesignSubmittedPage() {
                 <p className={submittedStyles.previewLabel}>Customer First Preview</p>
                 <h3>Open the guarded First Preview status</h3>
                 <p>
-                  This exact, query-free link is tied only to your validated customer reference. Opening it does not
-                  mean generation has started; it remains a guarded status/demo entry, not proof of an active live
-                  workflow.
+                  This exact, query-free link is tied to your validated customer reference and a secure server proof.
+                  Opening it does not mean generation has started; only trusted lifecycle evidence can make a First
+                  Preview ready.
                 </p>
               </div>
               <Link className={styles.secondaryButton} href={previewHref}>

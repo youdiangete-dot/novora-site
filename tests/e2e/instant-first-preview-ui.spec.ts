@@ -266,7 +266,7 @@ test.describe("submitted receipt authority for Customer First Preview", () => {
 
     await expect(
       page.getByText(
-        "Current Production has not connected live AI generation",
+        "This secure status connection does not add live AI generation",
         { exact: false },
       ),
     ).toBeVisible();
@@ -277,7 +277,7 @@ test.describe("submitted receipt authority for Customer First Preview", () => {
       ),
     ).toBeVisible();
     await expect(
-      page.getByText("guarded preview-status/demo entry", { exact: false }),
+      page.getByText("The customer link reads only a trusted server-mediated state", { exact: false }),
     ).toBeVisible();
     await expect(
       page.getByText(
@@ -373,19 +373,19 @@ test.describe("four-state Customer First Preview presentation", () => {
     ).toBeVisible();
     await expect(
       page.getByText(
-        "A confirmed persisted receipt or opening this route alone does not mean generation has started.",
+        "Opening this route alone does not mean generation has started.",
         { exact: false },
       ),
     ).toBeVisible();
     await expect(
       page.getByText(
-        "Automatic First Preview preparation can begin only when NOVORA enables the live workflow for this submission.",
+        "every eligible confirmed persisted submission starts automatic First Preview preparation.",
         { exact: false },
       ),
     ).toBeVisible();
     await expect(
       page.getByText(
-        "The normal unavailable state is not evidence of active generation",
+        "An unavailable state is not evidence of active generation",
         { exact: false },
       ),
     ).toBeVisible();
@@ -547,8 +547,9 @@ test.describe("four-state Customer First Preview presentation", () => {
           headers: trustedHeaders(state),
         }),
       );
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
       expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(response.headers.get("x-middleware-next")).toBe("1");
     }
   });
 
@@ -587,7 +588,8 @@ test.describe("four-state Customer First Preview presentation", () => {
 
       expect(isRewrite(response)).toBe(false);
       expect(getRewrittenUrl(response)).toBeNull();
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-middleware-next")).toBe("1");
       expect(response.headers.get("x-middleware-rewrite")).toBeNull();
       expect(response.headers.get("cache-control")).toBe("private, no-store");
       expect(serializedHeaders).not.toContain(OUTPUT_ID);
@@ -622,7 +624,8 @@ test.describe("four-state Customer First Preview presentation", () => {
       new NextRequest(`http://localhost${CUSTOMER_ASSET_PATH}`),
     );
     expect(isRewrite(untrustedResponse)).toBe(false);
-    expect(untrustedResponse.status).toBe(404);
+    expect(untrustedResponse.status).toBe(200);
+    expect(untrustedResponse.headers.get("x-middleware-next")).toBe("1");
     expect(untrustedResponse.headers.get("cache-control")).toBe(
       "private, no-store",
     );
@@ -1074,7 +1077,7 @@ test.describe("responsive UI, accessibility, and product boundaries", () => {
     ).toHaveCount(0);
   });
 
-  test("UI uses no Production adapter, live service, or direct Storage URL", async () => {
+  test("UI uses only the server-only Production binding and no direct Storage URL", async () => {
     const repositoryRoot = path.resolve(__dirname, "../..");
     const [pageSource, proxySource] = await Promise.all([
       readFile(
@@ -1088,7 +1091,7 @@ test.describe("responsive UI, accessibility, and product boundaries", () => {
     ]);
     const combined = `${pageSource}\n${proxySource}`;
 
-    expect(combined).not.toContain("first-preview-customer-view");
+    expect(pageSource).toContain("first-preview-customer-view-binding");
     expect(combined).not.toMatch(/supabase\.co|storage\/v1|createSignedUrl/);
     expect(combined).not.toMatch(/SUPABASE_|OPENAI_API_KEY|SERVICE_ROLE/);
     expect(combined).not.toContain("cookies()");

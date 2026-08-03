@@ -244,27 +244,35 @@ export function proxy(request: NextRequest) {
 
   if (customerAssetMatch) {
     const routeReference = customerAssetMatch[1];
+    if (!isValidPublicReference(routeReference)) return safeNotFound();
+
     const trustedState = forwarded.get(INTERNAL_TRUSTED_HEADERS.state);
     const trustedReference = forwarded.get(INTERNAL_TRUSTED_HEADERS.reference);
     const trustedOutput = forwarded.get(INTERNAL_TRUSTED_HEADERS.output);
 
-    if (
-      trustedState !== "ready" ||
-      trustedReference !== routeReference ||
-      !isValidPublicReference(routeReference) ||
-      trustedOutput === null ||
-      !OUTPUT_UUID_PATTERN.test(trustedOutput)
-    ) {
-      return safeNotFound();
+    const focusedTestReady =
+      process.env.NODE_ENV !== "production" &&
+      trustedState === "ready" &&
+      trustedReference === routeReference &&
+      trustedOutput !== null &&
+      OUTPUT_UUID_PATTERN.test(trustedOutput);
+
+    if (focusedTestReady) {
+      const protectedAsset = request.nextUrl.clone();
+      protectedAsset.pathname =
+        `/api/first-preview-assets/${routeReference}/${trustedOutput}`;
+      protectedAsset.search = "";
+      protectedAsset.hash = "";
+
+      return NextResponse.rewrite(protectedAsset, {
+        request: { headers: forwarded },
+        headers: {
+          "Cache-Control": "private, no-store",
+        },
+      });
     }
 
-    const protectedAsset = request.nextUrl.clone();
-    protectedAsset.pathname =
-      `/api/first-preview-assets/${routeReference}/${trustedOutput}`;
-    protectedAsset.search = "";
-    protectedAsset.hash = "";
-
-    return NextResponse.rewrite(protectedAsset, {
+    return NextResponse.next({
       request: { headers: forwarded },
       headers: {
         "Cache-Control": "private, no-store",

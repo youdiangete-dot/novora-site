@@ -13,6 +13,9 @@ import {
 import type {
   FirstPreviewCustomerAccessAuthorizer,
 } from "./supabase-first-preview-customer-access";
+import type {
+  FirstPreviewCustomerView,
+} from "./first-preview-customer-view";
 import { FIRST_PREVIEW_ASSET_BUCKET } from "./first-preview-persistence-contract";
 
 export type FirstPreviewGeneratedAssetDeliveryResult =
@@ -51,6 +54,20 @@ type RouteContext = Readonly<{
   params:
     | Readonly<{ publicReference?: string; outputId?: string }>
     | Promise<Readonly<{ publicReference?: string; outputId?: string }>>;
+}>;
+
+type CurrentRouteContext = Readonly<{
+  params:
+    | Readonly<{ publicReference?: string }>
+    | Promise<Readonly<{ publicReference?: string }>>;
+}>;
+
+type CurrentRouteHandlerDependencies = Readonly<{
+  readCustomerView: (publicReference: string) => Promise<FirstPreviewCustomerView>;
+  readAccessProof: () => Promise<string | null>;
+  createService: () =>
+    | FirstPreviewGeneratedAssetDeliveryService
+    | Promise<FirstPreviewGeneratedAssetDeliveryService>;
 }>;
 
 class UnavailableFirstPreviewGeneratedAssetDeliveryService
@@ -238,6 +255,53 @@ export function createFirstPreviewGeneratedAssetRouteHandler(
     unsupported() {
       return opaqueEmptyResponse(405);
     },
+  };
+}
+
+export function createFirstPreviewCurrentAssetRouteHandler(
+  dependencies: CurrentRouteHandlerDependencies,
+): Readonly<{
+  get: (request: Request, context: CurrentRouteContext) => Promise<Response>;
+  unsupported: () => Response;
+}> {
+  const protectedAssetHandler = createFirstPreviewGeneratedAssetRouteHandler({
+    readAccessProof: dependencies.readAccessProof,
+    createService: dependencies.createService,
+  });
+
+  return {
+    async get(request, context) {
+      try {
+        const url = new URL(request.url);
+        const params = await context.params;
+        const publicReference = params.publicReference ?? "";
+        if (
+          url.search !== "" ||
+          !isValidFirstPreviewPublicReference(publicReference)
+        ) {
+          return opaqueEmptyResponse(404);
+        }
+
+        const customerView = await dependencies.readCustomerView(publicReference);
+        if (
+          customerView.state !== "ready" ||
+          customerView.assetRequest.publicReference !== publicReference ||
+          !isValidFirstPreviewAssetUuid(customerView.assetRequest.outputId)
+        ) {
+          return opaqueEmptyResponse(404);
+        }
+
+        return protectedAssetHandler.get(request, {
+          params: {
+            publicReference,
+            outputId: customerView.assetRequest.outputId,
+          },
+        });
+      } catch {
+        return opaqueEmptyResponse(404);
+      }
+    },
+    unsupported: protectedAssetHandler.unsupported,
   };
 }
 

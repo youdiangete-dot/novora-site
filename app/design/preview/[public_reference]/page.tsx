@@ -232,11 +232,34 @@ async function readTrustedTestResult(): Promise<TrustedCustomerPreview | null> {
   };
 }
 
+async function readTrustedCustomerPreview(
+  publicReference: string,
+): Promise<TrustedCustomerPreview> {
+  const focusedTestResult = await readTrustedTestResult();
+  if (focusedTestResult) return focusedTestResult;
+
+  const { readFirstPreviewCustomerViewBinding } = await import(
+    "../../../../lib/server/ai-sketch/first-preview-customer-view-binding"
+  );
+  const customerView = await readFirstPreviewCustomerViewBinding({
+    publicReference,
+  });
+  if (customerView.state !== "ready") {
+    return { state: customerView.state };
+  }
+
+  return {
+    state: "ready",
+    publicReference: customerView.assetRequest.publicReference,
+    outputId: customerView.assetRequest.outputId,
+  };
+}
+
 export default async function CustomerPreviewPage({
   params,
 }: PreviewPageProps) {
   const { public_reference: routePublicReference } = await params;
-  const trustedResult = await readTrustedTestResult();
+  const trustedResult = await readTrustedCustomerPreview(routePublicReference);
   const preview = resolveCustomerPreview(
     routePublicReference,
     trustedResult,
@@ -315,20 +338,19 @@ export default async function CustomerPreviewPage({
             or a manufacturability guarantee.
           </p>
           <p>
-            A confirmed persisted receipt or opening this route alone does not
-            mean generation has started. Automatic First Preview preparation can
-            begin only when NOVORA enables the live workflow for this submission.
-            A trusted customer-view state and all mandatory gates are required
-            before website visibility. The normal unavailable state is not
-            evidence of active generation, and current Production may safely
-            keep this route unavailable.
+            Opening this route alone does not mean generation has started. Once
+            the live workflow is operating, every eligible confirmed persisted
+            submission starts automatic First Preview preparation. A trusted
+            customer-view state and all mandatory gates are required before
+            website visibility. An unavailable state is not evidence of active
+            generation.
           </p>
           <ul>
             {preview.state !== "denied" ? (
               <li>
-                When the live workflow is enabled for a confirmed submission,
-                automatic First Preview preparation uses mandatory safety,
-                privacy, access-control, output-validity, and safe-failure gates.
+                The live workflow uses mandatory safety, privacy, access-control,
+                output-validity, and safe-failure gates for every eligible
+                confirmed persisted submission.
               </li>
             ) : null}
             <li>

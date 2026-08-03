@@ -577,7 +577,7 @@ test.describe('/design/start conversion flow', () => {
     await expect(page.getByText('Customer First Preview')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Current First Preview status' })).toBeVisible();
     await expect(
-      page.getByText('Your Concept Brief was received and validated. Current Production has not connected live AI generation', {
+      page.getByText('Your Concept Brief was received and validated. This secure status connection does not add live AI generation', {
         exact: false,
       }),
     ).toBeVisible();
@@ -585,21 +585,21 @@ test.describe('/design/start conversion flow', () => {
       page.getByText('Opening the query-free Preview page does not mean generation has started.', { exact: false }),
     ).toBeVisible();
     await expect(
-      page.getByText('The current entry is a guarded preview-status/demo entry, not proof of an active live workflow.', {
+      page.getByText('The customer link reads only a trusted server-mediated state.', {
         exact: false,
       }),
     ).toBeVisible();
     await expect(
-      page.getByText('The route may remain safely unavailable until NOVORA enables the workflow for this submission.', {
+      page.getByText('a receipt cannot manufacture a ready result.', {
         exact: false,
       }),
     ).toBeVisible();
     await expect(
-      page.getByText('When the workflow is enabled for your submission', { exact: false }),
+      page.getByText('Once live generation is operating', { exact: false }),
     ).toBeVisible();
     await expect(
       page.getByText(
-        'This exact, query-free link is tied only to your validated customer reference.',
+        'This exact, query-free link is tied to your validated customer reference and a secure server proof.',
         { exact: false },
       ),
     ).toBeVisible();
@@ -730,13 +730,13 @@ test.describe('/design/preview customer boundaries', () => {
     );
     await expect(page.getByText('Customer First Preview')).toBeVisible();
     await expect(page.getByText('query-free link', { exact: false })).toBeVisible();
-    await expect(page.getByText('live First Preview workflow is not yet connected', { exact: false })).toBeVisible();
+    await expect(page.getByText('Live First Preview generation is not yet connected', { exact: false })).toBeVisible();
     await expect(page.getByText('does not mean generation has started', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('guarded preview-status/demo entry', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('trusted server-mediated state', { exact: false }).first()).toBeVisible();
     await expect(page.getByText('structural logic, gemstone orientation and composition', { exact: false })).toBeVisible();
     await expect(page.getByText('quotation, order, payment, and production decisions remain human-controlled', { exact: false })).toBeVisible();
     await expect(page.getByText('not CAD, a final quote, an order', { exact: false })).toBeVisible();
-    await expect(page.getByText('automatically enters the First Preview workflow', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('automatically starts an AI hand-drawn First Preview for every eligible submission', { exact: false })).toBeVisible();
     await expect(page.getByText('Human handling is exception-only', { exact: false })).toHaveCount(0);
   });
 });
