@@ -10,6 +10,10 @@ import {
   type FixedWindowRateLimitPolicy,
   normalizePublicApiRateLimitEmail,
 } from "../../../lib/server/public-api-rate-limit";
+import {
+  attachFirstPreviewCustomerSessionCookie,
+  type FirstPreviewSessionRouteDependencies,
+} from "../../../lib/server/ai-sketch/instant-first-preview-feature-flag";
 
 type ConceptBriefResponse = {
   ok: boolean;
@@ -72,6 +76,36 @@ function rateLimitResponse(headers?: HeadersInit) {
     },
     429,
     headers,
+  );
+}
+
+type PersistedConceptBriefIdentity = Readonly<{
+  persisted: true;
+  publicReference: string;
+  conceptBriefId: string;
+}>;
+
+export function createPersistedConceptBriefResponse(
+  persistence: PersistedConceptBriefIdentity,
+  dependencies: FirstPreviewSessionRouteDependencies = {},
+) {
+  const response = jsonResponse(
+    {
+      ok: true,
+      mode: "supabase",
+      persisted: true,
+      message:
+        "Concept Brief submitted for NOVORA review. This is not CAD approval, pricing approval, sourcing confirmation, or production confirmation.",
+      publicReference: persistence.publicReference,
+      conceptBriefId: persistence.conceptBriefId,
+    },
+    201,
+  );
+
+  return attachFirstPreviewCustomerSessionCookie(
+    response,
+    persistence,
+    dependencies,
   );
 }
 
@@ -149,16 +183,9 @@ export async function POST(request: Request) {
     );
   }
 
-  return jsonResponse(
-    {
-      ok: true,
-      mode: "supabase",
-      persisted: true,
-      message:
-        "Concept Brief submitted for NOVORA review. This is not CAD approval, pricing approval, sourcing confirmation, or production confirmation.",
-      publicReference: persistence.publicReference,
-      conceptBriefId: persistence.conceptBriefId,
-    },
-    201,
-  );
+  return createPersistedConceptBriefResponse({
+    persisted: true,
+    publicReference: persistence.publicReference,
+    conceptBriefId: persistence.conceptBriefId,
+  });
 }
