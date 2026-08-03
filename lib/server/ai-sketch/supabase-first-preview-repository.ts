@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { FIRST_PREVIEW_COST_CONTRACT } from "./first-preview-cost-contract";
+
 // This dependency-injected implementation contains no credentials and creates
 // no client by itself. Production construction is exposed only through the
 // mechanically server-only first-preview-persistence facade.
@@ -113,6 +115,11 @@ export interface FirstPreviewDatabaseClient {
     allowedStatuses: readonly FirstPreviewJobStatus[],
     patch: RowPatch,
   ): DatabaseResult<FirstPreviewJobRow>;
+  claimProviderDispatch(
+    id: string,
+    actualCostMicros: number,
+    updatedAt: string,
+  ): DatabaseResult<FirstPreviewJobRow>;
   claimProviderRequestIdentity(
     id: string,
     requestId: string,
@@ -204,6 +211,19 @@ export function createFirstPreviewDatabaseClient(
         .update(patch)
         .eq("id", id)
         .in("status", [...allowedStatuses])
+        .select(JOB_COLUMNS)
+        .maybeSingle();
+    },
+    async claimProviderDispatch(id, actualCostMicros, updatedAt) {
+      return supabase
+        .from("ai_sketch_jobs")
+        .update({
+          actual_cost_micros: actualCostMicros,
+          updated_at: updatedAt,
+        })
+        .eq("id", id)
+        .eq("status", "processing")
+        .is("actual_cost_micros", null)
         .select(JOB_COLUMNS)
         .maybeSingle();
     },
@@ -579,6 +599,16 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     jobId: string,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
     if (!UUID_PATTERN.test(jobId)) return failure("invalid_input");
+    const claim = await this.database.claimProviderDispatch(
+      jobId,
+      FIRST_PREVIEW_COST_CONTRACT.estimatedCostMicros,
+      this.clock(),
+    );
+    if (claim.error) return failure("repository_unavailable");
+    const claimed = mapJob(claim.data);
+    if (claim.data && !claimed) return failure("repository_unavailable");
+    if (claimed) return { ok: true, value: claimed };
+
     const currentResult = await this.database.findJobById(jobId);
     if (currentResult.error) return failure("repository_unavailable");
     const current = mapJob(currentResult.data);
@@ -587,16 +617,10 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
         ? failure("repository_unavailable")
         : failure("job_not_found");
     }
-    if (current.status !== "processing") return failure("job_not_active");
-    if (current.actualCostMicros === 0) {
-      return { ok: true, value: current };
-    }
-    if (current.actualCostMicros !== null) {
-      return failure("job_not_active");
-    }
-    return this.updateJob(jobId, ["processing"], {
-      actual_cost_micros: 0,
-    });
+    return current.status === "processing" &&
+      current.actualCostMicros !== null
+      ? failure("idempotency_conflict")
+      : failure("job_not_active");
   }
 
   async recordProviderRequest(

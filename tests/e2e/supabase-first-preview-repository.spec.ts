@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { createUnavailableFirstPreviewRepository } from "../../lib/server/ai-sketch/first-preview-persistence-contract";
-import { createSupabaseFirstPreviewRepository } from "../../lib/server/ai-sketch/supabase-first-preview-repository";
+import {
+  createFirstPreviewDatabaseClient,
+  createSupabaseFirstPreviewRepository,
+} from "../../lib/server/ai-sketch/supabase-first-preview-repository";
 import {
   FIRST_PREVIEW_ASSET_BUCKET,
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
@@ -10,6 +13,7 @@ import {
   type ReserveFirstPreviewJobInput,
 } from "../../lib/server/ai-sketch/first-preview-persistence-contract";
 import { FakeFirstPreviewDatabaseClient } from "../fixtures/ai-sketch/fake-first-preview-database-client";
+import { FIRST_PREVIEW_COST_CONTRACT } from "../../lib/server/ai-sketch/first-preview-cost-contract";
 
 const BRIEF_ID = "123e4567-e89b-42d3-a456-426614174000";
 const OTHER_BRIEF_ID = "223e4567-e89b-42d3-a456-426614174000";
@@ -95,6 +99,13 @@ async function reserveStartedJob() {
 
 async function reserveAndStart() {
   const state = await reserveStartedJob();
+  expect(await state.repository.recordProviderDispatch(JOB_ID)).toMatchObject({
+    ok: true,
+    value: {
+      actualCostMicros:
+        FIRST_PREVIEW_COST_CONTRACT.perAttemptReservationLimitMicros,
+    },
+  });
   expect(
     await state.repository.recordProviderRequest(JOB_ID, {
       providerRequestId: "openai-request-001",
@@ -178,6 +189,129 @@ test.describe("Supabase-backed First Preview repository", () => {
     expect(replay).toEqual(recorded);
     expect(conflictingReplacement).toEqual({ ok: false, code: "idempotency_conflict" });
     expect(client.jobs.get(JOB_ID)?.provider_request_id).toBe("openai-request-001");
+  });
+
+  test("atomically claims Provider dispatch once with conservative durable cost", async () => {
+    const { client, repository } = await reserveStartedJob();
+    expect(client.jobs.get(JOB_ID)?.actual_cost_micros).toBeNull();
+
+    const claims = await Promise.all([
+      repository.recordProviderDispatch(JOB_ID),
+      repository.recordProviderDispatch(JOB_ID),
+    ]);
+    expect(claims.filter((claim) => claim.ok)).toHaveLength(1);
+    expect(claims).toContainEqual({
+      ok: false,
+      code: "idempotency_conflict",
+    });
+    expect(client.jobs.get(JOB_ID)?.actual_cost_micros).toBe(100_000);
+    expect(
+      client.operations.filter(
+        (operation) => operation === "claimProviderDispatch",
+      ),
+    ).toHaveLength(2);
+
+    const terminatedAfterDispatch = await repository.findJobById(JOB_ID);
+    expect(terminatedAfterDispatch).toMatchObject({
+      status: "processing",
+      actualCostMicros: 100_000,
+      retryEligible: null,
+    });
+    expect(await repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("builds the Production dispatch claim with exact status and null-cost CAS filters", async () => {
+    const operations: Array<readonly unknown[]> = [];
+    const builder = {
+      update(patch: Record<string, unknown>) {
+        operations.push(["update", patch]);
+        return builder;
+      },
+      eq(column: string, value: unknown) {
+        operations.push(["eq", column, value]);
+        return builder;
+      },
+      is(column: string, value: unknown) {
+        operations.push(["is", column, value]);
+        return builder;
+      },
+      select(columns: string) {
+        operations.push(["select", columns]);
+        return builder;
+      },
+      maybeSingle() {
+        operations.push(["maybeSingle"]);
+        return Promise.resolve({ data: null, error: null });
+      },
+    };
+    const supabase = {
+      from(table: string) {
+        operations.push(["from", table]);
+        return builder;
+      },
+    } as unknown as Parameters<typeof createFirstPreviewDatabaseClient>[0];
+
+    const database = createFirstPreviewDatabaseClient(supabase);
+    await database.claimProviderDispatch(
+      JOB_ID,
+      100_000,
+      "2026-08-03T00:00:00.000Z",
+    );
+    expect(operations).toEqual([
+      ["from", "ai_sketch_jobs"],
+      ["update", {
+        actual_cost_micros: 100_000,
+        updated_at: "2026-08-03T00:00:00.000Z",
+      }],
+      ["eq", "id", JOB_ID],
+      ["eq", "status", "processing"],
+      ["is", "actual_cost_micros", null],
+      ["select", expect.stringContaining("actual_cost_micros")],
+      ["maybeSingle"],
+    ]);
+  });
+
+  test("dispatch claim rejects malformed, wrong-state, duplicate, and repository-error cases", async () => {
+    const queued = harness();
+    await queued.repository.reserveJob(reservation());
+    expect(await queued.repository.recordProviderDispatch("invalid")).toEqual({
+      ok: false,
+      code: "invalid_input",
+    });
+    expect(await queued.repository.recordProviderDispatch(JOB_ID)).toEqual({
+      ok: false,
+      code: "job_not_active",
+    });
+
+    const failed = await reserveStartedJob();
+    failed.client.failNext("claimProviderDispatch");
+    expect(await failed.repository.recordProviderDispatch(JOB_ID)).toEqual({
+      ok: false,
+      code: "repository_unavailable",
+    });
+    expect(failed.client.jobs.get(JOB_ID)?.actual_cost_micros).toBeNull();
+  });
+
+  test("normal success and failure reconcile the conservative dispatch marker", async () => {
+    const failureState = await reserveAndStart();
+    expect(await failureState.repository.recordJobFailure(JOB_ID, {
+      category: "provider_unavailable",
+      retryEligible: true,
+      actualCostMicros: 17_500,
+    })).toMatchObject({
+      ok: true,
+      value: {
+        status: "failed",
+        actualCostMicros: 17_500,
+        retryEligible: true,
+      },
+    });
+
+    const successState = await completeWithOutput();
+    expect(await successState.repository.findJobById(JOB_ID)).toMatchObject({
+      status: "succeeded",
+      actualCostMicros: 41_000,
+    });
   });
 
   test("atomically rejects a concurrent Provider request identity replacement", async () => {

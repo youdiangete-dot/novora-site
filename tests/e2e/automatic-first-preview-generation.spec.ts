@@ -80,6 +80,9 @@ const modules = loadWithServerOnlyTestShim(() => ({
   memory: testRequire(
     "../../lib/server/ai-sketch/in-memory-first-preview-repository",
   ) as typeof import("../../lib/server/ai-sketch/in-memory-first-preview-repository"),
+  executionCapability: testRequire(
+    "../../lib/server/ai-sketch/first-preview-post-response-execution-capability",
+  ) as typeof import("../../lib/server/ai-sketch/first-preview-post-response-execution-capability"),
 }));
 
 const PUBLIC_REFERENCE = "NOVORA-CB-20260803-G2A1";
@@ -468,6 +471,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         },
         {
           featureFlagValue,
+          executionCapabilityValue: "true",
           createRepository: () => {
             repositoryConstructions += 1;
             return repository();
@@ -490,6 +494,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       },
       {
         featureFlagValue: "true",
+        executionCapabilityValue: "true",
         createRepository: () => targetRepository,
         createWorkerDependencies: (repo) =>
           workerDependencies(repo as typeof targetRepository, successfulBinding()),
@@ -499,7 +504,54 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     );
     expect(result).toEqual({ status: "scheduled" });
     expect(scheduledTasks).toHaveLength(1);
-    expect((await targetRepository.findJobById(JOB_1_ID))?.status).toBe("queued");
+    expect(await targetRepository.findJobById(JOB_1_ID)).toBeNull();
+    await scheduledTasks[0]();
+    expect((await targetRepository.findJobById(JOB_1_ID))?.status).toBe("succeeded");
+  });
+
+  test("requires the exact independent post-response execution capability", async () => {
+    expect(
+      modules.executionCapability.FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED_ENV,
+    ).toBe("NOVORA_FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED");
+    for (const executionCapabilityValue of [
+      undefined,
+      "",
+      "TRUE",
+      " true",
+      "true ",
+      1,
+      true,
+      {},
+    ]) {
+      let repositoryConstructions = 0;
+      let schedules = 0;
+      const result = modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+        {
+          payload: validBrief(),
+          persistenceConfirmed: true,
+          customerAccessProofEstablished: true,
+          conceptBriefId: BRIEF_ID,
+          publicReference: PUBLIC_REFERENCE,
+        },
+        {
+          featureFlagValue: "true",
+          executionCapabilityValue,
+          createRepository: () => {
+            repositoryConstructions += 1;
+            return repository();
+          },
+          schedule: () => { schedules += 1; },
+        },
+      );
+      expect(result).toEqual({ status: "disabled" });
+      expect(repositoryConstructions).toBe(0);
+      expect(schedules).toBe(0);
+    }
+    expect(
+      modules.executionCapability.isFirstPreviewPostResponseExecutionConfirmed(
+        "true",
+      ),
+    ).toBe(true);
   });
 
   test("proof failure and scheduler failure never construct or dispatch a Provider", async () => {
@@ -524,6 +576,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         },
         {
           featureFlagValue: "true",
+          executionCapabilityValue: "true",
           createRepository: () => {
             repositoryConstructions += 1;
             return repository();
@@ -545,6 +598,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       },
       {
         featureFlagValue: "true",
+        executionCapabilityValue: "true",
         createRepository: () => targetRepository,
         createWorkerDependencies: (repo) => ({
           ...workerDependencies(repo as typeof targetRepository, successfulBinding()),
@@ -559,12 +613,52 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     );
     expect(failed).toEqual({ status: "not_scheduled" });
     expect(providerConstructions).toBe(0);
-    expect(await targetRepository.findJobById(JOB_1_ID)).toMatchObject({
-      status: "failed",
-      failureCategory: "lifecycle_conflict",
-      retryEligible: false,
-      actualCostMicros: 0,
+    expect(await targetRepository.findJobById(JOB_1_ID)).toBeNull();
+  });
+
+  test("claims Provider dispatch once with the conservative reservation", async () => {
+    const prepared = await preparedWork();
+    expect(await prepared.repository.startJob(JOB_1_ID)).toMatchObject({
+      ok: true,
+      value: { status: "processing", actualCostMicros: null },
     });
+    const claims = await Promise.all([
+      prepared.repository.recordProviderDispatch(JOB_1_ID),
+      prepared.repository.recordProviderDispatch(JOB_1_ID),
+    ]);
+    expect(claims.filter((claim) => claim.ok)).toHaveLength(1);
+    expect(claims).toContainEqual({ ok: false, code: "idempotency_conflict" });
+    expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "processing",
+      actualCostMicros: 100_000,
+    });
+  });
+
+  test("durably claims dispatch before invoking the Provider adapter", async () => {
+    const prepared = await preparedWork();
+    const events: string[] = [];
+    const originalClaim =
+      prepared.repository.recordProviderDispatch.bind(prepared.repository);
+    prepared.repository.recordProviderDispatch = async (jobId) => {
+      events.push("dispatch_claim");
+      return originalClaim(jobId);
+    };
+    const binding = successfulBinding();
+    const originalGenerate = binding.adapter.generateFirstPreviewImage.bind(
+      binding.adapter,
+    );
+    binding.adapter.generateFirstPreviewImage = async (...args) => {
+      events.push("provider_invocation");
+      return originalGenerate(...args);
+    };
+
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        prepared.work,
+        workerDependencies(prepared.repository, binding),
+      ),
+    ).toMatchObject({ status: "ready" });
+    expect(events).toEqual(["dispatch_claim", "provider_invocation"]);
   });
 
   test("duplicate workers dispatch once and only the complete lifecycle becomes ready", async () => {

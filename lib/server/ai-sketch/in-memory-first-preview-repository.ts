@@ -1,6 +1,8 @@
 // Deterministic fake repository for tests and local orchestration only.
 // It has no Supabase, Storage, Provider, environment, or network dependency.
 
+import { FIRST_PREVIEW_COST_CONTRACT } from "./first-preview-cost-contract";
+
 import {
   deriveFirstPreviewIdempotencyKey,
   FIRST_PREVIEW_ASSET_BUCKET,
@@ -203,14 +205,12 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     const current = this.jobsById.get(jobId);
     if (!current) return failure("job_not_found");
     if (current.status !== "processing") return failure("job_not_active");
-    if (current.actualCostMicros === 0) {
-      return { ok: true, value: copyJob(current) };
-    }
     if (current.actualCostMicros !== null) {
-      return failure("job_not_active");
+      return failure("idempotency_conflict");
     }
     return this.transitionJob(jobId, new Set(["processing"]), {
-      actualCostMicros: 0,
+      actualCostMicros:
+        FIRST_PREVIEW_COST_CONTRACT.estimatedCostMicros,
     });
   }
 

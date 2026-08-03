@@ -15,6 +15,14 @@ import {
   INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV,
 } from "./instant-first-preview-feature-flag";
 import {
+  FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED_ENV,
+  isFirstPreviewPostResponseExecutionConfirmed,
+} from "./first-preview-post-response-execution-capability";
+import {
+  isValidFirstPreviewAssetUuid,
+  isValidFirstPreviewPublicReference,
+} from "./first-preview-generated-assets-contract";
+import {
   createFirstPreviewRepository,
   type FirstPreviewRepository,
 } from "./first-preview-persistence";
@@ -25,6 +33,7 @@ export type AutomaticFirstPreviewTriggerResult = Readonly<{
 
 export type AutomaticFirstPreviewTriggerDependencies = Readonly<{
   featureFlagValue?: unknown;
+  executionCapabilityValue?: unknown;
   createRepository?: () => FirstPreviewRepository;
   createWorkerDependencies?: (
     repository: FirstPreviewRepository,
@@ -37,7 +46,7 @@ function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-export async function triggerAutomaticFirstPreviewAfterPersistence(
+export function triggerAutomaticFirstPreviewAfterPersistence(
   input: {
     payload: unknown;
     persistenceConfirmed: unknown;
@@ -46,21 +55,34 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
     publicReference: string;
   },
   dependencies: AutomaticFirstPreviewTriggerDependencies = {},
-): Promise<AutomaticFirstPreviewTriggerResult> {
+): AutomaticFirstPreviewTriggerResult {
   const featureFlagValue = hasOwn(dependencies, "featureFlagValue")
     ? dependencies.featureFlagValue
     : process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
   if (!isInstantFirstPreviewAgentEnabled(featureFlagValue)) {
     return { status: "disabled" };
   }
+  const executionCapabilityValue = hasOwn(
+    dependencies,
+    "executionCapabilityValue",
+  )
+    ? dependencies.executionCapabilityValue
+    : process.env[FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED_ENV];
+  if (
+    !isFirstPreviewPostResponseExecutionConfirmed(executionCapabilityValue)
+  ) {
+    return { status: "disabled" };
+  }
   if (
     input.persistenceConfirmed !== true ||
-    input.customerAccessProofEstablished !== true
+    input.customerAccessProofEstablished !== true ||
+    !isValidFirstPreviewAssetUuid(input.conceptBriefId) ||
+    !isValidFirstPreviewPublicReference(input.publicReference)
   ) {
     return { status: "not_scheduled" };
   }
 
-  try {
+  const scheduled = scheduleFirstPreviewPostResponseTask(async () => {
     const repository = (dependencies.createRepository ??
       createFirstPreviewRepository)();
     const reservation = await reserveAutomaticFirstPreviewAttempt({
@@ -74,33 +96,17 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
       repository,
       jobIdSource: dependencies.jobIdSource,
     });
-    if (!reservation.ok) return { status: "not_scheduled" };
+    if (!reservation.ok) return;
 
     const workerDependencies = (
       dependencies.createWorkerDependencies ??
       createProductionAutomaticFirstPreviewWorkerDependencies
     )(repository);
-    const scheduled = scheduleFirstPreviewPostResponseTask(
-      () =>
-        runAutomaticFirstPreviewWorker(
-          reservation.work,
-          workerDependencies,
-        ).then(() => undefined),
-      dependencies.schedule,
+    await runAutomaticFirstPreviewWorker(
+      reservation.work,
+      workerDependencies,
     );
-    if (!scheduled) {
-      if (reservation.disposition === "created") {
-        await repository.recordJobFailure(reservation.work.jobId, {
-          category: "lifecycle_conflict",
-          retryEligible: false,
-          actualCostMicros: 0,
-        });
-      }
-      return { status: "not_scheduled" };
-    }
+  }, dependencies.schedule);
 
-    return { status: "scheduled" };
-  } catch {
-    return { status: "not_scheduled" };
-  }
+  return scheduled ? { status: "scheduled" } : { status: "not_scheduled" };
 }

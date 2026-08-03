@@ -19,7 +19,10 @@ import {
 } from "../../../lib/server/ai-sketch/first-preview-customer-access-contract";
 import {
   triggerAutomaticFirstPreviewAfterPersistence,
+  type AutomaticFirstPreviewTriggerDependencies,
 } from "../../../lib/server/ai-sketch/first-preview-automatic-trigger";
+
+export const maxDuration = 300;
 
 type ConceptBriefResponse = {
   ok: boolean;
@@ -91,6 +94,14 @@ type PersistedConceptBriefIdentity = Readonly<{
   conceptBriefId: string;
 }>;
 
+type ConceptBriefPostDependencies = Readonly<{
+  checkRateLimit?: typeof checkPublicApiRateLimit;
+  persistSubmission?: typeof persistConceptBriefSubmission;
+  sessionDependencies?: FirstPreviewSessionRouteDependencies;
+  triggerAutomaticPreview?: typeof triggerAutomaticFirstPreviewAfterPersistence;
+  triggerDependencies?: AutomaticFirstPreviewTriggerDependencies;
+}>;
+
 export function createPersistedConceptBriefResponse(
   persistence: PersistedConceptBriefIdentity,
   dependencies: FirstPreviewSessionRouteDependencies = {},
@@ -115,8 +126,18 @@ export function createPersistedConceptBriefResponse(
   );
 }
 
-export async function POST(request: Request) {
-  const ipRateLimit = await checkPublicApiRateLimit({
+export function createConceptBriefPostHandler(
+  dependencies: ConceptBriefPostDependencies = {},
+) {
+  const checkRateLimit = dependencies.checkRateLimit ?? checkPublicApiRateLimit;
+  const persistSubmission =
+    dependencies.persistSubmission ?? persistConceptBriefSubmission;
+  const triggerAutomaticPreview =
+    dependencies.triggerAutomaticPreview ??
+    triggerAutomaticFirstPreviewAfterPersistence;
+
+  return async function postConceptBrief(request: Request) {
+  const ipRateLimit = await checkRateLimit({
     routeName: CONCEPT_BRIEF_ROUTE_NAME,
     request,
     policy: CONCEPT_BRIEF_IP_RATE_LIMIT,
@@ -163,7 +184,7 @@ export async function POST(request: Request) {
   );
 
   if (normalizedEmail) {
-    const emailRateLimit = await checkPublicApiRateLimit({
+    const emailRateLimit = await checkRateLimit({
       routeName: CONCEPT_BRIEF_ROUTE_NAME,
       request,
       policy: CONCEPT_BRIEF_EMAIL_RATE_LIMIT,
@@ -175,7 +196,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const persistence = await persistConceptBriefSubmission(payload as ConceptBriefSubmissionPayload);
+  const persistence = await persistSubmission(payload as ConceptBriefSubmissionPayload);
 
   if (persistence.persisted === false) {
     return jsonResponse(
@@ -194,9 +215,12 @@ export async function POST(request: Request) {
     publicReference: persistence.publicReference,
     conceptBriefId: persistence.conceptBriefId,
   } as const;
-  const response = createPersistedConceptBriefResponse(persistedIdentity);
+  const response = createPersistedConceptBriefResponse(
+    persistedIdentity,
+    dependencies.sessionDependencies,
+  );
 
-  await triggerAutomaticFirstPreviewAfterPersistence({
+  triggerAutomaticPreview({
     payload,
     persistenceConfirmed: true,
     customerAccessProofEstablished: Boolean(
@@ -204,7 +228,10 @@ export async function POST(request: Request) {
     ),
     conceptBriefId: persistedIdentity.conceptBriefId,
     publicReference: persistedIdentity.publicReference,
-  });
+  }, dependencies.triggerDependencies);
 
   return response;
+  };
 }
+
+export const POST = createConceptBriefPostHandler();

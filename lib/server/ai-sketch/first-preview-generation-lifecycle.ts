@@ -546,10 +546,7 @@ export async function runAutomaticFirstPreviewWorker(
         await dependencies.repository.recordJobFailure(work.jobId, {
           category: "unexpected_provider_error",
           retryEligible: false,
-          actualCostMicros:
-            job.actualCostMicros === 0
-              ? FIRST_PREVIEW_COST_CONTRACT.estimatedCostMicros
-              : 0,
+          actualCostMicros: job.actualCostMicros ?? 0,
         });
       }
     } catch {
