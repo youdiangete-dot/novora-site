@@ -43,10 +43,11 @@ merged:
 - The target direction below is a locked product decision, not evidence of
   completed implementation or deployment.
 
-### Current integration-only First Preview state
+### PR #252 pre-merge integration-only First Preview state
 
-- `integration/instant-first-preview-agent` is at
-  `d9265c646f50171e992d8c1bb88e42bc7ae10b38`.
+- Before PR #252 is merged, `integration/instant-first-preview-agent` is at
+  `d9265c646f50171e992d8c1bb88e42bc7ae10b38`, which is PR #252's Base and the
+  PR #251 merge commit.
 - PR #251 is merged into integration only; it is not on `main`.
 - It is not deployed to Production.
 - On integration, `/design/submitted` contains the hardened receipt-gated
@@ -58,6 +59,16 @@ merged:
 - Opening the integration route or possessing a receipt does not mean
   generation started. This integration state is not deployed Production
   behavior.
+
+A normal PR #252 merge will advance integration to the actual GitHub merge
+commit. After merge, all later tasks, especially Production customer-view
+binding, must fresh-fetch the remote `integration/instant-first-preview-agent`
+branch, query its actual tip, and use that post-merge integration tip. Later
+tasks must not reuse
+`d9265c646f50171e992d8c1bb88e42bc7ae10b38` as the current tip merely because it
+was PR #252's Base. The PR #252 post-merge validation report must record the
+actual merge commit and publish it to the Coordinator handoff; this rule does
+not require or permit inventing that SHA in advance.
 
 ### Locked target MVP direction
 
@@ -3341,9 +3352,11 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
   Direct Git inspection records a normal two-parent merge whose tree equals the
   approved Head
-  `953dd047a46c430074e7694c2c2cd0317a805889`, and integration equals merge
-  commit `d9265c646f50171e992d8c1bb88e42bc7ae10b38`. PR #251 changed exactly its
-  accepted nine-file scope, its source branch remains, and parked Draft PRs
+  `953dd047a46c430074e7694c2c2cd0317a805889`, and immediately after PR #251,
+  integration equaled merge commit
+  `d9265c646f50171e992d8c1bb88e42bc7ae10b38`. That commit is also PR #252's
+  Base and the pre-PR #252 integration tip. PR #251 changed exactly its accepted
+  nine-file scope, its source branch remains, and parked Draft PRs
   #248, #246, #242, and #249 remain at
   `741a410be7a17828fbe378e0cca4559592e30e88`,
   `0e77438b0353fd995c1ba24ba93897e4d8a66616`,
@@ -3544,9 +3557,13 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 
 ## 10. Recommended Next Step
 
-As of 2026-08-01, PR #251 and its post-merge validation are complete on
-`integration/instant-first-preview-agent` at
-`d9265c646f50171e992d8c1bb88e42bc7ae10b38`; `main` remains unchanged at
+As of 2026-08-01, PR #251 and its post-merge validation are complete. Before PR
+#252 is merged, `integration/instant-first-preview-agent` is at
+`d9265c646f50171e992d8c1bb88e42bc7ae10b38`, which is the PR #251 merge commit,
+PR #252's Base, and the pre-PR #252 integration tip. A normal PR #252 merge will
+advance integration beyond that Base; later tasks must follow the post-merge
+fresh-query rule above and must not treat the Base as the current integration
+tip after merge. `main` remains unchanged at
 `f58b06766bd02922cf3740a71df0aa618cfefe87`. Production customer-view binding,
 live AI generation connection, Agent 72B, Agent 72F, Production deployment, SQL
 or schema work, and live Supabase, Storage, or Provider verification have not
