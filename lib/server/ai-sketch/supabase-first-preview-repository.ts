@@ -272,9 +272,14 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const FAILURE_CATEGORIES = new Set<FirstPreviewFailureCategory>([
-  "rate_limited", "provider_unavailable", "network_failure",
-  "invalid_provider_response", "storage_failure", "privacy_failure",
-  "access_failure", "lifecycle_conflict", "timeout", "cancelled",
+  "configuration_missing", "invalid_structured_input", "precondition_failed",
+  "invalid_request", "authentication_failed", "permission_denied",
+  "moderation_blocked", "rate_limited", "provider_unavailable",
+  "network_failure", "timeout", "cancelled", "invalid_provider_response",
+  "invalid_base64", "invalid_image_format", "invalid_image_dimensions",
+  "image_too_large", "unsafe_output", "privacy_failure", "access_failure",
+  "storage_failure", "lifecycle_conflict", "budget_blocked",
+  "unexpected_provider_error",
 ]);
 const JOB_STATUSES = new Set<FirstPreviewJobStatus>([
   "queued", "processing", "succeeded", "failed", "timed_out", "cancelled",
@@ -470,7 +475,7 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     this.processingTimeoutMs =
       Number.isSafeInteger(options.processingTimeoutMs) && options.processingTimeoutMs! > 0
         ? options.processingTimeoutMs!
-        : 30_000;
+        : 150_000;
   }
 
   async reserveJob(input: ReserveFirstPreviewJobInput): Promise<ReserveFirstPreviewJobResult> {
@@ -567,6 +572,30 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
       status: "processing",
       started_at: startedAt,
       deadline_at: addMilliseconds(startedAt, this.processingTimeoutMs),
+    });
+  }
+
+  async recordProviderDispatch(
+    jobId: string,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
+    if (!UUID_PATTERN.test(jobId)) return failure("invalid_input");
+    const currentResult = await this.database.findJobById(jobId);
+    if (currentResult.error) return failure("repository_unavailable");
+    const current = mapJob(currentResult.data);
+    if (!current) {
+      return currentResult.data
+        ? failure("repository_unavailable")
+        : failure("job_not_found");
+    }
+    if (current.status !== "processing") return failure("job_not_active");
+    if (current.actualCostMicros === 0) {
+      return { ok: true, value: current };
+    }
+    if (current.actualCostMicros !== null) {
+      return failure("job_not_active");
+    }
+    return this.updateJob(jobId, ["processing"], {
+      actual_cost_micros: 0,
     });
   }
 
@@ -812,6 +841,12 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
   async findJobByIdempotencyKey(key: string): Promise<FirstPreviewJobRecord | null> {
     if (!SHA256_PATTERN.test(key)) return null;
     const result = await this.database.findJobByIdempotencyKey(key);
+    return result.error ? null : mapJob(result.data);
+  }
+
+  async findJobById(jobId: string): Promise<FirstPreviewJobRecord | null> {
+    if (!UUID_PATTERN.test(jobId)) return null;
+    const result = await this.database.findJobById(jobId);
     return result.error ? null : mapJob(result.data);
   }
 

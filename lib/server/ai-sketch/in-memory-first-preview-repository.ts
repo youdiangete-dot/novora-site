@@ -192,9 +192,26 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       {
         status: "processing",
         startedAt: now,
-        deadlineAt: addSeconds(now, 30),
+        deadlineAt: addSeconds(now, 150),
       },
     );
+  }
+
+  async recordProviderDispatch(
+    jobId: string,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
+    const current = this.jobsById.get(jobId);
+    if (!current) return failure("job_not_found");
+    if (current.status !== "processing") return failure("job_not_active");
+    if (current.actualCostMicros === 0) {
+      return { ok: true, value: copyJob(current) };
+    }
+    if (current.actualCostMicros !== null) {
+      return failure("job_not_active");
+    }
+    return this.transitionJob(jobId, new Set(["processing"]), {
+      actualCostMicros: 0,
+    });
   }
 
   async recordProviderRequest(
@@ -471,6 +488,11 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
   ): Promise<FirstPreviewJobRecord | null> {
     const jobId = this.jobIdByIdempotencyKey.get(idempotencyKey);
     const job = jobId ? this.jobsById.get(jobId) : undefined;
+    return job ? copyJob(job) : null;
+  }
+
+  async findJobById(jobId: string): Promise<FirstPreviewJobRecord | null> {
+    const job = this.jobsById.get(jobId);
     return job ? copyJob(job) : null;
   }
 

@@ -1,0 +1,754 @@
+import { expect, test } from "@playwright/test";
+import { createHash } from "node:crypto";
+import Module, { createRequire } from "node:module";
+import path from "node:path";
+
+import type {
+  AutomaticFirstPreviewWorkerDependencies,
+  FirstPreviewGenerationWork,
+} from "../../lib/server/ai-sketch/first-preview-generation-lifecycle";
+import type { FirstPreviewGeneratedAssetStore } from "../../lib/server/ai-sketch/first-preview-generated-assets-contract";
+import type { OpenAiFirstPreviewProviderBinding } from "../../lib/server/ai-sketch/openai-first-preview-client";
+import type { OpenAiFirstPreviewAdapterResult } from "../../lib/server/ai-sketch/openai-first-preview-provider";
+import type { FirstPreviewProviderRequest } from "../../lib/server/ai-sketch/first-preview-runtime";
+import { createSyntheticFirstPreviewPng } from "../fixtures/ai-sketch/fake-first-preview-storage-client";
+
+const moduleInternals = Module as unknown as {
+  _resolveFilename(
+    request: string,
+    parent: unknown,
+    isMain: boolean,
+    options?: unknown,
+  ): string;
+};
+const serverOnlyTestShim = path.join(
+  process.cwd(),
+  "node_modules",
+  "next",
+  "dist",
+  "compiled",
+  "server-only",
+  "empty.js",
+);
+
+function loadWithServerOnlyTestShim<T>(load: () => T): T {
+  const originalResolveFilename = moduleInternals._resolveFilename;
+  moduleInternals._resolveFilename = function resolveTestModule(
+    request,
+    parent,
+    isMain,
+    options,
+  ) {
+    return request === "server-only"
+      ? serverOnlyTestShim
+      : originalResolveFilename.call(this, request, parent, isMain, options);
+  };
+  try {
+    return load();
+  } finally {
+    moduleInternals._resolveFilename = originalResolveFilename;
+  }
+}
+
+const testRequire = createRequire(
+  path.join(
+    process.cwd(),
+    "tests",
+    "e2e",
+    "automatic-first-preview-generation.spec.ts",
+  ),
+);
+const modules = loadWithServerOnlyTestShim(() => ({
+  cost: testRequire(
+    "../../lib/server/ai-sketch/first-preview-cost-contract",
+  ) as typeof import("../../lib/server/ai-sketch/first-preview-cost-contract"),
+  client: testRequire(
+    "../../lib/server/ai-sketch/openai-first-preview-client",
+  ) as typeof import("../../lib/server/ai-sketch/openai-first-preview-client"),
+  structured: testRequire(
+    "../../lib/server/ai-sketch/first-preview-structured-input",
+  ) as typeof import("../../lib/server/ai-sketch/first-preview-structured-input"),
+  lifecycle: testRequire(
+    "../../lib/server/ai-sketch/first-preview-generation-lifecycle",
+  ) as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle"),
+  trigger: testRequire(
+    "../../lib/server/ai-sketch/first-preview-automatic-trigger",
+  ) as typeof import("../../lib/server/ai-sketch/first-preview-automatic-trigger"),
+  persistence: testRequire(
+    "../../lib/server/ai-sketch/first-preview-persistence-contract",
+  ) as typeof import("../../lib/server/ai-sketch/first-preview-persistence-contract"),
+  memory: testRequire(
+    "../../lib/server/ai-sketch/in-memory-first-preview-repository",
+  ) as typeof import("../../lib/server/ai-sketch/in-memory-first-preview-repository"),
+}));
+
+const PUBLIC_REFERENCE = "NOVORA-CB-20260803-G2A1";
+const BRIEF_ID = "123e4567-e89b-42d3-a456-426614174000";
+const JOB_1_ID = "223e4567-e89b-42d3-a456-426614174000";
+const JOB_2_ID = "323e4567-e89b-42d3-a456-426614174000";
+const OUTPUT_ID = "423e4567-e89b-42d3-a456-426614174000";
+const VALID_PNG = createSyntheticFirstPreviewPng();
+
+function validBrief(overrides: Record<string, unknown> = {}) {
+  return {
+    pieceType: "ring",
+    designIntent: "A balanced heirloom ring with a pear center stone.",
+    designDescription: "A refined silhouette suitable for daily wear.",
+    styleDirection: ["warm heirloom", "clean sculptural"],
+    materialDirection: ["warm yellow gold"],
+    stones: [
+      {
+        role: "center",
+        type: "lab-grown diamond",
+        shape: "pear",
+        orientation: "point toward fingertip",
+        setting: "five prongs",
+      },
+    ],
+    centerStoneDirection: "Pear point aligned toward the fingertip.",
+    stoneArrangement: "Center stone with two smaller shoulder accents.",
+    dimensions: ["ring size to confirm"],
+    composition: "Low balanced center with tapered shoulders.",
+    wearabilityRequirements: ["daily wear"],
+    manufacturingConstraints: ["structurally explainable prongs"],
+    unknowns: ["exact ring size"],
+    avoid: ["hidden halo"],
+    requestedViews: ["front view", "side profile", "setting detail"],
+    ...overrides,
+  };
+}
+
+function repository() {
+  let tick = 0;
+  return new modules.memory.InMemoryFirstPreviewRepository(
+    () => `2026-08-03T00:00:${String(tick++).padStart(2, "0")}.000Z`,
+  );
+}
+
+function successfulBinding(options: {
+  usage?: { textInputTokens: number; imageOutputTokens: number } | null;
+  callCounter?: { value: number };
+} = {}): OpenAiFirstPreviewProviderBinding {
+  return {
+    adapter: {
+      async generateFirstPreviewImage() {
+        if (options.callCounter) options.callCounter.value += 1;
+        return {
+          ok: true,
+          imageBase64: Buffer.from(VALID_PNG).toString("base64"),
+          mimeType: "image/png",
+          width: 1024,
+          height: 1024,
+          byteSize: VALID_PNG.byteLength,
+          model: "gpt-image-2-2026-04-21",
+          providerRequestId: "req_goal2_synthetic_001",
+        };
+      },
+    },
+    readValidatedUsage: () =>
+      options.usage === undefined
+        ? { textInputTokens: 100, imageOutputTokens: 100 }
+        : options.usage,
+    readProviderRequestId: () => "req_goal2_synthetic_001",
+  };
+}
+
+function failedBinding(
+  result: Extract<OpenAiFirstPreviewAdapterResult, { ok: false }>,
+): OpenAiFirstPreviewProviderBinding {
+  return {
+    adapter: { async generateFirstPreviewImage() { return result; } },
+    readValidatedUsage: () => ({
+      textInputTokens: 100,
+      imageOutputTokens: 100,
+    }),
+    readProviderRequestId: () => "req_goal2_synthetic_failure",
+  };
+}
+
+function assetStore(counter?: { value: number }): FirstPreviewGeneratedAssetStore {
+  return {
+    kind: "supabase",
+    async persistValidatedPng(input) {
+      if (counter) counter.value += 1;
+      const createdAt = "2026-08-03T00:01:00.000Z";
+      return {
+        ok: true,
+        value: {
+          disposition: "created",
+          asset: {
+            assetId: [
+              "first-preview",
+              input.conceptBriefId,
+              input.jobId,
+              `${input.outputId}.png`,
+            ].join("/"),
+            assetPersisted: true,
+            bucketName: "novora-ai-sketches",
+            mimeType: "image/png",
+            byteSize: input.imageBytes.byteLength,
+            widthPx: 1024,
+            heightPx: 1024,
+            contentSha256: createHash("sha256")
+              .update(input.imageBytes)
+              .digest("hex"),
+            assetCreatedAt: createdAt,
+            assetValidatedAt: createdAt,
+          },
+        },
+      };
+    },
+    async readAuthorizedPng() {
+      return { ok: false, code: "access_denied" };
+    },
+  };
+}
+
+async function preparedWork(options: {
+  repository?: InstanceType<typeof modules.memory.InMemoryFirstPreviewRepository>;
+  jobId?: string;
+  attemptNumber?: unknown;
+  parentJobId?: string | null;
+} = {}) {
+  const targetRepository = options.repository ?? repository();
+  const result = await modules.lifecycle.reserveAutomaticFirstPreviewAttempt({
+    payload: validBrief(),
+    persistenceConfirmed: true,
+    customerAccessEligible: true,
+    conceptBriefId: BRIEF_ID,
+    publicReference: PUBLIC_REFERENCE,
+    attemptNumber: options.attemptNumber ?? 1,
+    parentJobId: options.parentJobId ?? null,
+    repository: targetRepository,
+    jobIdSource: () => options.jobId ?? JOB_1_ID,
+  });
+  if (result.ok === false) {
+    throw new Error(`reservation failed: ${result.category}`);
+  }
+  return { repository: targetRepository, work: result.work };
+}
+
+function workerDependencies(
+  targetRepository: InstanceType<typeof modules.memory.InMemoryFirstPreviewRepository>,
+  binding: OpenAiFirstPreviewProviderBinding,
+  store: FirstPreviewGeneratedAssetStore = assetStore(),
+): AutomaticFirstPreviewWorkerDependencies {
+  return {
+    repository: targetRepository,
+    createProvider: () => binding,
+    createAssetStore: () => store,
+    outputIdSource: () => OUTPUT_ID,
+  };
+}
+
+test.describe("Goal 2 executable cost contract", () => {
+  test("locks the approved reservation, lifetime budget, and actual-cost rules", () => {
+    expect(modules.cost.FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION).toBe(
+      "openai-gpt-image-2-2026-04-21-standard-1024x1024-medium-2026-08-03-v1",
+    );
+    expect(modules.cost.FIRST_PREVIEW_COST_CONTRACT).toMatchObject({
+      estimatedCostMicros: 100_000,
+      perAttemptReservationLimitMicros: 100_000,
+      lifetimeBudgetPerConceptBriefMicros: 200_000,
+      maximumAttempts: 2,
+      currency: "USD",
+    });
+    expect(
+      modules.cost.calculateFirstPreviewActualCostMicros({
+        textInputTokens: 100,
+        imageOutputTokens: 100,
+      }),
+    ).toBe(3_500);
+    expect(
+      modules.cost.reconcileFirstPreviewActualCost({
+        dispatched: true,
+        usage: null,
+      }),
+    ).toEqual({ actualCostMicros: 100_000, usageTrusted: false });
+    expect(
+      modules.cost.reconcileFirstPreviewActualCost({
+        dispatched: false,
+        usage: { textInputTokens: 99_999, imageOutputTokens: 99_999 },
+      }),
+    ).toEqual({ actualCostMicros: 0, usageTrusted: false });
+    expect(
+      modules.cost.evaluateFirstPreviewAttemptBudget({
+        attemptNumber: 2,
+        parentActualCostMicros: 100_001,
+      }).allowed,
+    ).toBe(false);
+    expect(
+      modules.cost.evaluateFirstPreviewAttemptBudget({
+        attemptNumber: 3,
+        parentActualCostMicros: 0,
+      }).allowed,
+    ).toBe(false);
+  });
+
+  test("strictly validates usage and never accepts image input accounting", () => {
+    expect(
+      modules.client.readValidatedOpenAiFirstPreviewUsage({
+        usage: {
+          input_tokens: 25,
+          output_tokens: 75,
+          total_tokens: 100,
+          input_tokens_details: { text_tokens: 25, image_tokens: 0 },
+        },
+      }),
+    ).toEqual({ textInputTokens: 25, imageOutputTokens: 75 });
+    for (const usage of [
+      null,
+      {},
+      {
+        input_tokens: 25,
+        output_tokens: 75,
+        total_tokens: 100,
+        input_tokens_details: { text_tokens: 25, image_tokens: 1 },
+      },
+      {
+        input_tokens: 25,
+        output_tokens: 75,
+        total_tokens: 99,
+        input_tokens_details: { text_tokens: 25, image_tokens: 0 },
+      },
+    ]) {
+      expect(
+        modules.client.readValidatedOpenAiFirstPreviewUsage({ usage }),
+      ).toBeNull();
+    }
+  });
+});
+
+test.describe("Goal 2 structured input and native Provider client", () => {
+  test("builds consistent reference-bound structures and strips non-allowlisted PII", () => {
+    const result = modules.structured.buildFirstPreviewStructuredGenerationInput({
+      payload: {
+        brief: validBrief(),
+        customerEmail: "private@example.invalid",
+        contact: { customerName: "Private Customer", phone: "+1 555 0100" },
+        adminNote: "never forward",
+      },
+      publicReference: PUBLIC_REFERENCE,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.designSpec.public_reference).toBe(PUBLIC_REFERENCE);
+    expect(result.value.handSketchInstruction.public_reference).toBe(
+      PUBLIC_REFERENCE,
+    );
+    expect(result.value.handSketchInstruction.design_spec_version).toBe(
+      result.value.designSpec.spec_version,
+    );
+    const serialized = JSON.stringify(result.value);
+    expect(serialized).not.toContain("private@example.invalid");
+    expect(serialized).not.toContain("Private Customer");
+    expect(serialized).not.toContain("never forward");
+  });
+
+  test("fails closed for invalid, unsafe, oversized, and contradictory input", () => {
+    for (const payload of [
+      validBrief({ pieceType: "watch" }),
+      validBrief({ designIntent: "Contact private@example.invalid" }),
+      validBrief({ designIntent: "x".repeat(20_001) }),
+      validBrief({ pieceType: "ring and necklace" }),
+    ]) {
+      expect(
+        modules.structured.buildFirstPreviewStructuredGenerationInput({
+          payload,
+          publicReference: PUBLIC_REFERENCE,
+        }).ok,
+      ).toBe(false);
+    }
+  });
+
+  test("uses one exact native Image API request and exposes only validated usage", async () => {
+    const structured = modules.structured.buildFirstPreviewStructuredGenerationInput({
+      payload: validBrief(),
+      publicReference: PUBLIC_REFERENCE,
+    });
+    expect(structured.ok).toBe(true);
+    if (!structured.ok) return;
+
+    let calls = 0;
+    let capturedBody: Record<string, unknown> | null = null;
+    let capturedAuthorization: string | null = null;
+    const binding = modules.client.createOpenAiFirstPreviewProviderBinding({
+      environment: { OPENAI_API_KEY: `sk-${"a".repeat(32)}` },
+      fetchImplementation: async (_url, init) => {
+        calls += 1;
+        capturedBody = JSON.parse(String(init?.body));
+        capturedAuthorization = new Headers(init?.headers).get("authorization");
+        return new Response(
+          JSON.stringify({
+            data: [{ b64_json: Buffer.from(VALID_PNG).toString("base64") }],
+            usage: {
+              input_tokens: 20,
+              output_tokens: 80,
+              total_tokens: 100,
+              input_tokens_details: { text_tokens: 20, image_tokens: 0 },
+            },
+          }),
+          {
+            status: 200,
+            headers: { "x-request-id": "req_native_goal2_001" },
+          },
+        );
+      },
+    });
+    expect(binding).not.toBeNull();
+    const request: FirstPreviewProviderRequest = {
+      contractVersion: "novora_first_preview_provider_v1",
+      purpose: "first_preview",
+      imageCount: 1,
+      designSpec: structured.value.designSpec,
+      handSketchInstruction: structured.value.handSketchInstruction,
+    };
+    const result = await binding!.adapter.generateFirstPreviewImage(request, {
+      signal: new AbortController().signal,
+    });
+    expect(result.ok).toBe(true);
+    expect(calls).toBe(1);
+    expect(capturedBody).toMatchObject({
+      model: "gpt-image-2-2026-04-21",
+      n: 1,
+      size: "1024x1024",
+      quality: "medium",
+      output_format: "png",
+      moderation: "auto",
+    });
+    expect(Object.keys(capturedBody!).sort()).toEqual([
+      "model",
+      "moderation",
+      "n",
+      "output_format",
+      "prompt",
+      "quality",
+      "size",
+    ]);
+    expect(capturedBody!.prompt).not.toBe(validBrief().designIntent);
+    expect(typeof capturedBody!.prompt).toBe("string");
+    expect(String(capturedBody!.prompt)).toContain(
+      "validated, privacy-minimized Hand Sketch Instruction JSON",
+    );
+    expect(capturedAuthorization).toBe(`Bearer sk-${"a".repeat(32)}`);
+    expect(binding!.readValidatedUsage()).toEqual({
+      textInputTokens: 20,
+      imageOutputTokens: 80,
+    });
+    expect(binding!.readProviderRequestId()).toBe("req_native_goal2_001");
+    expect(JSON.stringify(result)).not.toContain("sk-");
+    expect(JSON.stringify(result)).not.toContain("prompt");
+    expect(
+      modules.client.createOpenAiFirstPreviewProviderBinding({
+        environment: { OPENAI_API_KEY: " malformed " },
+      }),
+    ).toBeNull();
+  });
+});
+
+test.describe("Goal 2 idempotent trigger and lifecycle", () => {
+  test("only exact flag plus confirmed proof reserves and schedules", async () => {
+    for (const featureFlagValue of [
+      undefined,
+      "",
+      "TRUE",
+      " true",
+      "true ",
+      1,
+      true,
+    ]) {
+      let repositoryConstructions = 0;
+      const result = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+        {
+          payload: validBrief(),
+          persistenceConfirmed: true,
+          customerAccessProofEstablished: true,
+          conceptBriefId: BRIEF_ID,
+          publicReference: PUBLIC_REFERENCE,
+        },
+        {
+          featureFlagValue,
+          createRepository: () => {
+            repositoryConstructions += 1;
+            return repository();
+          },
+        },
+      );
+      expect(result).toEqual({ status: "disabled" });
+      expect(repositoryConstructions).toBe(0);
+    }
+
+    const targetRepository = repository();
+    const scheduledTasks: Array<() => void | Promise<void>> = [];
+    const result = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+      {
+        payload: validBrief(),
+        persistenceConfirmed: true,
+        customerAccessProofEstablished: true,
+        conceptBriefId: BRIEF_ID,
+        publicReference: PUBLIC_REFERENCE,
+      },
+      {
+        featureFlagValue: "true",
+        createRepository: () => targetRepository,
+        createWorkerDependencies: (repo) =>
+          workerDependencies(repo as typeof targetRepository, successfulBinding()),
+        schedule: (task) => { scheduledTasks.push(task); },
+        jobIdSource: () => JOB_1_ID,
+      },
+    );
+    expect(result).toEqual({ status: "scheduled" });
+    expect(scheduledTasks).toHaveLength(1);
+    expect((await targetRepository.findJobById(JOB_1_ID))?.status).toBe("queued");
+  });
+
+  test("proof failure and scheduler failure never construct or dispatch a Provider", async () => {
+    let providerConstructions = 0;
+    let repositoryConstructions = 0;
+    for (const preconditions of [
+      {
+        persistenceConfirmed: false,
+        customerAccessProofEstablished: true,
+      },
+      {
+        persistenceConfirmed: true,
+        customerAccessProofEstablished: false,
+      },
+    ]) {
+      const denied = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+        {
+          payload: validBrief(),
+          ...preconditions,
+          conceptBriefId: BRIEF_ID,
+          publicReference: PUBLIC_REFERENCE,
+        },
+        {
+          featureFlagValue: "true",
+          createRepository: () => {
+            repositoryConstructions += 1;
+            return repository();
+          },
+        },
+      );
+      expect(denied).toEqual({ status: "not_scheduled" });
+    }
+    expect(repositoryConstructions).toBe(0);
+
+    const targetRepository = repository();
+    const failed = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+      {
+        payload: validBrief(),
+        persistenceConfirmed: true,
+        customerAccessProofEstablished: true,
+        conceptBriefId: BRIEF_ID,
+        publicReference: PUBLIC_REFERENCE,
+      },
+      {
+        featureFlagValue: "true",
+        createRepository: () => targetRepository,
+        createWorkerDependencies: (repo) => ({
+          ...workerDependencies(repo as typeof targetRepository, successfulBinding()),
+          createProvider: () => {
+            providerConstructions += 1;
+            return successfulBinding();
+          },
+        }),
+        schedule: () => { throw new Error("synthetic scheduler failure"); },
+        jobIdSource: () => JOB_1_ID,
+      },
+    );
+    expect(failed).toEqual({ status: "not_scheduled" });
+    expect(providerConstructions).toBe(0);
+    expect(await targetRepository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      failureCategory: "lifecycle_conflict",
+      retryEligible: false,
+      actualCostMicros: 0,
+    });
+  });
+
+  test("duplicate workers dispatch once and only the complete lifecycle becomes ready", async () => {
+    const prepared = await preparedWork();
+    const calls = { value: 0 };
+    const stores = { value: 0 };
+    const dependencies = workerDependencies(
+      prepared.repository,
+      successfulBinding({ callCounter: calls }),
+      assetStore(stores),
+    );
+    const results = await Promise.all([
+      modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, dependencies),
+      modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, dependencies),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "duplicate",
+      "ready",
+    ]);
+    expect(calls.value).toBe(1);
+    expect(stores.value).toBe(1);
+    expect(JSON.stringify(results)).not.toMatch(
+      /423e4567|first-preview\/|req_goal2|prompt|provider/i,
+    );
+    expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "succeeded",
+      actualCostMicros: 3_500,
+      pricingAssumptionVersion:
+        "openai-gpt-image-2-2026-04-21-standard-1024x1024-medium-2026-08-03-v1",
+    });
+    expect(
+      await prepared.repository.findCustomerReadyOutput(BRIEF_ID),
+    ).toMatchObject({
+      readinessStatus: "first_preview_ready",
+      isCurrentCustomerPreview: true,
+    });
+  });
+
+  test("missing configuration and trustworthy cost overrun fail before Storage and readiness", async () => {
+    const missing = await preparedWork();
+    let missingStoreConstructions = 0;
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(missing.work, {
+        repository: missing.repository,
+        createProvider: () => null,
+        createAssetStore: () => {
+          missingStoreConstructions += 1;
+          return assetStore();
+        },
+      }),
+    ).toEqual({ status: "failed", failureCategory: "configuration_missing" });
+    expect(missingStoreConstructions).toBe(0);
+    expect(await missing.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      actualCostMicros: 0,
+      retryEligible: false,
+    });
+
+    const overrun = await preparedWork();
+    const stores = { value: 0 };
+    const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      overrun.work,
+      workerDependencies(
+        overrun.repository,
+        successfulBinding({
+          usage: { textInputTokens: 20_001, imageOutputTokens: 0 },
+        }),
+        assetStore(stores),
+      ),
+    );
+    expect(result).toEqual({ status: "failed", failureCategory: "budget_blocked" });
+    expect(stores.value).toBe(0);
+    expect(await overrun.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      failureCategory: "budget_blocked",
+      actualCostMicros: 100_005,
+      retryEligible: false,
+    });
+    expect(await overrun.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("Provider success cannot bypass private Storage persistence", async () => {
+    const prepared = await preparedWork();
+    const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work,
+      workerDependencies(prepared.repository, successfulBinding(), {
+        kind: "unavailable",
+        async persistValidatedPng() {
+          return { ok: false, code: "storage_unavailable" };
+        },
+        async readAuthorizedPng() {
+          return { ok: false, code: "storage_unavailable" };
+        },
+      }),
+    );
+    expect(result).toEqual({
+      status: "failed",
+      failureCategory: "storage_failure",
+    });
+    expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      failureCategory: "storage_failure",
+      retryEligible: false,
+    });
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+
+    const thrown = await preparedWork();
+    const thrownResult = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      thrown.work,
+      workerDependencies(thrown.repository, successfulBinding(), {
+        kind: "unavailable",
+        async persistValidatedPng() {
+          throw new Error("synthetic Storage detail must stay private");
+        },
+        async readAuthorizedPng() {
+          return { ok: false, code: "storage_unavailable" };
+        },
+      }),
+    );
+    expect(thrownResult).toEqual({
+      status: "failed",
+      failureCategory: "storage_failure",
+    });
+    expect(await thrown.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      failureCategory: "storage_failure",
+      actualCostMicros: 3_500,
+    });
+  });
+
+  test("allows one valid budgeted retry and rejects attempt 3", async () => {
+    const first = await preparedWork();
+    const firstResult = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      first.work,
+      workerDependencies(
+        first.repository,
+        failedBinding({
+          ok: false,
+          category: "rate_limited",
+          retryEligible: true,
+        }),
+      ),
+    );
+    expect(firstResult).toEqual({
+      status: "failed",
+      failureCategory: "rate_limited",
+    });
+    expect(await first.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      retryEligible: true,
+      actualCostMicros: 3_500,
+    });
+
+    const second = await modules.lifecycle.reserveAutomaticFirstPreviewAttempt({
+      payload: validBrief(),
+      persistenceConfirmed: true,
+      customerAccessEligible: true,
+      conceptBriefId: BRIEF_ID,
+      publicReference: PUBLIC_REFERENCE,
+      attemptNumber: 2,
+      parentJobId: JOB_1_ID,
+      repository: first.repository,
+      jobIdSource: () => JOB_2_ID,
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        second.work,
+        workerDependencies(first.repository, successfulBinding()),
+      ),
+    ).toEqual({ status: "ready" });
+
+    expect(
+      await modules.lifecycle.reserveAutomaticFirstPreviewAttempt({
+        payload: validBrief(),
+        persistenceConfirmed: true,
+        customerAccessEligible: true,
+        conceptBriefId: BRIEF_ID,
+        publicReference: PUBLIC_REFERENCE,
+        attemptNumber: 3,
+        parentJobId: JOB_2_ID,
+        repository: first.repository,
+      }),
+    ).toEqual({ ok: false, category: "precondition_failed" });
+  });
+});

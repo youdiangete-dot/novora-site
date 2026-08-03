@@ -14,6 +14,12 @@ import {
   attachFirstPreviewCustomerSessionCookie,
   type FirstPreviewSessionRouteDependencies,
 } from "../../../lib/server/ai-sketch/instant-first-preview-feature-flag";
+import {
+  FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME,
+} from "../../../lib/server/ai-sketch/first-preview-customer-access-contract";
+import {
+  triggerAutomaticFirstPreviewAfterPersistence,
+} from "../../../lib/server/ai-sketch/first-preview-automatic-trigger";
 
 type ConceptBriefResponse = {
   ok: boolean;
@@ -183,9 +189,22 @@ export async function POST(request: Request) {
     );
   }
 
-  return createPersistedConceptBriefResponse({
+  const persistedIdentity = {
     persisted: true,
     publicReference: persistence.publicReference,
     conceptBriefId: persistence.conceptBriefId,
+  } as const;
+  const response = createPersistedConceptBriefResponse(persistedIdentity);
+
+  await triggerAutomaticFirstPreviewAfterPersistence({
+    payload,
+    persistenceConfirmed: true,
+    customerAccessProofEstablished: Boolean(
+      response.cookies.get(FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME)?.value,
+    ),
+    conceptBriefId: persistedIdentity.conceptBriefId,
+    publicReference: persistedIdentity.publicReference,
   });
+
+  return response;
 }

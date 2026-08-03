@@ -17,16 +17,30 @@ export type FirstPreviewJobStatus =
 export type FirstPreviewAttemptNumber = 1 | 2;
 
 export type FirstPreviewFailureCategory =
+  | "configuration_missing"
+  | "invalid_structured_input"
+  | "precondition_failed"
+  | "invalid_request"
+  | "authentication_failed"
+  | "permission_denied"
+  | "moderation_blocked"
   | "rate_limited"
   | "provider_unavailable"
   | "network_failure"
+  | "timeout"
+  | "cancelled"
   | "invalid_provider_response"
-  | "storage_failure"
+  | "invalid_base64"
+  | "invalid_image_format"
+  | "invalid_image_dimensions"
+  | "image_too_large"
+  | "unsafe_output"
   | "privacy_failure"
   | "access_failure"
+  | "storage_failure"
   | "lifecycle_conflict"
-  | "timeout"
-  | "cancelled";
+  | "budget_blocked"
+  | "unexpected_provider_error";
 
 export const FIRST_PREVIEW_PROVIDER_PROFILE = {
   providerName: "openai",
@@ -239,6 +253,10 @@ export interface FirstPreviewRepository {
     jobId: string,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>>;
 
+  recordProviderDispatch(
+    jobId: string,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>>;
+
   recordProviderRequest(
     jobId: string,
     request: RecordFirstPreviewProviderRequestInput,
@@ -267,6 +285,8 @@ export interface FirstPreviewRepository {
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>>;
 
   findJobByIdempotencyKey(idempotencyKey: string): Promise<FirstPreviewJobRecord | null>;
+
+  findJobById(jobId: string): Promise<FirstPreviewJobRecord | null>;
 
   findCustomerReadyOutput(conceptBriefId: string): Promise<FirstPreviewOutputRecord | null>;
 
@@ -355,6 +375,10 @@ class UnavailableFirstPreviewRepository implements FirstPreviewRepository {
     return unavailable();
   }
 
+  recordProviderDispatch(): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
+    return unavailable();
+  }
+
   recordJobSucceeded(): Promise<FirstPreviewRepositoryResult<FirstPreviewJobRecord>> {
     return unavailable();
   }
@@ -380,6 +404,10 @@ class UnavailableFirstPreviewRepository implements FirstPreviewRepository {
   }
 
   findJobByIdempotencyKey(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
+  findJobById(): Promise<null> {
     return Promise.resolve(null);
   }
 
