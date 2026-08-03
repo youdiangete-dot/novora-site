@@ -61,14 +61,17 @@ merged:
 
 ### Locked target MVP direction
 
-When the separately implemented live workflow is enabled for a confirmed
-persisted submission, automatic First Preview preparation is the required
-target behavior. NOVORA should automatically prepare the first AI hand-drawn
-concept sketch. Once the first result is generated and
-passes the required automatic safety, privacy, access-control, output-validity,
-and safe-failure gates, it becomes immediately visible on the customer's
-securely accessed website preview page without waiting for per-image human
-pre-approval. This is the future target, not current Production behavior.
+Once the live First Preview workflow is implemented and enabled as an operating
+capability, successful and verifiable Concept Brief persistence automatically
+starts the First Preview generation flow for every eligible submission. That
+verified persistence is the trigger; there is no separate per-submission enable
+action, manual start, case-by-case switch, human start approval, or equivalent
+additional trigger gate. The flow prepares the first AI hand-drawn concept
+sketch. Once the first result is generated and passes the required automatic
+safety, privacy, access-control, output-validity, and safe-failure gates, it
+becomes immediately visible on the customer's securely accessed website preview
+page without waiting for per-image human pre-approval. This is the future
+target, not current Production behavior.
 
 The mandatory automatic gates include:
 
@@ -113,12 +116,15 @@ must not be used as the current operating direction.
 `docs/novora-first-preview-product-contract-v1.md` is the governing First
 Preview customer-visibility contract. Every future Codex task touching First
 Preview behavior and future Agent 72F E2E acceptance must inherit its mandatory
-future-target rule: after the live workflow is enabled for a confirmed
-persisted submission, automatic First Preview preparation is required, and all
-trusted automatic gates passing requires direct secure website visibility for
-the exact authorized customer without per-image human pre-approval. Confirmed
-persistence alone does not prove that generation has started in current
-Production.
+future-target rule: once the live workflow is implemented and enabled as an
+operating capability, successful and verifiable Concept Brief persistence
+automatically starts the First Preview generation flow for every eligible
+submission. No separate per-submission enable action, manual start,
+case-by-case switch, human start approval, or equivalent additional trigger
+gate applies. All trusted automatic gates must pass before direct secure website
+visibility for the exact authorized customer, without per-image human
+pre-approval. Confirmed persistence alone does not prove that generation has
+started in current Production.
 
 The former internal-only, email-only, human-review-before-display, and
 `approved_for_customer`-before-first-preview rules are superseded historical
@@ -3382,8 +3388,14 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
   mean generation started. This integration-only behavior remains guarded
   status/demo behavior that normally fails closed to `unavailable`; it is not
   on `main` and is not deployed to Production. The future automatic First
-  Preview target applies only after the live workflow and trusted gates are
-  separately implemented and enabled, without per-image human pre-approval.
+  Preview target applies once the live workflow and trusted automatic gates are
+  separately implemented and enabled as an operating capability. Once that
+  capability is operating, successful and verifiable Concept Brief persistence
+  automatically starts the First Preview generation flow for every eligible
+  submission; no per-submission enable action, manual start, case-by-case
+  switch, human start approval, or equivalent additional trigger gate applies.
+  Required automatic gates still control safety and customer website visibility,
+  without per-image human pre-approval.
 
   First Preview is an early concept communication asset, not CAD, a final
   quote, an order, payment approval, production approval, or a manufacturability
