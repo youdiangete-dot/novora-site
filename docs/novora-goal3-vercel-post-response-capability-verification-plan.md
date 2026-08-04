@@ -12,9 +12,11 @@ capability works.
 The decision is limited to whether the tested Vercel deployment can sustain the
 approved synthetic full route-invocation budget, from authoritative function
 entry through post-response callback completion, under the tested conditions.
-It is not a decision about real rate-limit or persistence latency, real Provider
-success, real Supabase or Storage latency, automatic generation, customer
-readiness, or Production rollout.
+The probe must create zero Provider/image-generation and external-integration
+spend, but its long-running Vercel function may consume metered platform
+compute. It is not a decision about real rate-limit or persistence latency, real
+Provider success, real Supabase or Storage latency, automatic generation,
+customer readiness, or Production rollout.
 
 ## 2. Locked Goal 2 architecture
 
@@ -91,7 +93,17 @@ When repository integration is active, treat every such push as a potential
 deployment-triggering action. Before the push, approve the exact temporary
 source diff, exact branch and expected commit identity, automatic Preview
 deployment behavior, target Preview environment, access restrictions,
-no-customer and zero-spend controls, and the probe route's explicit
+no-customer controls, zero Provider/image-generation and external-integration
+spend controls, and an explicit Vercel compute-cost boundary. That compute
+boundary must bind, without exposing account details, the applicable Vercel
+billing or usage basis; maximum approved billable invocation duration; maximum
+approved compute quantity in the applicable billing unit where available;
+maximum approved monetary exposure or conservative cost cap; exactly one probe
+execution; the owner responsible for checking the cap; the stop condition when
+exposure cannot be estimated or bounded; and confirmation that no Provider or
+external-integration spend is authorized. No probe-bearing publication is
+authorized when Vercel compute exposure cannot be bounded. The probe route's
+explicit duration remains
 `export const maxDuration = 300`. G3-03 must also approve the exact persisted-
 success production path; its complete pre-registration route inventory; the
 derivation source for every pre-registration operation and every route and
@@ -112,9 +124,16 @@ request.
 
 Approve one bounded probe against the exact temporary Preview deployment. The
 approval must bind the synthetic request shape, correlation-identifier rules,
-expected marker sequence, maximum invocation duration, zero-spend controls, and
-one execution window. Before the one request, G3-04 must lock every documented
-derivation source and the exact numeric values for
+expected marker sequence, maximum invocation duration, zero Provider/image-
+generation and external-integration spend controls, the previously approved
+Vercel compute-cost boundary, and one execution window. Before the one request,
+G3-04 must lock the applicable billing or usage basis, maximum approved billable
+invocation duration, maximum approved compute quantity where available, maximum
+approved monetary exposure or conservative cap, cap-check owner, cost stop
+condition, and exactly one execution. No probe request is authorized when the
+approved compute cap is absent. The one-request approval authorizes no retry;
+any later retry requires a separate human approval. G3-04 must also lock every
+documented derivation source and the exact numeric values for
 `T_request_pre_registration`, `T_registration_to_callback_start`,
 `T_callback_pre_provider`, `T_provider = 150 seconds`,
 `T_callback_post_provider`, `T_marker_shutdown_margin`, and the calculated
@@ -216,15 +235,17 @@ duration contract as the locked worker route:
 A probe deployed with the platform default or any shorter route duration cannot
 produce capability PASS. At function entry the probe must capture an approved
 non-sensitive request-start timestamp. Before callback registration, its request
-path must execute the approved zero-cost synthetic pre-registration interval
-representing `T_request_pre_registration`; a trivial request path cannot PASS.
+path must execute the approved synthetic pre-registration interval, isolated
+from Provider and external integrations, representing
+`T_request_pre_registration`; a trivial request path cannot PASS.
 It must then synchronously register exactly one callback. Immediately after
 successful callback registration, and still on the request path before
 returning the synthetic HTTP 201 response with an inert, non-customer receipt
 cookie, it must emit the registration marker. Where required by the approved
-model, it must execute an approved zero-cost synthetic response-path interval
-after that marker and before response return to represent the registration-to-
-response portion of `T_registration_to_callback_start`. The authoritative
+model, it must execute an approved synthetic response-path interval, isolated
+from Provider and external integrations, after that marker and before response
+return to represent the registration-to-response portion of
+`T_registration_to_callback_start`. The authoritative
 response-completion-to-callback-start interval must be measured and included in
 that component. These pre-response synthetic intervals are probe-only and must
 not be added to the customer Concept Brief route.
@@ -264,7 +285,9 @@ bodies, Concept Brief fields, customer references, credentials, environment
 values, Provider payloads, Storage coordinates, Output identifiers, or mutable
 Production identifiers. The synthetic phases represent duration only; they must
 not perform the inventoried worker operations, call or construct any live
-integration, or create cost. The endpoint must be absent from the previously
+integration, or create Provider/image-generation or external-integration spend.
+The long-running function may consume metered Vercel compute only within the
+separately approved boundary. The endpoint must be absent from the previously
 approved source after rollback.
 
 The temporary probe must be mechanically isolated from production business
@@ -345,7 +368,18 @@ A future human-approved test must collect and preserve all of the following:
     deployment, commit, and correlation identifier, plus approved
     external/platform evidence establishing response completion and the required
     ordering.
-21. Final `git status --short`, unstaged diff, staged diff, and complete branch
+21. The approved Vercel compute-cost boundary: applicable billing or usage
+    basis, maximum billable invocation duration, maximum compute quantity in the
+    applicable unit where available, maximum monetary exposure or conservative
+    cap, exactly one execution, cap-check owner, and cost stop condition, all
+    recorded without account details.
+22. Authoritative usage or billing evidence sufficient to prove the one probe
+    remained within the approved Vercel compute cap. If the applicable evidence
+    cannot be attributed or the cap cannot be proven, the result is not PASS.
+23. Dependency and usage evidence proving zero Provider/image-generation,
+    Supabase, Storage, email, payment, quotation, CAD, order, or other external-
+    integration spend and proving that no retry occurred.
+24. Final `git status --short`, unstaged diff, staged diff, and complete branch
     diff evidence.
 
 Evidence must not contain real values, secret-bearing URLs, tokens, account IDs,
@@ -384,10 +418,15 @@ condition below:
   callback phase was omitted. Callback-only timing cannot PASS.
 - Every required registration, callback-start, and callback-completion or
   bounded-failure marker and approved ledger was recorded.
+- The explicit Vercel compute-cost boundary was approved before publication and
+  execution, exactly one probe ran with no retry, and authoritative evidence
+  proves its metered compute remained within the approved duration, quantity
+  where available, and monetary or conservative cost cap.
 - The callback did not execute more than once for the same correlation
   identifier.
-- No paid Provider construction, request, image generation, or other live
-  external generation occurred.
+- Zero Provider/image-generation and external-integration spend was incurred;
+  no paid Provider construction, request, image generation, Supabase, Storage,
+  email, payment, quotation, CAD, order, or other external activity occurred.
 - No customer-visible asset, ready Output, or other false-ready customer state
   was produced.
 - No secret, environment value, request metadata, or customer data was emitted.
@@ -413,6 +452,9 @@ including:
   payload is emitted.
 - The probe reaches Supabase, Storage, email, payment, quotation, CAD, order, or
   Production workflow code.
+- The one-request approval is exceeded by a retry or multiple probe executions.
+- Authoritative evidence proves Vercel compute exceeded the approved billable-
+  duration, compute-quantity, monetary-exposure, or conservative cost cap.
 
 ### INCONCLUSIVE or pre-probe BLOCKED
 
@@ -442,6 +484,11 @@ capability cannot be proven safely and completely, including when:
   proof.
 - The registration ledger, final callback phase ledger, or completion marker is
   absent.
+- The applicable Vercel billing or usage basis, compute cap, cap-check owner, or
+  cost stop condition is missing before publication or execution.
+- Vercel compute exposure cannot be estimated or bounded, or authoritative
+  evidence cannot prove the one invocation stayed within the approved cap.
+- Exactly one probe execution with no retry cannot be proven.
 - Duplicate execution is possible or ambiguous.
 - Logs cannot be tied to the exact deployment and commit.
 - Runtime logs or timing evidence are incomplete.
@@ -475,12 +522,16 @@ deployment and source identities. The rollback owner must:
 5. Preserve all audit evidence until human review is complete.
 6. Verify the final repository commit, deployment identity, branch diff, and
    environment identity.
+7. Reconcile the single probe's Vercel compute exposure against its approved cap
+   without exposing account details.
 
 No rollback is executed in this task. No manual live-service action,
 environment inspection or mutation, Production deployment, Preview request, or
 capability probe was performed. The repository-integrated automatic Preview
 deployment caused by branch publication is an observed side effect, not a
 completed Goal 3 gate or capability result.
+Rollback does not authorize a probe retry. Any later retry requires a separate
+human approval and a newly confirmed Vercel compute-cost boundary.
 
 ## 10. Security and privacy checklist
 
@@ -502,21 +553,37 @@ Any failed or unprovable checklist item prevents PASS.
 
 ## 11. Cost boundary
 
-Goal 3 capability proof must incur zero Provider or image-generation spend. The
-existing conservative cost-accounting contract remains unchanged and is not
-exercised by the capability probe. No Provider budget, reservation, cost write,
-or dispatch path may be reached. Every route and callback phase in the full
-invocation model is synthetic and zero-cost and must not invoke OpenAI or
-another Provider, Provider construction, budget reservation, Provider dispatch,
-Supabase, Storage, Output persistence, readiness, customer data, email, payment,
-quotation, CAD, order, or any Production workflow.
+Goal 3 capability proof must incur zero Provider or image-generation spend and
+zero Supabase, Storage, email, payment, quotation, CAD, order, or other external-
+integration spend. The existing conservative Provider cost-accounting contract
+remains unchanged and is not exercised by the capability probe. No Provider
+budget, reservation, cost write, or dispatch path may be reached.
+
+The long-running Vercel function may consume metered platform compute. G3-03 and
+G3-04 must separately approve its explicit compute-cost boundary before probe-
+bearing publication or execution. Without exposing account details, that future
+approval must bind the applicable billing or usage basis, maximum approved
+billable invocation duration, maximum approved compute quantity in the
+applicable billing unit where available, maximum approved monetary exposure or
+conservative cost cap, exactly one probe execution, the owner responsible for
+checking the cap, the stop condition when exposure cannot be estimated or
+bounded, and confirmation that no Provider or external-integration spend is
+authorized. This planning PR invents no monetary cap; the exact future value
+must be human-approved for the intended project and account posture.
+
+Do not publish probe-bearing source when compute exposure cannot be bounded, and
+do not send the probe when the approved compute cap is absent. Exceeding the cap
+or being unable to prove compliance cannot produce PASS. The one-request
+approval authorizes no retry; any later retry requires a separate approval.
 
 ## 12. Production decision boundary
 
 A capability PASS proves only that the exact tested Vercel deployment sustained
 the approved synthetic full route-invocation budget under the tested
-conditions. It does not prove real rate-limit latency, real persistence latency,
-real Provider success, real Supabase or Storage latency, that every customer
+conditions and that the single invocation's metered compute stayed within its
+approved Vercel cost boundary. It does not prove zero platform-compute cost,
+future invocation cost, real rate-limit latency, real persistence latency, real
+Provider success, real Supabase or Storage latency, that every customer
 submission or real worker execution will finish, Production readiness, or live
 feature enablement. It also does not authorize:
 

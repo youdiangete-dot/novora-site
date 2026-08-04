@@ -33,14 +33,26 @@ merged:
 
 - PR #254, `Connect automatic First Preview generation lifecycle`, was normally
   merged into `integration/instant-first-preview-agent`. Its approved Head was
-  `b09fb299d5932edb2ce15c460fbfd7e2f0e6f54c`; the merge commit and current
-  locked integration identity are
-  `b93f6e92e94e04dd1f41eb0739f8b565d28cd3fa`.
+  `b09fb299d5932edb2ce15c460fbfd7e2f0e6f54c`; its normal-merge commit is
+  `b93f6e92e94e04dd1f41eb0739f8b565d28cd3fa`. That commit is the locked Goal 2
+  merge identity and the Goal 3 Step 01 pre-merge baseline. It is the current
+  integration tip only while PR #255 remains unmerged.
 - Goal 2 is complete on integration. It remains separate from `main` and is not
   evidence of deployed Production behavior.
 - Goal 3 Step 01 is a docs-only planning slice for a future, separately approved
   Vercel post-response execution capability test. Real Vercel capability remains
   unverified, and this slice passes no live capability gate.
+- A normal PR #255 merge will advance integration to the exact merge commit
+  returned by GitHub. That necessarily post-merge value, not GitHub's pre-merge
+  `merge_commit_sha` field and not a guessed, placeholder, synthetic, test-merge,
+  or precomputed SHA, becomes the Goal 3 Step 01 merge identity and resulting
+  integration tip at that point.
+- Before any subsequent Goal 3 task begins, post-merge validation must record
+  the exact PR #255 normal-merge commit and verify the remote integration tip.
+  Later tasks must fetch `integration/instant-first-preview-agent` and use its
+  verified current tip; they must not reuse
+  `b93f6e92e94e04dd1f41eb0739f8b565d28cd3fa` as though it remains current after
+  PR #255 merges.
 - No Production enablement is authorized. Both automatic-generation feature
   gates remain required to fail closed; this planning slice does not inspect,
   add, change, or enable either gate.
