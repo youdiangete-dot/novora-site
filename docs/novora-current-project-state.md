@@ -29,6 +29,30 @@ merged:
 
 ## Current Locked Product Direction
 
+### Goal 2 completion and Goal 3 Step 01 integration-only state
+
+- PR #254, `Connect automatic First Preview generation lifecycle`, was normally
+  merged into `integration/instant-first-preview-agent`. Its approved Head was
+  `b09fb299d5932edb2ce15c460fbfd7e2f0e6f54c`; the merge commit and current
+  locked integration identity are
+  `b93f6e92e94e04dd1f41eb0739f8b565d28cd3fa`.
+- Goal 2 is complete on integration. It remains separate from `main` and is not
+  evidence of deployed Production behavior.
+- Goal 3 Step 01 is a docs-only planning slice for a future, separately approved
+  Vercel post-response execution capability test. Real Vercel capability remains
+  unverified, and this slice passes no live capability gate.
+- No Production enablement is authorized. Both automatic-generation feature
+  gates remain required to fail closed; this planning slice does not inspect,
+  add, change, or enable either gate.
+- Parked Draft PRs remain unchanged: PR #248 at
+  `741a410be7a17828fbe378e0cca4559592e30e88`, PR #246 at
+  `0e77438b0353fd995c1ba24ba93897e4d8a66616`, PR #242 at
+  `d2ca7929121ca2f60d1b35891c67fec9d19d03c5`, and PR #249 at
+  `325921ca3d23df172276e354ce19c1a020a56ba3`.
+- This entry is proposed on the Goal 3 Step 01 branch. It becomes authoritative
+  for integration only if reviewed and merged there; it does not change `main`
+  or Production.
+
 ### Current deployed Production state (`main`)
 
 - Production deploys `main`, which remains at
