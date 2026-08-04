@@ -42,6 +42,20 @@ does not alter:
 Neither feature gate is changed, inspected in a real environment, or enabled by
 this plan.
 
+### Observed Step 01 automatic Preview side effect
+
+Publishing the docs-only Goal 3 Step 01 branch caused the
+repository-integrated Vercel service to create an automatic Preview deployment.
+No manual deployment command or Vercel dashboard deployment action was
+performed, and no Production deployment occurred. The Preview URL was not
+opened, no request was sent to the Preview, and no callback capability probe
+was executed.
+
+The automatic Preview is not callback-capability evidence and does not satisfy
+Gate G3-02 or Gate G3-03. It does not authorize Preview access, a Preview
+request, probe execution, feature enablement, or any claim of Production
+readiness.
+
 ## 3. Human approval sequence
 
 Each gate requires an explicit human decision. Passing or completing one gate
@@ -49,23 +63,35 @@ does not authorize the next gate.
 
 ### Gate G3-01: read-only local and repository evidence review
 
-Confirm the exact integration commit, relevant Goal 2 architecture, test scope,
-prohibited operations, branch diff, and review ownership using local and GitHub
-evidence only. Do not connect to Vercel or any live service.
+Before any future source publication, confirm the exact integration commit,
+relevant Goal 2 architecture, test scope, prohibited operations, branch diff,
+and review ownership using local and GitHub evidence only. Inspect GitHub
+checks, comments, and status metadata read-only to determine whether a branch
+push or PR update automatically creates a Preview deployment, and reconcile any
+already-existing automatic Preview. Do not open or request a Preview, connect
+directly to Vercel, or assume that a docs-only or test-only branch is
+non-deploying.
 
 ### Gate G3-02: Vercel identity confirmation
 
 After separate approval, a human confirms the intended Vercel project,
 deployment environment, runtime, and configuration-name posture read-only. Do
 not reveal or change values. Stop on any ambiguous project, environment, source
-commit, access boundary, or feature-gate posture.
+commit, access boundary, or feature-gate posture. This gate does not
+retroactively authorize an already-created automatic Preview and does not
+authorize opening or requesting any Preview, a new push, deployment,
+environment mutation, or probe execution.
 
 ### Gate G3-03: deployment strategy and rollback approval
 
-Approve the exact temporary source diff, isolated Preview deployment strategy,
-access controls, evidence retention, rollback owner, previously approved source
-identity, and stop conditions. This gate must not authorize Production
-deployment or any request.
+Complete this gate before any push capable of publishing probe-bearing source.
+When repository integration is active, treat every such push as a potential
+deployment-triggering action. Before the push, approve the exact temporary
+source diff, exact branch and expected commit identity, automatic Preview
+deployment behavior, target Preview environment, access restrictions,
+no-customer and zero-spend controls, evidence plan, rollback owner, previously
+approved source identity, and stop conditions. This gate must not authorize a
+Production deployment or a probe request.
 
 ### Gate G3-04: safe synthetic capability probe approval
 
@@ -117,7 +143,10 @@ customer-visible image, public object, ready Output, or durable customer-system
 record.
 
 The future implementation must be reviewed separately. This task implements no
-probe, endpoint, marker, instrumentation, deployment, or request.
+probe endpoint, marker, or instrumentation and performed no manual deployment
+command or Vercel dashboard deployment action. Publishing the docs-only branch
+did cause a repository-triggered automatic Preview deployment; it was not
+opened, requested, or probed and provides no callback evidence.
 
 ## 5. Required evidence
 
@@ -232,8 +261,11 @@ deployment and source identities. The rollback owner must:
 6. Verify the final repository commit, deployment identity, branch diff, and
    environment identity.
 
-No rollback is executed in this task because no live change is authorized or
-performed.
+No rollback is executed in this task. No manual live-service action,
+environment inspection or mutation, Production deployment, Preview request, or
+capability probe was performed. The repository-integrated automatic Preview
+deployment caused by branch publication is an observed side effect, not a
+completed Goal 3 gate or capability result.
 
 ## 10. Security and privacy checklist
 
