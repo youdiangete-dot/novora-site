@@ -90,8 +90,9 @@ deployment-triggering action. Before the push, approve the exact temporary
 source diff, exact branch and expected commit identity, automatic Preview
 deployment behavior, target Preview environment, access restrictions,
 no-customer and zero-spend controls, evidence plan, rollback owner, previously
-approved source identity, and stop conditions. This gate must not authorize a
-Production deployment or a probe request.
+approved source identity, and stop conditions. This gate does not authorize
+Production deployment, opening or otherwise requesting the Preview, or sending
+the capability probe request.
 
 ### Gate G3-04: safe synthetic capability probe approval
 
