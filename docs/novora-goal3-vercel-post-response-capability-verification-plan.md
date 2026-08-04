@@ -89,18 +89,30 @@ When repository integration is active, treat every such push as a potential
 deployment-triggering action. Before the push, approve the exact temporary
 source diff, exact branch and expected commit identity, automatic Preview
 deployment behavior, target Preview environment, access restrictions,
-no-customer and zero-spend controls, evidence plan, rollback owner, previously
-approved source identity, and stop conditions. This gate does not authorize
-Production deployment, opening or otherwise requesting the Preview, or sending
-the capability probe request.
+no-customer and zero-spend controls, the probe route's explicit
+`export const maxDuration = 300`, the exact representative callback interval,
+the bounded synthetic post-deadline tail, the safety margin before the
+300-second limit, evidence that the deployment/runtime supports that duration,
+termination and rollback conditions, the evidence plan, rollback owner,
+previously approved source identity, and stop conditions. This gate does not
+authorize Production deployment, opening or otherwise requesting the Preview,
+or sending the capability probe request.
 
 ### Gate G3-04: safe synthetic capability probe approval
 
 Approve one bounded probe against the exact temporary Preview deployment. The
 approval must bind the synthetic request shape, correlation-identifier rules,
 expected marker sequence, maximum callback duration, zero-spend controls, and
-one execution window. It must explicitly prohibit customer data and live
-external integrations.
+one execution window. Before the one request, the approval must record exact
+numeric durations in seconds for the complete 150-second minimum
+Provider-deadline span, the bounded synthetic post-deadline tail, the total
+representative interval, the remaining safety margin before the 300-second
+route limit, the maximum permitted callback duration, and the
+completion-or-failure marker deadline. The total interval must equal at least
+the 150-second span plus the approved tail, remain below 300 seconds, and leave
+the approved margin for marker emission and runtime shutdown. No duration may
+be implicit, approximate, or selected by the implementation after approval.
+The gate must explicitly prohibit customer data and live external integrations.
 
 ### Gate G3-05: evidence review and capability decision
 
@@ -120,13 +132,21 @@ this plan or by a capability PASS.
 
 The smallest acceptable future instrumentation is a temporary, Preview-only
 probe endpoint using the same Vercel runtime and post-response registration
-primitive as the locked route. The request path must synchronously register
-exactly one callback. Immediately after successful callback registration, and
-still on the request path before returning the synthetic HTTP 201 response with
-an inert, non-customer receipt cookie, the request path must emit the
-registration marker. The registration marker must not be emitted inside the
-callback. The callback emits only callback-start and callback-completion or
-bounded-failure markers.
+primitive as the locked route. The probe route must explicitly export the same
+duration contract as the locked worker route:
+
+> `export const maxDuration = 300`
+
+A probe deployed with the platform default or any shorter route duration cannot
+produce capability PASS. The request path must synchronously register exactly
+one callback. Immediately after successful callback registration, and still on
+the request path before returning the synthetic HTTP 201 response with an inert,
+non-customer receipt cookie, the request path must emit the registration marker.
+The registration marker must not be emitted inside the callback. The response
+path must not await the representative interval. Inside the registered
+post-response callback only, execution must emit the callback-start marker, run
+the approved representative zero-cost interval, and then emit the
+callback-completion or bounded-failure marker.
 
 The marker schema must contain only an approved random correlation identifier,
 event name, deployment/commit attribution, and timestamp. The request-path
@@ -135,10 +155,18 @@ synthetic correlation identifier, deployment identity, and commit identity. The
 marker schema must not contain
 request headers, cookie contents, request bodies, Concept Brief fields, customer
 references, credentials, environment values, or mutable Production identifiers.
-The callback should include a short, intentionally bounded, no-op interval so
-the evidence can show that the HTTP response did not wait for callback
-completion. The endpoint must be absent from the previously approved source
-after rollback.
+The callback interval must span at least the complete locked 150-second Provider
+deadline and then a separately approved bounded synthetic post-deadline tail
+representing persistence and lifecycle-completion time without performing those
+operations. Its approved total must remain below 300 seconds and leave an
+explicit bounded safety margin for completion-marker emission and runtime
+shutdown before the 300-second limit. G3-04 must fix and approve the exact tail,
+total interval, safety margin, maximum callback duration, and marker deadline
+before the request. A short or trivial callback that proves only a few seconds
+of post-response work is insufficient and cannot PASS. The interval must be
+synthetic and zero-cost; it must not call a Provider, Supabase, Storage, or any
+other external integration. The endpoint must be absent from the previously
+approved source after rollback.
 
 The temporary probe must be mechanically isolated from production business
 modules: it must not import, construct, or invoke the Concept Brief repository,
@@ -162,32 +190,45 @@ A future human-approved test must collect and preserve all of the following:
 2. Vercel project and environment identity, recorded without secrets, account
    identifiers, private URLs, tokens, or environment contents.
 3. One random request correlation identifier containing no customer data.
-4. An authoritative timestamp for route-response completion.
-5. An authoritative timestamp for callback start.
-6. An authoritative timestamp for callback completion or intentionally bounded
+4. Source and exact-deployment evidence proving the probe route explicitly
+   exports `export const maxDuration = 300`, rather than relying on the platform
+   default or a shorter route duration.
+5. The exact G3-04-approved numeric values for the 150-second minimum span,
+   bounded synthetic tail, total interval, remaining safety margin, maximum
+   callback duration, and completion-or-failure marker deadline.
+6. An authoritative timestamp for request-path registration-marker emission.
+7. An external authoritative timestamp for route-response completion.
+8. An authoritative timestamp for callback start.
+9. An authoritative timestamp for callback completion or intentionally bounded
    failure.
-7. Combined evidence proving the strict order: request-path registration marker,
+10. The elapsed callback duration derived from authoritative evidence, proving
+    that execution satisfied the approved representative interval of at least
+    the complete 150-second deadline plus the approved tail, stayed within its
+    maximum duration and marker deadline, and retained the approved safety
+    margin before 300 seconds.
+11. Combined evidence proving the strict order: request-path registration marker,
    HTTP response completion, callback start, then callback completion or bounded
    failure. Approved external/platform evidence, not a source log alone, must
    establish response completion and prove that the synthetic customer-response
-   path did not wait for callback work.
-8. Source inspection and the request-path registration marker proving exactly
+   path did not wait for the representative interval. The evidence must also
+   prove the callback was not terminated before the required completion point.
+12. Source inspection and the request-path registration marker proving exactly
    one callback was synchronously registered, with the marker emitted
    immediately after successful registration and before response return. The
    marker must share the callback markers' synthetic correlation identifier,
    deployment identity, and commit identity.
-9. Dependency-boundary and runtime evidence proving no Provider construction or
+13. Dependency-boundary and runtime evidence proving no Provider construction or
    call occurred.
-10. Repository/runtime evidence proving no customer-ready Output, customer-visible
+14. Repository/runtime evidence proving no customer-ready Output, customer-visible
     asset, public Storage object, or readiness transition was created.
-11. A redacted-log review proving no secret, environment value, header, cookie,
+15. A redacted-log review proving no secret, environment value, header, cookie,
     customer payload, or customer identifier was logged.
-12. Vercel function/runtime logs, or equivalent authoritative platform evidence,
+16. Vercel function/runtime logs, or equivalent authoritative platform evidence,
     tying the registration, callback start, and callback end markers to the exact
     deployment, commit, and correlation identifier, plus approved
     external/platform evidence establishing response completion and the required
     ordering.
-13. Final `git status --short`, unstaged diff, staged diff, and complete branch
+17. Final `git status --short`, unstaged diff, staged diff, and complete branch
     diff evidence.
 
 Evidence must not contain real values, secret-bearing URLs, tokens, account IDs,
@@ -199,15 +240,23 @@ coordinates.
 Capability PASS requires one complete, unambiguous evidence set proving every
 condition below:
 
+- The exact deployed probe route exports `export const maxDuration = 300`; a
+  platform-default or shorter duration cannot PASS.
 - The request-path registration marker was emitted immediately after successful
   synchronous registration and before the synthetic HTTP 201 response and inert
   cookie completed successfully. The authoritative route-response completion
   timestamp precedes callback start.
-- External timing proves the response did not wait for the callback's bounded
-  work to complete.
+- External timing proves the response did not wait for the approved
+  representative interval to complete.
 - The callback started after its single synchronous registration in the exact
   deployed environment.
-- The callback completed or reached the intentionally bounded synthetic end.
+- The callback completed the exact approved representative interval, and the
+  authoritative elapsed duration proves it spanned at least the complete
+  150-second Provider deadline plus the approved bounded tail.
+- The approved total remained below 300 seconds, the approved safety margin
+  remained available for marker emission and runtime shutdown, and the
+  completion marker was recorded by its approved deadline.
+- A short or trivial callback cannot PASS.
 - The callback did not execute more than once for the same correlation
   identifier.
 - No paid Provider construction, request, image generation, or other live
@@ -226,7 +275,9 @@ All conditions are mandatory. Partial evidence is not PASS.
 The result is FAIL if evidence proves any prohibited or unsafe behavior,
 including:
 
-- The response blocks on callback work.
+- The response path awaits or otherwise blocks on the representative interval.
+- The runtime executes a duration configuration different from the approved
+  300-second route contract.
 - The callback executes more than once for one probe.
 - The probe reaches Provider construction or invocation.
 - Any customer-visible readiness, asset, or Output is created.
@@ -241,7 +292,13 @@ The result is INCONCLUSIVE when capability cannot be proven safely and
 completely, including when:
 
 - The callback never starts.
-- The callback starts but is terminated before the required evidence point.
+- The callback is terminated before the approved representative interval ends.
+- The callback completes but its elapsed interval cannot be proven.
+- Duration evidence is incomplete or ambiguous.
+- The deployed `maxDuration = 300` cannot be attributed to the exact deployment
+  and commit.
+- Only a short or trivial callback was exercised.
+- The completion marker is absent.
 - Duplicate execution is possible or ambiguous.
 - Logs cannot be tied to the exact deployment and commit.
 - Runtime logs or timing evidence are incomplete.
@@ -305,7 +362,11 @@ Any failed or unprovable checklist item prevents PASS.
 Goal 3 capability proof must incur zero Provider or image-generation spend. The
 existing conservative cost-accounting contract remains unchanged and is not
 exercised by the capability probe. No Provider budget, reservation, cost write,
-or dispatch path may be reached.
+or dispatch path may be reached. The representative interval is synthetic and
+zero-cost and must not invoke OpenAI or another Provider, Provider construction,
+budget reservation, Provider dispatch, Supabase, Storage, Output persistence,
+readiness, customer data, email, payment, quotation, CAD, order, or any
+Production workflow.
 
 ## 12. Production decision boundary
 
