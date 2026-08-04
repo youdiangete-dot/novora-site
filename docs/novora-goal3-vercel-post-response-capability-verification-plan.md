@@ -120,14 +120,19 @@ this plan or by a capability PASS.
 
 The smallest acceptable future instrumentation is a temporary, Preview-only
 probe endpoint using the same Vercel runtime and post-response registration
-primitive as the locked route. It must synchronously register exactly one
-callback and return a synthetic HTTP 201 response with an inert, non-customer
-receipt cookie. Its callback may emit only three bounded structured markers to
-authoritative runtime logs: registration, callback start, and callback bounded
-completion or bounded failure.
+primitive as the locked route. The request path must synchronously register
+exactly one callback. Immediately after successful callback registration, and
+still on the request path before returning the synthetic HTTP 201 response with
+an inert, non-customer receipt cookie, the request path must emit the
+registration marker. The registration marker must not be emitted inside the
+callback. The callback emits only callback-start and callback-completion or
+bounded-failure markers.
 
 The marker schema must contain only an approved random correlation identifier,
-event name, deployment/commit attribution, and timestamp. It must not contain
+event name, deployment/commit attribution, and timestamp. The request-path
+registration marker and both callback markers must be attributable to the same
+synthetic correlation identifier, deployment identity, and commit identity. The
+marker schema must not contain
 request headers, cookie contents, request bodies, Concept Brief fields, customer
 references, credentials, environment values, or mutable Production identifiers.
 The callback should include a short, intentionally bounded, no-op interval so
@@ -161,10 +166,16 @@ A future human-approved test must collect and preserve all of the following:
 5. An authoritative timestamp for callback start.
 6. An authoritative timestamp for callback completion or intentionally bounded
    failure.
-7. External request timing and marker ordering proving the customer-response
-   path, exercised only with synthetic data, did not wait for callback work.
-8. Source inspection and the single registration marker proving exactly one
-   callback was registered for the probe.
+7. Combined evidence proving the strict order: request-path registration marker,
+   HTTP response completion, callback start, then callback completion or bounded
+   failure. Approved external/platform evidence, not a source log alone, must
+   establish response completion and prove that the synthetic customer-response
+   path did not wait for callback work.
+8. Source inspection and the request-path registration marker proving exactly
+   one callback was synchronously registered, with the marker emitted
+   immediately after successful registration and before response return. The
+   marker must share the callback markers' synthetic correlation identifier,
+   deployment identity, and commit identity.
 9. Dependency-boundary and runtime evidence proving no Provider construction or
    call occurred.
 10. Repository/runtime evidence proving no customer-ready Output, customer-visible
@@ -172,8 +183,10 @@ A future human-approved test must collect and preserve all of the following:
 11. A redacted-log review proving no secret, environment value, header, cookie,
     customer payload, or customer identifier was logged.
 12. Vercel function/runtime logs, or equivalent authoritative platform evidence,
-    tying the registration, response, callback start, and callback end markers
-    to the exact deployment and correlation identifier.
+    tying the registration, callback start, and callback end markers to the exact
+    deployment, commit, and correlation identifier, plus approved
+    external/platform evidence establishing response completion and the required
+    ordering.
 13. Final `git status --short`, unstaged diff, staged diff, and complete branch
     diff evidence.
 
@@ -186,9 +199,10 @@ coordinates.
 Capability PASS requires one complete, unambiguous evidence set proving every
 condition below:
 
-- The synthetic HTTP 201 response and inert cookie completed successfully, and
-  the authoritative route-response completion timestamp precedes callback
-  start.
+- The request-path registration marker was emitted immediately after successful
+  synchronous registration and before the synthetic HTTP 201 response and inert
+  cookie completed successfully. The authoritative route-response completion
+  timestamp precedes callback start.
 - External timing proves the response did not wait for the callback's bounded
   work to complete.
 - The callback started after its single synchronous registration in the exact
