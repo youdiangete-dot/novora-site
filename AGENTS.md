@@ -72,6 +72,16 @@ swaths of code or making changes.
 
 ## Codex Operating Mode
 
+### One-Step Scope Brake v1
+
+- NOVORA One-Step Scope Brake v1 is active and mandatory. Follow
+  `docs/novora-one-step-scope-brake-v1.md`.
+- It overrides broader task wording. Before execution, Work must reduce an
+  over-scoped instruction to one acceptance question and one execution gate or
+  block it.
+- Conditional continuation into another gate is prohibited.
+- No more than one Work task may be active at a time.
+
 - Use a new Codex task/thread when the work needs a new branch, a new PR, a
   separate approval boundary, Production-affecting setup, SQL, environment
   changes, provider configuration, or a materially different scope.
