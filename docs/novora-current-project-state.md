@@ -29,39 +29,56 @@ merged:
 
 ## Current Locked Product Direction
 
-### Goal 2 completion and Goal 3 Step 01 integration-only state
+### Goal 2 completion, Goal 3 Step 01 merge, and G3-02 integration-only state
 
-- PR #254, `Connect automatic First Preview generation lifecycle`, was normally
-  merged into `integration/instant-first-preview-agent`. Its approved Head was
-  `b09fb299d5932edb2ce15c460fbfd7e2f0e6f54c`; its normal-merge commit is
+- Goal 2 is complete on integration. PR #254, `Connect automatic First Preview
+  generation lifecycle`, was normally merged with commit
   `b93f6e92e94e04dd1f41eb0739f8b565d28cd3fa`. That commit is the locked Goal 2
-  merge identity and the Goal 3 Step 01 pre-merge baseline. It is the current
-  integration tip only while PR #255 remains unmerged.
-- Goal 2 is complete on integration. It remains separate from `main` and is not
-  evidence of deployed Production behavior.
-- Goal 3 Step 01 is a docs-only planning slice for a future, separately approved
-  Vercel post-response execution capability test. Real Vercel capability remains
-  unverified, and this slice passes no live capability gate.
-- A normal PR #255 merge will advance integration to the exact merge commit
-  returned by GitHub. That necessarily post-merge value, not GitHub's pre-merge
-  `merge_commit_sha` field and not a guessed, placeholder, synthetic, test-merge,
-  or precomputed SHA, becomes the Goal 3 Step 01 merge identity and resulting
-  integration tip at that point.
-- Before any subsequent Goal 3 task begins, post-merge validation must record
-  the exact PR #255 normal-merge commit and verify the remote integration tip.
-  Later tasks must fetch `integration/instant-first-preview-agent` and use its
-  verified current tip; they must not reuse
-  `b93f6e92e94e04dd1f41eb0739f8b565d28cd3fa` as though it remains current after
-  PR #255 merges.
-- No Production enablement is authorized. Both automatic-generation feature
-  gates remain required to fail closed; this planning slice does not inspect,
-  add, change, or enable either gate.
+  baseline and a historical baseline only; it is not the current integration
+  tip.
+- PR #255 is merged into `integration/instant-first-preview-agent`. Its terminal
+  Head is `b666aa17180eabfebec0b8403803c643abfe1e8c`; its normal merge commit and the
+  current integration tip are
+  `2f5e2e88440624673583e4e08fda652589867a01`.
+- Agent 73 is complete. No further Agent 73 correction, review, or merge-gate
+  cycle is authorized.
+- G3-02 accepted manual verification matched the intended Vercel project
+  identity `project-dd34e` in the Preview, non-Production environment. The
+  verified deployment/source identity corresponded to PR #255's normal merge
+  commit `2f5e2e88440624673583e4e08fda652589867a01`; the deployment status was
+  Ready; the `/api/concept-briefs` Function exists; Vercel showed Node.js 24.x
+  and a displayed maximum duration of `<=300` seconds.
+- The initial manual read-only G3-02 check found both required configuration
+  names absent. A later, separate, explicitly approved Vercel mutation created
+  exactly two Project-level variables scoped only to Preview, and a post-write
+  read-only verification confirmed the final configuration posture:
+  `NOVORA_INSTANT_PREVIEW_AGENT_ENABLED` and
+  `NOVORA_FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED` are Project-level,
+  Preview-only, Sensitive, have no branch override, and intentionally fail
+  closed at the literal boolean `false`.
+- No Redeploy occurred after the two variables were created. The previously
+  existing Preview deployment has not been proven to have loaded them.
+  Configuration-name presence and `false` values do not prove deployed runtime
+  consumption. No Preview request or capability probe occurred, and no
+  post-response capability PASS exists yet.
+- The G3-02 configuration-name precheck result is
+  `G3_02_CONFIGURATION_NAME_PRECHECK_PASS`. G3-03 has not been approved or
+  executed and remains a separate human gate. This ledger update does not
+  authorize Redeploy, probe-bearing source, deployment, Preview access, probe
+  execution, Provider use, Supabase, Storage, customer-data access, or
+  feature-gate enablement.
+- Both variables remain Preview-only and `false`; Production remains unaffected
+  and the system remains fail-closed. Neither configuration-name presence nor
+  the `false` state is capability evidence.
+- `main` remains at `f58b06766bd02922cf3740a71df0aa618cfefe87`.
+  Goal 2, Goal 3 Step 01, and G3-02 remain integration-only state; none of this
+  is deployed Production behavior.
 - Parked Draft PRs remain unchanged: PR #248 at
   `741a410be7a17828fbe378e0cca4559592e30e88`, PR #246 at
   `0e77438b0353fd995c1ba24ba93897e4d8a66616`, PR #242 at
   `d2ca7929121ca2f60d1b35891c67fec9d19d03c5`, and PR #249 at
   `325921ca3d23df172276e354ce19c1a020a56ba3`.
-- This entry is proposed on the Goal 3 Step 01 branch. It becomes authoritative
+- This entry is proposed on the G3-02 ledger-update branch. It becomes authoritative
   for integration only if reviewed and merged there; it does not change `main`
   or Production.
 
