@@ -29,12 +29,29 @@ merged:
 
 ## Active Repository Execution Authority
 
-- NOVORA One-Step Scope Brake v1 is active repository authority. Its governing
-  document is `docs/novora-one-step-scope-brake-v1.md`, and `AGENTS.md` enforces
-  it.
-- All subsequent NOVORA work must use exactly one acceptance question and one
-  execution gate per task.
-- This documentation task does not execute or change Agent 75 or G3 work.
+- NOVORA One-Step Scope Brake v1.2 is being prepared locally in
+  `codex/add-scope-brake-completion-stop-rule` at worktree
+  `C:\Projects\NOVORA\local-only\worktrees\add-scope-brake-completion-stop-rule`.
+  Its detailed governing document remains
+  `docs/novora-one-step-scope-brake-v1.md`, with the concise mandatory rules in
+  `AGENTS.md`. This local documentation candidate does not itself publish,
+  merge, deploy, or begin another gate.
+- v1.2 preserves one acceptance question, one execution gate, and WIP=1 while
+  adding technical-decision ownership, bounded current-task authorization,
+  three failure classes and budgets, a one-recovery-task cap, evidence reuse,
+  Chat-side read-only verification, Completion Stop/continuation rules, and MVP
+  throughput priority.
+- PR #258 is merged into `integration/instant-first-preview-agent`. Its approved
+  Head is `aa623d8c56288ccaab06cab7fd5e0369c4927520`, and its normal merge commit
+  and current integration tip are
+  `1363d17c650a1eff91b4085b96512cd759ab206c`.
+- The trusted-evidence timeout and abort correction passed TypeScript no-emit,
+  focused Playwright 21/21, required static scans, and final exact-Head review.
+  This accepted evidence is not rerun for the docs-only Scope Brake task.
+- No Production, Vercel, live Provider, Supabase, Storage, customer-data,
+  environment-variable, or Secret operation occurred in this task.
+- Execution Gate Controller P2 remains paused after its recorded incomplete
+  implementation result and must not be resumed as part of this task.
 
 ## Current Locked Product Direction
 
@@ -3528,7 +3545,10 @@ recorded, echoed, inferred, stored, exposed, committed, or included in docs.
 - Do not request API keys in chat.
 - Do not do SQL, schema, grant, Supabase, Vercel, Resend, Cloudflare, or environment-variable work without explicit approval for that specific task.
 - For docs-only tasks, no build is required unless code changes.
-- For app-code tasks, run `npm run build` and focused tests.
+- App-code implementation may run only the focused checks expressly included
+  in its bounded implementation-and-validation gate. `npm run build` remains a
+  separate Build gate and must not be absorbed into implementation, commit,
+  push, PR, review, Ready, or merge.
 - On Windows hostile-runtime validation, explicitly load `System.Net.Http` when
   using PowerShell HTTP types, or use `curl`. Track every task-owned server PID,
   port, and log path; stop every task-owned server deterministically; verify

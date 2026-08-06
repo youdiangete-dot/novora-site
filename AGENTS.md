@@ -72,15 +72,48 @@ swaths of code or making changes.
 
 ## Codex Operating Mode
 
-### One-Step Scope Brake v1
+### One-Step Scope Brake v1.2
 
-- NOVORA One-Step Scope Brake v1 is active and mandatory. Follow
+- NOVORA One-Step Scope Brake v1.2 is active and mandatory. Follow
   `docs/novora-one-step-scope-brake-v1.md`.
-- It overrides broader task wording. Before execution, Work must reduce an
-  over-scoped instruction to one acceptance question and one execution gate or
-  block it.
-- Conditional continuation into another gate is prohibited.
-- No more than one Work task may be active at a time.
+- Each Work task must answer exactly one acceptance question, cross exactly one
+  execution gate, and stop after PASS, BLOCKED, or insufficient evidence.
+  Build, validation, commit, push, PR creation, review, Ready, merge,
+  deployment, and cleanup remain separate gates. Conditional continuation and
+  uncontrolled retry are prohibited.
+- WIP is one: no more than one NOVORA Work task may be active at a time.
+- The newest exact current-task instruction controls. Starting a Codex-ready
+  task authorizes every low-risk, reversible operation expressly named and
+  identity/scope-bound in that task; Work must not request duplicate approval.
+  Earlier read-only wording cannot override the current authorization.
+- Chat owns technical coordination decisions. With sufficient evidence, it
+  selects the single technically appropriate next gate and provides one bounded
+  Codex-ready instruction; it does not transfer Git, test, implementation, or
+  ordinary workflow choices to the Owner. With insufficient evidence, it asks
+  for only one missing fact or one narrow verification.
+- Failures have three classes: Class 1 safety/identity/material failures stop
+  immediately with no retry; Class 2 narrow implementation corrections require
+  an explicit budget and default to one primary implementation plus at most two
+  focused correction cycles; Class 3 mechanical execution failures may be
+  corrected in-task at most twice, do not consume code-correction cycles, and
+  must never disguise source-behavior changes.
+- After the original task exhausts its budget, Chat may create at most one
+  recovery task for the same acceptance goal. A material failure in that
+  recovery requires a root-cause replan; renaming the goal does not reset the
+  cap.
+- Reuse accepted validation when exact hashes/diff and relevant environment are
+  unchanged. Git/PR gates verify identity instead of rerunning tests. Chat
+  directly verifies available read-only GitHub facts and distinguishes that
+  evidence from Work reports.
+- After a result, Chat first evaluates the Owner's broader stated goal. If it is
+  complete, stop with `STOP / HOLD FOR OWNER DECISION`. If it is incomplete,
+  Chat may choose one low-risk, technically determined next gate within that
+  goal; the Owner manually starting that task provides its bounded
+  authorization. High-risk approval boundaries still require separate
+  plain-language Owner approval.
+- Optimize MVP closeout for one clear outcome, minimum necessary evidence,
+  evidence reuse, bounded corrections, and no unnecessary Agent, document,
+  test, review, approval, or task expansion.
 
 - Use a new Codex task/thread when the work needs a new branch, a new PR, a
   separate approval boundary, Production-affecting setup, SQL, environment
@@ -106,12 +139,19 @@ swaths of code or making changes.
 
 ## Must-Stop Actions
 
-Stop and ask before editing app code, executing SQL, changing Supabase schema,
-RLS, grants, policies, storage, or customer data; changing Vercel environment
-variables; changing Resend or Cloudflare; sending real email; touching secrets,
-API keys, service-role keys, or admin keys; changing retry/resend behavior;
-adding payment, auth, CAD, order, or AI generation behavior; running `git add .`;
-force pushing; merging a PR; or deploying Production.
+Stop for separate plain-language Owner approval before Production deployment or
+mutation; paid Provider or paid external-service use; customer-data access or
+mutation; Secret or environment-variable changes; live Supabase, Storage, or
+SQL mutation; destructive or difficult-to-reverse operations; legal,
+commercial, customer-delivery, or human-review policy changes; or material
+product/business scope expansion. The approval must state one recommended
+decision, the plain-language outcome, material risk, exact bounded
+authorization, and a simple approve / do-not-approve choice.
+
+App/server/test edits and normal local Git/PR operations require exact bounded
+current-task authorization, but once expressly authorized must not trigger a
+duplicate approval prompt. Do not run `git add .` unless that exact command is
+approved; prefer path-specific staging.
 
 ## Product And UX Rules
 
@@ -183,9 +223,10 @@ force pushing; merging a PR; or deploying Production.
 - Changes to `/design/concept`, `/design/brief`, `/design/submitted`,
   `/admin/briefs`, or `app/api/concept-briefs/route.ts` usually need Playwright
   coverage or updates to `tests/e2e/design-concept-validation.spec.ts`.
-- Changes to server validation or persistence should include a build check at
-  minimum. Add focused tests if a test harness exists or if the change affects
-  accepted payload shape.
+- Changes to server validation or persistence require appropriate focused
+  validation and a separate Build gate before delivery. A bounded
+  implementation-and-validation task may run only the focused checks expressly
+  named in that task; it must not absorb the separate Build gate.
 - After visual changes, run or request browser verification for the affected
   route when feasible.
 
