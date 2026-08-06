@@ -6,6 +6,7 @@ import path from "node:path";
 import type {
   AutomaticFirstPreviewWorkerDependencies,
   FirstPreviewGenerationWork,
+  FirstPreviewTrustedOutputEvaluator,
 } from "../../lib/server/ai-sketch/first-preview-generation-lifecycle";
 import type { FirstPreviewGeneratedAssetStore } from "../../lib/server/ai-sketch/first-preview-generated-assets-contract";
 import type { OpenAiFirstPreviewProviderBinding } from "../../lib/server/ai-sketch/openai-first-preview-client";
@@ -71,6 +72,9 @@ const modules = loadWithServerOnlyTestShim(() => ({
   lifecycle: testRequire(
     "../../lib/server/ai-sketch/first-preview-generation-lifecycle",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle"),
+  route: testRequire(
+    "../../app/api/concept-briefs/route",
+  ) as typeof import("../../app/api/concept-briefs/route"),
   trigger: testRequire(
     "../../lib/server/ai-sketch/first-preview-automatic-trigger",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-automatic-trigger"),
@@ -91,6 +95,8 @@ const JOB_1_ID = "223e4567-e89b-42d3-a456-426614174000";
 const JOB_2_ID = "323e4567-e89b-42d3-a456-426614174000";
 const OUTPUT_ID = "423e4567-e89b-42d3-a456-426614174000";
 const VALID_PNG = createSyntheticFirstPreviewPng();
+const SIGNING_SECRET =
+  "goal2-trusted-evidence-test-signing-secret-000000000000000";
 
 function validBrief(overrides: Record<string, unknown> = {}) {
   return {
@@ -131,6 +137,7 @@ function repository() {
 function successfulBinding(options: {
   usage?: { textInputTokens: number; imageOutputTokens: number } | null;
   callCounter?: { value: number };
+  providerProofFields?: boolean;
 } = {}): OpenAiFirstPreviewProviderBinding {
   return {
     adapter: {
@@ -145,7 +152,14 @@ function successfulBinding(options: {
           byteSize: VALID_PNG.byteLength,
           model: "gpt-image-2-2026-04-21",
           providerRequestId: "req_goal2_synthetic_001",
-        };
+          ...(options.providerProofFields
+            ? {
+                contentSafetyPassed: true,
+                privacyPassed: true,
+                outputValidityPassed: true,
+              }
+            : {}),
+        } as OpenAiFirstPreviewAdapterResult;
       },
     },
     readValidatedUsage: () =>
@@ -154,6 +168,44 @@ function successfulBinding(options: {
         : options.usage,
     readProviderRequestId: () => "req_goal2_synthetic_001",
   };
+}
+
+type AttemptSignalObservation = {
+  signal: AbortSignal | null;
+  listenerAdds: number;
+  listenerRemoves: number;
+};
+
+function instrumentAttemptSignal(
+  binding: OpenAiFirstPreviewProviderBinding,
+  observation: AttemptSignalObservation,
+): OpenAiFirstPreviewProviderBinding {
+  const originalGenerate =
+    binding.adapter.generateFirstPreviewImage.bind(binding.adapter);
+  binding.adapter.generateFirstPreviewImage = async (request, context) => {
+    const signal = context.signal;
+    observation.signal = signal;
+    const originalAdd = signal.addEventListener.bind(signal);
+    const originalRemove = signal.removeEventListener.bind(signal);
+    Object.defineProperties(signal, {
+      addEventListener: {
+        configurable: true,
+        value: (...args: Parameters<AbortSignal["addEventListener"]>) => {
+          if (args[0] === "abort") observation.listenerAdds += 1;
+          return originalAdd(...args);
+        },
+      },
+      removeEventListener: {
+        configurable: true,
+        value: (...args: Parameters<AbortSignal["removeEventListener"]>) => {
+          if (args[0] === "abort") observation.listenerRemoves += 1;
+          return originalRemove(...args);
+        },
+      },
+    });
+    return originalGenerate(request, context);
+  };
+  return binding;
 }
 
 function failedBinding(
@@ -207,6 +259,30 @@ function assetStore(counter?: { value: number }): FirstPreviewGeneratedAssetStor
   };
 }
 
+function passingTrustedOutputEvaluator(
+  resultOverrides: Partial<{
+    contentSafetyPassed: boolean;
+    privacyPassed: boolean;
+    outputValidityPassed: boolean;
+  }> = {},
+  observation?: { signal: AbortSignal | null },
+): FirstPreviewTrustedOutputEvaluator {
+  return async (input, context) => {
+    if (observation) observation.signal = context.signal;
+    return {
+      evidenceVersion:
+        modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+      subject: { ...input.subject },
+      results: {
+        contentSafetyPassed: true,
+        privacyPassed: true,
+        outputValidityPassed: true,
+        ...resultOverrides,
+      },
+    };
+  };
+}
+
 async function preparedWork(options: {
   repository?: InstanceType<typeof modules.memory.InMemoryFirstPreviewRepository>;
   jobId?: string;
@@ -235,13 +311,32 @@ function workerDependencies(
   targetRepository: InstanceType<typeof modules.memory.InMemoryFirstPreviewRepository>,
   binding: OpenAiFirstPreviewProviderBinding,
   store: FirstPreviewGeneratedAssetStore = assetStore(),
+  evaluator: FirstPreviewTrustedOutputEvaluator | null =
+    passingTrustedOutputEvaluator(),
 ): AutomaticFirstPreviewWorkerDependencies {
   return {
     repository: targetRepository,
     createProvider: () => binding,
     createAssetStore: () => store,
+    ...(evaluator ? { evaluateTrustedOutput: evaluator } : {}),
     outputIdSource: () => OUTPUT_ID,
   };
+}
+
+function validSubmissionPayload() {
+  return {
+    customerName: "Synthetic Customer",
+    customerEmail: "synthetic@example.invalid",
+    brief: validBrief(),
+  };
+}
+
+function conceptBriefRequest() {
+  return new Request("http://localhost/api/concept-briefs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(validSubmissionPayload()),
+  });
 }
 
 test.describe("Goal 2 executable cost contract", () => {
@@ -695,6 +790,417 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       readinessStatus: "first_preview_ready",
       isCurrentCustomerPreview: true,
     });
+  });
+
+  test("structurally valid Provider PNG and Provider booleans cannot replace trusted evidence", async () => {
+    const prepared = await preparedWork();
+    const stores = { value: 0 };
+    const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work,
+      workerDependencies(
+        prepared.repository,
+        successfulBinding({ providerProofFields: true }),
+        assetStore(stores),
+        null,
+      ),
+    );
+
+    expect(result).toEqual({
+      status: "failed",
+      failureCategory: "lifecycle_conflict",
+    });
+    expect(stores.value).toBe(0);
+    expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      failureCategory: "lifecycle_conflict",
+      retryEligible: false,
+    });
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("requires every trusted result to be explicitly true before readiness", async () => {
+    const failures = [
+      {
+        overrides: { contentSafetyPassed: false },
+        category: "unsafe_output",
+      },
+      {
+        overrides: { privacyPassed: false },
+        category: "privacy_failure",
+      },
+      {
+        overrides: { outputValidityPassed: false },
+        category: "unsafe_output",
+      },
+    ] as const;
+
+    for (const failure of failures) {
+      const prepared = await preparedWork();
+      const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        prepared.work,
+        workerDependencies(
+          prepared.repository,
+          successfulBinding(),
+          assetStore(),
+          passingTrustedOutputEvaluator(failure.overrides),
+        ),
+      );
+      expect(result).toEqual({
+        status: "failed",
+        failureCategory: failure.category,
+      });
+      expect(
+        await prepared.repository.findCustomerReadyOutput(BRIEF_ID),
+      ).toBeNull();
+    }
+
+    const passing = await preparedWork();
+    const successfulEvaluation = { signal: null as AbortSignal | null };
+    const passingDependencies = workerDependencies(
+      passing.repository,
+      successfulBinding(),
+      assetStore(),
+      passingTrustedOutputEvaluator({}, successfulEvaluation),
+    );
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        passing.work,
+        {
+          ...passingDependencies,
+          trustedOutputEvidenceTimeoutMs: 5,
+        },
+      ),
+    ).toEqual({ status: "ready" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(successfulEvaluation.signal?.aborted).toBe(false);
+    expect(
+      await passing.repository.findCustomerReadyOutput(BRIEF_ID),
+    ).toMatchObject({
+      id: OUTPUT_ID,
+      jobId: JOB_1_ID,
+      readinessStatus: "first_preview_ready",
+      isCurrentCustomerPreview: true,
+    });
+  });
+
+  test("rejects trusted evidence bound to another job, output, or validated digest", async () => {
+    const mismatches = [
+      { jobId: JOB_2_ID },
+      { outputId: "523e4567-e89b-42d3-a456-426614174000" },
+      { contentSha256: "0".repeat(64) },
+    ];
+
+    for (const mismatch of mismatches) {
+      const prepared = await preparedWork();
+      const evaluator: FirstPreviewTrustedOutputEvaluator = async (input) => ({
+        evidenceVersion:
+          modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+        subject: { ...input.subject, ...mismatch },
+        results: {
+          contentSafetyPassed: true,
+          privacyPassed: true,
+          outputValidityPassed: true,
+        },
+      });
+      expect(
+        await modules.lifecycle.runAutomaticFirstPreviewWorker(
+          prepared.work,
+          workerDependencies(
+            prepared.repository,
+            successfulBinding(),
+            assetStore(),
+            evaluator,
+          ),
+        ),
+      ).toEqual({
+        status: "failed",
+        failureCategory: "lifecycle_conflict",
+      });
+      expect(
+        await prepared.repository.findCustomerReadyOutput(BRIEF_ID),
+      ).toBeNull();
+    }
+  });
+
+  test("rejects missing and malformed trusted evidence", async () => {
+    const malformedEvidence: unknown[] = [
+      null,
+      {},
+      {
+        evidenceVersion:
+          modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+        subject: {
+          conceptBriefId: BRIEF_ID,
+          jobId: JOB_1_ID,
+          outputId: OUTPUT_ID,
+          contentSha256: "0".repeat(64),
+        },
+        results: {
+          contentSafetyPassed: true,
+          privacyPassed: true,
+        },
+      },
+      {
+        evidenceVersion:
+          modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+        subject: {
+          conceptBriefId: BRIEF_ID,
+          jobId: JOB_1_ID,
+          outputId: OUTPUT_ID,
+          contentSha256: "0".repeat(64),
+        },
+        results: {
+          contentSafetyPassed: "true",
+          privacyPassed: true,
+          outputValidityPassed: true,
+        },
+      },
+    ];
+
+    for (const evidence of malformedEvidence) {
+      const prepared = await preparedWork();
+      expect(
+        await modules.lifecycle.runAutomaticFirstPreviewWorker(
+          prepared.work,
+          workerDependencies(
+            prepared.repository,
+            successfulBinding(),
+            assetStore(),
+            async () => evidence,
+          ),
+        ),
+      ).toEqual({
+        status: "failed",
+        failureCategory: "lifecycle_conflict",
+      });
+      expect(
+        await prepared.repository.findCustomerReadyOutput(BRIEF_ID),
+      ).toBeNull();
+    }
+  });
+
+  test("evaluator exception and local timeout fail closed with truthful terminal timing", async () => {
+    const thrown = await preparedWork();
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        thrown.work,
+        workerDependencies(
+          thrown.repository,
+          successfulBinding(),
+          assetStore(),
+          async () => {
+            throw new Error("synthetic evaluator detail must stay private");
+          },
+        ),
+      ),
+    ).toEqual({
+      status: "failed",
+      failureCategory: "lifecycle_conflict",
+    });
+    expect(await thrown.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+
+    const timedOut = await preparedWork();
+    const stores = { value: 0 };
+    const attemptSignal: AttemptSignalObservation = {
+      signal: null,
+      listenerAdds: 0,
+      listenerRemoves: 0,
+    };
+    let evaluatorAbortCount = 0;
+    let evaluatorSettled = false;
+    let evaluatorSignal: AbortSignal | null = null;
+    const timeoutDependencies = workerDependencies(
+      timedOut.repository,
+      instrumentAttemptSignal(successfulBinding(), attemptSignal),
+      assetStore(stores),
+      async (_input, context) =>
+        new Promise<unknown>((_resolve, reject) => {
+          evaluatorSignal = context.signal;
+          context.signal.addEventListener(
+            "abort",
+            () => {
+              evaluatorAbortCount += 1;
+              evaluatorSettled = true;
+              reject(new Error("synthetic local evidence timeout"));
+            },
+            { once: true },
+          );
+        }),
+    );
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(timedOut.work, {
+        ...timeoutDependencies,
+        trustedOutputEvidenceTimeoutMs: 1,
+        attemptTimeoutMs: 20,
+      }),
+    ).toEqual({ status: "failed", failureCategory: "lifecycle_conflict" });
+    const timedOutJob = await timedOut.repository.findJobById(JOB_1_ID);
+    expect(timedOutJob).toMatchObject({
+      status: "failed",
+      failureCategory: "lifecycle_conflict",
+      retryEligible: false,
+      timedOutAt: null,
+    });
+    expect(evaluatorSignal?.aborted).toBe(true);
+    expect(evaluatorAbortCount).toBe(1);
+    expect(evaluatorSettled).toBe(true);
+    expect(attemptSignal.listenerAdds).toBe(1);
+    expect(attemptSignal.listenerRemoves).toBe(1);
+    expect(stores.value).toBe(0);
+    expect(timedOutJob?.failedAt).not.toBeNull();
+    expect(timedOutJob?.deadlineAt).not.toBeNull();
+    expect(
+      Date.parse(timedOutJob?.deadlineAt ?? "") -
+        Date.parse(timedOutJob?.startedAt ?? ""),
+    ).toBe(150_000);
+    expect(Date.parse(timedOutJob?.failedAt ?? "")).toBeLessThan(
+      Date.parse(timedOutJob?.deadlineAt ?? ""),
+    );
+    expect(
+      await timedOut.repository.findCustomerReadyOutput(BRIEF_ID),
+    ).toBeNull();
+  });
+
+  test("outer attempt timeout aborts trusted evaluation once and leaves no ready output", async () => {
+    let clockNow = "2026-08-03T00:00:00.000Z";
+    const targetRepository = new modules.memory.InMemoryFirstPreviewRepository(
+      () => clockNow,
+    );
+    const prepared = await preparedWork({ repository: targetRepository });
+    const calls = { value: 0 };
+    const stores = { value: 0 };
+    const attemptSignal: AttemptSignalObservation = {
+      signal: null,
+      listenerAdds: 0,
+      listenerRemoves: 0,
+    };
+    let evaluatorCallCount = 0;
+    let evaluatorAbortCount = 0;
+    let evaluatorSettled = false;
+    let evaluatorSignal: AbortSignal | null = null;
+    const evaluator: FirstPreviewTrustedOutputEvaluator = async (
+      _input,
+      context,
+    ) => {
+      evaluatorCallCount += 1;
+      evaluatorSignal = context.signal;
+      return new Promise<unknown>((_resolve, reject) => {
+        context.signal.addEventListener(
+          "abort",
+          () => {
+            evaluatorAbortCount += 1;
+            evaluatorSettled = true;
+            clockNow = "2026-08-03T00:02:30.000Z";
+            reject(new Error("synthetic outer attempt timeout"));
+          },
+          { once: true },
+        );
+      });
+    };
+    const dependencies = workerDependencies(
+      targetRepository,
+      instrumentAttemptSignal(
+        successfulBinding({ callCounter: calls }),
+        attemptSignal,
+      ),
+      assetStore(stores),
+      evaluator,
+    );
+
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, {
+        ...dependencies,
+        attemptTimeoutMs: 5,
+        trustedOutputEvidenceTimeoutMs: 50,
+      }),
+    ).toEqual({ status: "failed", failureCategory: "timeout" });
+    expect(evaluatorCallCount).toBe(1);
+    expect(evaluatorAbortCount).toBe(1);
+    expect(evaluatorSettled).toBe(true);
+    expect(evaluatorSignal?.aborted).toBe(true);
+    expect(attemptSignal.signal?.aborted).toBe(true);
+    expect(attemptSignal.listenerAdds).toBe(1);
+    expect(attemptSignal.listenerRemoves).toBe(1);
+    expect(calls.value).toBe(1);
+    expect(stores.value).toBe(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(evaluatorAbortCount).toBe(1);
+    expect(await targetRepository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "timed_out",
+      failureCategory: "timeout",
+      retryEligible: false,
+      timedOutAt: "2026-08-03T00:02:30.000Z",
+      deadlineAt: "2026-08-03T00:02:30.000Z",
+    });
+    expect(await targetRepository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("preserves the confirmed Concept Brief response when evaluation fails closed", async () => {
+    const scheduledTasks: Array<() => void | Promise<void>> = [];
+    const targetRepository = repository();
+    const post = modules.route.createConceptBriefPostHandler({
+      checkRateLimit: () =>
+        Promise.resolve({
+          allowed: true,
+          mode: "disabled" as const,
+          reason: "synthetic_test",
+        }),
+      persistSubmission: () =>
+        Promise.resolve({
+          persisted: true as const,
+          publicReference: PUBLIC_REFERENCE,
+          conceptBriefId: BRIEF_ID,
+        }),
+      sessionDependencies: {
+        featureFlagValue: "true",
+        signingSecret: SIGNING_SECRET,
+        clock: () => 1_785_715_200,
+        nonceSource: () => "trusted_evidence_route_nonce_abcdefghijkl",
+      },
+      triggerDependencies: {
+        featureFlagValue: "true",
+        executionCapabilityValue: "true",
+        createRepository: () => targetRepository,
+        createWorkerDependencies: (target) =>
+          workerDependencies(
+            target as typeof targetRepository,
+            successfulBinding(),
+            assetStore(),
+            null,
+          ),
+        schedule: (task) => {
+          scheduledTasks.push(task);
+        },
+        jobIdSource: () => JOB_1_ID,
+      },
+    });
+
+    const response = await post(conceptBriefRequest());
+    const confirmedBody = await response.json();
+    expect(response.status).toBe(201);
+    expect(confirmedBody).toMatchObject({
+      ok: true,
+      persisted: true,
+      publicReference: PUBLIC_REFERENCE,
+      conceptBriefId: BRIEF_ID,
+    });
+    expect(scheduledTasks).toHaveLength(1);
+
+    await scheduledTasks[0]();
+    expect(confirmedBody).toMatchObject({
+      ok: true,
+      persisted: true,
+      publicReference: PUBLIC_REFERENCE,
+      conceptBriefId: BRIEF_ID,
+    });
+    expect(await targetRepository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed",
+      failureCategory: "lifecycle_conflict",
+    });
+    expect(
+      await targetRepository.findCustomerReadyOutput(BRIEF_ID),
+    ).toBeNull();
   });
 
   test("missing configuration and trustworthy cost overrun fail before Storage and readiness", async () => {
