@@ -99,9 +99,20 @@ but it stops if identity, scope, evidence, or safety differs.
 
 ### Class 1 — Safety, Identity, Or Material Failure
 
-Examples include repository/worktree/branch/Base/Head/SHA drift, an unexpected
-file or commit, a real application assertion or compiler/build defect, a
-security/privacy failure, a new material review finding, or a high-risk boundary.
+Class 1 applies when any condition below is true:
+
+- repository, worktree, branch, Base, Head, SHA, identity, or scope differs;
+- the failure exposes safety, privacy, security, authorization, or high-risk
+  risk;
+- the defect affects behavior outside the acceptance question or approved
+  scope;
+- correction requires architecture, dependency, product-scope, or approval
+  expansion;
+- the remaining Class 2 budget cannot contain the correction;
+- evidence is insufficient to prove the defect is narrowly bounded.
+
+When classification remains genuinely ambiguous after inspection, fail closed
+as Class 1 and return to Chat for root-cause replanning.
 
 Behavior:
 
@@ -111,9 +122,19 @@ Behavior:
 
 ### Class 2 — Narrow Implementation Correction
 
-Examples include a focused test exposing one defect within the current
-acceptance question or a compiler diagnostic identifying one local
-implementation defect.
+A real test assertion, compiler diagnostic, or Build diagnostic is not
+automatically Class 1. Class 2 applies only when every condition below is
+satisfied:
+
+- the defect is directly attributable to one narrow local implementation
+  issue;
+- it remains within the current acceptance question;
+- it remains within the authorized file and product scope;
+- it does not cross safety, privacy, security, identity, authorization,
+  high-risk, or material product boundaries;
+- the task contains an unused explicit Class 2 correction budget;
+- the correction requires no architecture expansion, unrelated refactoring,
+  new dependency, product-scope expansion, or new approval boundary.
 
 Behavior:
 

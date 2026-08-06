@@ -91,12 +91,22 @@ swaths of code or making changes.
   Codex-ready instruction; it does not transfer Git, test, implementation, or
   ordinary workflow choices to the Owner. With insufficient evidence, it asks
   for only one missing fact or one narrow verification.
-- Failures have three classes: Class 1 safety/identity/material failures stop
-  immediately with no retry; Class 2 narrow implementation corrections require
-  an explicit budget and default to one primary implementation plus at most two
-  focused correction cycles; Class 3 mechanical execution failures may be
-  corrected in-task at most twice, do not consume code-correction cycles, and
-  must never disguise source-behavior changes.
+- Failures have three classes. A real test assertion, compiler diagnostic, or
+  Build diagnostic is not automatically Class 1. Class 2 applies only when the
+  defect is directly attributable to one narrow local implementation issue,
+  remains within the acceptance question and authorized file/product scope,
+  crosses no safety, privacy, security, identity, authorization, high-risk, or
+  material product boundary, fits an unused explicit Class 2 budget, and needs
+  no architecture, dependency, unrelated-refactor, product-scope, or approval
+  expansion. Class 1 applies to identity or scope drift, safety/privacy/security/
+  authorization/high-risk risk, cross-scope behavior, architecture/dependency/
+  product-scope/approval expansion, an insufficient correction budget, or
+  insufficient evidence of a narrow bound; genuine ambiguity fails closed as
+  Class 1 for Chat-side root-cause replanning. Class 2 defaults to one primary
+  implementation plus at most two focused correction cycles. Class 3
+  mechanical execution failures may be corrected in-task at most twice, do not
+  consume code-correction cycles, and must never disguise source-behavior
+  changes.
 - After the original task exhausts its budget, Chat may create at most one
   recovery task for the same acceptance goal. A material failure in that
   recovery requires a root-cause replan; renaming the goal does not reset the

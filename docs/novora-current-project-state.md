@@ -63,9 +63,12 @@ merged:
   baseline and a historical baseline only; it is not the current integration
   tip.
 - PR #255 is merged into `integration/instant-first-preview-agent`. Its terminal
-  Head is `b666aa17180eabfebec0b8403803c643abfe1e8c`; its normal merge commit and the
-  current integration tip are
-  `2f5e2e88440624673583e4e08fda652589867a01`.
+  Head is `b666aa17180eabfebec0b8403803c643abfe1e8c`; its normal merge commit, which
+  was the integration tip immediately after PR #255 and is now a historical
+  integration baseline, is `2f5e2e88440624673583e4e08fda652589867a01`.
+  It is not the current integration tip after later merges, including PR #258.
+  The authoritative current integration tip is recorded in Active Repository
+  Execution Authority.
 - Agent 73 is complete. No further Agent 73 correction, review, or merge-gate
   cycle is authorized.
 - G3-02 accepted manual verification matched the intended Vercel project
