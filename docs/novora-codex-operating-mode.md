@@ -53,39 +53,41 @@ report that includes:
 - Whether to continue the same Codex task or open a new one.
 - Whether Local or Worktree should be used next.
 
-## Auto-Review Permission Model
+## Current-Task Authorization And Owner Approval
 
-When the user gives an auto-review allowlist, Codex may do only the listed safe
-actions without stopping. A must-stop item always wins over an allowlist.
+- App/server/test edits and normal local Git/PR operations require exact,
+  bounded current-task authorization.
+- Manually starting the newest exact Codex-ready task authorizes the expressly
+  named low-risk, reversible operations; Work must not request the same
+  authorization again.
+- Normal path-specific staging, commit, push, PR creation, Draft/Ready
+  transition, review-response work, and integration merge may occur only when
+  expressly named in the current task.
+- Absence of exact current-task authorization requires stopping.
+- Safe docs-only authorization may include reading/searching named docs and
+  skills, editing only allowed docs and skills, and running `git status`,
+  `git diff`, and `git diff --check` when those operations are expressly named.
 
-Safe docs-only actions commonly include:
+Separate plain-language Owner approval remains mandatory before:
 
-- Reading and searching allowed docs and skill files.
-- Editing only explicitly allowed docs and skill files.
-- Running `git status`, `git diff`, and `git diff --check`.
-
-Stop and ask before:
-
-- Editing app code.
-- Executing SQL or changing Supabase schema, RLS, grants, policies, storage, or
-  customer data.
-- Changing Vercel environment variables.
-- Changing Resend or Cloudflare configuration.
-- Sending real email.
-- Touching secrets, API keys, service-role keys, or admin keys.
-- Changing retry/resend behavior.
-- Adding or changing payment, authentication, CAD, order, production, or AI
-  generation behavior.
-- Running `git add .`.
-- Force pushing, merging a PR, or deploying Production.
+- Production deployment or Production mutation;
+- paid Provider or paid external-service use;
+- customer-data access or mutation;
+- Secret or environment-variable changes;
+- live Supabase, Storage, or SQL mutation;
+- destructive or difficult-to-reverse actions;
+- legal, commercial, customer-delivery, or human-review policy changes;
+- material product/business scope changes.
 
 ## Staging, Commit, Push, And PR Rules
 
-- Do not stage, commit, push, create a PR, merge, or deploy unless the user asks
-  for that action.
+- Do not stage, commit, push, create a PR, change Draft/Ready state, perform
+  review-response work, merge, or deploy unless the exact current task names
+  that action.
 - Do not run `git add .` without explicit approval for that exact command.
 - Prefer path-specific staging after reviewing `git status --short` and
   `git diff`.
+- Do not force push unless it is separately and exactly authorized.
 - Keep PR scope narrow and aligned with the approved task.
 
 ## Reporting Template

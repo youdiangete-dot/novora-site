@@ -30,7 +30,9 @@ Use this skill at the start of any NOVORA code, documentation, configuration, or
 9. Keep the PR scope narrow and aligned with the user request.
 10. Read the smallest relevant files first. Prefer `rg` for search, falling back to safe shell search if `rg` is unavailable.
 11. Make edits with existing project patterns: App Router routes in `app/`, shared UI in `components/`, server-only code in `lib/server/`, route CSS modules beside route files, and tests under `tests/`.
-12. Run the narrowest useful validation for the change. Broaden only when shared flows, persistence, or customer journeys are affected.
+12. A bounded implementation-and-validation gate runs only the focused checks
+    expressly named in its current task. Do not broaden validation or absorb a
+    separate Build gate.
 13. Before staging or committing, review `git status --short` and `git diff` so only intended files are included.
 14. Do not run `git add .` without explicit approval for that exact action.
 15. Report changed files, validations run, skipped checks, `git status --short`,
@@ -53,9 +55,14 @@ Use this skill at the start of any NOVORA code, documentation, configuration, or
 
 ## Validation And Reporting Expectations
 
-- For documentation/workflow-only changes, no build is required unless the user asks for one.
-- For frontend behavior changes, run focused tests or browser verification for the affected route when feasible.
-- For server validation, persistence, or environment handling changes, run `npm run build` at minimum unless blocked.
+- A bounded implementation-and-validation gate runs only focused tests or
+  browser verification expressly named in its current task.
+- `npm run build` remains a separate Build gate. Only a separately authorized
+  Build task runs it.
+- An implementation report may state that Build remains required before
+  delivery, but Build must not be absorbed into implementation, commit, push,
+  PR, review, Ready, or merge.
+- Documentation-only changes do not require Build.
 - In the final report, state the branch, files changed, `git diff --stat`,
   validation performed, skipped checks, `git status --short`, and any unrelated
   local files left untouched.
