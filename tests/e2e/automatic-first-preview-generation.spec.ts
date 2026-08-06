@@ -170,6 +170,44 @@ function successfulBinding(options: {
   };
 }
 
+type AttemptSignalObservation = {
+  signal: AbortSignal | null;
+  listenerAdds: number;
+  listenerRemoves: number;
+};
+
+function instrumentAttemptSignal(
+  binding: OpenAiFirstPreviewProviderBinding,
+  observation: AttemptSignalObservation,
+): OpenAiFirstPreviewProviderBinding {
+  const originalGenerate =
+    binding.adapter.generateFirstPreviewImage.bind(binding.adapter);
+  binding.adapter.generateFirstPreviewImage = async (request, context) => {
+    const signal = context.signal;
+    observation.signal = signal;
+    const originalAdd = signal.addEventListener.bind(signal);
+    const originalRemove = signal.removeEventListener.bind(signal);
+    Object.defineProperties(signal, {
+      addEventListener: {
+        configurable: true,
+        value: (...args: Parameters<AbortSignal["addEventListener"]>) => {
+          if (args[0] === "abort") observation.listenerAdds += 1;
+          return originalAdd(...args);
+        },
+      },
+      removeEventListener: {
+        configurable: true,
+        value: (...args: Parameters<AbortSignal["removeEventListener"]>) => {
+          if (args[0] === "abort") observation.listenerRemoves += 1;
+          return originalRemove(...args);
+        },
+      },
+    });
+    return originalGenerate(request, context);
+  };
+  return binding;
+}
+
 function failedBinding(
   result: Extract<OpenAiFirstPreviewAdapterResult, { ok: false }>,
 ): OpenAiFirstPreviewProviderBinding {
@@ -227,18 +265,22 @@ function passingTrustedOutputEvaluator(
     privacyPassed: boolean;
     outputValidityPassed: boolean;
   }> = {},
+  observation?: { signal: AbortSignal | null },
 ): FirstPreviewTrustedOutputEvaluator {
-  return async (input) => ({
-    evidenceVersion:
-      modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
-    subject: { ...input.subject },
-    results: {
-      contentSafetyPassed: true,
-      privacyPassed: true,
-      outputValidityPassed: true,
-      ...resultOverrides,
-    },
-  });
+  return async (input, context) => {
+    if (observation) observation.signal = context.signal;
+    return {
+      evidenceVersion:
+        modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+      subject: { ...input.subject },
+      results: {
+        contentSafetyPassed: true,
+        privacyPassed: true,
+        outputValidityPassed: true,
+        ...resultOverrides,
+      },
+    };
+  };
 }
 
 async function preparedWork(options: {
@@ -813,12 +855,24 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     }
 
     const passing = await preparedWork();
+    const successfulEvaluation = { signal: null as AbortSignal | null };
+    const passingDependencies = workerDependencies(
+      passing.repository,
+      successfulBinding(),
+      assetStore(),
+      passingTrustedOutputEvaluator({}, successfulEvaluation),
+    );
     expect(
       await modules.lifecycle.runAutomaticFirstPreviewWorker(
         passing.work,
-        workerDependencies(passing.repository, successfulBinding()),
+        {
+          ...passingDependencies,
+          trustedOutputEvidenceTimeoutMs: 5,
+        },
       ),
     ).toEqual({ status: "ready" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(successfulEvaluation.signal?.aborted).toBe(false);
     expect(
       await passing.repository.findCustomerReadyOutput(BRIEF_ID),
     ).toMatchObject({
@@ -925,7 +979,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     }
   });
 
-  test("evaluator exception and timeout fail closed", async () => {
+  test("evaluator exception and local timeout fail closed with truthful terminal timing", async () => {
     const thrown = await preparedWork();
     expect(
       await modules.lifecycle.runAutomaticFirstPreviewWorker(
@@ -946,21 +1000,140 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     expect(await thrown.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
 
     const timedOut = await preparedWork();
+    const stores = { value: 0 };
+    const attemptSignal: AttemptSignalObservation = {
+      signal: null,
+      listenerAdds: 0,
+      listenerRemoves: 0,
+    };
+    let evaluatorAbortCount = 0;
+    let evaluatorSettled = false;
+    let evaluatorSignal: AbortSignal | null = null;
     const timeoutDependencies = workerDependencies(
       timedOut.repository,
-      successfulBinding(),
-      assetStore(),
-      async () => new Promise<unknown>(() => undefined),
+      instrumentAttemptSignal(successfulBinding(), attemptSignal),
+      assetStore(stores),
+      async (_input, context) =>
+        new Promise<unknown>((_resolve, reject) => {
+          evaluatorSignal = context.signal;
+          context.signal.addEventListener(
+            "abort",
+            () => {
+              evaluatorAbortCount += 1;
+              evaluatorSettled = true;
+              reject(new Error("synthetic local evidence timeout"));
+            },
+            { once: true },
+          );
+        }),
     );
     expect(
       await modules.lifecycle.runAutomaticFirstPreviewWorker(timedOut.work, {
         ...timeoutDependencies,
         trustedOutputEvidenceTimeoutMs: 1,
+        attemptTimeoutMs: 20,
       }),
-    ).toEqual({ status: "failed", failureCategory: "timeout" });
+    ).toEqual({ status: "failed", failureCategory: "lifecycle_conflict" });
+    const timedOutJob = await timedOut.repository.findJobById(JOB_1_ID);
+    expect(timedOutJob).toMatchObject({
+      status: "failed",
+      failureCategory: "lifecycle_conflict",
+      retryEligible: false,
+      timedOutAt: null,
+    });
+    expect(evaluatorSignal?.aborted).toBe(true);
+    expect(evaluatorAbortCount).toBe(1);
+    expect(evaluatorSettled).toBe(true);
+    expect(attemptSignal.listenerAdds).toBe(1);
+    expect(attemptSignal.listenerRemoves).toBe(1);
+    expect(stores.value).toBe(0);
+    expect(timedOutJob?.failedAt).not.toBeNull();
+    expect(timedOutJob?.deadlineAt).not.toBeNull();
+    expect(
+      Date.parse(timedOutJob?.deadlineAt ?? "") -
+        Date.parse(timedOutJob?.startedAt ?? ""),
+    ).toBe(150_000);
+    expect(Date.parse(timedOutJob?.failedAt ?? "")).toBeLessThan(
+      Date.parse(timedOutJob?.deadlineAt ?? ""),
+    );
     expect(
       await timedOut.repository.findCustomerReadyOutput(BRIEF_ID),
     ).toBeNull();
+  });
+
+  test("outer attempt timeout aborts trusted evaluation once and leaves no ready output", async () => {
+    let clockNow = "2026-08-03T00:00:00.000Z";
+    const targetRepository = new modules.memory.InMemoryFirstPreviewRepository(
+      () => clockNow,
+    );
+    const prepared = await preparedWork({ repository: targetRepository });
+    const calls = { value: 0 };
+    const stores = { value: 0 };
+    const attemptSignal: AttemptSignalObservation = {
+      signal: null,
+      listenerAdds: 0,
+      listenerRemoves: 0,
+    };
+    let evaluatorCallCount = 0;
+    let evaluatorAbortCount = 0;
+    let evaluatorSettled = false;
+    let evaluatorSignal: AbortSignal | null = null;
+    const evaluator: FirstPreviewTrustedOutputEvaluator = async (
+      _input,
+      context,
+    ) => {
+      evaluatorCallCount += 1;
+      evaluatorSignal = context.signal;
+      return new Promise<unknown>((_resolve, reject) => {
+        context.signal.addEventListener(
+          "abort",
+          () => {
+            evaluatorAbortCount += 1;
+            evaluatorSettled = true;
+            clockNow = "2026-08-03T00:02:30.000Z";
+            reject(new Error("synthetic outer attempt timeout"));
+          },
+          { once: true },
+        );
+      });
+    };
+    const dependencies = workerDependencies(
+      targetRepository,
+      instrumentAttemptSignal(
+        successfulBinding({ callCounter: calls }),
+        attemptSignal,
+      ),
+      assetStore(stores),
+      evaluator,
+    );
+
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, {
+        ...dependencies,
+        attemptTimeoutMs: 5,
+        trustedOutputEvidenceTimeoutMs: 50,
+      }),
+    ).toEqual({ status: "failed", failureCategory: "timeout" });
+    expect(evaluatorCallCount).toBe(1);
+    expect(evaluatorAbortCount).toBe(1);
+    expect(evaluatorSettled).toBe(true);
+    expect(evaluatorSignal?.aborted).toBe(true);
+    expect(attemptSignal.signal?.aborted).toBe(true);
+    expect(attemptSignal.listenerAdds).toBe(1);
+    expect(attemptSignal.listenerRemoves).toBe(1);
+    expect(calls.value).toBe(1);
+    expect(stores.value).toBe(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(evaluatorAbortCount).toBe(1);
+    expect(await targetRepository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "timed_out",
+      failureCategory: "timeout",
+      retryEligible: false,
+      timedOutAt: "2026-08-03T00:02:30.000Z",
+      deadlineAt: "2026-08-03T00:02:30.000Z",
+    });
+    expect(await targetRepository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
   });
 
   test("preserves the confirmed Concept Brief response when evaluation fails closed", async () => {

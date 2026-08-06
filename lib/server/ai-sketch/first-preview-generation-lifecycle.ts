@@ -108,6 +108,7 @@ export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
   createAssetStore(): FirstPreviewGeneratedAssetStore;
   evaluateTrustedOutput?: FirstPreviewTrustedOutputEvaluator;
   trustedOutputEvidenceTimeoutMs?: number;
+  attemptTimeoutMs?: number;
   outputIdSource?: () => string;
 }>;
 
@@ -123,7 +124,8 @@ type TrustedOutputEvidenceFailureReason =
   | "privacy_failed"
   | "output_validity_failed"
   | "exception"
-  | "timeout";
+  | "timeout"
+  | "aborted";
 
 type TrustedOutputEvidenceResult =
   | Readonly<{ ok: true; evidence: FirstPreviewTrustedOutputEvidence }>
@@ -203,9 +205,14 @@ async function readTrustedOutputEvidence(
   dependencies: AutomaticFirstPreviewWorkerDependencies,
   subject: FirstPreviewTrustedOutputSubject,
   imageBytes: Uint8Array,
+  attemptSignal: AbortSignal,
 ): Promise<TrustedOutputEvidenceResult> {
   if (!dependencies.evaluateTrustedOutput) {
     return { ok: false, reason: "unavailable" };
+  }
+
+  if (attemptSignal.aborted) {
+    return { ok: false, reason: "aborted" };
   }
 
   const configuredTimeout = dependencies.trustedOutputEvidenceTimeoutMs;
@@ -215,35 +222,68 @@ async function readTrustedOutputEvidence(
     configuredTimeout! <= MAX_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS
       ? configuredTimeout!
       : DEFAULT_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS;
-  const controller = new AbortController();
-  let timedOut = false;
+  const evaluatorController = new AbortController();
+  let interruptionReason: "timeout" | "aborted" | null = null;
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let resolveInterruption:
+    | ((value: Readonly<{ kind: "timeout" | "aborted" }>) => void)
+    | null = null;
+  const interruption = new Promise<Readonly<{ kind: "timeout" | "aborted" }>>(
+    (resolve) => {
+      resolveInterruption = resolve;
+    },
+  );
+  const interrupt = (reason: "timeout" | "aborted") => {
+    if (interruptionReason) return;
+    interruptionReason = reason;
+    resolveInterruption?.({ kind: reason });
+    evaluatorController.abort();
+  };
+  const abortFromAttempt = () => interrupt("aborted");
+
+  attemptSignal.addEventListener("abort", abortFromAttempt, { once: true });
+  if (attemptSignal.aborted) abortFromAttempt();
+  if (!interruptionReason) {
+    timeoutHandle = setTimeout(() => interrupt("timeout"), timeoutMs);
+  }
 
   try {
-    const value = await Promise.race([
-      dependencies.evaluateTrustedOutput(
-        {
-          subject,
-          imageBytes,
-          mimeType: "image/png",
-          widthPx: 1024,
-          heightPx: 1024,
-        },
-        { signal: controller.signal },
-      ),
-      new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-          timedOut = true;
-          controller.abort();
-          reject(new Error("trusted output evidence evaluation timed out"));
-        }, timeoutMs);
-      }),
+    const result = await Promise.race([
+      Promise.resolve()
+        .then(() =>
+          dependencies.evaluateTrustedOutput!(
+            {
+              subject,
+              imageBytes,
+              mimeType: "image/png",
+              widthPx: 1024,
+              heightPx: 1024,
+            },
+            { signal: evaluatorController.signal },
+          ),
+        )
+        .then(
+          (value) => ({ kind: "value" as const, value }),
+          () => ({ kind: "exception" as const }),
+        ),
+      interruption,
     ]);
-    return validateTrustedOutputEvidence(value, subject);
+
+    switch (result.kind) {
+      case "timeout":
+        return { ok: false, reason: "timeout" };
+      case "aborted":
+        return { ok: false, reason: "aborted" };
+      case "exception":
+        return { ok: false, reason: "exception" };
+      case "value":
+        return validateTrustedOutputEvidence(result.value, subject);
+    }
   } catch {
-    return { ok: false, reason: timedOut ? "timeout" : "exception" };
+    return { ok: false, reason: interruptionReason ?? "exception" };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
+    attemptSignal.removeEventListener("abort", abortFromAttempt);
   }
 }
 
@@ -251,7 +291,7 @@ function mapTrustedOutputEvidenceFailure(
   reason: TrustedOutputEvidenceFailureReason,
 ): FirstPreviewFailureCategory {
   if (reason === "privacy_failed") return "privacy_failure";
-  if (reason === "timeout") return "timeout";
+  if (reason === "aborted") return "cancelled";
   if (
     reason === "content_safety_failed" ||
     reason === "output_validity_failed"
@@ -408,6 +448,12 @@ function mapRuntimeFailure(
   category: FirstPreviewFailureCategory;
   retryEligible: boolean;
 }> {
+  if (runtimeCategory === "timeout") {
+    return { category: "timeout", retryEligible: false };
+  }
+  if (runtimeCategory === "aborted") {
+    return { category: "cancelled", retryEligible: false };
+  }
   if (trustedEvidenceFailureCategory) {
     return {
       category: trustedEvidenceFailureCategory,
@@ -419,12 +465,6 @@ function mapRuntimeFailure(
       category: adapterResult.category,
       retryEligible: adapterResult.retryEligible,
     };
-  }
-  if (runtimeCategory === "timeout") {
-    return { category: "timeout", retryEligible: false };
-  }
-  if (runtimeCategory === "aborted") {
-    return { category: "cancelled", retryEligible: false };
   }
   if (runtimeCategory === "invalid_structured_input") {
     return { category: "invalid_structured_input", retryEligible: false };
@@ -547,6 +587,7 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
         dependencies,
         subject,
         imageBytes,
+        context.signal,
       );
       if (evidenceResult.ok === false) {
         trustedEvidenceFailureCategory = mapTrustedOutputEvidenceFailure(
@@ -588,7 +629,15 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
       accessControlEligible: true,
       falseSuccessDetected: false,
     },
-    { provider, timeoutMs: OPENAI_FIRST_PREVIEW_TIMEOUT_MS },
+    {
+      provider,
+      timeoutMs:
+        Number.isSafeInteger(dependencies.attemptTimeoutMs) &&
+        dependencies.attemptTimeoutMs! > 0 &&
+        dependencies.attemptTimeoutMs! <= OPENAI_FIRST_PREVIEW_TIMEOUT_MS
+          ? dependencies.attemptTimeoutMs!
+          : OPENAI_FIRST_PREVIEW_TIMEOUT_MS,
+    },
   );
 
   const cost = reconcileFirstPreviewActualCost({
