@@ -27,6 +27,15 @@ merged:
   received it; promotion to `main` or Production requires a separate merge and
   deployment record.
 
+## Active Repository Execution Authority
+
+- NOVORA One-Step Scope Brake v1 is active repository authority. Its governing
+  document is `docs/novora-one-step-scope-brake-v1.md`, and `AGENTS.md` enforces
+  it.
+- All subsequent NOVORA work must use exactly one acceptance question and one
+  execution gate per task.
+- This documentation task does not execute or change Agent 75 or G3 work.
+
 ## Current Locked Product Direction
 
 ### Goal 2 completion, Goal 3 Step 01 merge, and G3-02 integration-only state
