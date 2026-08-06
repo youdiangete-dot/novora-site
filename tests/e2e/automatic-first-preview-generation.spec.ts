@@ -84,9 +84,9 @@ const modules = loadWithServerOnlyTestShim(() => ({
   memory: testRequire(
     "../../lib/server/ai-sketch/in-memory-first-preview-repository",
   ) as typeof import("../../lib/server/ai-sketch/in-memory-first-preview-repository"),
-  executionCapability: testRequire(
-    "../../lib/server/ai-sketch/first-preview-post-response-execution-capability",
-  ) as typeof import("../../lib/server/ai-sketch/first-preview-post-response-execution-capability"),
+  queue: testRequire(
+    "../../lib/server/ai-sketch/first-preview-queue",
+  ) as typeof import("../../lib/server/ai-sketch/first-preview-queue"),
 }));
 
 const PUBLIC_REFERENCE = "NOVORA-CB-20260803-G2A1";
@@ -545,7 +545,7 @@ test.describe("Goal 2 structured input and native Provider client", () => {
 });
 
 test.describe("Goal 2 idempotent trigger and lifecycle", () => {
-  test("only exact flag plus confirmed proof reserves and schedules", async () => {
+  test("only exact feature and Queue gates publish one safe message", async () => {
     for (const featureFlagValue of [
       undefined,
       "",
@@ -555,7 +555,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       1,
       true,
     ]) {
-      let repositoryConstructions = 0;
+      let publishCalls = 0;
       const result = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
         {
           payload: validBrief(),
@@ -566,19 +566,21 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         },
         {
           featureFlagValue,
-          executionCapabilityValue: "true",
-          createRepository: () => {
-            repositoryConstructions += 1;
-            return repository();
+          queueExecutionCapabilityValue: "true",
+          publisher: {
+            async publish() {
+              publishCalls += 1;
+            },
           },
         },
       );
       expect(result).toEqual({ status: "disabled" });
-      expect(repositoryConstructions).toBe(0);
+      expect(publishCalls).toBe(0);
     }
 
-    const targetRepository = repository();
-    const scheduledTasks: Array<() => void | Promise<void>> = [];
+    const published: Array<
+      import("../../lib/server/ai-sketch/first-preview-queue").FirstPreviewQueuePublishRequest
+    > = [];
     const result = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
       {
         payload: validBrief(),
@@ -589,26 +591,25 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       },
       {
         featureFlagValue: "true",
-        executionCapabilityValue: "true",
-        createRepository: () => targetRepository,
-        createWorkerDependencies: (repo) =>
-          workerDependencies(repo as typeof targetRepository, successfulBinding()),
-        schedule: (task) => { scheduledTasks.push(task); },
-        jobIdSource: () => JOB_1_ID,
+        queueExecutionCapabilityValue: "true",
+        publisher: {
+          async publish(request) {
+            published.push(request);
+          },
+        },
       },
     );
-    expect(result).toEqual({ status: "scheduled" });
-    expect(scheduledTasks).toHaveLength(1);
-    expect(await targetRepository.findJobById(JOB_1_ID)).toBeNull();
-    await scheduledTasks[0]();
-    expect((await targetRepository.findJobById(JOB_1_ID))?.status).toBe("succeeded");
+    expect(result).toEqual({ status: "enqueued" });
+    expect(published).toHaveLength(1);
+    expect(published[0].topic).toBe(modules.queue.FIRST_PREVIEW_QUEUE_TOPIC);
+    expect(published[0].message.conceptBriefId).toBe(BRIEF_ID);
   });
 
-  test("requires the exact independent post-response execution capability", async () => {
+  test("requires the exact independent Queue execution capability", async () => {
     expect(
-      modules.executionCapability.FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED_ENV,
-    ).toBe("NOVORA_FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED");
-    for (const executionCapabilityValue of [
+      modules.queue.FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED_ENV,
+    ).toBe("NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED");
+    for (const queueExecutionCapabilityValue of [
       undefined,
       "",
       "TRUE",
@@ -618,9 +619,8 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       true,
       {},
     ]) {
-      let repositoryConstructions = 0;
-      let schedules = 0;
-      const result = modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+      let publishCalls = 0;
+      const result = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
         {
           payload: validBrief(),
           persistenceConfirmed: true,
@@ -630,28 +630,24 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         },
         {
           featureFlagValue: "true",
-          executionCapabilityValue,
-          createRepository: () => {
-            repositoryConstructions += 1;
-            return repository();
+          queueExecutionCapabilityValue,
+          publisher: {
+            async publish() {
+              publishCalls += 1;
+            },
           },
-          schedule: () => { schedules += 1; },
         },
       );
       expect(result).toEqual({ status: "disabled" });
-      expect(repositoryConstructions).toBe(0);
-      expect(schedules).toBe(0);
+      expect(publishCalls).toBe(0);
     }
     expect(
-      modules.executionCapability.isFirstPreviewPostResponseExecutionConfirmed(
-        "true",
-      ),
+      modules.queue.isFirstPreviewQueueExecutionConfirmed("true"),
     ).toBe(true);
   });
 
-  test("proof failure and scheduler failure never construct or dispatch a Provider", async () => {
-    let providerConstructions = 0;
-    let repositoryConstructions = 0;
+  test("proof, identity, and Queue failure remain fail closed", async () => {
+    let publishCalls = 0;
     for (const preconditions of [
       {
         persistenceConfirmed: false,
@@ -671,18 +667,18 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         },
         {
           featureFlagValue: "true",
-          executionCapabilityValue: "true",
-          createRepository: () => {
-            repositoryConstructions += 1;
-            return repository();
+          queueExecutionCapabilityValue: "true",
+          publisher: {
+            async publish() {
+              publishCalls += 1;
+            },
           },
         },
       );
-      expect(denied).toEqual({ status: "not_scheduled" });
+      expect(denied).toEqual({ status: "not_enqueued" });
     }
-    expect(repositoryConstructions).toBe(0);
+    expect(publishCalls).toBe(0);
 
-    const targetRepository = repository();
     const failed = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
       {
         payload: validBrief(),
@@ -693,22 +689,15 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       },
       {
         featureFlagValue: "true",
-        executionCapabilityValue: "true",
-        createRepository: () => targetRepository,
-        createWorkerDependencies: (repo) => ({
-          ...workerDependencies(repo as typeof targetRepository, successfulBinding()),
-          createProvider: () => {
-            providerConstructions += 1;
-            return successfulBinding();
+        queueExecutionCapabilityValue: "true",
+        publisher: {
+          async publish() {
+            throw new Error("synthetic Queue failure");
           },
-        }),
-        schedule: () => { throw new Error("synthetic scheduler failure"); },
-        jobIdSource: () => JOB_1_ID,
+        },
       },
     );
-    expect(failed).toEqual({ status: "not_scheduled" });
-    expect(providerConstructions).toBe(0);
-    expect(await targetRepository.findJobById(JOB_1_ID)).toBeNull();
+    expect(failed).toEqual({ status: "not_enqueued" });
   });
 
   test("claims Provider dispatch once with the conservative reservation", async () => {
@@ -1136,9 +1125,8 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     expect(await targetRepository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
   });
 
-  test("preserves the confirmed Concept Brief response when evaluation fails closed", async () => {
-    const scheduledTasks: Array<() => void | Promise<void>> = [];
-    const targetRepository = repository();
+  test("preserves the confirmed Concept Brief response when Queue publication fails closed", async () => {
+    let publishCalls = 0;
     const post = modules.route.createConceptBriefPostHandler({
       checkRateLimit: () =>
         Promise.resolve({
@@ -1160,19 +1148,13 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       },
       triggerDependencies: {
         featureFlagValue: "true",
-        executionCapabilityValue: "true",
-        createRepository: () => targetRepository,
-        createWorkerDependencies: (target) =>
-          workerDependencies(
-            target as typeof targetRepository,
-            successfulBinding(),
-            assetStore(),
-            null,
-          ),
-        schedule: (task) => {
-          scheduledTasks.push(task);
+        queueExecutionCapabilityValue: "true",
+        publisher: {
+          async publish() {
+            publishCalls += 1;
+            throw new Error("synthetic Queue failure");
+          },
         },
-        jobIdSource: () => JOB_1_ID,
       },
     });
 
@@ -1185,22 +1167,8 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       publicReference: PUBLIC_REFERENCE,
       conceptBriefId: BRIEF_ID,
     });
-    expect(scheduledTasks).toHaveLength(1);
-
-    await scheduledTasks[0]();
-    expect(confirmedBody).toMatchObject({
-      ok: true,
-      persisted: true,
-      publicReference: PUBLIC_REFERENCE,
-      conceptBriefId: BRIEF_ID,
-    });
-    expect(await targetRepository.findJobById(JOB_1_ID)).toMatchObject({
-      status: "failed",
-      failureCategory: "lifecycle_conflict",
-    });
-    expect(
-      await targetRepository.findCustomerReadyOutput(BRIEF_ID),
-    ).toBeNull();
+    expect(publishCalls).toBe(1);
+    expect(JSON.stringify(confirmedBody)).not.toContain("Queue");
   });
 
   test("missing configuration and trustworthy cost overrun fail before Storage and readiness", async () => {

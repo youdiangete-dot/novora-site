@@ -1,5 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npx --yes npm@11.13.0 ci",
-  "buildCommand": "npx --yes npm@11.13.0 run build"
+  "buildCommand": "npx --yes npm@11.13.0 run build",
+  "functions": {
+    "app/api/queues/first-preview-generation/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "novora-first-preview-generation-v1"
+        }
+      ]
+    }
+  }
 }

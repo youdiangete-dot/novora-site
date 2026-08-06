@@ -1,52 +1,41 @@
 import "server-only";
 
 import {
-  scheduleFirstPreviewPostResponseTask,
-  type FirstPreviewPostResponseScheduler,
-} from "./first-preview-background-execution";
-import {
-  createProductionAutomaticFirstPreviewWorkerDependencies,
-  reserveAutomaticFirstPreviewAttempt,
-  runAutomaticFirstPreviewWorker,
-  type AutomaticFirstPreviewWorkerDependencies,
+  prepareFirstPreviewGenerationInput,
 } from "./first-preview-generation-lifecycle";
+import {
+  createFirstPreviewQueueMessage,
+  FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED_ENV,
+  isFirstPreviewQueueExecutionConfirmed,
+  publishFirstPreviewQueueMessage,
+  productionFirstPreviewQueuePublisher,
+  type FirstPreviewQueuePublisher,
+} from "./first-preview-queue";
 import {
   isInstantFirstPreviewAgentEnabled,
   INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV,
 } from "./instant-first-preview-feature-flag";
 import {
-  FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED_ENV,
-  isFirstPreviewPostResponseExecutionConfirmed,
-} from "./first-preview-post-response-execution-capability";
-import {
   isValidFirstPreviewAssetUuid,
   isValidFirstPreviewPublicReference,
 } from "./first-preview-generated-assets-contract";
-import {
-  createFirstPreviewRepository,
-  type FirstPreviewRepository,
-} from "./first-preview-persistence";
+import { buildFirstPreviewStructuredGenerationInput } from "./first-preview-structured-input";
 
 export type AutomaticFirstPreviewTriggerResult = Readonly<{
-  status: "disabled" | "scheduled" | "not_scheduled";
+  status: "disabled" | "enqueued" | "not_enqueued";
 }>;
 
 export type AutomaticFirstPreviewTriggerDependencies = Readonly<{
   featureFlagValue?: unknown;
-  executionCapabilityValue?: unknown;
-  createRepository?: () => FirstPreviewRepository;
-  createWorkerDependencies?: (
-    repository: FirstPreviewRepository,
-  ) => AutomaticFirstPreviewWorkerDependencies;
-  schedule?: FirstPreviewPostResponseScheduler;
-  jobIdSource?: () => string;
+  queueExecutionCapabilityValue?: unknown;
+  publisher?: FirstPreviewQueuePublisher;
 }>;
 
 function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-export function triggerAutomaticFirstPreviewAfterPersistence(
+export async function triggerAutomaticFirstPreviewAfterPersistence(
   input: {
     payload: unknown;
     persistenceConfirmed: unknown;
@@ -55,58 +44,50 @@ export function triggerAutomaticFirstPreviewAfterPersistence(
     publicReference: string;
   },
   dependencies: AutomaticFirstPreviewTriggerDependencies = {},
-): AutomaticFirstPreviewTriggerResult {
+): Promise<AutomaticFirstPreviewTriggerResult> {
   const featureFlagValue = hasOwn(dependencies, "featureFlagValue")
     ? dependencies.featureFlagValue
     : process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
   if (!isInstantFirstPreviewAgentEnabled(featureFlagValue)) {
     return { status: "disabled" };
   }
-  const executionCapabilityValue = hasOwn(
+
+  const queueExecutionCapabilityValue = hasOwn(
     dependencies,
-    "executionCapabilityValue",
+    "queueExecutionCapabilityValue",
   )
-    ? dependencies.executionCapabilityValue
-    : process.env[FIRST_PREVIEW_POST_RESPONSE_EXECUTION_CONFIRMED_ENV];
+    ? dependencies.queueExecutionCapabilityValue
+    : process.env[FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED_ENV];
   if (
-    !isFirstPreviewPostResponseExecutionConfirmed(executionCapabilityValue)
+    !isFirstPreviewQueueExecutionConfirmed(queueExecutionCapabilityValue)
   ) {
     return { status: "disabled" };
   }
+
   if (
     input.persistenceConfirmed !== true ||
     input.customerAccessProofEstablished !== true ||
     !isValidFirstPreviewAssetUuid(input.conceptBriefId) ||
     !isValidFirstPreviewPublicReference(input.publicReference)
   ) {
-    return { status: "not_scheduled" };
+    return { status: "not_enqueued" };
   }
 
-  const scheduled = scheduleFirstPreviewPostResponseTask(async () => {
-    const repository = (dependencies.createRepository ??
-      createFirstPreviewRepository)();
-    const reservation = await reserveAutomaticFirstPreviewAttempt({
-      payload: input.payload,
-      persistenceConfirmed: true,
-      customerAccessEligible: true,
-      conceptBriefId: input.conceptBriefId,
-      publicReference: input.publicReference,
-      attemptNumber: 1,
-      parentJobId: null,
-      repository,
-      jobIdSource: dependencies.jobIdSource,
-    });
-    if (!reservation.ok) return;
+  const structured = buildFirstPreviewStructuredGenerationInput({
+    payload: input.payload,
+    publicReference: input.publicReference,
+  });
+  if (!structured.ok) return { status: "not_enqueued" };
 
-    const workerDependencies = (
-      dependencies.createWorkerDependencies ??
-      createProductionAutomaticFirstPreviewWorkerDependencies
-    )(repository);
-    await runAutomaticFirstPreviewWorker(
-      reservation.work,
-      workerDependencies,
-    );
-  }, dependencies.schedule);
+  const message = createFirstPreviewQueueMessage({
+    conceptBriefId: input.conceptBriefId,
+    publicReference: input.publicReference,
+    generationInput: prepareFirstPreviewGenerationInput(structured.value),
+  });
+  if (!message.ok) return { status: "not_enqueued" };
 
-  return scheduled ? { status: "scheduled" } : { status: "not_scheduled" };
+  return publishFirstPreviewQueueMessage(
+    message.value,
+    dependencies.publisher ?? productionFirstPreviewQueuePublisher,
+  );
 }
