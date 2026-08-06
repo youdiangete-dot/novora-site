@@ -42,14 +42,35 @@ import {
   type OpenAiFirstPreviewAdapterResult,
 } from "./openai-first-preview-provider";
 
+export type FirstPreviewPreparedGenerationInput = Readonly<
+  Pick<
+    FirstPreviewStructuredGenerationInput,
+    | "designSpec"
+    | "handSketchInstruction"
+    | "designSpecSha256"
+    | "handSketchInstructionSha256"
+  >
+>;
+
 export type FirstPreviewGenerationWork = Readonly<{
   jobId: string;
   conceptBriefId: string;
   publicReference: string;
   attemptNumber: FirstPreviewAttemptNumber;
   parentJobId: string | null;
-  structured: FirstPreviewStructuredGenerationInput;
+  structured: FirstPreviewPreparedGenerationInput;
 }>;
+
+export function prepareFirstPreviewGenerationInput(
+  structured: FirstPreviewStructuredGenerationInput,
+): FirstPreviewPreparedGenerationInput {
+  return {
+    designSpec: structured.designSpec,
+    handSketchInstruction: structured.handSketchInstruction,
+    designSpecSha256: structured.designSpecSha256,
+    handSketchInstructionSha256: structured.handSketchInstructionSha256,
+  };
+}
 
 export type ReserveAutomaticFirstPreviewResult =
   | Readonly<{
@@ -374,13 +395,48 @@ export async function reserveAutomaticFirstPreviewAttempt(input: {
     return { ok: false, category: "invalid_structured_input" };
   }
 
+  return reserveAutomaticFirstPreviewPreparedAttempt({
+    persistenceConfirmed: true,
+    customerAccessEligible: true,
+    conceptBriefId: input.conceptBriefId,
+    publicReference: input.publicReference,
+    attemptNumber: input.attemptNumber,
+    parentJobId: input.parentJobId,
+    structured: prepareFirstPreviewGenerationInput(structured.value),
+    repository: input.repository,
+    jobIdSource: input.jobIdSource,
+  });
+}
+
+export async function reserveAutomaticFirstPreviewPreparedAttempt(input: {
+  persistenceConfirmed: unknown;
+  customerAccessEligible: unknown;
+  conceptBriefId: string;
+  publicReference: string;
+  attemptNumber: unknown;
+  parentJobId: string | null;
+  structured: FirstPreviewPreparedGenerationInput;
+  repository: FirstPreviewRepository;
+  jobIdSource?: () => string;
+}): Promise<ReserveAutomaticFirstPreviewResult> {
+  if (
+    input.persistenceConfirmed !== true ||
+    input.customerAccessEligible !== true ||
+    !isAttemptNumber(input.attemptNumber) ||
+    (input.attemptNumber === 1
+      ? input.parentJobId !== null
+      : input.parentJobId === null)
+  ) {
+    return { ok: false, category: "precondition_failed" };
+  }
+
   const work: FirstPreviewGenerationWork = {
     jobId: (input.jobIdSource ?? randomUUID)(),
     conceptBriefId: input.conceptBriefId,
     publicReference: input.publicReference,
     attemptNumber: input.attemptNumber,
     parentJobId: input.parentJobId,
-    structured: structured.value,
+    structured: input.structured,
   };
 
   if (!(await readAttemptBudget(input.repository, work))) {

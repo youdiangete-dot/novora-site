@@ -220,15 +220,18 @@ export function createConceptBriefPostHandler(
     dependencies.sessionDependencies,
   );
 
-  triggerAutomaticPreview({
-    payload,
-    persistenceConfirmed: true,
-    customerAccessProofEstablished: Boolean(
-      response.cookies.get(FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME)?.value,
-    ),
-    conceptBriefId: persistedIdentity.conceptBriefId,
-    publicReference: persistedIdentity.publicReference,
-  }, dependencies.triggerDependencies);
+  await triggerAutomaticPreview(
+    {
+      payload,
+      persistenceConfirmed: true,
+      customerAccessProofEstablished: Boolean(
+        response.cookies.get(FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME)?.value,
+      ),
+      conceptBriefId: persistedIdentity.conceptBriefId,
+      publicReference: persistedIdentity.publicReference,
+    },
+    dependencies.triggerDependencies,
+  );
 
   return response;
   };
