@@ -71,12 +71,195 @@ export type AutomaticFirstPreviewWorkerResult = Readonly<{
   failureCategory?: FirstPreviewFailureCategory;
 }>;
 
+export const FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION =
+  "novora_first_preview_trusted_output_evidence_v1" as const;
+
+export type FirstPreviewTrustedOutputSubject = Readonly<{
+  conceptBriefId: string;
+  jobId: string;
+  outputId: string;
+  contentSha256: string;
+}>;
+
+export type FirstPreviewTrustedOutputEvidence = Readonly<{
+  evidenceVersion: typeof FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION;
+  subject: FirstPreviewTrustedOutputSubject;
+  results: Readonly<{
+    contentSafetyPassed: boolean;
+    privacyPassed: boolean;
+    outputValidityPassed: boolean;
+  }>;
+}>;
+
+export type FirstPreviewTrustedOutputEvaluator = (
+  input: Readonly<{
+    subject: FirstPreviewTrustedOutputSubject;
+    imageBytes: Uint8Array;
+    mimeType: "image/png";
+    widthPx: 1024;
+    heightPx: 1024;
+  }>,
+  context: Readonly<{ signal: AbortSignal }>,
+) => Promise<unknown>;
+
 export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
   repository: FirstPreviewRepository;
   createProvider(): OpenAiFirstPreviewProviderBinding | null;
   createAssetStore(): FirstPreviewGeneratedAssetStore;
+  evaluateTrustedOutput?: FirstPreviewTrustedOutputEvaluator;
+  trustedOutputEvidenceTimeoutMs?: number;
   outputIdSource?: () => string;
 }>;
+
+const DEFAULT_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS = 10_000;
+const MAX_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS = 30_000;
+
+type TrustedOutputEvidenceFailureReason =
+  | "unavailable"
+  | "missing"
+  | "malformed"
+  | "mismatched"
+  | "content_safety_failed"
+  | "privacy_failed"
+  | "output_validity_failed"
+  | "exception"
+  | "timeout";
+
+type TrustedOutputEvidenceResult =
+  | Readonly<{ ok: true; evidence: FirstPreviewTrustedOutputEvidence }>
+  | Readonly<{ ok: false; reason: TrustedOutputEvidenceFailureReason }>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  return (
+    actual.length === expected.length &&
+    expected.every((key, index) => actual[index] === key)
+  );
+}
+
+function validateTrustedOutputEvidence(
+  value: unknown,
+  expectedSubject: FirstPreviewTrustedOutputSubject,
+): TrustedOutputEvidenceResult {
+  if (value === null || value === undefined) {
+    return { ok: false, reason: "missing" };
+  }
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["evidenceVersion", "results", "subject"]) ||
+    value.evidenceVersion !== FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION ||
+    !isRecord(value.subject) ||
+    !hasExactKeys(value.subject, [
+      "conceptBriefId",
+      "contentSha256",
+      "jobId",
+      "outputId",
+    ]) ||
+    !isRecord(value.results) ||
+    !hasExactKeys(value.results, [
+      "contentSafetyPassed",
+      "outputValidityPassed",
+      "privacyPassed",
+    ]) ||
+    typeof value.results.contentSafetyPassed !== "boolean" ||
+    typeof value.results.privacyPassed !== "boolean" ||
+    typeof value.results.outputValidityPassed !== "boolean"
+  ) {
+    return { ok: false, reason: "malformed" };
+  }
+
+  if (
+    value.subject.conceptBriefId !== expectedSubject.conceptBriefId ||
+    value.subject.jobId !== expectedSubject.jobId ||
+    value.subject.outputId !== expectedSubject.outputId ||
+    value.subject.contentSha256 !== expectedSubject.contentSha256
+  ) {
+    return { ok: false, reason: "mismatched" };
+  }
+  if (value.results.contentSafetyPassed !== true) {
+    return { ok: false, reason: "content_safety_failed" };
+  }
+  if (value.results.privacyPassed !== true) {
+    return { ok: false, reason: "privacy_failed" };
+  }
+  if (value.results.outputValidityPassed !== true) {
+    return { ok: false, reason: "output_validity_failed" };
+  }
+
+  return {
+    ok: true,
+    evidence: value as FirstPreviewTrustedOutputEvidence,
+  };
+}
+
+async function readTrustedOutputEvidence(
+  dependencies: AutomaticFirstPreviewWorkerDependencies,
+  subject: FirstPreviewTrustedOutputSubject,
+  imageBytes: Uint8Array,
+): Promise<TrustedOutputEvidenceResult> {
+  if (!dependencies.evaluateTrustedOutput) {
+    return { ok: false, reason: "unavailable" };
+  }
+
+  const configuredTimeout = dependencies.trustedOutputEvidenceTimeoutMs;
+  const timeoutMs =
+    Number.isSafeInteger(configuredTimeout) &&
+    configuredTimeout! > 0 &&
+    configuredTimeout! <= MAX_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS
+      ? configuredTimeout!
+      : DEFAULT_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timedOut = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const value = await Promise.race([
+      dependencies.evaluateTrustedOutput(
+        {
+          subject,
+          imageBytes,
+          mimeType: "image/png",
+          widthPx: 1024,
+          heightPx: 1024,
+        },
+        { signal: controller.signal },
+      ),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+          reject(new Error("trusted output evidence evaluation timed out"));
+        }, timeoutMs);
+      }),
+    ]);
+    return validateTrustedOutputEvidence(value, subject);
+  } catch {
+    return { ok: false, reason: timedOut ? "timeout" : "exception" };
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
+function mapTrustedOutputEvidenceFailure(
+  reason: TrustedOutputEvidenceFailureReason,
+): FirstPreviewFailureCategory {
+  if (reason === "privacy_failed") return "privacy_failure";
+  if (reason === "timeout") return "timeout";
+  if (
+    reason === "content_safety_failed" ||
+    reason === "output_validity_failed"
+  ) {
+    return "unsafe_output";
+  }
+  return "lifecycle_conflict";
+}
 
 function lineageMatches(
   parent: FirstPreviewJobRecord,
@@ -220,10 +403,17 @@ function mapGeneratedAssetFailure(
 function mapRuntimeFailure(
   adapterResult: OpenAiFirstPreviewAdapterResult | null,
   runtimeCategory: string | null,
+  trustedEvidenceFailureCategory: FirstPreviewFailureCategory | null,
 ): Readonly<{
   category: FirstPreviewFailureCategory;
   retryEligible: boolean;
 }> {
+  if (trustedEvidenceFailureCategory) {
+    return {
+      category: trustedEvidenceFailureCategory,
+      retryEligible: false,
+    };
+  }
   if (adapterResult && adapterResult.ok === false) {
     return {
       category: adapterResult.category,
@@ -314,7 +504,10 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   );
   if (!dispatched.ok) return { status: "duplicate" };
 
+  const outputId = (dependencies.outputIdSource ?? randomUUID)();
   let adapterResult: OpenAiFirstPreviewAdapterResult | null = null;
+  let trustedEvidence: FirstPreviewTrustedOutputEvidence | null = null;
+  let trustedEvidenceFailureCategory: FirstPreviewFailureCategory | null = null;
   const provider: FirstPreviewProvider = {
     async generateFirstPreview(request, context) {
       adapterResult = await binding!.adapter.generateFirstPreviewImage(
@@ -343,6 +536,28 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
         return { outcome: "provider_failure" };
       }
 
+      const imageBytes = Buffer.from(adapterResult.imageBase64, "base64");
+      const subject: FirstPreviewTrustedOutputSubject = {
+        conceptBriefId: work.conceptBriefId,
+        jobId: work.jobId,
+        outputId,
+        contentSha256: createHash("sha256").update(imageBytes).digest("hex"),
+      };
+      const evidenceResult = await readTrustedOutputEvidence(
+        dependencies,
+        subject,
+        imageBytes,
+      );
+      if (evidenceResult.ok === false) {
+        trustedEvidenceFailureCategory = mapTrustedOutputEvidenceFailure(
+          evidenceResult.reason,
+        );
+        return evidenceResult.reason === "content_safety_failed"
+          ? { outcome: "rejected_unsafe" }
+          : { outcome: "invalid_output" };
+      }
+      trustedEvidence = evidenceResult.evidence;
+
       const identity = createHash("sha256")
         .update(adapterResult.imageBase64, "utf8")
         .digest("base64url")
@@ -352,9 +567,11 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
         images: [
           {
             assetId: `preview_asset_${identity}`,
-            contentSafetyPassed: true,
-            privacyPassed: true,
-            outputValidityPassed: true,
+            contentSafetyPassed:
+              evidenceResult.evidence.results.contentSafetyPassed,
+            privacyPassed: evidenceResult.evidence.results.privacyPassed,
+            outputValidityPassed:
+              evidenceResult.evidence.results.outputValidityPassed,
           },
         ],
       };
@@ -409,6 +626,7 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     const failure = mapRuntimeFailure(
       adapterResult,
       runtime.generation.failureCategory,
+      trustedEvidenceFailureCategory,
     );
     return recordFailure(
       dependencies.repository,
@@ -429,7 +647,16 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     );
   }
 
-  const outputId = (dependencies.outputIdSource ?? randomUUID)();
+  if (!trustedEvidence) {
+    return recordFailure(
+      dependencies.repository,
+      work.jobId,
+      "lifecycle_conflict",
+      false,
+      cost.actualCostMicros,
+    );
+  }
+
   let assetStore: FirstPreviewGeneratedAssetStore;
   try {
     assetStore = dependencies.createAssetStore();
@@ -465,6 +692,18 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
       dependencies.repository,
       work.jobId,
       mapGeneratedAssetFailure(stored.code),
+      false,
+      cost.actualCostMicros,
+    );
+  }
+  if (
+    stored.value.asset.contentSha256 !==
+    trustedEvidence.subject.contentSha256
+  ) {
+    return recordFailure(
+      dependencies.repository,
+      work.jobId,
+      "lifecycle_conflict",
       false,
       cost.actualCostMicros,
     );
@@ -518,12 +757,18 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     jobId: work.jobId,
     conceptBriefId: work.conceptBriefId,
     gates: {
-      outputValid: true,
-      assetExists: true,
-      ownershipConsistent: true,
-      privacyPassed: true,
+      outputValid: trustedEvidence.results.outputValidityPassed,
+      assetExists: stored.value.asset.assetPersisted === true,
+      ownershipConsistent:
+        output.value.id === trustedEvidence.subject.outputId &&
+        output.value.jobId === trustedEvidence.subject.jobId &&
+        output.value.conceptBriefId === trustedEvidence.subject.conceptBriefId &&
+        output.value.contentSha256 === trustedEvidence.subject.contentSha256,
+      privacyPassed: trustedEvidence.results.privacyPassed,
       customerAccessEligible: true,
-      lifecycleEligible: true,
+      lifecycleEligible:
+        runtime.gates.ready &&
+        trustedEvidence.results.contentSafetyPassed === true,
     },
     automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   });
