@@ -3,6 +3,215 @@
 These rules apply to the whole repository. Follow them before reading broad
 swaths of code or making changes.
 
+## NOVORA Commercial Website Completion Contract — Sole Final Authority
+
+### Final authority
+
+This section is the sole repository authority for deciding whether the complete
+NOVORA commercial website project is finished.
+
+Other files may record implementation, branch, deployment, test, milestone, and
+historical state, but they must not lower, replace, duplicate, or reinterpret
+the final commercial completion standard in this section.
+
+When a task instruction, report, approval, review comment, project ledger,
+architecture choice, workflow rule, chat memory, or other document conflicts
+with this section about final project completion, this section wins.
+
+Every NOVORA Chat and Work task must read this section before generating or
+executing repository work.
+
+A bounded Owner approval authorizes only the expressly named task. It does not
+silently remove a later customer, commercial, Preview, Production, payment,
+order, or end-to-end acceptance requirement.
+
+### Final commercial outcome
+
+NOVORA is finally complete only when a controlled Production acceptance proves
+that NOVORA operates as a genuinely usable commercial jewelry-customization
+website.
+
+The complete intended customer and business journey is:
+
+1. a real customer can discover and understand the NOVORA customization
+   service;
+2. the customer can start a design request;
+3. the customer can submit a real Concept Brief, required contact information,
+   and permitted reference materials;
+4. the submission is genuinely and durably persisted;
+5. the customer receives the corresponding real First Preview through the
+   approved durable execution and image-generation path;
+6. the same authorized customer can securely view the correct generated image;
+7. NOVORA staff can perform human design review;
+8. the customer can provide feedback and receive revisions or regenerated
+   directions when required;
+9. the customer can confirm the intended design direction;
+10. gemstone, material, size, specification, and other required product details
+    can be selected or confirmed;
+11. the customer can receive a real and commercially valid quotation;
+12. the customer can complete the Owner-approved usable payment process;
+13. a durable commercial order or equivalent order record is created;
+14. the order can transition accurately into CAD and production handling;
+15. NOVORA staff and the customer can continue through the required order, CAD,
+    production, communication, and delivery-status process.
+
+Production-grade CAD modeling, gemstone procurement, factory production, QC,
+packaging, and physical logistics may remain human-operated or use approved
+offline tools.
+
+However, offline operation must not mean that customer confirmation, quote,
+payment state, order state, CAD or production handoff, required communication,
+or customer-facing status is lost, fake, untracked, or impossible to continue.
+
+Final acceptance must also prove:
+
+- no false customer-visible success;
+- no wrong-customer image, quote, payment, order, or status;
+- no duplicate Provider dispatch or uncontrolled Provider cost;
+- no duplicate or incorrect payment or order creation;
+- no loss of a successfully accepted commercial submission or order;
+- no exposure of customer data, credentials, internal prompts, private Storage
+  paths, Provider metadata, admin notes, or reviewer notes;
+- correct customer-to-brief-to-preview-to-order binding;
+- safe failure handling for Queue, Provider, database, Storage, email, payment,
+  and external-service operations;
+- real Production behavior rather than mock, fixture, placeholder, synthetic,
+  or administrator-only behavior.
+
+### First Preview is an intermediate milestone
+
+The real First Preview capability is an important commercial milestone, but it
+is not final NOVORA project completion.
+
+Completing durable execution, real image generation, private Storage,
+lifecycle readiness, or secure customer Preview visibility does not by itself
+complete the full commercial website.
+
+No First Preview PASS, MVP marker, Preview deployment, Queue verification, or
+Provider verification may be interpreted as complete NOVORA commercial launch.
+
+### Fixed commercial closeout milestones
+
+The complete commercial closeout path contains exactly these six milestones:
+
+1. **Commercial foundation and intake**
+   Public service presentation, customer intake, Concept Brief, references,
+   contact information, secure persistence, and admin intake handling.
+
+2. **Real First Preview**
+   Durable background execution, approved Provider generation, private Storage,
+   lifecycle persistence, secure customer viewing, and controlled Production
+   First Preview acceptance.
+
+3. **Design collaboration and confirmation**
+   Human review, customer feedback, revision or regeneration handling, and
+   durable confirmation of the selected design direction.
+
+4. **Commercial configuration and transaction**
+   Gemstone, material, size and specification confirmation, quotation, approved
+   payment handling, and durable commercial order creation.
+
+5. **CAD and production handoff operations**
+   Admin order handling, CAD handoff, production handoff, required customer
+   communication, and continued order and delivery status.
+
+6. **Production commercial acceptance and launch**
+   One controlled Production acceptance proving the complete commercial journey
+   and NOVORA’s ability to operate it safely and reliably.
+
+There is no Milestone 7.
+
+A bug fix, technology correction, failed validation, or review response must
+remain inside its existing milestone. Renaming or splitting work must not create
+another permanent commercial milestone.
+
+Every completed milestone must reduce the unfinished commercial path.
+
+Mutable progress belongs in reports and the project ledger. It must not cause
+this contract to be repeatedly rewritten.
+
+This contract is a governance constraint and is not an additional commercial
+milestone.
+
+### Allowed launch blockers
+
+Only the following categories may block the active commercial milestone:
+
+1. the real customer or admin commercial path cannot operate;
+2. security, privacy, legal, payment, or customer-data safety can be violated;
+3. identity, asset binding, lifecycle, quote, payment, order, or customer-visible
+   status can be false, incorrect, lost, or misleading;
+4. Provider, Queue, payment, email, Storage, database, retry, billing, or other
+   external side effects can duplicate or become uncontrolled;
+5. the NOVORA team cannot safely and reliably operate the required Production
+   commercial process.
+
+The following normally belong in the post-launch backlog and must not create
+new launch milestones:
+
+- P2 or P3 refinements;
+- optional refactoring;
+- wording or formatting perfection;
+- historical thread housekeeping;
+- new process controllers;
+- new rule versions;
+- broad evidence frameworks;
+- speculative scaling work;
+- optional CRM, analytics, localization, loyalty, social, or marketing
+  automation;
+- features outside the Owner-approved commercial customer journey.
+
+Before issuing a Codex-ready task, web Chat must identify:
+
+- which of the six milestones the task belongs to;
+- whether it directly completes or unblocks that milestone;
+- which allowed blocker category applies when the task is corrective.
+
+A task that belongs to no milestone, does not reduce or unblock the finite path,
+and does not address an allowed blocker must not become a commercial-launch
+prerequisite.
+
+### Intermediate evidence is not final completion
+
+Planning, documentation, local code, fake tests, mock tests, fixtures,
+TypeScript, Build, commit, PR, review, integration merge, Preview deployment,
+Queue-only verification, Provider-only generation, database-only verification,
+Storage-only verification, email-only verification, payment-only verification,
+First Preview completion, administrator-only demonstrations, and partial
+Production paths are intermediate evidence only.
+
+They must not be described as final commercial website completion.
+
+Approval to use Vercel Queues authorizes an architecture choice only. It does
+not mean Queue is live, First Preview is complete, or the commercial website is
+complete.
+
+### Final completion marker and contract freeze
+
+The only permitted final project-completion marker is:
+
+`NOVORA_COMMERCIAL_WEBSITE_PRODUCTION_COMPLETE`
+
+It may be used only after Milestone 6 passes the complete controlled Production
+commercial acceptance defined in this section.
+
+Before that point, no task or report may use wording that claims the complete
+NOVORA project, commercial website, customer journey, or business launch is
+finished.
+
+This contract may be changed only when the Owner gives a separate
+plain-language instruction containing the exact sentence:
+
+“I am changing the NOVORA Commercial Website Completion Contract”
+
+and states the replacement final commercial customer outcome.
+
+A short reply, technical approval, task start, architecture approval, PASS
+result, milestone completion, branch change, review comment, or tool limitation
+must not change this contract.
+
+Do not create copied final-completion contracts in other repository files.
+
 ## Project Shape
 
 - NOVORA is a custom jewelry MVP built with Next.js App Router, React, TypeScript,
@@ -69,6 +278,9 @@ swaths of code or making changes.
 - Treat `docs/novora-current-project-state.md` on GitHub `main` as the durable
   project ledger. When chat memory, older notes, or assumptions conflict with
   the ledger and current `main`, the ledger and current `main` win.
+  Final commercial completion semantics are the sole exception and are governed
+  exclusively by “NOVORA Commercial Website Completion Contract — Sole Final
+  Authority.”
 
 ## Codex Operating Mode
 
