@@ -38,6 +38,9 @@ import {
   type OpenAiFirstPreviewProviderBinding,
 } from "./openai-first-preview-client";
 import {
+  createOpenAiFirstPreviewTrustedOutputEvaluator,
+} from "./openai-first-preview-trusted-output";
+import {
   OPENAI_FIRST_PREVIEW_TIMEOUT_MS,
   type OpenAiFirstPreviewAdapterResult,
 } from "./openai-first-preview-provider";
@@ -919,6 +922,7 @@ export function createProductionAutomaticFirstPreviewWorkerDependencies(
       createFirstPreviewGeneratedAssetStore({
         authorizer: createFirstPreviewCustomerAccessAuthorizer(),
       }),
+    evaluateTrustedOutput: createOpenAiFirstPreviewTrustedOutputEvaluator(),
   };
 }
 
