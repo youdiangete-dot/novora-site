@@ -5,7 +5,13 @@ import type { FormEvent } from "react";
 
 import styles from "./preview.module.css";
 
-export default function FirstPreviewFeedbackForm({ publicReference }: { publicReference: string }) {
+export default function FirstPreviewFeedbackForm({
+  feedbackBinding,
+  publicReference,
+}: {
+  feedbackBinding: string;
+  publicReference: string;
+}) {
   const [feedback, setFeedback] = useState("");
   const [state, setState] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -24,7 +30,7 @@ export default function FirstPreviewFeedbackForm({ publicReference }: { publicRe
       const response = await fetch(`/api/first-preview-feedback/${encodeURIComponent(publicReference)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ feedback: normalized }),
+        body: JSON.stringify({ feedback: normalized, binding: feedbackBinding }),
       });
       const result = (await response.json()) as { message?: unknown };
       if (!response.ok) throw new Error(typeof result.message === "string" ? result.message : "Feedback could not be saved.");

@@ -7,6 +7,8 @@ import {
   isValidFirstPreviewAssetUuid,
   isValidFirstPreviewPublicReference,
 } from "../../../../lib/server/ai-sketch/first-preview-generated-assets-contract";
+import { FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV } from "../../../../lib/server/ai-sketch/first-preview-customer-access-contract";
+import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
 import sharedStyles from "../../brief/brief.module.css";
 import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
 import styles from "./preview.module.css";
@@ -38,6 +40,7 @@ type ResolvedCustomerPreview =
   | Readonly<{
       state: "ready";
       publicReference: string;
+      outputId: string;
       customerAssetSrc: string;
     }>;
 
@@ -206,6 +209,7 @@ export function resolveCustomerPreview(
   return {
     state: "ready",
     publicReference,
+    outputId: trusted.outputId,
     customerAssetSrc:
       `/api/first-preview-assets/${publicReference}/current`,
   };
@@ -266,6 +270,15 @@ export default async function CustomerPreviewPage({
     trustedResult,
   );
   const stateCopy = COPY[preview.state];
+  const feedbackBinding = preview.state === "ready"
+    ? createFirstPreviewCustomerFeedbackBinding(
+        {
+          publicReference: preview.publicReference,
+          outputId: preview.outputId,
+        },
+        process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? "",
+      )
+    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -321,7 +334,12 @@ export default async function CustomerPreviewPage({
                 refinement and production-feasibility review.
               </p>
             </section>
-            <FirstPreviewFeedbackForm publicReference={preview.publicReference} />
+            {feedbackBinding ? (
+              <FirstPreviewFeedbackForm
+                feedbackBinding={feedbackBinding}
+                publicReference={preview.publicReference}
+              />
+            ) : null}
           </>
         ) : null}
 

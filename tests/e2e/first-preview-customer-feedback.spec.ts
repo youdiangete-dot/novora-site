@@ -18,19 +18,37 @@ const BRIEF_ID = "123e4567-e89b-42d3-a456-426614174000";
 const OUTPUT_ID = "423e4567-e89b-42d3-a456-426614174000";
 const OTHER_OUTPUT_ID = "523e4567-e89b-42d3-a456-426614174000";
 const REFERENCE = "NOVORA-CB-20260808-79C1";
+const OTHER_REFERENCE = "NOVORA-CB-20260808-79C2";
+const SIGNING_SECRET = "agent-79c-feedback-binding-test-secret-20260808";
 
-function dependencies(input: { state?: "ready" | "pending" | "unavailable" | "denied"; pairOutputId?: string | null; insert?: "inserted" | "duplicate" | "unavailable" } = {}) {
+function feedbackBody(
+  feedback: string,
+  outputId = OUTPUT_ID,
+  publicReference = REFERENCE,
+) {
+  const binding = feedbackModule.createFirstPreviewCustomerFeedbackBinding(
+    { publicReference, outputId },
+    SIGNING_SECRET,
+  );
+  if (!binding) throw new Error("Expected a valid feedback binding fixture.");
+  return { feedback, binding };
+}
+
+function dependencies(input: { state?: "ready" | "pending" | "unavailable" | "denied"; currentOutputId?: string; pairOutputId?: string | null; insert?: "inserted" | "duplicate" | "unavailable" } = {}) {
   const writes: unknown[] = [];
+  const resolutions: unknown[] = [];
   return {
     writes,
+    resolutions,
     value: {
       readCustomerView: async () => input.state === "ready" || !input.state
-        ? { state: "ready" as const, assetRequest: { publicReference: REFERENCE, outputId: OUTPUT_ID } }
+        ? { state: "ready" as const, assetRequest: { publicReference: REFERENCE, outputId: input.currentOutputId ?? OUTPUT_ID } }
         : input.state === "pending"
           ? { state: "pending" as const, pollAfterMs: 5_000 as const }
           : { state: input.state },
       repository: {
-        async resolveExactCurrentPair() {
+        async resolveExactCurrentPair(publicReference: string, outputId: string) {
+          resolutions.push({ publicReference, outputId });
           return input.pairOutputId === null ? null : { conceptBriefId: BRIEF_ID, outputId: input.pairOutputId ?? OUTPUT_ID };
         },
         async insertExactFeedback(value: unknown) {
@@ -38,47 +56,97 @@ function dependencies(input: { state?: "ready" | "pending" | "unavailable" | "de
           return input.insert ?? "inserted";
         },
       },
+      signingSecret: SIGNING_SECRET,
     },
   };
 }
 
-test("validates the exact feedback-only body", () => {
-  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "" })).toBeNull();
-  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "   " })).toBeNull();
-  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "x".repeat(2_001) })).toBeNull();
-  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "refine", outputId: OUTPUT_ID })).toBeNull();
-  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "  refine  " })).toBe("refine");
+test("creates and verifies a domain-separated exact rendered-output binding", async () => {
+  const binding = feedbackBody("Refine").binding;
+  expect(feedbackModule.verifyFirstPreviewCustomerFeedbackBinding(binding, SIGNING_SECRET)).toEqual({
+    v: 1,
+    alg: "HS256",
+    aud: "novora:first-preview-customer-feedback",
+    purpose: "rendered-output-binding",
+    publicReference: REFERENCE,
+    outputId: OUTPUT_ID,
+  });
+  const tampered = `${binding.slice(0, -1)}${binding.endsWith("A") ? "B" : "A"}`;
+  expect(feedbackModule.verifyFirstPreviewCustomerFeedbackBinding(tampered, SIGNING_SECRET)).toBeNull();
+
+  const wrongReference = dependencies();
+  await expect(feedbackModule.persistFirstPreviewCustomerFeedback(
+    REFERENCE,
+    feedbackBody("Refine", OUTPUT_ID, OTHER_REFERENCE),
+    wrongReference.value,
+  )).resolves.toEqual({ ok: false, reason: "denied" });
+  expect(wrongReference.writes).toHaveLength(0);
+
+  const wrongOutput = dependencies();
+  await expect(feedbackModule.persistFirstPreviewCustomerFeedback(
+    REFERENCE,
+    feedbackBody("Refine", OTHER_OUTPUT_ID),
+    wrongOutput.value,
+  )).resolves.toEqual({ ok: false, reason: "unavailable" });
+  expect(wrongOutput.resolutions).toHaveLength(0);
+  expect(wrongOutput.writes).toHaveLength(0);
+});
+
+test("validates the exact feedback and opaque-binding browser body", () => {
+  const binding = feedbackBody("Refine").binding;
+  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "", binding })).toBeNull();
+  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "   ", binding })).toBeNull();
+  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "x".repeat(2_001), binding })).toBeNull();
+  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "refine" })).toBeNull();
+  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "refine", binding, aiSketchOutputId: OUTPUT_ID })).toBeNull();
+  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "refine", binding, conceptBriefId: BRIEF_ID })).toBeNull();
+  expect(feedbackModule.normalizeFirstPreviewCustomerFeedbackBody({ feedback: "  refine  ", binding })).toEqual({ feedback: "refine", binding });
 });
 
 test("fails closed for denied, unavailable, pending, stale, and wrong linkage", async () => {
   for (const state of ["denied", "unavailable", "pending"] as const) {
     const setup = dependencies({ state });
-    const result = await feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, { feedback: "Refine the setting" }, setup.value);
+    const result = await feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, feedbackBody("Refine the setting"), setup.value);
     expect(result.ok).toBe(false);
     expect(setup.writes).toHaveLength(0);
   }
   for (const pairOutputId of [null, OTHER_OUTPUT_ID]) {
     const setup = dependencies({ pairOutputId });
-    await expect(feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, { feedback: "Refine the setting" }, setup.value)).resolves.toEqual({ ok: false, reason: "unavailable" });
+    await expect(feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, feedbackBody("Refine the setting"), setup.value)).resolves.toEqual({ ok: false, reason: "unavailable" });
     expect(setup.writes).toHaveLength(0);
   }
 });
 
-test("uses the server-resolved current output and returns deterministic duplicate behavior", async () => {
+test("persists only when the signed rendered output is still current", async () => {
   const accepted = dependencies();
-  await expect(feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, { feedback: "Refine the setting" }, accepted.value)).resolves.toEqual({ ok: true });
+  await expect(feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, feedbackBody("Refine the setting"), accepted.value)).resolves.toEqual({ ok: true });
+  expect(accepted.resolutions).toEqual([{ publicReference: REFERENCE, outputId: OUTPUT_ID }]);
   expect(accepted.writes).toEqual([{ conceptBriefId: BRIEF_ID, outputId: OUTPUT_ID, feedback: "Refine the setting" }]);
-  const duplicate = dependencies({ insert: "duplicate" });
-  await expect(feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, { feedback: "Again" }, duplicate.value)).resolves.toEqual({ ok: false, reason: "duplicate" });
+
+  const changedBeforeSubmit = dependencies({ currentOutputId: OTHER_OUTPUT_ID });
+  await expect(feedbackModule.persistFirstPreviewCustomerFeedback(
+    REFERENCE,
+    feedbackBody("Feedback about displayed output A", OUTPUT_ID),
+    changedBeforeSubmit.value,
+  )).resolves.toEqual({ ok: false, reason: "unavailable" });
+  expect(changedBeforeSubmit.resolutions).toHaveLength(0);
+  expect(changedBeforeSubmit.writes).toHaveLength(0);
 });
 
-test("customer source exposes feedback only in ready state and never submits an output ID", () => {
+test("returns deterministic duplicate behavior for the signed exact pair", async () => {
+  const duplicate = dependencies({ insert: "duplicate" });
+  await expect(feedbackModule.persistFirstPreviewCustomerFeedback(REFERENCE, feedbackBody("Again"), duplicate.value)).resolves.toEqual({ ok: false, reason: "duplicate" });
+});
+
+test("customer source exposes feedback only with a server binding and never submits a standalone output ID", () => {
   const pageSource = readFileSync(path.join(process.cwd(), "app", "design", "preview", "[public_reference]", "page.tsx"), "utf8");
   const formSource = readFileSync(path.join(process.cwd(), "app", "design", "preview", "[public_reference]", "FirstPreviewFeedbackForm.tsx"), "utf8");
-  expect(pageSource).toContain('<FirstPreviewFeedbackForm publicReference={preview.publicReference} />');
-  expect(formSource).toContain("JSON.stringify({ feedback: normalized })");
+  expect(pageSource).toContain("createFirstPreviewCustomerFeedbackBinding");
+  expect(pageSource).toContain("feedbackBinding={feedbackBinding}");
+  expect(formSource).toContain("JSON.stringify({ feedback: normalized, binding: feedbackBinding })");
   expect(formSource).not.toContain("aiSketchOutputId");
   expect(formSource).not.toContain("outputId");
+  expect(formSource).not.toContain("conceptBriefId");
 });
 
 test("admin source reads and displays only the exact current pair", () => {
