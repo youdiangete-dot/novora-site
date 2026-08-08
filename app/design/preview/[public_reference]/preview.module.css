@@ -55,6 +55,7 @@
 
 .statusCard,
 .previewCard,
+.feedbackCard,
 .boundaryCard {
   border: 1px solid rgba(218, 207, 189, 0.88);
   border-radius: 18px;
@@ -117,6 +118,96 @@
 
 .previewCard {
   background: #f5f0e6;
+}
+
+.feedbackCard {
+  background: rgba(255, 253, 249, 0.92);
+}
+
+.feedbackCard h2 {
+  color: var(--text);
+  margin: 0.4rem 0 0.65rem;
+}
+
+.feedbackCard > p {
+  color: #504a40;
+  line-height: 1.65;
+}
+
+.feedbackEyebrow {
+  color: #405a45 !important;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.feedbackForm {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.feedbackForm label {
+  color: #2f4634;
+  font-weight: 750;
+}
+
+.feedbackForm textarea {
+  background: #fff;
+  border: 1px solid rgba(129, 112, 91, 0.55);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.55;
+  padding: 0.8rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.feedbackForm textarea:focus-visible {
+  outline: 3px solid #b27816;
+  outline-offset: 2px;
+}
+
+.feedbackActions {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.feedbackActions span {
+  color: #6b6257;
+  font-size: 0.85rem;
+}
+
+.feedbackActions button {
+  background: #405a45;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+  min-height: 44px;
+  padding: 0.7rem 1rem;
+}
+
+.feedbackActions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.feedbackSuccess {
+  color: #2f6a3e !important;
+  font-weight: 700;
+}
+
+.feedbackError {
+  color: #8b2f2f;
+  margin: 0;
 }
 
 .sectionHeading {
@@ -236,6 +327,7 @@
 
   .statusCard,
   .previewCard,
+  .feedbackCard,
   .boundaryCard {
     border-radius: 14px;
     padding: 1rem;

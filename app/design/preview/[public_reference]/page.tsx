@@ -8,6 +8,7 @@ import {
   isValidFirstPreviewPublicReference,
 } from "../../../../lib/server/ai-sketch/first-preview-generated-assets-contract";
 import sharedStyles from "../../brief/brief.module.css";
+import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
 import styles from "./preview.module.css";
 
 export const dynamic = "force-dynamic";
@@ -297,31 +298,31 @@ export default async function CustomerPreviewPage({
         </section>
 
         {preview.state === "ready" ? (
-          <section
-            className={styles.previewCard}
-            aria-labelledby="concept-preview-heading"
-          >
-            <div className={styles.sectionHeading}>
-              <div>
-                <p className={sharedStyles.eyebrow}>Concept direction</p>
-                <h2 id="concept-preview-heading">
-                  AI hand-drawn concept sketch
-                </h2>
+          <>
+            <section className={styles.previewCard} aria-labelledby="concept-preview-heading">
+              <div className={styles.sectionHeading}>
+                <div>
+                  <p className={sharedStyles.eyebrow}>Concept direction</p>
+                  <h2 id="concept-preview-heading">
+                    AI hand-drawn concept sketch
+                  </h2>
+                </div>
+                <span>Early preview</span>
               </div>
-              <span>Early preview</span>
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className={styles.previewImage}
-              src={preview.customerAssetSrc}
-              alt="Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction"
-            />
-            <p className={styles.imageNote}>
-              This visual is an early communication asset. Details, structure,
-              gemstone orientation, and construction may change during later
-              refinement and production-feasibility review.
-            </p>
-          </section>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className={styles.previewImage}
+                src={preview.customerAssetSrc}
+                alt="Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction"
+              />
+              <p className={styles.imageNote}>
+                This visual is an early communication asset. Details, structure,
+                gemstone orientation, and construction may change during later
+                refinement and production-feasibility review.
+              </p>
+            </section>
+            <FirstPreviewFeedbackForm publicReference={preview.publicReference} />
+          </>
         ) : null}
 
         <section
