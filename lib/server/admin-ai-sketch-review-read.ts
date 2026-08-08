@@ -5,7 +5,19 @@ import {
   type AiSketchReviewStatus,
   isAiSketchReviewStatus,
 } from "../ai-sketch-review-status";
+import {
+  resolveAdminCurrentFirstPreview,
+} from "./admin-first-preview";
+import { isValidFirstPreviewAssetUuid } from "./ai-sketch/first-preview-generated-assets-contract";
+import { createFirstPreviewRepository } from "./ai-sketch/first-preview-persistence";
 import { createSupabaseAdminClientOrNull } from "./supabase";
+
+export type AdminAiSketchReviewBindingStatus =
+  | "no-current-output"
+  | "missing-review"
+  | "unbound-review"
+  | "exact"
+  | "conflict";
 
 export type AdminAiSketchReviewReadModel = {
   reviewStatus: AiSketchReviewStatus;
@@ -16,9 +28,14 @@ export type AdminAiSketchReviewReadModel = {
   revokedBy: string | null;
   updatedAt: string | null;
   hasPersistedReview: boolean;
+  currentAiSketchOutputId: string | null;
+  reviewAiSketchOutputId: string | null;
+  reviewBindingStatus: AdminAiSketchReviewBindingStatus;
 };
 
 type AiSketchReviewRow = {
+  ai_sketch_output_id: string | null;
+  concept_brief_id: string | null;
   review_status: string | null;
   revision_instruction: string | null;
   approved_for_customer_at: string | null;
@@ -38,7 +55,34 @@ export function createFallbackAdminAiSketchReviewReadModel(): AdminAiSketchRevie
     revokedBy: null,
     updatedAt: null,
     hasPersistedReview: false,
+    currentAiSketchOutputId: null,
+    reviewAiSketchOutputId: null,
+    reviewBindingStatus: "no-current-output",
   };
+}
+
+export function classifyAdminAiSketchReviewBinding(input: {
+  currentAiSketchOutputId: string | null;
+  hasPersistedReview: boolean;
+  reviewAiSketchOutputId: string | null;
+  reviewConceptBriefMatches: boolean;
+}): AdminAiSketchReviewBindingStatus {
+  if (!input.currentAiSketchOutputId) {
+    return "no-current-output";
+  }
+
+  if (!input.hasPersistedReview) {
+    return "missing-review";
+  }
+
+  if (!input.reviewAiSketchOutputId) {
+    return "unbound-review";
+  }
+
+  return input.reviewConceptBriefMatches &&
+    input.reviewAiSketchOutputId === input.currentAiSketchOutputId
+    ? "exact"
+    : "conflict";
 }
 
 function readNullableString(value: string | null): string | null {
@@ -69,22 +113,56 @@ export async function loadAdminAiSketchReviewByConceptBriefId(
       return createFallbackAdminAiSketchReviewReadModel();
     }
 
+    const currentOutput = await resolveAdminCurrentFirstPreview(
+      normalizedConceptBriefId,
+      {
+        repository: createFirstPreviewRepository({
+          supabaseClient: supabase,
+        }),
+      },
+    );
+
     const { data: reviewRow, error: reviewError } = await supabase
       .from("ai_sketch_reviews")
       .select(
-        "review_status, revision_instruction, approved_for_customer_at, approved_by, approval_revoked_at, revoked_by, updated_at",
+        "ai_sketch_output_id, concept_brief_id, review_status, revision_instruction, approved_for_customer_at, approved_by, approval_revoked_at, revoked_by, updated_at",
       )
       .eq("concept_brief_id", normalizedConceptBriefId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
       .maybeSingle<AiSketchReviewRow>();
 
-    if (reviewError || !reviewRow) {
-      return createFallbackAdminAiSketchReviewReadModel();
+    if (reviewError) {
+      return {
+        ...createFallbackAdminAiSketchReviewReadModel(),
+        currentAiSketchOutputId: currentOutput?.id ?? null,
+        reviewBindingStatus: currentOutput ? "missing-review" : "no-current-output",
+      };
+    }
+
+    const currentAiSketchOutputId = currentOutput?.id ?? null;
+    const reviewAiSketchOutputId =
+      reviewRow?.ai_sketch_output_id &&
+      isValidFirstPreviewAssetUuid(reviewRow.ai_sketch_output_id)
+        ? reviewRow.ai_sketch_output_id
+        : null;
+
+    if (!reviewRow) {
+      return {
+        ...createFallbackAdminAiSketchReviewReadModel(),
+        currentAiSketchOutputId,
+        reviewBindingStatus: currentOutput ? "missing-review" : "no-current-output",
+      };
     }
 
     const reviewStatus = normalizeReviewStatus(reviewRow.review_status);
     const isApprovedForCustomer = reviewStatus === "approved_for_customer";
+    const reviewConceptBriefMatches =
+      reviewRow.concept_brief_id === normalizedConceptBriefId;
+    const reviewBindingStatus = classifyAdminAiSketchReviewBinding({
+      currentAiSketchOutputId,
+      hasPersistedReview: true,
+      reviewAiSketchOutputId,
+      reviewConceptBriefMatches,
+    });
 
     return {
       reviewStatus,
@@ -97,6 +175,9 @@ export async function loadAdminAiSketchReviewByConceptBriefId(
       revokedBy: readNullableString(reviewRow.revoked_by),
       updatedAt: readNullableString(reviewRow.updated_at),
       hasPersistedReview: true,
+      currentAiSketchOutputId,
+      reviewAiSketchOutputId,
+      reviewBindingStatus,
     };
   } catch {
     return createFallbackAdminAiSketchReviewReadModel();

@@ -1583,8 +1583,8 @@ test.describe('/admin/briefs protected review UI', () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          mode: 'create',
           conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
           reviewStatus: 'internal_draft_not_generated',
         }),
       });
@@ -1626,28 +1626,34 @@ test.describe('/admin/briefs protected review UI', () => {
       const payloads: Array<string | Record<string, unknown>> = [
         '{',
         {
-          mode: 'create',
           conceptBriefId: '',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
           reviewStatus: 'internal_draft_not_generated',
         },
         {
-          mode: 'create',
           conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '',
+          reviewStatus: 'internal_draft_not_generated',
+        },
+        {
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: 'not-an-output-uuid',
+          reviewStatus: 'internal_draft_not_generated',
+        },
+        {
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
           reviewStatus: 'pending',
         },
         {
-          mode: 'create',
           conceptBriefId: '55555555-5555-4555-8555-555555555555',
-          reviewStatus: 'legacy_review_status',
-        },
-        {
-          mode: 'replace',
-          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
           reviewStatus: 'internal_draft_not_generated',
+          mode: 'update',
         },
         {
-          mode: 'create',
           conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
           reviewStatus: 'internal_draft_not_generated',
           customer_safe_note: 'must not be accepted',
         },
@@ -1669,7 +1675,7 @@ test.describe('/admin/briefs protected review UI', () => {
       );
     });
 
-    expect(responseStatuses).toEqual([400, 400, 400, 400, 400, 400]);
+    expect(responseStatuses).toEqual([400, 400, 400, 400, 400, 400, 400]);
   });
 
   test('uses legacy admin access cookie scope for admin-path review state saves', async ({ baseURL, context, page }) => {
@@ -1811,29 +1817,6 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(
       page.getByText('No CAD requests, quotes, final pricing, production orders, emails, payments, or file storage are created here.').first(),
     ).toBeVisible();
-    await page.route('/admin/briefs/ai-sketch-review', async (route) => {
-      const payload = route.request().postDataJSON() as Record<string, unknown>;
-
-      expect(payload).toEqual({
-        mode: 'create',
-        conceptBriefId: '55555555-5555-4555-8555-555555555555',
-        reviewStatus: 'needs_revision',
-      });
-      expect(payload).not.toHaveProperty('reviewer_note');
-      expect(payload).not.toHaveProperty('customer_safe_note');
-
-      await route.fulfill({
-        contentType: 'application/json',
-        status: 200,
-        body: JSON.stringify({
-          ok: true,
-          state: {
-            hasPersistedReview: true,
-            reviewStatus: 'needs_revision',
-          },
-        }),
-      });
-    });
     await expect(page.getByRole('heading', { name: 'Concept Brief summary' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Contact summary' })).toBeVisible();
     await expect(page.getByText('Mina Chen', { exact: true })).toBeVisible();
@@ -1842,22 +1825,28 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(page.getByRole('heading', { name: 'Reference images metadata' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI sketch instruction / concept direction' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'AI Sketch Review Workflow' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Protected First Preview review' })).toBeVisible();
+    await expect(
+      page.getByText('No exact current First Preview is available for this Concept Brief.'),
+    ).toBeVisible();
     const aiSketchWorkflowSection = page.getByRole('region', { name: 'AI Sketch Review Workflow' });
     const planningArtifactsSection = page.getByRole('region', { name: 'Internal design planning artifacts' });
 
     await expect(aiSketchWorkflowSection).toContainText('Current review state');
     await expect(aiSketchWorkflowSection).toContainText('Internal draft not generated');
-    await expect(aiSketchWorkflowSection).toContainText('No persisted AI sketch review yet');
-    await expect(aiSketchWorkflowSection).toContainText('No internal sketch drafts yet.');
+    await expect(aiSketchWorkflowSection).toContainText('No persisted lifecycle-owned review state');
+    await expect(aiSketchWorkflowSection).toContainText('No exact current First Preview is available.');
     await expect(aiSketchWorkflowSection).toContainText('Draft generated');
     await expect(aiSketchWorkflowSection).toContainText('Needs revision');
     await expect(aiSketchWorkflowSection).toContainText('Approved for customer');
     await expect(
       page.getByText(
-        'AI sketches are internal drafts until reviewed and approved. Customers must only see sketches approved by the NOVORA design team.',
+        'The initial First Preview is customer-visible only after trusted automatic readiness gates pass. Human review remains a separate post-preview step.',
       ),
     ).toBeVisible();
-    await expect(page.getByText('This does not generate, store, or deliver sketches yet.')).toBeVisible();
+    await expect(
+      page.getByText('This section displays and reviews the current output; it does not generate, regenerate, send, or publish it.'),
+    ).toBeVisible();
     await expect(planningArtifactsSection).toContainText('Admin only');
     await expect(planningArtifactsSection).toContainText('Read-only');
     await expect(planningArtifactsSection).toContainText('Human review required');
@@ -1874,23 +1863,13 @@ test.describe('/admin/briefs protected review UI', () => {
     await expect(planningArtifactsSection.getByRole('link')).toHaveCount(0);
     await expect(planningArtifactsSection.getByRole('textbox')).toHaveCount(0);
     await expect(planningArtifactsSection.getByRole('combobox')).toHaveCount(0);
-    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText(
-      'Internal draft not generated',
-    );
-    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText(
-      'Draft generated',
-    );
-    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText('Needs revision');
-    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toContainText(
-      'Approved for customer',
-    );
-    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).not.toContainText('pending');
+    await expect(page.getByRole('combobox', { name: 'AI sketch review status' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save AI sketch status' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'reviewer_note' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'customer_safe_note' })).toHaveCount(0);
-    await page.getByRole('combobox', { name: 'AI sketch review status' }).selectOption('needs_revision');
-    await page.getByRole('button', { name: 'Save AI sketch status' }).click();
-    await expect(page.getByText('AI sketch review status saved.')).toBeVisible();
-    await expect(aiSketchWorkflowSection).toContainText('Saved internal review state');
+    await expect(
+      page.getByText('No exact current First Preview is available. Review controls are unavailable.').first(),
+    ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin review status' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Admin notification status' })).toBeVisible();
     await expect(

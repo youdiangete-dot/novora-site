@@ -57,6 +57,14 @@ type AdminAiSketchReviewReadModel = {
   revokedBy: string | null;
   updatedAt: string | null;
   hasPersistedReview: boolean;
+  currentAiSketchOutputId: string | null;
+  reviewAiSketchOutputId: string | null;
+  reviewBindingStatus:
+    | 'no-current-output'
+    | 'missing-review'
+    | 'unbound-review'
+    | 'exact'
+    | 'conflict';
 };
 
 type AdminAiSketchReviewSaveResponse = {
@@ -65,6 +73,7 @@ type AdminAiSketchReviewSaveResponse = {
   state?: {
     hasPersistedReview?: boolean;
     reviewStatus?: unknown;
+    aiSketchOutputId?: unknown;
   };
 };
 
@@ -224,32 +233,112 @@ function AiSketchReviewStatusList() {
 function AiSketchReviewGuidance() {
   return (
     <ul className={styles.fileList}>
-      <li>AI/GPT sketch drafts are internal review material.</li>
-      <li>Unreviewed AI drafts must never be shown directly to customers.</li>
-      <li>Human review must check structure, style, and brief fit.</li>
-      <li>Drafts needing revision should not be shown to customers.</li>
-      <li>AI generation success alone does not approve a sketch.</li>
-      <li>Approved for customer is separate from public gallery approval.</li>
-      <li>Customer-facing sketch delivery remains email-only after human review, optimization, and approval.</li>
-      <li>This does not generate, store, or deliver sketches yet.</li>
+      <li>The First Preview becomes customer-visible only after the required automatic gates pass.</li>
+      <li>Human review checks the displayed concept sketch after First Preview readiness.</li>
+      <li>AI generation success and first_preview_ready do not confirm the customer&apos;s design direction.</li>
+      <li>Needs revision records a human review finding; it does not start revision or regeneration.</li>
+      <li>Approved for customer remains separate from the initial First Preview and public gallery approval.</li>
+      <li>This section displays and reviews the current output; it does not generate, regenerate, send, or publish it.</li>
     </ul>
   );
 }
 
 function getDeliveryReadinessSummary(reviewStatus: AiSketchReviewStatus) {
   if (reviewStatus === 'needs_revision') {
-    return 'Customer delivery is blocked because needs_revision requires human revision before any future email delivery.';
+    return 'Human review has marked the concept sketch as needing follow-up. This page does not start a revision or regeneration.';
   }
 
   if (reviewStatus === 'approved_for_customer') {
-    return 'approved_for_customer means human-reviewed email delivery readiness only. Sending remains human-controlled, and gallery, CAD, quote, order, and production approvals are separate.';
+    return 'approved_for_customer is a later human-review state. It remains separate from First Preview readiness, gallery, CAD, quote, order, and production approvals.';
   }
 
   if (reviewStatus === 'draft_generated_internal_only') {
-    return 'An internal draft is still not customer-ready. Human review is required before any customer delivery decision.';
+    return 'The lifecycle-owned review is awaiting post-preview human assessment. First Preview readiness remains an automatic-gate decision.';
   }
 
-  return 'No internal draft has been generated. Customer delivery is not ready.';
+  return 'No exact current First Preview is available for this review state.';
+}
+
+function getReviewBindingCopy(review: AdminAiSketchReviewReadModel) {
+  if (review.reviewBindingStatus === 'exact') {
+    return 'The persisted review row is bound to this exact current First Preview output.';
+  }
+
+  if (review.reviewBindingStatus === 'conflict') {
+    return 'Review linkage conflicts with the current First Preview. Saving is blocked.';
+  }
+
+  if (review.reviewBindingStatus === 'unbound-review') {
+    return 'The persisted review row is not bound to an output. Saving is blocked.';
+  }
+
+  if (review.reviewBindingStatus === 'missing-review') {
+    return 'The lifecycle-owned review row is missing for the current First Preview. Saving is blocked.';
+  }
+
+  return 'No exact current First Preview is available. Review controls are unavailable.';
+}
+
+function CurrentFirstPreviewReview({
+  conceptBriefId,
+  onImageAvailabilityChange,
+  review,
+}: {
+  conceptBriefId: string | undefined;
+  onImageAvailabilityChange: (outputId: string, isAvailable: boolean) => void;
+  review: AdminAiSketchReviewReadModel;
+}) {
+  const outputId = review.currentAiSketchOutputId;
+  const [imageUnavailable, setImageUnavailable] = useState(false);
+
+  useEffect(() => {
+    setImageUnavailable(false);
+  }, [conceptBriefId, outputId]);
+
+  if (!conceptBriefId || !outputId) {
+    return (
+      <section className={styles.detailSection} aria-label="Protected First Preview review">
+        <h2>Protected First Preview review</h2>
+        <p className={styles.helperText}>
+          No exact current First Preview is available for this Concept Brief. It may not have been generated, may not
+          be ready, or may no longer be the current customer preview.
+        </p>
+        <p className={styles.helperText}>{getReviewBindingCopy(review)}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className={styles.detailSection} aria-label="Protected First Preview review">
+      <h2>Protected First Preview review</h2>
+      <figure className={styles.firstPreviewFigure}>
+        {imageUnavailable ? (
+          <p className={styles.helperText}>
+            The protected First Preview image is unavailable. Review saving remains blocked until the image can be
+            displayed.
+          </p>
+        ) : (
+          <img
+            className={styles.firstPreviewImage}
+            src={`/admin/briefs/first-preview-assets/${encodeURIComponent(conceptBriefId)}/${encodeURIComponent(outputId)}`}
+            alt="Current NOVORA First Preview concept sketch for protected admin review"
+            onLoad={() => onImageAvailabilityChange(outputId, true)}
+            onError={() => {
+              setImageUnavailable(true);
+              onImageAvailabilityChange(outputId, false);
+            }}
+          />
+        )}
+        <figcaption className={styles.helperText}>
+          Current output ID: {outputId}. The image is delivered through protected same-origin admin access.
+        </figcaption>
+      </figure>
+      <p className={styles.helperText}>{getReviewBindingCopy(review)}</p>
+      <p className={styles.helperText}>
+        This is an AI hand-drawn concept sketch, not CAD, a quotation, an order approval, or production approval.
+      </p>
+    </section>
+  );
 }
 
 function BoundaryBadges() {
@@ -296,7 +385,7 @@ function InternalDesignPlanningArtifacts({
               <li>Hand Sketch Instruction draft is not available yet.</li>
               <li>This internal planning area cannot generate, approve, send, publish, or preview customer assets.</li>
               <li>Any future instruction remains internal only, concept-only, not CAD, not a quote, not an order confirmation, and not production approval.</li>
-              <li>Customer delivery remains email-only after human approval.</li>
+              <li>First Preview visibility uses protected website access after automatic gates; any later email communication remains human-controlled.</li>
             </ul>
           ),
         },
@@ -389,6 +478,7 @@ export default function AdminBriefDetailClient({
   );
   const [isAiSketchReviewSaving, setIsAiSketchReviewSaving] = useState(false);
   const [aiSketchReviewSaveMessage, setAiSketchReviewSaveMessage] = useState('');
+  const [loadedFirstPreviewOutputId, setLoadedFirstPreviewOutputId] = useState<string | null>(null);
 
   useEffect(() => {
     const records = serverBrief ? loadAdminBriefRecords([serverBrief]) : loadAdminBriefRecords();
@@ -427,9 +517,18 @@ export default function AdminBriefDetailClient({
     setAiSketchReviewSaveMessage('');
   }, [aiSketchReview]);
 
+  useEffect(() => {
+    setLoadedFirstPreviewOutputId(null);
+  }, [aiSketchReview.currentAiSketchOutputId]);
+
   const brief = briefs.find((record) => record.conceptBriefId === decodedId);
   const isServerBacked = brief?.source === 'supabase';
-  const canSaveAiSketchReview = Boolean(brief?.databaseId);
+  const canSaveAiSketchReview = Boolean(
+    brief?.databaseId &&
+      aiSketchReviewState.currentAiSketchOutputId &&
+      aiSketchReviewState.reviewBindingStatus === 'exact' &&
+      loadedFirstPreviewOutputId === aiSketchReviewState.currentAiSketchOutputId,
+  );
 
   const detailSections = useMemo(() => {
     if (!brief) {
@@ -492,9 +591,18 @@ export default function AdminBriefDetailClient({
           {
             label: 'Review state source',
             value: aiSketchReviewState.hasPersistedReview
-              ? 'Saved internal review state'
-              : 'No persisted AI sketch review yet',
+              ? 'Saved lifecycle-owned review state'
+              : 'No persisted lifecycle-owned review state',
           },
+          {
+            label: 'Current First Preview output ID',
+            value: aiSketchReviewState.currentAiSketchOutputId || 'No exact current First Preview',
+          },
+          {
+            label: 'Persisted review output ID',
+            value: aiSketchReviewState.reviewAiSketchOutputId || 'No bound output ID',
+          },
+          { label: 'Output binding', value: getReviewBindingCopy(aiSketchReviewState) },
           {
             label: 'Default workflow status',
             value: AI_SKETCH_REVIEW_STATUS_LABELS[AI_SKETCH_REVIEW_INITIAL_STATUS],
@@ -505,16 +613,21 @@ export default function AdminBriefDetailClient({
           { label: 'Approval revoked at', value: formatSubmittedTime(aiSketchReviewState.approvalRevokedAt || '') },
           { label: 'Revoked by', value: aiSketchReviewState.revokedBy || 'Not provided' },
           { label: 'Last saved update', value: formatSubmittedTime(aiSketchReviewState.updatedAt || '') },
-          { label: 'Empty state', value: 'No internal sketch drafts yet.' },
+          {
+            label: 'First Preview availability',
+            value: aiSketchReviewState.currentAiSketchOutputId
+              ? 'Exact current First Preview is available for protected admin review.'
+              : 'No exact current First Preview is available.',
+          },
           {
             label: 'Customer visibility boundary',
             value:
-              'AI sketches are internal drafts until reviewed and approved. Customers must only see sketches approved by the NOVORA design team.',
+              'The initial First Preview is customer-visible only after trusted automatic readiness gates pass. Human review remains a separate post-preview step.',
           },
           {
             label: 'Status separation',
             value:
-              'Concept Brief admin review status stays separate from future AI sketch review persistence.',
+              'Concept Brief admin review, First Preview readiness, AI sketch human review, and customer design confirmation remain separate states.',
           },
           { label: 'Workflow statuses', value: <AiSketchReviewStatusList /> },
           { label: 'Manual review guidance', value: <AiSketchReviewGuidance /> },
@@ -698,12 +811,12 @@ export default function AdminBriefDetailClient({
   }
 
   async function handleAiSketchReviewSave() {
-    if (!brief?.databaseId) {
-      setAiSketchReviewSaveMessage('AI sketch review status can only be saved for a Supabase-backed Concept Brief.');
+    const currentOutputId = aiSketchReviewState.currentAiSketchOutputId;
+
+    if (!brief?.databaseId || !currentOutputId || aiSketchReviewState.reviewBindingStatus !== 'exact') {
+      setAiSketchReviewSaveMessage('Review saving is blocked until the exact current First Preview and review row are bound.');
       return;
     }
-
-    const mode = aiSketchReviewState.hasPersistedReview ? 'update' : 'create';
 
     setIsAiSketchReviewSaving(true);
     setAiSketchReviewSaveMessage('');
@@ -716,16 +829,22 @@ export default function AdminBriefDetailClient({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          mode,
           conceptBriefId: brief.databaseId,
+          aiSketchOutputId: currentOutputId,
           reviewStatus: selectedAiSketchReviewStatus,
         }),
       });
       const result = (await response.json().catch(() => ({}))) as AdminAiSketchReviewSaveResponse;
 
       const savedReviewStatus = String(result.state?.reviewStatus || '');
+      const savedOutputId = String(result.state?.aiSketchOutputId || '');
 
-      if (!response.ok || !result.ok || !isAiSketchReviewStatus(savedReviewStatus)) {
+      if (
+        !response.ok ||
+        !result.ok ||
+        !isAiSketchReviewStatus(savedReviewStatus) ||
+        savedOutputId !== currentOutputId
+      ) {
         throw new Error(result.message || 'AI sketch review state could not be saved.');
       }
 
@@ -733,6 +852,8 @@ export default function AdminBriefDetailClient({
         ...currentState,
         hasPersistedReview: true,
         reviewStatus: savedReviewStatus,
+        reviewAiSketchOutputId: savedOutputId,
+        reviewBindingStatus: 'exact',
         updatedAt: new Date().toISOString(),
       }));
       setSelectedAiSketchReviewStatus(savedReviewStatus);
@@ -796,6 +917,13 @@ export default function AdminBriefDetailClient({
 
         <div className={styles.detailGrid}>
           <section className={styles.detailPanel} aria-label="Brief detail">
+            <CurrentFirstPreviewReview
+              conceptBriefId={brief.databaseId}
+              onImageAvailabilityChange={(outputId, isAvailable) => {
+                setLoadedFirstPreviewOutputId(isAvailable ? outputId : null);
+              }}
+              review={aiSketchReviewState}
+            />
             {detailSections.map((section) => (
               <DetailSection key={section.title} title={section.title} rows={section.rows} />
             ))}
@@ -809,45 +937,47 @@ export default function AdminBriefDetailClient({
             <div>
               <h2>AI sketch review controls</h2>
               <p className={styles.helperText}>
-                Save internal AI sketch review status separately from Concept Brief review notes.
+                Save human review status for the exact current First Preview shown on this page.
               </p>
               <p className={styles.helperText}>
-                {aiSketchReviewState.hasPersistedReview
-                  ? 'Next save will update the existing AI sketch review row.'
-                  : 'Next save will create the first AI sketch review row for this Concept Brief.'}
+                {getReviewBindingCopy(aiSketchReviewState)}
               </p>
               {!canSaveAiSketchReview ? (
                 <p className={styles.helperText}>
-                  AI sketch review status can only be saved for a Supabase-backed Concept Brief.
+                  AI sketch review saving is available only when the protected current image is displayed and its Supabase-backed output and lifecycle review row match exactly.
                 </p>
               ) : null}
               {aiSketchReviewSaveMessage ? <p className={styles.helperText}>{aiSketchReviewSaveMessage}</p> : null}
             </div>
 
-            <label className={styles.fieldLabel}>
-              AI sketch review status
-              <select
-                className={styles.select}
-                disabled={isAiSketchReviewSaving || !canSaveAiSketchReview}
-                value={selectedAiSketchReviewStatus}
-                onChange={(event) => setSelectedAiSketchReviewStatus(event.target.value as AiSketchReviewStatus)}
-              >
-                {AI_SKETCH_REVIEW_STATUSES.map((option) => (
-                  <option key={option} value={option}>
-                    {AI_SKETCH_REVIEW_STATUS_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {canSaveAiSketchReview ? (
+              <>
+                <label className={styles.fieldLabel}>
+                  AI sketch review status
+                  <select
+                    className={styles.select}
+                    disabled={isAiSketchReviewSaving}
+                    value={selectedAiSketchReviewStatus}
+                    onChange={(event) => setSelectedAiSketchReviewStatus(event.target.value as AiSketchReviewStatus)}
+                  >
+                    {AI_SKETCH_REVIEW_STATUSES.map((option) => (
+                      <option key={option} value={option}>
+                        {AI_SKETCH_REVIEW_STATUS_LABELS[option]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <button
-              className={styles.button}
-              disabled={isAiSketchReviewSaving || !canSaveAiSketchReview}
-              type="button"
-              onClick={handleAiSketchReviewSave}
-            >
-              {isAiSketchReviewSaving ? 'Saving AI sketch status...' : 'Save AI sketch status'}
-            </button>
+                <button
+                  className={styles.button}
+                  disabled={isAiSketchReviewSaving}
+                  type="button"
+                  onClick={handleAiSketchReviewSave}
+                >
+                  {isAiSketchReviewSaving ? 'Saving AI sketch status...' : 'Save AI sketch status'}
+                </button>
+              </>
+            ) : null}
 
             <div>
               <h2>{isServerBacked ? 'Supabase-backed review controls' : 'Local fallback review controls'}</h2>

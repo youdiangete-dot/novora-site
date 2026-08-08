@@ -241,6 +241,24 @@
   padding: 1rem;
 }
 
+.firstPreviewFigure {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.firstPreviewImage {
+  aspect-ratio: 1;
+  background: #f4efe6;
+  border: 1px solid rgba(199, 181, 145, 0.68);
+  border-radius: 8px;
+  display: block;
+  height: auto;
+  max-width: 680px;
+  object-fit: contain;
+  width: 100%;
+}
+
 .detailList {
   display: grid;
   gap: 0;

@@ -6,19 +6,16 @@ import {
   ADMIN_ACCESS_COOKIE_NAME,
   isValidAdminAccessCookie,
 } from "../../../../lib/server/admin-access";
-import {
-  type AdminAiSketchReviewWriteMode,
-  createAdminAiSketchReview,
-  updateAdminAiSketchReview,
-} from "../../../../lib/server/admin-ai-sketch-review-write";
+import { isValidFirstPreviewAssetUuid } from "../../../../lib/server/ai-sketch/first-preview-generated-assets-contract";
+import { updateAdminAiSketchReview } from "../../../../lib/server/admin-ai-sketch-review-write";
 
 type AdminAiSketchReviewRequestBody = {
-  mode?: unknown;
   conceptBriefId?: unknown;
+  aiSketchOutputId?: unknown;
   reviewStatus?: unknown;
 };
 
-const allowedBodyKeys = new Set(["mode", "conceptBriefId", "reviewStatus"]);
+const allowedBodyKeys = new Set(["conceptBriefId", "aiSketchOutputId", "reviewStatus"]);
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +27,8 @@ function hasOnlyAllowedBodyKeys(body: Record<string, unknown>): boolean {
   return Object.keys(body).every((key) => allowedBodyKeys.has(key));
 }
 
-function isWriteMode(value: unknown): value is AdminAiSketchReviewWriteMode {
-  return value === "create" || value === "update";
-}
-
 function getFailureStatus(reason: string): number {
-  if (reason === "already-exists") {
+  if (reason === "output-mismatch" || reason === "linkage-conflict") {
     return 409;
   }
 
@@ -89,14 +82,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const mode = body.mode;
   const conceptBriefId = typeof body.conceptBriefId === "string" ? body.conceptBriefId.trim() : "";
+  const aiSketchOutputId =
+    typeof body.aiSketchOutputId === "string" ? body.aiSketchOutputId.trim() : "";
   const reviewStatus =
     typeof body.reviewStatus === "string" && isAiSketchReviewStatus(body.reviewStatus)
       ? body.reviewStatus
       : null;
 
-  if (!isWriteMode(mode) || !conceptBriefId || !reviewStatus) {
+  if (
+    !isValidFirstPreviewAssetUuid(conceptBriefId) ||
+    !isValidFirstPreviewAssetUuid(aiSketchOutputId) ||
+    !reviewStatus
+  ) {
     return NextResponse.json(
       {
         ok: false,
@@ -106,10 +104,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const result =
-    mode === "create"
-      ? await createAdminAiSketchReview(conceptBriefId, reviewStatus)
-      : await updateAdminAiSketchReview(conceptBriefId, reviewStatus);
+  const result = await updateAdminAiSketchReview(
+    conceptBriefId,
+    aiSketchOutputId,
+    reviewStatus,
+  );
 
   if (result.ok === false) {
     return NextResponse.json(
@@ -126,6 +125,7 @@ export async function POST(request: Request) {
     state: {
       hasPersistedReview: true,
       reviewStatus: result.reviewStatus,
+      aiSketchOutputId: result.aiSketchOutputId,
     },
   });
 }
