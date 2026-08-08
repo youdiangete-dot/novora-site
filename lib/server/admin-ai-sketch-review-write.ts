@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  AI_SKETCH_REVIEW_INITIAL_STATUS,
   type AiSketchReviewStatus,
   isAiSketchReviewStatus,
 } from "../ai-sketch-review-status";
@@ -43,6 +44,15 @@ export function isExactAdminAiSketchReviewIdentity(
     row.ai_sketch_output_id === aiSketchOutputId;
 }
 
+export function isAdminCurrentFirstPreviewReviewStatus(
+  reviewStatus: string,
+): reviewStatus is AiSketchReviewStatus {
+  return (
+    isAiSketchReviewStatus(reviewStatus) &&
+    reviewStatus !== AI_SKETCH_REVIEW_INITIAL_STATUS
+  );
+}
+
 function mapReviewRowStatus(
   row: AiSketchReviewWriteRow | null,
   conceptBriefId: string,
@@ -53,7 +63,7 @@ function mapReviewRowStatus(
   if (
     !isExactAdminAiSketchReviewIdentity(row, conceptBriefId, aiSketchOutputId) ||
     !reviewStatus ||
-    !isAiSketchReviewStatus(reviewStatus)
+    !isAdminCurrentFirstPreviewReviewStatus(reviewStatus)
   ) {
     return null;
   }
@@ -72,7 +82,7 @@ export async function updateAdminAiSketchReview(
   if (
     !isValidFirstPreviewAssetUuid(normalizedConceptBriefId) ||
     !isValidFirstPreviewAssetUuid(normalizedOutputId) ||
-    !isAiSketchReviewStatus(reviewStatus)
+    !isAdminCurrentFirstPreviewReviewStatus(reviewStatus)
   ) {
     return {
       ok: false,

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import path from "node:path";
 
@@ -72,6 +73,17 @@ const JOB_ID = "323e4567-e89b-42d3-a456-426614174000";
 const OUTPUT_ID = "423e4567-e89b-42d3-a456-426614174000";
 const OTHER_OUTPUT_ID = "523e4567-e89b-42d3-a456-426614174000";
 const PNG = createSyntheticFirstPreviewPng();
+const adminBriefDetailSource = readFileSync(
+  path.join(
+    process.cwd(),
+    "app",
+    "admin",
+    "briefs",
+    "[id]",
+    "AdminBriefDetailClient.tsx",
+  ),
+  "utf8",
+);
 
 function output(overrides: Partial<FirstPreviewOutputRecord> = {}): FirstPreviewOutputRecord {
   const assetId = modules.assetContract.deriveFirstPreviewGeneratedAssetId({
@@ -175,6 +187,44 @@ test("classifies exact, missing, unbound, and conflicting review linkage without
       OUTPUT_ID,
     ),
   ).toBe(false);
+});
+
+test("rejects the pre-generation status for output-bound ready preview reviews", async () => {
+  await expect(
+    modules.reviewWrite.updateAdminAiSketchReview(
+      BRIEF_ID,
+      OUTPUT_ID,
+      "internal_draft_not_generated",
+    ),
+  ).resolves.toMatchObject({ ok: false, reason: "invalid-input" });
+
+  expect(
+    modules.reviewWrite.isAdminCurrentFirstPreviewReviewStatus(
+      "internal_draft_not_generated",
+    ),
+  ).toBe(false);
+  expect(
+    modules.reviewWrite.isAdminCurrentFirstPreviewReviewStatus(
+      "draft_generated_internal_only",
+    ),
+  ).toBe(true);
+  expect(
+    modules.reviewWrite.isAdminCurrentFirstPreviewReviewStatus("needs_revision"),
+  ).toBe(true);
+  expect(
+    modules.reviewWrite.isAdminCurrentFirstPreviewReviewStatus(
+      "approved_for_customer",
+    ),
+  ).toBe(true);
+});
+
+test("does not offer the pre-generation status in current First Preview review controls", () => {
+  expect(adminBriefDetailSource).toContain(
+    "reviewStatus !== AI_SKETCH_REVIEW_INITIAL_STATUS",
+  );
+  expect(adminBriefDetailSource).toContain(
+    "currentFirstPreviewReviewStatuses.map((option)",
+  );
 });
 
 test("delivers only the exact current PNG from the expected private bucket", async () => {

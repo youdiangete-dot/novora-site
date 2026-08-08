@@ -84,6 +84,14 @@ const adminReviewEmptyStateCopy =
 const adminReviewUnavailableCopy =
   'Supabase admin review persistence is unavailable for this record, so state is local-only fallback data.';
 
+const currentFirstPreviewReviewStatuses = AI_SKETCH_REVIEW_STATUSES.filter(
+  (reviewStatus) => reviewStatus !== AI_SKETCH_REVIEW_INITIAL_STATUS,
+);
+
+function normalizeCurrentFirstPreviewReviewStatus(reviewStatus: AiSketchReviewStatus): AiSketchReviewStatus {
+  return reviewStatus === AI_SKETCH_REVIEW_INITIAL_STATUS ? 'draft_generated_internal_only' : reviewStatus;
+}
+
 function getSourceLabel(brief: AdminBriefRecord) {
   if (brief.source === 'supabase') {
     return 'Supabase concept brief submission';
@@ -473,8 +481,10 @@ export default function AdminBriefDetailClient({
   );
   const [reviewSaveMessage, setReviewSaveMessage] = useState('');
   const [aiSketchReviewState, setAiSketchReviewState] = useState<AdminAiSketchReviewReadModel>(aiSketchReview);
-  const [selectedAiSketchReviewStatus, setSelectedAiSketchReviewStatus] = useState<AiSketchReviewStatus>(
-    aiSketchReview.reviewStatus,
+  const [selectedAiSketchReviewStatus, setSelectedAiSketchReviewStatus] = useState<AiSketchReviewStatus>(() =>
+    aiSketchReview.currentAiSketchOutputId && aiSketchReview.reviewBindingStatus === 'exact'
+      ? normalizeCurrentFirstPreviewReviewStatus(aiSketchReview.reviewStatus)
+      : aiSketchReview.reviewStatus,
   );
   const [isAiSketchReviewSaving, setIsAiSketchReviewSaving] = useState(false);
   const [aiSketchReviewSaveMessage, setAiSketchReviewSaveMessage] = useState('');
@@ -512,7 +522,11 @@ export default function AdminBriefDetailClient({
 
   useEffect(() => {
     setAiSketchReviewState(aiSketchReview);
-    setSelectedAiSketchReviewStatus(aiSketchReview.reviewStatus);
+    setSelectedAiSketchReviewStatus(
+      aiSketchReview.currentAiSketchOutputId && aiSketchReview.reviewBindingStatus === 'exact'
+        ? normalizeCurrentFirstPreviewReviewStatus(aiSketchReview.reviewStatus)
+        : aiSketchReview.reviewStatus,
+    );
     setIsAiSketchReviewSaving(false);
     setAiSketchReviewSaveMessage('');
   }, [aiSketchReview]);
@@ -818,6 +832,11 @@ export default function AdminBriefDetailClient({
       return;
     }
 
+    if (selectedAiSketchReviewStatus === AI_SKETCH_REVIEW_INITIAL_STATUS) {
+      setAiSketchReviewSaveMessage('This generated First Preview requires a post-generation review status.');
+      return;
+    }
+
     setIsAiSketchReviewSaving(true);
     setAiSketchReviewSaveMessage('');
 
@@ -843,6 +862,7 @@ export default function AdminBriefDetailClient({
         !response.ok ||
         !result.ok ||
         !isAiSketchReviewStatus(savedReviewStatus) ||
+        savedReviewStatus === AI_SKETCH_REVIEW_INITIAL_STATUS ||
         savedOutputId !== currentOutputId
       ) {
         throw new Error(result.message || 'AI sketch review state could not be saved.');
@@ -960,7 +980,7 @@ export default function AdminBriefDetailClient({
                     value={selectedAiSketchReviewStatus}
                     onChange={(event) => setSelectedAiSketchReviewStatus(event.target.value as AiSketchReviewStatus)}
                   >
-                    {AI_SKETCH_REVIEW_STATUSES.map((option) => (
+                    {currentFirstPreviewReviewStatuses.map((option) => (
                       <option key={option} value={option}>
                         {AI_SKETCH_REVIEW_STATUS_LABELS[option]}
                       </option>
