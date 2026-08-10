@@ -138,19 +138,23 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       return failure("active_job_exists");
     }
 
-    if (input.attemptNumber === 2) {
+    if (input.attemptNumber >= 2) {
       const parent = input.parentJobId
         ? this.jobsById.get(input.parentJobId)
         : undefined;
       if (
         !parent ||
         parent.conceptBriefId !== input.conceptBriefId ||
-        parent.attemptNumber !== 1
+        parent.attemptNumber !== input.attemptNumber - 1
       ) {
         return failure("parent_job_invalid");
       }
       if (input.sourceOutputId === null) {
-        if (parent.status !== "failed" || parent.retryEligible !== true) {
+        if (
+          parent.status !== "failed" ||
+          parent.retryEligible !== true ||
+          (parent.attemptNumber !== 1 && parent.sourceOutputId === null)
+        ) {
           return failure("retry_not_eligible");
         }
       } else {

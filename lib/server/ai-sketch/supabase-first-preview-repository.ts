@@ -12,6 +12,7 @@ import {
   FIRST_PREVIEW_ASSET_VALIDATOR_VERSION,
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   FIRST_PREVIEW_LINEAGE_IDENTITY,
+  FIRST_PREVIEW_MAX_ATTEMPT_NUMBER,
   FIRST_PREVIEW_PERSISTENCE_CONTRACT_VERSION,
   FIRST_PREVIEW_PROVIDER_PROFILE,
   type FirstPreviewAutomaticGateEvidence,
@@ -374,7 +375,10 @@ function mapJob(row: FirstPreviewJobRow | null): FirstPreviewJobRecord | null {
     !row || !UUID_PATTERN.test(row.id) || !UUID_PATTERN.test(row.concept_brief_id) ||
     !JOB_STATUSES.has(row.status as FirstPreviewJobStatus) ||
     row.generation_purpose !== "first_preview" ||
-    (row.attempt_number !== 1 && row.attempt_number !== 2) ||
+    typeof row.attempt_number !== "number" ||
+    !Number.isSafeInteger(row.attempt_number) ||
+    row.attempt_number < 1 ||
+    row.attempt_number > FIRST_PREVIEW_MAX_ATTEMPT_NUMBER ||
     !SHA256_PATTERN.test(row.idempotency_key ?? "") ||
     row.lineage_identity !== FIRST_PREVIEW_LINEAGE_IDENTITY ||
     (row.source_output_id !== null && !UUID_PATTERN.test(row.source_output_id)) ||
@@ -539,15 +543,23 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     if (active.error) return failure("repository_unavailable");
     if (active.data) return failure("active_job_exists");
 
-    if (input.attemptNumber === 2) {
+    if (input.attemptNumber >= 2) {
       const parentResult = await this.database.findJobById(input.parentJobId!);
       if (parentResult.error) return failure("repository_unavailable");
       const parent = mapJob(parentResult.data);
-      if (!parent || parent.conceptBriefId !== input.conceptBriefId || parent.attemptNumber !== 1) {
+      if (
+        !parent ||
+        parent.conceptBriefId !== input.conceptBriefId ||
+        parent.attemptNumber !== input.attemptNumber - 1
+      ) {
         return failure("parent_job_invalid");
       }
       if (input.sourceOutputId === null) {
-        if (parent.status !== "failed" || parent.retryEligible !== true) {
+        if (
+          parent.status !== "failed" ||
+          parent.retryEligible !== true ||
+          (parent.attemptNumber !== 1 && parent.sourceOutputId === null)
+        ) {
           return failure("retry_not_eligible");
         }
       } else {
@@ -604,8 +616,9 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
       attempt_number: input.attemptNumber,
       lineage_identity: FIRST_PREVIEW_LINEAGE_IDENTITY,
       parent_job_id: input.parentJobId,
-      parent_generation_purpose: input.attemptNumber === 2 ? "first_preview" : null,
-      parent_attempt_number: input.attemptNumber === 2 ? 1 : null,
+      parent_generation_purpose: input.attemptNumber >= 2 ? "first_preview" : null,
+      parent_attempt_number:
+        input.attemptNumber >= 2 ? input.attemptNumber - 1 : null,
       source_output_id: input.sourceOutputId,
       design_spec_version: input.designSpecVersion,
       design_spec_hash: input.designSpecSha256,

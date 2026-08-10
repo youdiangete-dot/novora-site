@@ -7,6 +7,7 @@ import {
   deriveFirstPreviewIdempotencyKey,
   FIRST_PREVIEW_IDEMPOTENCY_VERSION,
   FIRST_PREVIEW_LINEAGE_IDENTITY,
+  FIRST_PREVIEW_MAX_ATTEMPT_NUMBER,
   FIRST_PREVIEW_ASSET_BUCKET,
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   type FirstPreviewAutomaticGateEvidence,
@@ -19,7 +20,9 @@ const OTHER_BRIEF_ID = "223e4567-e89b-42d3-a456-426614174000";
 const JOB_1_ID = "323e4567-e89b-42d3-a456-426614174000";
 const JOB_2_ID = "423e4567-e89b-42d3-a456-426614174000";
 const JOB_3_ID = "523e4567-e89b-42d3-a456-426614174000";
+const JOB_4_ID = "723e4567-e89b-42d3-a456-426614174000";
 const OUTPUT_1_ID = "623e4567-e89b-42d3-a456-426614174000";
+const OUTPUT_2_ID = "823e4567-e89b-42d3-a456-426614174000";
 const DESIGN_SPEC_SHA256 = "a".repeat(64);
 const INSTRUCTION_SHA256 = "b".repeat(64);
 const CONTENT_SHA256 = "c".repeat(64);
@@ -209,6 +212,28 @@ test.describe("server-only First Preview persistence foundation", () => {
     expect(repository.snapshot().jobs).toHaveLength(0);
   });
 
+  test("accepts the bounded attempt range and rejects attempt 32768", () => {
+    expect(
+      createFirstPreviewCanonicalIdentity(
+        reservationInput({
+          attemptNumber: FIRST_PREVIEW_MAX_ATTEMPT_NUMBER,
+          parentJobId: JOB_1_ID,
+        }),
+      ),
+    ).toMatchObject({
+      attempt_number: 32_767,
+      parent_job_id: JOB_1_ID,
+    });
+    expect(
+      createFirstPreviewCanonicalIdentity(
+        reservationInput({
+          attemptNumber: FIRST_PREVIEW_MAX_ATTEMPT_NUMBER + 1,
+          parentJobId: JOB_1_ID,
+        }),
+      ),
+    ).toBeNull();
+  });
+
   test("reserves one queued job with deterministic identity", async () => {
     const repository = createRepository();
     const result = await repository.reserveJob(reservationInput());
@@ -325,6 +350,118 @@ test.describe("server-only First Preview persistence foundation", () => {
     });
   });
 
+  test("blocks retry-of-retry chains and requires the immediate previous attempt", async () => {
+    const repository = createRepository();
+    await reserveAndStart(repository);
+    await repository.recordJobFailure(JOB_1_ID, {
+      category: "provider_unavailable",
+      retryEligible: true,
+      actualCostMicros: null,
+    });
+    expect(await reserveAttemptTwo(repository)).toMatchObject({ ok: true });
+    await repository.recordJobFailure(JOB_2_ID, {
+      category: "provider_unavailable",
+      retryEligible: true,
+      actualCostMicros: null,
+    });
+
+    expect(
+      await repository.reserveJob(
+        reservationInput({
+          jobId: JOB_3_ID,
+          attemptNumber: 3,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: null,
+        }),
+      ),
+    ).toEqual({ ok: false, code: "retry_not_eligible" });
+    expect(
+      await repository.reserveJob(
+        reservationInput({
+          jobId: JOB_3_ID,
+          attemptNumber: 3,
+          parentJobId: JOB_1_ID,
+          sourceOutputId: null,
+        }),
+      ),
+    ).toEqual({ ok: false, code: "parent_job_invalid" });
+    expect(
+      await repository.reserveJob(
+        reservationInput({
+          jobId: JOB_4_ID,
+          attemptNumber: 4,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: null,
+        }),
+      ),
+    ).toEqual({ ok: false, code: "parent_job_invalid" });
+  });
+
+  test("supports a human revision immediately after a successful initial retry", async () => {
+    const repository = createRepository();
+    await reserveAndStart(repository);
+    await repository.recordJobFailure(JOB_1_ID, {
+      category: "provider_unavailable",
+      retryEligible: true,
+      actualCostMicros: null,
+    });
+    expect(await reserveAttemptTwo(repository)).toMatchObject({ ok: true });
+    expect(await repository.startJob(JOB_2_ID)).toMatchObject({ ok: true });
+    expect(
+      await repository.recordProviderRequest(JOB_2_ID, {
+        providerRequestId: "fake-provider-request-002",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await repository.persistOutput(
+        outputInput({
+          outputId: OUTPUT_2_ID,
+          jobId: JOB_2_ID,
+          assetId: "first-preview/brief/output-2.png",
+          contentSha256: "d".repeat(64),
+        }),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await repository.recordJobSucceeded(JOB_2_ID, { actualCostMicros: 41_000 }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await repository.markOutputReady({
+        outputId: OUTPUT_2_ID,
+        jobId: JOB_2_ID,
+        conceptBriefId: BRIEF_ID,
+        gates: PASSING_GATES,
+        automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      requestRevisionForTest(repository, {
+        outputId: OUTPUT_2_ID,
+        revisionInstruction: "Refine the successful retry.",
+      }),
+    ).toBe(true);
+
+    expect(
+      await repository.reserveJob(
+        revisionReservationInput({
+          jobId: JOB_3_ID,
+          attemptNumber: 3,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: OUTPUT_2_ID,
+        }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      value: {
+        job: {
+          attemptNumber: 3,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: OUTPUT_2_ID,
+        },
+      },
+    });
+  });
+
   for (const scenario of [
     { name: "non-retryable failure", category: "invalid_provider_response", retry: false },
     { name: "timeout", category: "timeout", retry: false },
@@ -391,6 +528,120 @@ test.describe("server-only First Preview persistence foundation", () => {
     expect(after.jobs).toHaveLength(before.jobs.length + 1);
     expect(after.outputs).toEqual(before.outputs);
     expect(after.reviews).toEqual(before.reviews);
+  });
+
+  test("supports consecutive human revisions with immediate source lineage", async () => {
+    const repository = createRepository();
+    await completeReadyFirstPreview(repository);
+    expect(requestRevisionForTest(repository)).toBe(true);
+    expect(await repository.reserveJob(revisionReservationInput())).toMatchObject({
+      ok: true,
+    });
+    expect(await repository.startJob(JOB_2_ID)).toMatchObject({ ok: true });
+    expect(
+      await repository.recordProviderRequest(JOB_2_ID, {
+        providerRequestId: "fake-provider-request-revision-002",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await repository.persistOutput(
+        outputInput({
+          outputId: OUTPUT_2_ID,
+          jobId: JOB_2_ID,
+          assetId: "first-preview/brief/revision-2.png",
+          contentSha256: "d".repeat(64),
+        }),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await repository.recordJobSucceeded(JOB_2_ID, { actualCostMicros: 41_000 }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await repository.revokeOutput({
+        outputId: OUTPUT_1_ID,
+        jobId: JOB_1_ID,
+        conceptBriefId: BRIEF_ID,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      repository.setReviewForTest({
+        outputId: OUTPUT_2_ID,
+        conceptBriefId: BRIEF_ID,
+        reviewStatus: "draft_generated_internal_only",
+        revisionInstruction: null,
+      }),
+    ).toBe(true);
+    expect(
+      await repository.markOutputReady({
+        outputId: OUTPUT_2_ID,
+        jobId: JOB_2_ID,
+        conceptBriefId: BRIEF_ID,
+        gates: PASSING_GATES,
+        automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      requestRevisionForTest(repository, {
+        outputId: OUTPUT_2_ID,
+        revisionInstruction: "Refine the second generated direction.",
+      }),
+    ).toBe(true);
+
+    expect(
+      await repository.reserveJob(
+        revisionReservationInput({
+          jobId: JOB_3_ID,
+          attemptNumber: 3,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: OUTPUT_2_ID,
+        }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      value: {
+        job: {
+          attemptNumber: 3,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: OUTPUT_2_ID,
+        },
+      },
+    });
+  });
+
+  test("allows one null-source retry after a failed human revision", async () => {
+    const repository = createRepository();
+    await completeReadyFirstPreview(repository);
+    expect(requestRevisionForTest(repository)).toBe(true);
+    expect(await repository.reserveJob(revisionReservationInput())).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await repository.recordJobFailure(JOB_2_ID, {
+        category: "provider_unavailable",
+        retryEligible: true,
+        actualCostMicros: null,
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect(
+      await repository.reserveJob(
+        reservationInput({
+          jobId: JOB_3_ID,
+          attemptNumber: 3,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: null,
+        }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      value: {
+        job: {
+          attemptNumber: 3,
+          parentJobId: JOB_2_ID,
+          sourceOutputId: null,
+        },
+      },
+    });
   });
 
   test("fails revision closed for a missing source output", async () => {

@@ -14,7 +14,9 @@ export type FirstPreviewJobStatus =
   | "timed_out"
   | "cancelled";
 
-export type FirstPreviewAttemptNumber = 1 | 2;
+export const FIRST_PREVIEW_MAX_ATTEMPT_NUMBER = 32_767 as const;
+
+export type FirstPreviewAttemptNumber = number;
 
 export type FirstPreviewFailureCategory =
   | "configuration_missing"
@@ -312,7 +314,9 @@ export function isValidFirstPreviewReservationIdentity(
   return (
     UUID_PATTERN.test(input.jobId) &&
     UUID_PATTERN.test(input.conceptBriefId) &&
-    (input.attemptNumber === 1 || input.attemptNumber === 2) &&
+    Number.isSafeInteger(input.attemptNumber) &&
+    input.attemptNumber >= 1 &&
+    input.attemptNumber <= FIRST_PREVIEW_MAX_ATTEMPT_NUMBER &&
     (input.parentJobId === null || UUID_PATTERN.test(input.parentJobId)) &&
     (input.sourceOutputId === null || UUID_PATTERN.test(input.sourceOutputId)) &&
     isTrimmedSystemIdentifier(input.designSpecVersion) &&
