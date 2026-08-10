@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import path from "node:path";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const internals = Module as unknown as { _resolveFilename(request: string, parent: unknown, isMain: boolean, options?: unknown): string };
 const shim = path.join(process.cwd(), "node_modules", "next", "dist", "compiled", "server-only", "empty.js");
@@ -59,6 +60,32 @@ function dependencies(input: { state?: "ready" | "pending" | "unavailable" | "de
       signingSecret: SIGNING_SECRET,
     },
   };
+}
+
+function adminFeedbackQuery(rows: unknown[]) {
+  const tables: string[] = [];
+  const filters: Array<{ column: string; value: string }> = [];
+  const limits: number[] = [];
+  const query = {
+    select() {
+      return query;
+    },
+    eq(column: string, value: string) {
+      filters.push({ column, value });
+      return query;
+    },
+    async limit(value: number) {
+      limits.push(value);
+      return { data: rows, error: null };
+    },
+  };
+  const client = {
+    from(table: string) {
+      tables.push(table);
+      return query;
+    },
+  } as unknown as SupabaseClient;
+  return { client, filters, limits, tables };
 }
 
 test("creates and verifies a domain-separated exact rendered-output binding", async () => {
@@ -143,17 +170,27 @@ test("customer source exposes feedback only with a server binding and never subm
   const formSource = readFileSync(path.join(process.cwd(), "app", "design", "preview", "[public_reference]", "FirstPreviewFeedbackForm.tsx"), "utf8");
   expect(pageSource).toContain("createFirstPreviewCustomerFeedbackBinding");
   expect(pageSource).toContain("feedbackBinding={feedbackBinding}");
+  expect(pageSource).toContain("outputId: trusted.outputId");
+  expect(pageSource).toContain("outputId: preview.outputId");
+  expect(pageSource).toContain(
+    "`/api/first-preview-assets/${encodeURIComponent(publicReference)}/${encodeURIComponent(trusted.outputId)}`",
+  );
+  expect(pageSource).not.toContain("/first-preview-assets/${publicReference}/current");
   expect(formSource).toContain("JSON.stringify({ feedback: normalized, binding: feedbackBinding })");
   expect(formSource).not.toContain("aiSketchOutputId");
   expect(formSource).not.toContain("outputId");
   expect(formSource).not.toContain("conceptBriefId");
 });
 
-test("admin source reads and displays only the exact current pair", () => {
+test("admin source reads and displays only the captured review output pair", async () => {
   const readSource = readFileSync(path.join(process.cwd(), "lib", "server", "admin-first-preview-customer-feedback.ts"), "utf8");
+  const pageSource = readFileSync(path.join(process.cwd(), "app", "admin", "briefs", "[id]", "page.tsx"), "utf8");
   const adminSource = readFileSync(path.join(process.cwd(), "app", "admin", "briefs", "[id]", "AdminBriefDetailClient.tsx"), "utf8");
-  expect(readSource).toContain('.eq("concept_brief_id", conceptBriefId)');
-  expect(readSource).toContain('.eq("ai_sketch_output_id", currentOutput.id)');
+  expect(readSource).toContain('.eq("concept_brief_id", normalizedConceptBriefId)');
+  expect(readSource).toContain('.eq("ai_sketch_output_id", normalizedExpectedOutputId)');
+  expect(readSource).not.toContain("resolveAdminCurrentFirstPreview");
+  expect(pageSource).toContain("aiSketchReview.currentAiSketchOutputId");
+  expect(adminSource).toContain("customerFeedback.aiSketchOutputId !== outputId");
   expect(adminSource).toContain("No customer feedback submitted for this First Preview.");
   const row = {
     concept_brief_id: BRIEF_ID,
@@ -163,8 +200,52 @@ test("admin source reads and displays only the exact current pair", () => {
   };
   expect(adminFeedbackModule.mapExactAdminFirstPreviewCustomerFeedback(row, BRIEF_ID, OUTPUT_ID)).toEqual({
     state: "exact",
+    aiSketchOutputId: OUTPUT_ID,
     feedbackText: "Refine the setting",
     createdAt: "2026-08-08T10:00:00.000Z",
   });
   expect(adminFeedbackModule.mapExactAdminFirstPreviewCustomerFeedback(row, BRIEF_ID, OTHER_OUTPUT_ID)).toEqual({ state: "unavailable" });
+  expect(adminFeedbackModule.mapExactAdminFirstPreviewCustomerFeedback(row, "not-a-brief-id", OUTPUT_ID)).toEqual({ state: "unavailable" });
+
+  const exact = adminFeedbackQuery([row]);
+  await expect(adminFeedbackModule.loadAdminFirstPreviewCustomerFeedback(
+    BRIEF_ID,
+    OUTPUT_ID,
+    { supabaseClient: exact.client },
+  )).resolves.toEqual({
+    state: "exact",
+    aiSketchOutputId: OUTPUT_ID,
+    feedbackText: "Refine the setting",
+    createdAt: "2026-08-08T10:00:00.000Z",
+  });
+  expect(exact.tables).toEqual(["first_preview_customer_feedback"]);
+  expect(exact.filters).toEqual([
+    { column: "concept_brief_id", value: BRIEF_ID },
+    { column: "ai_sketch_output_id", value: OUTPUT_ID },
+  ]);
+  expect(exact.limits).toEqual([2]);
+
+  const promotedToB = adminFeedbackQuery([{ ...row, ai_sketch_output_id: OTHER_OUTPUT_ID }]);
+  await expect(adminFeedbackModule.loadAdminFirstPreviewCustomerFeedback(
+    BRIEF_ID,
+    OUTPUT_ID,
+    { supabaseClient: promotedToB.client },
+  )).resolves.toEqual({ state: "unavailable" });
+  expect(promotedToB.filters).toContainEqual({ column: "ai_sketch_output_id", value: OUTPUT_ID });
+
+  const noCapturedOutput = adminFeedbackQuery([row]);
+  await expect(adminFeedbackModule.loadAdminFirstPreviewCustomerFeedback(
+    BRIEF_ID,
+    null,
+    { supabaseClient: noCapturedOutput.client },
+  )).resolves.toEqual({ state: "none" });
+  expect(noCapturedOutput.tables).toHaveLength(0);
+
+  const malformedOutput = adminFeedbackQuery([row]);
+  await expect(adminFeedbackModule.loadAdminFirstPreviewCustomerFeedback(
+    BRIEF_ID,
+    "not-an-output-id",
+    { supabaseClient: malformedOutput.client },
+  )).resolves.toEqual({ state: "unavailable" });
+  expect(malformedOutput.tables).toHaveLength(0);
 });

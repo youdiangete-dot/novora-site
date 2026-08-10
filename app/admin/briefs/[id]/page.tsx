@@ -133,9 +133,17 @@ export default async function AdminBriefDetailPage({ params, searchParams }: Adm
     serverBrief.record?.databaseId
       ? await loadAdminAiSketchReviewByConceptBriefId(serverBrief.record.databaseId)
       : createFallbackAdminAiSketchReviewReadModel();
-  const customerFeedback = serverBrief.record?.databaseId
-    ? await loadAdminFirstPreviewCustomerFeedback(serverBrief.record.databaseId)
+  const loadedCustomerFeedback = serverBrief.record?.databaseId
+    ? await loadAdminFirstPreviewCustomerFeedback(
+        serverBrief.record.databaseId,
+        aiSketchReview.currentAiSketchOutputId,
+      )
     : { state: 'none' as const };
+  const customerFeedback =
+    loadedCustomerFeedback.state === 'exact' &&
+    loadedCustomerFeedback.aiSketchOutputId !== aiSketchReview.currentAiSketchOutputId
+      ? { state: 'unavailable' as const }
+      : loadedCustomerFeedback;
   let serverDataMessage: string | undefined;
   let notificationEventMessage: string | undefined;
 

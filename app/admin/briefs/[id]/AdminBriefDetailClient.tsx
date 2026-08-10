@@ -69,7 +69,7 @@ type AdminAiSketchReviewReadModel = {
 };
 
 type AdminFirstPreviewCustomerFeedbackReadModel =
-  | { state: 'exact'; feedbackText: string; createdAt: string }
+  | { state: 'exact'; aiSketchOutputId: string; feedbackText: string; createdAt: string }
   | { state: 'none' | 'unavailable' };
 
 type AdminAiSketchReviewSaveResponse = {
@@ -305,6 +305,10 @@ function CurrentFirstPreviewReview({
 }) {
   const outputId = review.currentAiSketchOutputId;
   const [imageUnavailable, setImageUnavailable] = useState(false);
+  const displayedCustomerFeedback =
+    customerFeedback.state === 'exact' && customerFeedback.aiSketchOutputId !== outputId
+      ? { state: 'unavailable' as const }
+      : customerFeedback;
 
   useEffect(() => {
     setImageUnavailable(false);
@@ -354,12 +358,12 @@ function CurrentFirstPreviewReview({
       </p>
       <div className={styles.customerFeedbackPanel}>
         <h3>Customer feedback for this First Preview</h3>
-        {customerFeedback.state === 'exact' ? (
+        {displayedCustomerFeedback.state === 'exact' ? (
           <>
-            <p>{customerFeedback.feedbackText}</p>
-            <p className={styles.helperText}>Submitted {formatSubmittedTime(customerFeedback.createdAt)}</p>
+            <p>{displayedCustomerFeedback.feedbackText}</p>
+            <p className={styles.helperText}>Submitted {formatSubmittedTime(displayedCustomerFeedback.createdAt)}</p>
           </>
-        ) : customerFeedback.state === 'none' ? (
+        ) : displayedCustomerFeedback.state === 'none' ? (
           <p className={styles.helperText}>No customer feedback submitted for this First Preview.</p>
         ) : (
           <p className={styles.helperText}>Customer feedback is unavailable for this exact First Preview.</p>

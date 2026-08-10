@@ -211,7 +211,7 @@ export function resolveCustomerPreview(
     publicReference,
     outputId: trusted.outputId,
     customerAssetSrc:
-      `/api/first-preview-assets/${publicReference}/current`,
+      `/api/first-preview-assets/${encodeURIComponent(publicReference)}/${encodeURIComponent(trusted.outputId)}`,
   };
 }
 
