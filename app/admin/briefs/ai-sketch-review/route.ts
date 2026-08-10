@@ -7,15 +7,24 @@ import {
   isValidAdminAccessCookie,
 } from "../../../../lib/server/admin-access";
 import { isValidFirstPreviewAssetUuid } from "../../../../lib/server/ai-sketch/first-preview-generated-assets-contract";
-import { updateAdminAiSketchReview } from "../../../../lib/server/admin-ai-sketch-review-write";
+import {
+  normalizeAdminAiSketchRevisionInstruction,
+  updateAdminAiSketchReview,
+} from "../../../../lib/server/admin-ai-sketch-review-write";
 
 type AdminAiSketchReviewRequestBody = {
   conceptBriefId?: unknown;
   aiSketchOutputId?: unknown;
   reviewStatus?: unknown;
+  revisionInstruction?: unknown;
 };
 
-const allowedBodyKeys = new Set(["conceptBriefId", "aiSketchOutputId", "reviewStatus"]);
+const allowedBodyKeys = new Set([
+  "conceptBriefId",
+  "aiSketchOutputId",
+  "reviewStatus",
+  "revisionInstruction",
+]);
 
 export const dynamic = "force-dynamic";
 
@@ -89,11 +98,15 @@ export async function POST(request: Request) {
     typeof body.reviewStatus === "string" && isAiSketchReviewStatus(body.reviewStatus)
       ? body.reviewStatus
       : null;
+  const revisionInstruction = reviewStatus
+    ? normalizeAdminAiSketchRevisionInstruction(reviewStatus, body.revisionInstruction)
+    : undefined;
 
   if (
     !isValidFirstPreviewAssetUuid(conceptBriefId) ||
     !isValidFirstPreviewAssetUuid(aiSketchOutputId) ||
-    !reviewStatus
+    !reviewStatus ||
+    revisionInstruction === undefined
   ) {
     return NextResponse.json(
       {
@@ -108,6 +121,7 @@ export async function POST(request: Request) {
     conceptBriefId,
     aiSketchOutputId,
     reviewStatus,
+    revisionInstruction,
   );
 
   if (result.ok === false) {
@@ -126,6 +140,7 @@ export async function POST(request: Request) {
       hasPersistedReview: true,
       reviewStatus: result.reviewStatus,
       aiSketchOutputId: result.aiSketchOutputId,
+      revisionInstruction: result.revisionInstruction,
     },
   });
 }

@@ -12,6 +12,7 @@ import {
   FIRST_PREVIEW_ASSET_VALIDATOR_VERSION,
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   FIRST_PREVIEW_LINEAGE_IDENTITY,
+  FIRST_PREVIEW_MAX_ATTEMPT_NUMBER,
   FIRST_PREVIEW_PERSISTENCE_CONTRACT_VERSION,
   FIRST_PREVIEW_PROVIDER_PROFILE,
   type FirstPreviewAutomaticGateEvidence,
@@ -95,6 +96,7 @@ export type FirstPreviewReviewRow = {
   ai_sketch_output_id: string;
   concept_brief_id: string;
   review_status: string;
+  revision_instruction: string | null;
   created_at: string;
 };
 
@@ -158,7 +160,7 @@ const OUTPUT_COLUMNS = [
 ].join(", ");
 
 const REVIEW_COLUMNS =
-  "ai_sketch_output_id, concept_brief_id, review_status, created_at";
+  "ai_sketch_output_id, concept_brief_id, review_status, revision_instruction, created_at";
 
 export function createFirstPreviewDatabaseClient(
   supabase: SupabaseClient,
@@ -326,6 +328,15 @@ function isNonblank(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value === value.trim();
 }
 
+function normalizeRevisionInstruction(
+  value: unknown,
+): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length >= 1 && trimmed.length <= 2000 ? trimmed : undefined;
+}
+
 function readSafeInteger(value: unknown): number | null {
   const numberValue = typeof value === "string" && /^\d+$/.test(value)
     ? Number(value)
@@ -364,9 +375,13 @@ function mapJob(row: FirstPreviewJobRow | null): FirstPreviewJobRecord | null {
     !row || !UUID_PATTERN.test(row.id) || !UUID_PATTERN.test(row.concept_brief_id) ||
     !JOB_STATUSES.has(row.status as FirstPreviewJobStatus) ||
     row.generation_purpose !== "first_preview" ||
-    (row.attempt_number !== 1 && row.attempt_number !== 2) ||
+    typeof row.attempt_number !== "number" ||
+    !Number.isSafeInteger(row.attempt_number) ||
+    row.attempt_number < 1 ||
+    row.attempt_number > FIRST_PREVIEW_MAX_ATTEMPT_NUMBER ||
     !SHA256_PATTERN.test(row.idempotency_key ?? "") ||
     row.lineage_identity !== FIRST_PREVIEW_LINEAGE_IDENTITY ||
+    (row.source_output_id !== null && !UUID_PATTERN.test(row.source_output_id)) ||
     !isNonblank(row.design_spec_version) || !SHA256_PATTERN.test(row.design_spec_hash ?? "") ||
     !isNonblank(row.hand_sketch_instruction_version) ||
     !SHA256_PATTERN.test(row.hand_sketch_instruction_hash ?? "") ||
@@ -394,7 +409,7 @@ function mapJob(row: FirstPreviewJobRow | null): FirstPreviewJobRecord | null {
     idempotencyKey: row.idempotency_key!,
     lineageIdentity: FIRST_PREVIEW_LINEAGE_IDENTITY,
     parentJobId: row.parent_job_id,
-    sourceOutputId: null,
+    sourceOutputId: row.source_output_id,
     designSpecVersion: row.design_spec_version!,
     designSpecSha256: row.design_spec_hash!,
     handSketchInstructionVersion: row.hand_sketch_instruction_version!,
@@ -457,10 +472,12 @@ function mapOutput(row: FirstPreviewOutputRow | null): FirstPreviewOutputRecord 
 }
 
 function mapReview(row: FirstPreviewReviewRow | null): FirstPreviewReviewRecord | null {
+  const revisionInstruction = normalizeRevisionInstruction(row?.revision_instruction);
   if (
     !row || !UUID_PATTERN.test(row.ai_sketch_output_id) ||
     !UUID_PATTERN.test(row.concept_brief_id) ||
     !REVIEW_STATUSES.has(row.review_status as FirstPreviewReviewRecord["reviewStatus"]) ||
+    revisionInstruction === undefined ||
     !isIsoTimestamp(row.created_at)
   ) {
     return null;
@@ -469,6 +486,7 @@ function mapReview(row: FirstPreviewReviewRow | null): FirstPreviewReviewRecord 
     outputId: row.ai_sketch_output_id,
     conceptBriefId: row.concept_brief_id,
     reviewStatus: row.review_status as FirstPreviewReviewRecord["reviewStatus"],
+    revisionInstruction,
     createdAt: row.created_at,
   };
 }
@@ -476,6 +494,7 @@ function mapReview(row: FirstPreviewReviewRow | null): FirstPreviewReviewRecord 
 function identityMatches(job: FirstPreviewJobRecord, input: ReserveFirstPreviewJobInput): boolean {
   return job.conceptBriefId === input.conceptBriefId &&
     job.attemptNumber === input.attemptNumber && job.parentJobId === input.parentJobId &&
+    job.sourceOutputId === input.sourceOutputId &&
     job.designSpecVersion === input.designSpecVersion &&
     job.designSpecSha256 === input.designSpecSha256 &&
     job.handSketchInstructionVersion === input.handSketchInstructionVersion &&
@@ -524,15 +543,63 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     if (active.error) return failure("repository_unavailable");
     if (active.data) return failure("active_job_exists");
 
-    if (input.attemptNumber === 2) {
+    if (input.attemptNumber >= 2) {
       const parentResult = await this.database.findJobById(input.parentJobId!);
       if (parentResult.error) return failure("repository_unavailable");
       const parent = mapJob(parentResult.data);
-      if (!parent || parent.conceptBriefId !== input.conceptBriefId || parent.attemptNumber !== 1) {
+      if (
+        !parent ||
+        parent.conceptBriefId !== input.conceptBriefId ||
+        parent.attemptNumber !== input.attemptNumber - 1
+      ) {
         return failure("parent_job_invalid");
       }
-      if (parent.status !== "failed" || parent.retryEligible !== true) {
-        return failure("retry_not_eligible");
+      if (input.sourceOutputId === null) {
+        if (
+          parent.status !== "failed" ||
+          parent.retryEligible !== true ||
+          (parent.attemptNumber !== 1 && parent.sourceOutputId === null)
+        ) {
+          return failure("retry_not_eligible");
+        }
+      } else {
+        if (parent.status !== "succeeded") {
+          return failure("revision_not_eligible");
+        }
+
+        const outputResult = await this.database.findOutputById(input.sourceOutputId);
+        if (outputResult.error) return failure("repository_unavailable");
+        const output = mapOutput(outputResult.data);
+        if (outputResult.data && !output) return failure("repository_unavailable");
+        if (!output) return failure("output_not_found");
+        if (
+          output.id !== input.sourceOutputId ||
+          output.jobId !== parent.id ||
+          output.conceptBriefId !== input.conceptBriefId
+        ) {
+          return failure("linkage_mismatch");
+        }
+        if (
+          output.readinessStatus !== "first_preview_ready" ||
+          output.isCurrentCustomerPreview !== true
+        ) {
+          return failure("revision_not_eligible");
+        }
+
+        const reviewResult = await this.database.findReviewByConceptBriefId(
+          input.conceptBriefId,
+        );
+        if (reviewResult.error) return failure("repository_unavailable");
+        const review = mapReview(reviewResult.data);
+        if (
+          !review ||
+          review.outputId !== input.sourceOutputId ||
+          review.conceptBriefId !== input.conceptBriefId ||
+          review.reviewStatus !== "needs_revision" ||
+          review.revisionInstruction === null
+        ) {
+          return failure("revision_not_eligible");
+        }
       }
     }
 
@@ -549,9 +616,10 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
       attempt_number: input.attemptNumber,
       lineage_identity: FIRST_PREVIEW_LINEAGE_IDENTITY,
       parent_job_id: input.parentJobId,
-      parent_generation_purpose: input.attemptNumber === 2 ? "first_preview" : null,
-      parent_attempt_number: input.attemptNumber === 2 ? 1 : null,
-      source_output_id: null,
+      parent_generation_purpose: input.attemptNumber >= 2 ? "first_preview" : null,
+      parent_attempt_number:
+        input.attemptNumber >= 2 ? input.attemptNumber - 1 : null,
+      source_output_id: input.sourceOutputId,
       design_spec_version: input.designSpecVersion,
       design_spec_hash: input.designSpecSha256,
       hand_sketch_instruction_version: input.handSketchInstructionVersion,

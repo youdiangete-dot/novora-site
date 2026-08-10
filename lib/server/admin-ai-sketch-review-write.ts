@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import {
   AI_SKETCH_REVIEW_INITIAL_STATUS,
   type AiSketchReviewStatus,
@@ -8,13 +10,17 @@ import {
 import { resolveAdminCurrentFirstPreview } from "./admin-first-preview";
 import { isValidFirstPreviewAssetUuid } from "./ai-sketch/first-preview-generated-assets-contract";
 import { createFirstPreviewRepository } from "./ai-sketch/first-preview-persistence";
+import type { FirstPreviewRepository } from "./ai-sketch/first-preview-persistence-contract";
 import { createSupabaseAdminClientOrNull } from "./supabase";
+
+export const ADMIN_AI_SKETCH_REVISION_INSTRUCTION_MAX_LENGTH = 2000;
 
 export type AdminAiSketchReviewWriteResult =
   | {
       ok: true;
       reviewStatus: AiSketchReviewStatus;
       aiSketchOutputId: string;
+      revisionInstruction: string | null;
     }
   | {
       ok: false;
@@ -26,13 +32,39 @@ type AiSketchReviewWriteRow = {
   ai_sketch_output_id: string | null;
   concept_brief_id: string | null;
   review_status: string | null;
+  revision_instruction: string | null;
 };
+
+type AdminAiSketchReviewWriteOptions = Readonly<{
+  supabaseClient?: SupabaseClient | null;
+  repository?: FirstPreviewRepository;
+}>;
 
 const unavailableMessage = "AI sketch review persistence is temporarily unavailable.";
 const writeFailedMessage = "AI sketch review state could not be saved.";
 
 function normalizeConceptBriefId(conceptBriefId: string): string {
   return conceptBriefId.trim();
+}
+
+export function normalizeAdminAiSketchRevisionInstruction(
+  reviewStatus: AiSketchReviewStatus,
+  revisionInstruction: unknown,
+): string | null | undefined {
+  if (reviewStatus !== "needs_revision") {
+    return null;
+  }
+
+  if (typeof revisionInstruction !== "string") {
+    return undefined;
+  }
+
+  const normalizedInstruction = revisionInstruction.trim();
+
+  return normalizedInstruction.length >= 1 &&
+    normalizedInstruction.length <= ADMIN_AI_SKETCH_REVISION_INSTRUCTION_MAX_LENGTH
+    ? normalizedInstruction
+    : undefined;
 }
 
 export function isExactAdminAiSketchReviewIdentity(
@@ -53,36 +85,51 @@ export function isAdminCurrentFirstPreviewReviewStatus(
   );
 }
 
-function mapReviewRowStatus(
+function mapReviewRowState(
   row: AiSketchReviewWriteRow | null,
   conceptBriefId: string,
   aiSketchOutputId: string,
-): AiSketchReviewStatus | null {
+  requestedReviewStatus: AiSketchReviewStatus,
+  requestedRevisionInstruction: string | null,
+): { reviewStatus: AiSketchReviewStatus; revisionInstruction: string | null } | null {
   const reviewStatus = row?.review_status?.trim();
 
   if (
     !isExactAdminAiSketchReviewIdentity(row, conceptBriefId, aiSketchOutputId) ||
     !reviewStatus ||
-    !isAdminCurrentFirstPreviewReviewStatus(reviewStatus)
+    !isAdminCurrentFirstPreviewReviewStatus(reviewStatus) ||
+    reviewStatus !== requestedReviewStatus ||
+    row.revision_instruction !== requestedRevisionInstruction
   ) {
     return null;
   }
 
-  return reviewStatus;
+  return {
+    reviewStatus,
+    revisionInstruction: row.revision_instruction,
+  };
 }
 
 export async function updateAdminAiSketchReview(
   conceptBriefId: string,
   aiSketchOutputId: string,
   reviewStatus: AiSketchReviewStatus,
+  revisionInstruction: string | null,
+  options: AdminAiSketchReviewWriteOptions = {},
 ): Promise<AdminAiSketchReviewWriteResult> {
   const normalizedConceptBriefId = normalizeConceptBriefId(conceptBriefId);
   const normalizedOutputId = aiSketchOutputId.trim();
+  const normalizedRevisionInstruction = normalizeAdminAiSketchRevisionInstruction(
+    reviewStatus,
+    revisionInstruction,
+  );
 
   if (
     !isValidFirstPreviewAssetUuid(normalizedConceptBriefId) ||
     !isValidFirstPreviewAssetUuid(normalizedOutputId) ||
-    !isAdminCurrentFirstPreviewReviewStatus(reviewStatus)
+    !isAdminCurrentFirstPreviewReviewStatus(reviewStatus) ||
+    normalizedRevisionInstruction === undefined ||
+    normalizedRevisionInstruction !== revisionInstruction
   ) {
     return {
       ok: false,
@@ -92,7 +139,10 @@ export async function updateAdminAiSketchReview(
   }
 
   try {
-    const supabase = createSupabaseAdminClientOrNull();
+    const supabase =
+      options.supabaseClient === undefined
+        ? createSupabaseAdminClientOrNull()
+        : options.supabaseClient;
 
     if (!supabase) {
       return {
@@ -105,7 +155,8 @@ export async function updateAdminAiSketchReview(
     const currentOutput = await resolveAdminCurrentFirstPreview(
       normalizedConceptBriefId,
       {
-        repository: createFirstPreviewRepository({ supabaseClient: supabase }),
+        repository:
+          options.repository ?? createFirstPreviewRepository({ supabaseClient: supabase }),
       },
     );
 
@@ -119,7 +170,7 @@ export async function updateAdminAiSketchReview(
 
     const { data: existingRow, error: existingError } = await supabase
       .from("ai_sketch_reviews")
-      .select("ai_sketch_output_id, concept_brief_id, review_status")
+      .select("ai_sketch_output_id, concept_brief_id, review_status, revision_instruction")
       .eq("concept_brief_id", normalizedConceptBriefId)
       .maybeSingle<AiSketchReviewWriteRow>();
 
@@ -157,16 +208,19 @@ export async function updateAdminAiSketchReview(
       .from("ai_sketch_reviews")
       .update({
         review_status: reviewStatus,
+        revision_instruction: normalizedRevisionInstruction,
       })
       .eq("concept_brief_id", normalizedConceptBriefId)
       .eq("ai_sketch_output_id", normalizedOutputId)
-      .select("ai_sketch_output_id, concept_brief_id, review_status")
+      .select("ai_sketch_output_id, concept_brief_id, review_status, revision_instruction")
       .maybeSingle<AiSketchReviewWriteRow>();
 
-    const savedReviewStatus = mapReviewRowStatus(
+    const savedReviewState = mapReviewRowState(
       reviewRow,
       normalizedConceptBriefId,
       normalizedOutputId,
+      reviewStatus,
+      normalizedRevisionInstruction,
     );
 
     if (reviewError) {
@@ -177,18 +231,21 @@ export async function updateAdminAiSketchReview(
       };
     }
 
-    if (!savedReviewStatus) {
+    if (!savedReviewState) {
       return {
         ok: false,
-        reason: "missing-row",
-        message: "No AI sketch review row exists for this Concept Brief yet.",
+        reason: reviewRow ? "write-failed" : "missing-row",
+        message: reviewRow
+          ? writeFailedMessage
+          : "No AI sketch review row exists for this Concept Brief yet.",
       };
     }
 
     return {
       ok: true,
-      reviewStatus: savedReviewStatus,
+      reviewStatus: savedReviewState.reviewStatus,
       aiSketchOutputId: normalizedOutputId,
+      revisionInstruction: savedReviewState.revisionInstruction,
     };
   } catch {
     return {

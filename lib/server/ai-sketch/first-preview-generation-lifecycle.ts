@@ -18,7 +18,6 @@ import {
 import {
   FIRST_PREVIEW_ASSET_BUCKET,
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
-  type FirstPreviewAttemptNumber,
   type FirstPreviewFailureCategory,
   type FirstPreviewJobRecord,
   type FirstPreviewRepository,
@@ -55,11 +54,13 @@ export type FirstPreviewPreparedGenerationInput = Readonly<
   >
 >;
 
+type AutomaticFirstPreviewAttemptNumber = 1 | 2;
+
 export type FirstPreviewGenerationWork = Readonly<{
   jobId: string;
   conceptBriefId: string;
   publicReference: string;
-  attemptNumber: FirstPreviewAttemptNumber;
+  attemptNumber: AutomaticFirstPreviewAttemptNumber;
   parentJobId: string | null;
   structured: FirstPreviewPreparedGenerationInput;
 }>;
@@ -364,7 +365,9 @@ async function readAttemptBudget(
   }).allowed;
 }
 
-function isAttemptNumber(value: unknown): value is FirstPreviewAttemptNumber {
+function isAttemptNumber(
+  value: unknown,
+): value is AutomaticFirstPreviewAttemptNumber {
   return value === 1 || value === 2;
 }
 
@@ -451,6 +454,7 @@ export async function reserveAutomaticFirstPreviewPreparedAttempt(input: {
     conceptBriefId: work.conceptBriefId,
     attemptNumber: work.attemptNumber,
     parentJobId: work.parentJobId,
+    sourceOutputId: null,
     designSpecVersion: work.structured.designSpec.spec_version,
     designSpecSha256: work.structured.designSpecSha256,
     handSketchInstructionVersion:
