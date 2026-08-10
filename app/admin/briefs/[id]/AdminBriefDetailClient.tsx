@@ -79,6 +79,7 @@ type AdminAiSketchReviewSaveResponse = {
     hasPersistedReview?: boolean;
     reviewStatus?: unknown;
     aiSketchOutputId?: unknown;
+    revisionInstruction?: unknown;
   };
 };
 
@@ -511,6 +512,7 @@ export default function AdminBriefDetailClient({
       ? normalizeCurrentFirstPreviewReviewStatus(aiSketchReview.reviewStatus)
       : aiSketchReview.reviewStatus,
   );
+  const [revisionInstruction, setRevisionInstruction] = useState(aiSketchReview.revisionInstruction || '');
   const [isAiSketchReviewSaving, setIsAiSketchReviewSaving] = useState(false);
   const [aiSketchReviewSaveMessage, setAiSketchReviewSaveMessage] = useState('');
   const [loadedFirstPreviewOutputId, setLoadedFirstPreviewOutputId] = useState<string | null>(null);
@@ -552,6 +554,7 @@ export default function AdminBriefDetailClient({
         ? normalizeCurrentFirstPreviewReviewStatus(aiSketchReview.reviewStatus)
         : aiSketchReview.reviewStatus,
     );
+    setRevisionInstruction(aiSketchReview.revisionInstruction || '');
     setIsAiSketchReviewSaving(false);
     setAiSketchReviewSaveMessage('');
   }, [aiSketchReview]);
@@ -849,6 +852,14 @@ export default function AdminBriefDetailClient({
     }
   }
 
+  function handleAiSketchReviewStatusChange(nextStatus: AiSketchReviewStatus) {
+    setSelectedAiSketchReviewStatus(nextStatus);
+
+    if (nextStatus !== 'needs_revision') {
+      setRevisionInstruction('');
+    }
+  }
+
   async function handleAiSketchReviewSave() {
     const currentOutputId = aiSketchReviewState.currentAiSketchOutputId;
 
@@ -859,6 +870,17 @@ export default function AdminBriefDetailClient({
 
     if (selectedAiSketchReviewStatus === AI_SKETCH_REVIEW_INITIAL_STATUS) {
       setAiSketchReviewSaveMessage('This generated First Preview requires a post-generation review status.');
+      return;
+    }
+
+    const normalizedRevisionInstruction =
+      selectedAiSketchReviewStatus === 'needs_revision' ? revisionInstruction.trim() : null;
+
+    if (
+      selectedAiSketchReviewStatus === 'needs_revision' &&
+      (!normalizedRevisionInstruction || normalizedRevisionInstruction.length > 2000)
+    ) {
+      setAiSketchReviewSaveMessage('Enter a revision instruction between 1 and 2000 characters.');
       return;
     }
 
@@ -876,19 +898,25 @@ export default function AdminBriefDetailClient({
           conceptBriefId: brief.databaseId,
           aiSketchOutputId: currentOutputId,
           reviewStatus: selectedAiSketchReviewStatus,
+          revisionInstruction: normalizedRevisionInstruction,
         }),
       });
       const result = (await response.json().catch(() => ({}))) as AdminAiSketchReviewSaveResponse;
 
       const savedReviewStatus = String(result.state?.reviewStatus || '');
       const savedOutputId = String(result.state?.aiSketchOutputId || '');
+      const savedRevisionInstruction =
+        result.state?.revisionInstruction === null || typeof result.state?.revisionInstruction === 'string'
+          ? result.state.revisionInstruction
+          : undefined;
 
       if (
         !response.ok ||
         !result.ok ||
         !isAiSketchReviewStatus(savedReviewStatus) ||
         savedReviewStatus === AI_SKETCH_REVIEW_INITIAL_STATUS ||
-        savedOutputId !== currentOutputId
+        savedOutputId !== currentOutputId ||
+        savedRevisionInstruction !== normalizedRevisionInstruction
       ) {
         throw new Error(result.message || 'AI sketch review state could not be saved.');
       }
@@ -897,12 +925,14 @@ export default function AdminBriefDetailClient({
         ...currentState,
         hasPersistedReview: true,
         reviewStatus: savedReviewStatus,
+        revisionInstruction: normalizedRevisionInstruction,
         reviewAiSketchOutputId: savedOutputId,
         reviewBindingStatus: 'exact',
         updatedAt: new Date().toISOString(),
       }));
       setSelectedAiSketchReviewStatus(savedReviewStatus);
-      setAiSketchReviewSaveMessage('AI sketch review status saved.');
+      setRevisionInstruction(normalizedRevisionInstruction || '');
+      setAiSketchReviewSaveMessage('AI sketch review status and revision instruction saved.');
     } catch (error) {
       setAiSketchReviewSaveMessage(
         error instanceof Error && error.message ? error.message : 'AI sketch review state could not be saved.',
@@ -1004,7 +1034,7 @@ export default function AdminBriefDetailClient({
                     className={styles.select}
                     disabled={isAiSketchReviewSaving}
                     value={selectedAiSketchReviewStatus}
-                    onChange={(event) => setSelectedAiSketchReviewStatus(event.target.value as AiSketchReviewStatus)}
+                    onChange={(event) => handleAiSketchReviewStatusChange(event.target.value as AiSketchReviewStatus)}
                   >
                     {currentFirstPreviewReviewStatuses.map((option) => (
                       <option key={option} value={option}>
@@ -1014,9 +1044,26 @@ export default function AdminBriefDetailClient({
                   </select>
                 </label>
 
+                {selectedAiSketchReviewStatus === 'needs_revision' ? (
+                  <label className={styles.fieldLabel}>
+                    Revision instruction
+                    <textarea
+                      className={styles.textarea}
+                      disabled={isAiSketchReviewSaving}
+                      maxLength={2000}
+                      placeholder="Describe the bounded change needed for this exact First Preview."
+                      value={revisionInstruction}
+                      onChange={(event) => setRevisionInstruction(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+
                 <button
                   className={styles.button}
-                  disabled={isAiSketchReviewSaving}
+                  disabled={
+                    isAiSketchReviewSaving ||
+                    (selectedAiSketchReviewStatus === 'needs_revision' && !revisionInstruction.trim())
+                  }
                   type="button"
                   onClick={handleAiSketchReviewSave}
                 >

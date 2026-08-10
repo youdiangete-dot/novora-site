@@ -1657,6 +1657,29 @@ test.describe('/admin/briefs protected review UI', () => {
           reviewStatus: 'internal_draft_not_generated',
           customer_safe_note: 'must not be accepted',
         },
+        {
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
+          reviewStatus: 'needs_revision',
+        },
+        {
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
+          reviewStatus: 'needs_revision',
+          revisionInstruction: '   ',
+        },
+        {
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
+          reviewStatus: 'needs_revision',
+          revisionInstruction: 'x'.repeat(2001),
+        },
+        {
+          conceptBriefId: '55555555-5555-4555-8555-555555555555',
+          aiSketchOutputId: '66666666-6666-4666-8666-666666666666',
+          reviewStatus: 'needs_revision',
+          revisionInstruction: { instruction: 'must be a string' },
+        },
       ];
 
       return Promise.all(
@@ -1675,7 +1698,7 @@ test.describe('/admin/briefs protected review UI', () => {
       );
     });
 
-    expect(responseStatuses).toEqual([400, 400, 400, 400, 400, 400, 400]);
+    expect(responseStatuses).toEqual([400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]);
   });
 
   test('uses legacy admin access cookie scope for admin-path review state saves', async ({ baseURL, context, page }) => {
