@@ -7,7 +7,10 @@ import {
   isValidFirstPreviewAssetUuid,
   isValidFirstPreviewPublicReference,
 } from "../../../../lib/server/ai-sketch/first-preview-generated-assets-contract";
+import { FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV } from "../../../../lib/server/ai-sketch/first-preview-customer-access-contract";
+import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
 import sharedStyles from "../../brief/brief.module.css";
+import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
 import styles from "./preview.module.css";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +40,7 @@ type ResolvedCustomerPreview =
   | Readonly<{
       state: "ready";
       publicReference: string;
+      outputId: string;
       customerAssetSrc: string;
     }>;
 
@@ -205,8 +209,9 @@ export function resolveCustomerPreview(
   return {
     state: "ready",
     publicReference,
+    outputId: trusted.outputId,
     customerAssetSrc:
-      `/api/first-preview-assets/${publicReference}/current`,
+      `/api/first-preview-assets/${encodeURIComponent(publicReference)}/${encodeURIComponent(trusted.outputId)}`,
   };
 }
 
@@ -265,6 +270,15 @@ export default async function CustomerPreviewPage({
     trustedResult,
   );
   const stateCopy = COPY[preview.state];
+  const feedbackBinding = preview.state === "ready"
+    ? createFirstPreviewCustomerFeedbackBinding(
+        {
+          publicReference: preview.publicReference,
+          outputId: preview.outputId,
+        },
+        process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? "",
+      )
+    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -297,31 +311,36 @@ export default async function CustomerPreviewPage({
         </section>
 
         {preview.state === "ready" ? (
-          <section
-            className={styles.previewCard}
-            aria-labelledby="concept-preview-heading"
-          >
-            <div className={styles.sectionHeading}>
-              <div>
-                <p className={sharedStyles.eyebrow}>Concept direction</p>
-                <h2 id="concept-preview-heading">
-                  AI hand-drawn concept sketch
-                </h2>
+          <>
+            <section className={styles.previewCard} aria-labelledby="concept-preview-heading">
+              <div className={styles.sectionHeading}>
+                <div>
+                  <p className={sharedStyles.eyebrow}>Concept direction</p>
+                  <h2 id="concept-preview-heading">
+                    AI hand-drawn concept sketch
+                  </h2>
+                </div>
+                <span>Early preview</span>
               </div>
-              <span>Early preview</span>
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className={styles.previewImage}
-              src={preview.customerAssetSrc}
-              alt="Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction"
-            />
-            <p className={styles.imageNote}>
-              This visual is an early communication asset. Details, structure,
-              gemstone orientation, and construction may change during later
-              refinement and production-feasibility review.
-            </p>
-          </section>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className={styles.previewImage}
+                src={preview.customerAssetSrc}
+                alt="Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction"
+              />
+              <p className={styles.imageNote}>
+                This visual is an early communication asset. Details, structure,
+                gemstone orientation, and construction may change during later
+                refinement and production-feasibility review.
+              </p>
+            </section>
+            {feedbackBinding ? (
+              <FirstPreviewFeedbackForm
+                feedbackBinding={feedbackBinding}
+                publicReference={preview.publicReference}
+              />
+            ) : null}
+          </>
         ) : null}
 
         <section

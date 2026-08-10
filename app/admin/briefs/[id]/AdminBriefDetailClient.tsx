@@ -41,6 +41,7 @@ type DetailSectionData = {
 
 type AdminBriefDetailClientProps = {
   aiSketchReview: AdminAiSketchReviewReadModel;
+  customerFeedback: AdminFirstPreviewCustomerFeedbackReadModel;
   decodedId: string;
   notificationEvent: AdminNotificationEventRecord | null;
   notificationEventMessage?: string;
@@ -66,6 +67,10 @@ type AdminAiSketchReviewReadModel = {
     | 'exact'
     | 'conflict';
 };
+
+type AdminFirstPreviewCustomerFeedbackReadModel =
+  | { state: 'exact'; aiSketchOutputId: string; feedbackText: string; createdAt: string }
+  | { state: 'none' | 'unavailable' };
 
 type AdminAiSketchReviewSaveResponse = {
   ok?: boolean;
@@ -289,15 +294,21 @@ function getReviewBindingCopy(review: AdminAiSketchReviewReadModel) {
 
 function CurrentFirstPreviewReview({
   conceptBriefId,
+  customerFeedback,
   onImageAvailabilityChange,
   review,
 }: {
   conceptBriefId: string | undefined;
+  customerFeedback: AdminFirstPreviewCustomerFeedbackReadModel;
   onImageAvailabilityChange: (outputId: string, isAvailable: boolean) => void;
   review: AdminAiSketchReviewReadModel;
 }) {
   const outputId = review.currentAiSketchOutputId;
   const [imageUnavailable, setImageUnavailable] = useState(false);
+  const displayedCustomerFeedback =
+    customerFeedback.state === 'exact' && customerFeedback.aiSketchOutputId !== outputId
+      ? { state: 'unavailable' as const }
+      : customerFeedback;
 
   useEffect(() => {
     setImageUnavailable(false);
@@ -345,6 +356,19 @@ function CurrentFirstPreviewReview({
       <p className={styles.helperText}>
         This is an AI hand-drawn concept sketch, not CAD, a quotation, an order approval, or production approval.
       </p>
+      <div className={styles.customerFeedbackPanel}>
+        <h3>Customer feedback for this First Preview</h3>
+        {displayedCustomerFeedback.state === 'exact' ? (
+          <>
+            <p>{displayedCustomerFeedback.feedbackText}</p>
+            <p className={styles.helperText}>Submitted {formatSubmittedTime(displayedCustomerFeedback.createdAt)}</p>
+          </>
+        ) : displayedCustomerFeedback.state === 'none' ? (
+          <p className={styles.helperText}>No customer feedback submitted for this First Preview.</p>
+        ) : (
+          <p className={styles.helperText}>Customer feedback is unavailable for this exact First Preview.</p>
+        )}
+      </div>
     </section>
   );
 }
@@ -465,6 +489,7 @@ function DetailSection({ title, rows }: { title: string; rows: DetailRow[] }) {
 
 export default function AdminBriefDetailClient({
   aiSketchReview,
+  customerFeedback,
   decodedId,
   notificationEvent,
   notificationEventMessage,
@@ -939,6 +964,7 @@ export default function AdminBriefDetailClient({
           <section className={styles.detailPanel} aria-label="Brief detail">
             <CurrentFirstPreviewReview
               conceptBriefId={brief.databaseId}
+              customerFeedback={customerFeedback}
               onImageAvailabilityChange={(outputId, isAvailable) => {
                 setLoadedFirstPreviewOutputId(isAvailable ? outputId : null);
               }}

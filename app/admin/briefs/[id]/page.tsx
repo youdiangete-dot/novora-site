@@ -13,6 +13,7 @@ import {
   createFallbackAdminAiSketchReviewReadModel,
   loadAdminAiSketchReviewByConceptBriefId,
 } from '../../../../lib/server/admin-ai-sketch-review-read';
+import { loadAdminFirstPreviewCustomerFeedback } from '../../../../lib/server/admin-first-preview-customer-feedback';
 import { loadAdminConceptBriefRecordByReference } from '../../../../lib/server/admin-concept-briefs';
 import { loadLatestAdminNotificationEventByConceptBriefId } from '../../../../lib/server/admin-notification-events';
 import styles from '../admin-briefs.module.css';
@@ -132,6 +133,17 @@ export default async function AdminBriefDetailPage({ params, searchParams }: Adm
     serverBrief.record?.databaseId
       ? await loadAdminAiSketchReviewByConceptBriefId(serverBrief.record.databaseId)
       : createFallbackAdminAiSketchReviewReadModel();
+  const loadedCustomerFeedback = serverBrief.record?.databaseId
+    ? await loadAdminFirstPreviewCustomerFeedback(
+        serverBrief.record.databaseId,
+        aiSketchReview.currentAiSketchOutputId,
+      )
+    : { state: 'none' as const };
+  const customerFeedback =
+    loadedCustomerFeedback.state === 'exact' &&
+    loadedCustomerFeedback.aiSketchOutputId !== aiSketchReview.currentAiSketchOutputId
+      ? { state: 'unavailable' as const }
+      : loadedCustomerFeedback;
   let serverDataMessage: string | undefined;
   let notificationEventMessage: string | undefined;
 
@@ -146,6 +158,7 @@ export default async function AdminBriefDetailPage({ params, searchParams }: Adm
   return (
     <AdminBriefDetailClient
       aiSketchReview={aiSketchReview}
+      customerFeedback={customerFeedback}
       decodedId={decodedId}
       notificationEvent={notificationEvent.event}
       notificationEventMessage={notificationEventMessage}

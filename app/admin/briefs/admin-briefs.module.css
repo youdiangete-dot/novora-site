@@ -370,3 +370,20 @@
     display: grid;
   }
 }
+/* Exact-pair customer feedback shown only in the protected detail view. */
+.customerFeedbackPanel {
+  background: rgba(244, 238, 226, 0.72);
+  border: 1px solid rgba(218, 207, 189, 0.78);
+  border-radius: 10px;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.customerFeedbackPanel h3 {
+  margin: 0 0 0.6rem;
+}
+
+.customerFeedbackPanel p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
