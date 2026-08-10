@@ -451,6 +451,7 @@ export async function reserveAutomaticFirstPreviewPreparedAttempt(input: {
     conceptBriefId: work.conceptBriefId,
     attemptNumber: work.attemptNumber,
     parentJobId: work.parentJobId,
+    sourceOutputId: null,
     designSpecVersion: work.structured.designSpec.spec_version,
     designSpecSha256: work.structured.designSpecSha256,
     handSketchInstructionVersion:

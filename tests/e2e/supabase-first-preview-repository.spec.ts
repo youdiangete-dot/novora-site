@@ -42,6 +42,7 @@ function reservation(
     conceptBriefId: BRIEF_ID,
     attemptNumber: 1,
     parentJobId: null,
+    sourceOutputId: null,
     designSpecVersion: "novora_design_spec_v1",
     designSpecSha256: DESIGN_HASH,
     handSketchInstructionVersion: "novora_hand_sketch_instruction_v1",
@@ -128,6 +129,43 @@ async function completeWithOutput() {
   ).toMatchObject({
     ok: true,
     value: { status: "succeeded", actualCostMicros: 41_000 },
+  });
+  return state;
+}
+
+function revisionReservation(
+  overrides: Partial<ReserveFirstPreviewJobInput> = {},
+): ReserveFirstPreviewJobInput {
+  return reservation({
+    jobId: OTHER_JOB_ID,
+    attemptNumber: 2,
+    parentJobId: JOB_ID,
+    sourceOutputId: OUTPUT_ID,
+    ...overrides,
+  });
+}
+
+async function readyForRevision() {
+  const state = await completeWithOutput();
+  expect(
+    await state.repository.markOutputReady({
+      outputId: OUTPUT_ID,
+      jobId: JOB_ID,
+      conceptBriefId: BRIEF_ID,
+      gates: PASSING_GATES,
+      automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+    }),
+  ).toMatchObject({
+    ok: true,
+    value: {
+      readinessStatus: "first_preview_ready",
+      isCurrentCustomerPreview: true,
+    },
+  });
+  state.client.reviews.set(BRIEF_ID, {
+    ...state.client.reviews.get(BRIEF_ID)!,
+    review_status: "needs_revision",
+    revision_instruction: "  Refine the center-stone orientation.  ",
   });
   return state;
 }
@@ -355,10 +393,153 @@ test.describe("Supabase-backed First Preview repository", () => {
 
     expect(retry).toMatchObject({
       ok: true,
-      value: { job: { attemptNumber: 2, parentJobId: JOB_ID } },
+      value: {
+        job: {
+          attemptNumber: 2,
+          parentJobId: JOB_ID,
+          sourceOutputId: null,
+        },
+      },
     });
     expect(duplicateAttempt).toEqual({ ok: false, code: "attempt_identity_conflict" });
     expect(client.jobs.size).toBe(2);
+  });
+
+  test("reserves an exact source-linked human revision and preserves source state", async () => {
+    const { client, repository } = await readyForRevision();
+    const sourceOutputBefore = { ...client.outputs.get(OUTPUT_ID)! };
+    const reviewBefore = { ...client.reviews.get(BRIEF_ID)! };
+    expect(await repository.findReviewByConceptBriefId(BRIEF_ID)).toMatchObject({
+      revisionInstruction: "Refine the center-stone orientation.",
+    });
+    const operationStart = client.operations.length;
+
+    const revision = await repository.reserveJob(revisionReservation());
+
+    expect(revision).toMatchObject({
+      ok: true,
+      value: {
+        disposition: "created",
+        job: {
+          id: OTHER_JOB_ID,
+          parentJobId: JOB_ID,
+          sourceOutputId: OUTPUT_ID,
+          status: "queued",
+          providerRequestId: null,
+          startedAt: null,
+        },
+      },
+    });
+    expect(client.insertedJobRows.at(-1)).toMatchObject({
+      parent_job_id: JOB_ID,
+      source_output_id: OUTPUT_ID,
+    });
+    expect(client.outputs.get(OUTPUT_ID)).toEqual(sourceOutputBefore);
+    expect(client.reviews.get(BRIEF_ID)).toEqual(reviewBefore);
+    expect(client.operations.slice(operationStart)).toEqual([
+      "findJobByIdempotencyKey",
+      "findJobById",
+      "findJobByAttempt",
+      "findActiveJob",
+      "findJobById",
+      "findOutputById",
+      "findReviewByConceptBriefId",
+      "insertJob",
+    ]);
+  });
+
+  test("fails revision closed for missing and mismatched source outputs", async () => {
+    const missing = await readyForRevision();
+    expect(
+      await missing.repository.reserveJob(
+        revisionReservation({ sourceOutputId: OTHER_OUTPUT_ID }),
+      ),
+    ).toEqual({ ok: false, code: "output_not_found" });
+
+    for (const mismatch of [
+      { job_id: OTHER_JOB_ID },
+      { concept_brief_id: OTHER_BRIEF_ID },
+    ]) {
+      const state = await readyForRevision();
+      state.client.outputs.set(OUTPUT_ID, {
+        ...state.client.outputs.get(OUTPUT_ID)!,
+        ...mismatch,
+      });
+      expect(
+        await state.repository.reserveJob(revisionReservation()),
+      ).toEqual({ ok: false, code: "linkage_mismatch" });
+      expect(state.client.jobs.size).toBe(1);
+    }
+  });
+
+  test("requires the source output to be current and first-preview ready", async () => {
+    for (const outputState of [
+      { readiness_status: "not_ready", is_current_customer_preview: false },
+      { readiness_status: "first_preview_ready", is_current_customer_preview: false },
+      { readiness_status: "revoked", is_current_customer_preview: false },
+    ]) {
+      const state = await readyForRevision();
+      state.client.outputs.set(OUTPUT_ID, {
+        ...state.client.outputs.get(OUTPUT_ID)!,
+        ...outputState,
+      });
+      expect(
+        await state.repository.reserveJob(revisionReservation()),
+      ).toEqual({ ok: false, code: "revision_not_eligible" });
+      expect(state.client.jobs.size).toBe(1);
+    }
+  });
+
+  test("requires the exact needs-revision review and a valid persisted instruction", async () => {
+    const missing = await readyForRevision();
+    missing.client.reviews.delete(BRIEF_ID);
+    expect(
+      await missing.repository.reserveJob(revisionReservation()),
+    ).toEqual({ ok: false, code: "revision_not_eligible" });
+
+    for (const reviewPatch of [
+      { ai_sketch_output_id: OTHER_OUTPUT_ID },
+      { concept_brief_id: OTHER_BRIEF_ID },
+      { review_status: "approved_for_customer", revision_instruction: null },
+      { revision_instruction: null },
+      { revision_instruction: "   " },
+      { revision_instruction: "x".repeat(2001) },
+    ]) {
+      const state = await readyForRevision();
+      state.client.reviews.set(BRIEF_ID, {
+        ...state.client.reviews.get(BRIEF_ID)!,
+        ...reviewPatch,
+      });
+      expect(
+        await state.repository.reserveJob(revisionReservation()),
+      ).toEqual({ ok: false, code: "revision_not_eligible" });
+      expect(state.client.jobs.size).toBe(1);
+    }
+  });
+
+  test("requires a succeeded revision parent and keeps attempt uniqueness controlling", async () => {
+    const ineligible = await readyForRevision();
+    ineligible.client.jobs.set(JOB_ID, {
+      ...ineligible.client.jobs.get(JOB_ID)!,
+      status: "failed",
+      retry_eligible: true,
+    });
+    expect(
+      await ineligible.repository.reserveJob(revisionReservation()),
+    ).toEqual({ ok: false, code: "revision_not_eligible" });
+
+    const eligible = await readyForRevision();
+    expect(
+      await eligible.repository.reserveJob(revisionReservation()),
+    ).toMatchObject({ ok: true, value: { disposition: "created" } });
+    expect(
+      await eligible.repository.reserveJob(
+        revisionReservation({
+          jobId: "723e4567-e89b-42d3-a456-426614174000",
+          designSpecSha256: "d".repeat(64),
+        }),
+      ),
+    ).toEqual({ ok: false, code: "attempt_identity_conflict" });
   });
 
   test("persists only private asset metadata after validation and remains not ready", async () => {
@@ -448,6 +629,7 @@ test.describe("Supabase-backed First Preview repository", () => {
     expect(await repository.findReviewByConceptBriefId(BRIEF_ID)).toMatchObject({
       outputId: OUTPUT_ID,
       reviewStatus: "draft_generated_internal_only",
+      revisionInstruction: null,
     });
 
     client.reviews.set(BRIEF_ID, {
@@ -490,6 +672,7 @@ test.describe("Supabase-backed First Preview repository", () => {
       ai_sketch_output_id: OTHER_OUTPUT_ID,
       concept_brief_id: BRIEF_ID,
       review_status: "draft_generated_internal_only",
+      revision_instruction: null,
       created_at: "2026-07-22T00:00:30.000Z",
     });
 

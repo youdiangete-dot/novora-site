@@ -43,6 +43,14 @@ function isNonblank(value: string): boolean {
   return value.trim().length > 0;
 }
 
+function normalizeRevisionInstruction(
+  value: string | null,
+): string | null | undefined {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length >= 1 && trimmed.length <= 2000 ? trimmed : undefined;
+}
+
 function gatesPassed(gates: FirstPreviewAutomaticGateEvidence): boolean {
   return Object.values(gates).every((value) => value === true);
 }
@@ -95,6 +103,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         existing.conceptBriefId === input.conceptBriefId &&
         existing.attemptNumber === input.attemptNumber &&
         existing.parentJobId === input.parentJobId &&
+        existing.sourceOutputId === input.sourceOutputId &&
         existing.designSpecVersion === input.designSpecVersion &&
         existing.designSpecSha256 === input.designSpecSha256 &&
         existing.handSketchInstructionVersion ===
@@ -140,8 +149,45 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       ) {
         return failure("parent_job_invalid");
       }
-      if (parent.status !== "failed" || parent.retryEligible !== true) {
-        return failure("retry_not_eligible");
+      if (input.sourceOutputId === null) {
+        if (parent.status !== "failed" || parent.retryEligible !== true) {
+          return failure("retry_not_eligible");
+        }
+      } else {
+        if (parent.status !== "succeeded") {
+          return failure("revision_not_eligible");
+        }
+        const output = this.outputsById.get(input.sourceOutputId);
+        if (!output) {
+          return failure("output_not_found");
+        }
+        if (
+          output.id !== input.sourceOutputId ||
+          output.jobId !== parent.id ||
+          output.conceptBriefId !== input.conceptBriefId
+        ) {
+          return failure("linkage_mismatch");
+        }
+        if (
+          output.readinessStatus !== "first_preview_ready" ||
+          output.isCurrentCustomerPreview !== true
+        ) {
+          return failure("revision_not_eligible");
+        }
+        const review = this.reviewsByConceptBriefId.get(input.conceptBriefId);
+        const revisionInstruction = normalizeRevisionInstruction(
+          review?.revisionInstruction ?? null,
+        );
+        if (
+          !review ||
+          review.outputId !== input.sourceOutputId ||
+          review.conceptBriefId !== input.conceptBriefId ||
+          review.reviewStatus !== "needs_revision" ||
+          revisionInstruction === null ||
+          revisionInstruction === undefined
+        ) {
+          return failure("revision_not_eligible");
+        }
       }
     }
 
@@ -154,7 +200,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       idempotencyKey,
       lineageIdentity: FIRST_PREVIEW_LINEAGE_IDENTITY,
       parentJobId: input.parentJobId,
-      sourceOutputId: null,
+      sourceOutputId: input.sourceOutputId,
       designSpecVersion: input.designSpecVersion,
       designSpecSha256: input.designSpecSha256,
       handSketchInstructionVersion: input.handSketchInstructionVersion,
@@ -433,6 +479,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         outputId: input.outputId,
         conceptBriefId: input.conceptBriefId,
         reviewStatus: "draft_generated_internal_only",
+        revisionInstruction: null,
         createdAt: this.clock(),
       });
     }
@@ -513,6 +560,24 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
   ): Promise<FirstPreviewReviewRecord | null> {
     const review = this.reviewsByConceptBriefId.get(conceptBriefId);
     return review ? copyReview(review) : null;
+  }
+
+  setReviewForTest(
+    review: Omit<FirstPreviewReviewRecord, "createdAt">,
+  ): boolean {
+    const revisionInstruction = normalizeRevisionInstruction(
+      review.revisionInstruction,
+    );
+    if (revisionInstruction === undefined) {
+      return false;
+    }
+    const existing = this.reviewsByConceptBriefId.get(review.conceptBriefId);
+    this.reviewsByConceptBriefId.set(review.conceptBriefId, {
+      ...review,
+      revisionInstruction,
+      createdAt: existing?.createdAt ?? this.clock(),
+    });
+    return true;
   }
 
   snapshot(): Readonly<{

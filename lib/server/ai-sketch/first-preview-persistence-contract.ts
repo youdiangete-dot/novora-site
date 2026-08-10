@@ -69,7 +69,7 @@ export type FirstPreviewJobRecord = Readonly<{
   idempotencyKey: string;
   lineageIdentity: typeof FIRST_PREVIEW_LINEAGE_IDENTITY;
   parentJobId: string | null;
-  sourceOutputId: null;
+  sourceOutputId: string | null;
   designSpecVersion: string;
   designSpecSha256: string;
   handSketchInstructionVersion: string;
@@ -122,6 +122,7 @@ export type FirstPreviewReviewRecord = Readonly<{
     | "draft_generated_internal_only"
     | "needs_revision"
     | "approved_for_customer";
+  revisionInstruction: string | null;
   createdAt: string;
 }>;
 
@@ -135,6 +136,7 @@ export type FirstPreviewRepositoryFailureCode =
   | "job_not_active"
   | "parent_job_invalid"
   | "retry_not_eligible"
+  | "revision_not_eligible"
   | "output_not_found"
   | "output_already_exists"
   | "review_linkage_conflict"
@@ -161,6 +163,7 @@ export type ReserveFirstPreviewJobInput = Readonly<{
   conceptBriefId: string;
   attemptNumber: FirstPreviewAttemptNumber;
   parentJobId: string | null;
+  sourceOutputId: string | null;
   designSpecVersion: string;
   designSpecSha256: string;
   handSketchInstructionVersion: string;
@@ -180,7 +183,7 @@ export type FirstPreviewCanonicalIdentity = Readonly<{
   hand_sketch_instruction_version: string;
   lineage_identity: typeof FIRST_PREVIEW_LINEAGE_IDENTITY;
   parent_job_id: string | null;
-  source_output_id: null;
+  source_output_id: string | null;
   version: typeof FIRST_PREVIEW_IDEMPOTENCY_VERSION;
 }>;
 
@@ -311,6 +314,7 @@ export function isValidFirstPreviewReservationIdentity(
     UUID_PATTERN.test(input.conceptBriefId) &&
     (input.attemptNumber === 1 || input.attemptNumber === 2) &&
     (input.parentJobId === null || UUID_PATTERN.test(input.parentJobId)) &&
+    (input.sourceOutputId === null || UUID_PATTERN.test(input.sourceOutputId)) &&
     isTrimmedSystemIdentifier(input.designSpecVersion) &&
     SHA256_PATTERN.test(input.designSpecSha256) &&
     isTrimmedSystemIdentifier(input.handSketchInstructionVersion) &&
@@ -320,7 +324,7 @@ export function isValidFirstPreviewReservationIdentity(
     input.costCurrency === "USD" &&
     isTrimmedSystemIdentifier(input.pricingAssumptionVersion) &&
     (input.attemptNumber === 1
-      ? input.parentJobId === null
+      ? input.parentJobId === null && input.sourceOutputId === null
       : input.parentJobId !== null)
   );
 }
@@ -345,7 +349,7 @@ export function createFirstPreviewCanonicalIdentity(
     hand_sketch_instruction_version: input.handSketchInstructionVersion,
     lineage_identity: FIRST_PREVIEW_LINEAGE_IDENTITY,
     parent_job_id: input.parentJobId,
-    source_output_id: null,
+    source_output_id: input.sourceOutputId,
     version: FIRST_PREVIEW_IDEMPOTENCY_VERSION,
   };
 }

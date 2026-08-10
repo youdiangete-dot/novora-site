@@ -221,6 +221,10 @@ export class FakeFirstPreviewDatabaseClient implements FirstPreviewDatabaseClien
       ai_sketch_output_id: String(row.ai_sketch_output_id),
       concept_brief_id: conceptBriefId,
       review_status: String(row.review_status),
+      revision_instruction:
+        typeof row.revision_instruction === "string"
+          ? row.revision_instruction
+          : null,
       created_at: "2026-07-22T00:00:30.000Z",
     };
     this.reviews.set(conceptBriefId, review);
