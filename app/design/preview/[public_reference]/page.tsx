@@ -12,7 +12,9 @@ import { createFirstPreviewCustomerDesignConfirmationBinding } from "../../../..
 import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
 import { prepareCommercialSpecificationConfirmation } from "../../../../lib/server/commercial-specification-confirmation";
 import { readCustomerCommercialQuotation } from "../../../../lib/server/commercial-quotation";
+import { prepareCommercialPayment } from "../../../../lib/server/commercial-payment";
 import sharedStyles from "../../brief/brief.module.css";
+import CommercialPayment from "./CommercialPayment";
 import CommercialQuotation from "./CommercialQuotation";
 import CommercialSpecificationConfirmation from "./CommercialSpecificationConfirmation";
 import FirstPreviewDesignConfirmation from "./FirstPreviewDesignConfirmation";
@@ -306,6 +308,13 @@ export default async function CustomerPreviewPage({
         preview.outputId,
       )
     : null;
+  const commercialPayment = preview.state === "ready" && commercialQuotation
+    ? await prepareCommercialPayment(
+        preview.publicReference,
+        preview.outputId,
+        commercialQuotation,
+      )
+    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -376,6 +385,14 @@ export default async function CustomerPreviewPage({
             ) : null}
             {commercialQuotation ? (
               <CommercialQuotation quotation={commercialQuotation} />
+            ) : null}
+            {commercialPayment ? (
+              <CommercialPayment
+                binding={commercialPayment.binding}
+                initialPayment={commercialPayment.payment}
+                providerConfigured={commercialPayment.providerConfigured}
+                publicReference={preview.publicReference}
+              />
             ) : null}
             {feedbackBinding ? (
               <FirstPreviewFeedbackForm
