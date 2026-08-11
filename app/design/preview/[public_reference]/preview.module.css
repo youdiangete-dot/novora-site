@@ -55,6 +55,7 @@
 
 .statusCard,
 .previewCard,
+.confirmationCard,
 .feedbackCard,
 .boundaryCard {
   border: 1px solid rgba(218, 207, 189, 0.88);
@@ -122,6 +123,63 @@
 
 .feedbackCard {
   background: rgba(255, 253, 249, 0.92);
+}
+
+.confirmationCard {
+  background: rgba(238, 244, 238, 0.92);
+  border-color: rgba(64, 90, 69, 0.45);
+}
+
+.confirmationCard h2 {
+  color: var(--text);
+  margin: 0.4rem 0 0.65rem;
+}
+
+.confirmationCard > p {
+  color: #504a40;
+  line-height: 1.65;
+}
+
+.confirmationEyebrow {
+  color: #405a45 !important;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.confirmationButton {
+  background: #405a45;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+  margin-top: 0.65rem;
+  min-height: 44px;
+  padding: 0.7rem 1rem;
+}
+
+.confirmationButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.confirmationButton:focus-visible {
+  outline: 3px solid #b27816;
+  outline-offset: 3px;
+}
+
+.confirmationSuccess {
+  color: #2f6a3e !important;
+  font-weight: 700;
+}
+
+.confirmationError {
+  color: #8b2f2f !important;
+  margin: 0.65rem 0 0 !important;
 }
 
 .feedbackCard h2 {
@@ -327,6 +385,7 @@
 
   .statusCard,
   .previewCard,
+  .confirmationCard,
   .feedbackCard,
   .boundaryCard {
     border-radius: 14px;

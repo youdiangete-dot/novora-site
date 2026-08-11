@@ -8,8 +8,10 @@ import {
   isValidFirstPreviewPublicReference,
 } from "../../../../lib/server/ai-sketch/first-preview-generated-assets-contract";
 import { FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV } from "../../../../lib/server/ai-sketch/first-preview-customer-access-contract";
+import { createFirstPreviewCustomerDesignConfirmationBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-design-confirmation";
 import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
 import sharedStyles from "../../brief/brief.module.css";
+import FirstPreviewDesignConfirmation from "./FirstPreviewDesignConfirmation";
 import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
 import styles from "./preview.module.css";
 
@@ -279,6 +281,15 @@ export default async function CustomerPreviewPage({
         process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? "",
       )
     : null;
+  const confirmationBinding = preview.state === "ready"
+    ? createFirstPreviewCustomerDesignConfirmationBinding(
+        {
+          publicReference: preview.publicReference,
+          outputId: preview.outputId,
+        },
+        process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? "",
+      )
+    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -334,6 +345,12 @@ export default async function CustomerPreviewPage({
                 refinement and production-feasibility review.
               </p>
             </section>
+            {confirmationBinding ? (
+              <FirstPreviewDesignConfirmation
+                confirmationBinding={confirmationBinding}
+                publicReference={preview.publicReference}
+              />
+            ) : null}
             {feedbackBinding ? (
               <FirstPreviewFeedbackForm
                 feedbackBinding={feedbackBinding}
