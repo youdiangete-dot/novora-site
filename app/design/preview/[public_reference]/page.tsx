@@ -11,7 +11,9 @@ import { FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV } from "../../../../li
 import { createFirstPreviewCustomerDesignConfirmationBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-design-confirmation";
 import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
 import { prepareCommercialSpecificationConfirmation } from "../../../../lib/server/commercial-specification-confirmation";
+import { readCustomerCommercialQuotation } from "../../../../lib/server/commercial-quotation";
 import sharedStyles from "../../brief/brief.module.css";
+import CommercialQuotation from "./CommercialQuotation";
 import CommercialSpecificationConfirmation from "./CommercialSpecificationConfirmation";
 import FirstPreviewDesignConfirmation from "./FirstPreviewDesignConfirmation";
 import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
@@ -298,6 +300,12 @@ export default async function CustomerPreviewPage({
         preview.outputId,
       )
     : null;
+  const commercialQuotation = preview.state === "ready"
+    ? await readCustomerCommercialQuotation(
+        preview.publicReference,
+        preview.outputId,
+      )
+    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -365,6 +373,9 @@ export default async function CustomerPreviewPage({
                 items={commercialSpecification.items}
                 publicReference={preview.publicReference}
               />
+            ) : null}
+            {commercialQuotation ? (
+              <CommercialQuotation quotation={commercialQuotation} />
             ) : null}
             {feedbackBinding ? (
               <FirstPreviewFeedbackForm
