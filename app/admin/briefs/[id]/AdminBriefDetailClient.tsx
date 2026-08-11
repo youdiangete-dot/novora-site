@@ -11,6 +11,7 @@ import {
   isAiSketchReviewStatus,
   type AiSketchReviewStatus,
 } from '../../../../lib/ai-sketch-review-status';
+import type { SafeCommercialQuotation } from '../../../../lib/server/commercial-quotation';
 import {
   type BriefStatus,
   type AdminBriefRecord,
@@ -370,6 +371,214 @@ function CurrentFirstPreviewReview({
           <p className={styles.helperText}>Customer feedback is unavailable for this exact First Preview.</p>
         )}
       </div>
+    </section>
+  );
+}
+
+type QuotationDraftLine = { description: string; amount: string };
+
+function AdminCommercialQuotation({ conceptBriefId }: { conceptBriefId: string | undefined }) {
+  const [currency, setCurrency] = useState('USD');
+  const [lineItems, setLineItems] = useState<QuotationDraftLine[]>([
+    { description: '', amount: '' },
+  ]);
+  const [validUntil, setValidUntil] = useState('');
+  const [note, setNote] = useState('');
+  const [quotation, setQuotation] = useState<SafeCommercialQuotation | null>(null);
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setQuotation(null);
+    setMessage('');
+    if (!conceptBriefId) return () => { active = false; };
+    setIsLoading(true);
+    void fetch(
+      `/admin/briefs/commercial-quotation?conceptBriefId=${encodeURIComponent(conceptBriefId)}`,
+      { cache: 'no-store', credentials: 'same-origin' },
+    )
+      .then(async (response) => {
+        const body = await response.json() as {
+          ok?: boolean;
+          quotation?: SafeCommercialQuotation | null;
+          message?: string;
+        };
+        if (!active) return;
+        if (response.ok && body.ok) {
+          setQuotation(body.quotation ?? null);
+          setMessage(body.quotation ? '' : 'No quotation has been issued for the latest confirmed specification.');
+        } else {
+          setMessage(body.message || 'Quotation data is unavailable.');
+        }
+      })
+      .catch(() => {
+        if (active) setMessage('Quotation data is unavailable.');
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, [conceptBriefId]);
+
+  function updateLineItem(index: number, field: keyof QuotationDraftLine, value: string) {
+    setLineItems((current) => current.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, [field]: value } : item,
+    ));
+  }
+
+  async function issueQuotation() {
+    if (!conceptBriefId || isLoading) return;
+    setIsLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/admin/briefs/commercial-quotation', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conceptBriefId,
+          currency,
+          lineItems,
+          validUntil: validUntil || null,
+          note: note || null,
+        }),
+      });
+      const body = await response.json() as {
+        ok?: boolean;
+        quotation?: SafeCommercialQuotation;
+        message?: string;
+      };
+      if (!response.ok || !body.ok || !body.quotation) {
+        setMessage(body.message || 'The quotation could not be issued.');
+        return;
+      }
+      setQuotation(body.quotation);
+      setMessage(body.message || 'Quotation issued.');
+    } catch {
+      setMessage('The quotation could not be issued.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <section className={styles.detailSection} aria-label="Commercial quotation">
+      <h2>Commercial quotation</h2>
+      <p className={styles.helperText}>
+        Enter a manual quotation for the customer&apos;s latest exact confirmed specification. The server computes the
+        total, quotation reference, issued time, and immutable quotation hash.
+      </p>
+      {quotation ? (
+        <div className={styles.quotationSummary}>
+          <p><strong>{quotation.quoteReference}</strong></p>
+          <p>Issued {quotation.issuedAt.slice(0, 10)}</p>
+          <ul className={styles.fileList}>
+            {quotation.quotation.lineItems.map((item, index) => (
+              <li key={`${item.description}-${index}`}>
+                {item.description}: {quotation.quotation.currency} {item.amount}
+              </li>
+            ))}
+          </ul>
+          <p>
+            <strong>Total: {quotation.quotation.currency} {quotation.quotation.totalAmount}</strong>
+          </p>
+        </div>
+      ) : null}
+      {message ? <p className={styles.helperText} role="status">{message}</p> : null}
+      {!conceptBriefId ? (
+        <p className={styles.helperText}>Quotation is unavailable for local fallback records.</p>
+      ) : (
+        <div className={styles.quotationForm}>
+          <label className={styles.fieldLabel}>
+            Currency
+            <input
+              className={styles.input}
+              maxLength={3}
+              pattern="[A-Z]{3}"
+              required
+              value={currency}
+              onChange={(event) => setCurrency(event.target.value)}
+            />
+          </label>
+          <fieldset className={styles.quotationLineItems}>
+            <legend>Quotation line items</legend>
+            {lineItems.map((item, index) => (
+              <div className={styles.quotationLineItem} key={index}>
+                <label className={styles.fieldLabel}>
+                  Description
+                  <input
+                    className={styles.input}
+                    maxLength={160}
+                    required
+                    value={item.description}
+                    onChange={(event) => updateLineItem(index, 'description', event.target.value)}
+                  />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Amount
+                  <input
+                    className={styles.input}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    required
+                    value={item.amount}
+                    onChange={(event) => updateLineItem(index, 'amount', event.target.value)}
+                  />
+                </label>
+                {lineItems.length > 1 ? (
+                  <button
+                    className={styles.secondaryButton}
+                    type="button"
+                    onClick={() => setLineItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                  >
+                    Remove item
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </fieldset>
+          {lineItems.length < 8 ? (
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={() => setLineItems((current) => [...current, { description: '', amount: '' }])}
+            >
+              Add line item
+            </button>
+          ) : null}
+          <label className={styles.fieldLabel}>
+            Valid until (optional)
+            <input
+              className={styles.input}
+              type="date"
+              value={validUntil}
+              onChange={(event) => setValidUntil(event.target.value)}
+            />
+          </label>
+          <label className={styles.fieldLabel}>
+            Customer-visible quotation note (optional)
+            <textarea
+              className={styles.textarea}
+              maxLength={1000}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          <button
+            className={styles.button}
+            disabled={isLoading || lineItems.some((item) => !item.description.trim() || !item.amount.trim())}
+            type="button"
+            onClick={issueQuotation}
+          >
+            {isLoading ? 'Working...' : 'Issue quotation'}
+          </button>
+          <p className={styles.helperText}>
+            Issuing a quotation does not accept it, make a payment, create an order, approve CAD, or approve
+            production.
+          </p>
+        </div>
+      )}
     </section>
   );
 }
@@ -986,7 +1195,10 @@ export default function AdminBriefDetailClient({
                 : 'Server detail data is unavailable, so this view is using local browser/mock fallback data.'}
             </li>
             <li>The service role key and admin access key are never sent to browser code.</li>
-            <li>No CAD requests, quotes, final pricing, production orders, emails, payments, or file storage are created here.</li>
+            <li>
+              Admin may issue a manual quotation only after the latest exact customer specification is confirmed. This
+              page does not create CAD requests, production orders, emails, payments, or file storage.
+            </li>
           </ul>
         </section>
 
@@ -1000,6 +1212,7 @@ export default function AdminBriefDetailClient({
               }}
               review={aiSketchReviewState}
             />
+            <AdminCommercialQuotation conceptBriefId={brief.databaseId} />
             {detailSections.map((section) => (
               <DetailSection key={section.title} title={section.title} rows={section.rows} />
             ))}

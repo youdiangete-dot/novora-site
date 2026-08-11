@@ -57,6 +57,7 @@
 .previewCard,
 .confirmationCard,
 .specificationCard,
+.quotationCard,
 .feedbackCard,
 .boundaryCard {
   border: 1px solid rgba(218, 207, 189, 0.88);
@@ -245,6 +246,104 @@
 .specificationBoundary {
   border-left: 3px solid #b27816;
   padding-left: 0.85rem;
+}
+
+.quotationCard {
+  background: rgba(245, 240, 230, 0.96);
+  border-color: rgba(64, 90, 69, 0.48);
+}
+
+.quotationEyebrow {
+  color: #405a45;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.quotationHeading {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.quotationHeading h2 {
+  color: var(--text);
+  margin: 0.4rem 0 0.25rem;
+}
+
+.quotationHeading p,
+.quotationHeading > span,
+.quotationMeta {
+  color: #61594c;
+  margin: 0;
+}
+
+.quotationHeading > span {
+  font-size: 0.88rem;
+  padding-top: 0.55rem;
+}
+
+.quotationTable {
+  border: 1px solid rgba(199, 181, 145, 0.68);
+  border-radius: 12px;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.quotationTableHeader,
+.quotationTableRow,
+.quotationTotal {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+  padding: 0.75rem 0.85rem;
+}
+
+.quotationTableHeader {
+  background: rgba(64, 90, 69, 0.09);
+  color: #334b38;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.quotationTableRow,
+.quotationTotal {
+  border-top: 1px solid rgba(199, 181, 145, 0.5);
+}
+
+.quotationTableRow span:last-child,
+.quotationTotal strong:last-child,
+.quotationTableHeader span:last-child {
+  text-align: right;
+}
+
+.quotationTotal {
+  background: rgba(255, 253, 249, 0.72);
+  color: #2f4634;
+}
+
+.quotationNote {
+  background: rgba(255, 253, 249, 0.72);
+  border-radius: 9px;
+  color: #504a40;
+  line-height: 1.6;
+  padding: 0.75rem;
+}
+
+.quotationBoundary {
+  border-left: 3px solid #405a45;
+  color: #504a40;
+  margin-top: 1rem;
+  padding-left: 0.85rem;
+}
+
+.quotationBoundary p {
+  line-height: 1.6;
+  margin: 0.25rem 0;
 }
 
 .feedbackCard h2 {
@@ -445,6 +544,10 @@
   .specificationList {
     grid-template-columns: 1fr;
   }
+
+  .quotationHeading {
+    display: grid;
+  }
 }
 
 @media (max-width: 390px) {
@@ -456,6 +559,7 @@
   .previewCard,
   .confirmationCard,
   .specificationCard,
+  .quotationCard,
   .feedbackCard,
   .boundaryCard {
     border-radius: 14px;
