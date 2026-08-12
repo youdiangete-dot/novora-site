@@ -93,9 +93,16 @@ test("creates orders atomically only on entry into durable paid state", () => {
   );
 });
 
-test("keeps duplicate protection fail-closed and excludes later commercial scope", () => {
+test("preserves later paid transitions when the quotation already owns an order", () => {
   expect(candidate).toMatch(/commercial_payment_reference\s+text\s+NOT NULL\s+UNIQUE/i);
   expect(candidate).toMatch(/commercial_quotation_reference\s+text\s+NOT NULL\s+UNIQUE/i);
+  expect(candidate.match(/\bON CONFLICT\b/gi)).toHaveLength(1);
+  expect(candidate).toMatch(
+    /INSERT INTO public\.commercial_orders[\s\S]*?ON CONFLICT\s*\(\s*commercial_quotation_reference\s*\)\s*DO NOTHING;/i,
+  );
+  expect(candidate).not.toMatch(/ON CONFLICT[\s\S]*?DO UPDATE/i);
+  expect(candidate).not.toMatch(/\bUPDATE\s+public\.commercial_orders\b/i);
+  expect(candidate).not.toMatch(/\bDELETE\s+FROM\s+public\.commercial_orders\b/i);
   expect(candidate.match(/\bCREATE TRIGGER\b/gi)).toHaveLength(1);
   expect(candidate).not.toMatch(/\b(?:UPDATE|DELETE)\s+public\.commercial_payments\b/i);
   expect(candidate).not.toMatch(/\bUPDATE\s+public\.commercial_payments\b/i);

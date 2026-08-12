@@ -64,7 +64,8 @@ BEGIN
     NEW.commercial_quotation_reference,
     NEW.amount_minor,
     NEW.currency
-  );
+  )
+  ON CONFLICT (commercial_quotation_reference) DO NOTHING;
 
   RETURN NEW;
 END;
