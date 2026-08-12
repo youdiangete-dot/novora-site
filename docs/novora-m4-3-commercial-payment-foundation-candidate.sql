@@ -65,6 +65,8 @@ CREATE TABLE public.commercial_payment_events (
   provider_event_id text NOT NULL,
   provider_event_type text NOT NULL,
   normalized_status text NOT NULL,
+  settled_amount_minor bigint,
+  settled_currency text,
   payload_sha256 text NOT NULL,
   received_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
   created_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
@@ -74,6 +76,22 @@ CREATE TABLE public.commercial_payment_events (
     CHECK (provider_key ~ '^[a-z0-9][a-z0-9_-]{0,63}$'),
   CONSTRAINT commercial_payment_events_status_check
     CHECK (normalized_status IN ('pending', 'paid', 'failed')),
+  CONSTRAINT commercial_payment_events_settlement_check
+    CHECK (
+      (
+        normalized_status = 'paid'
+        AND settled_amount_minor IS NOT NULL
+        AND settled_amount_minor >= 0
+        AND settled_amount_minor <= 9007199254740991
+        AND settled_currency IS NOT NULL
+        AND settled_currency ~ '^[A-Z]{3}$'
+      )
+      OR (
+        normalized_status <> 'paid'
+        AND settled_amount_minor IS NULL
+        AND settled_currency IS NULL
+      )
+    ),
   CONSTRAINT commercial_payment_events_payload_sha256_check
     CHECK (payload_sha256 ~ '^[0-9a-f]{64}$')
 );
@@ -88,7 +106,7 @@ REVOKE ALL PRIVILEGES ON TABLE public.commercial_payment_events
 
 GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_payments
   TO service_role;
-GRANT SELECT, INSERT ON TABLE public.commercial_payment_events
+GRANT SELECT ON TABLE public.commercial_payment_events
   TO service_role;
 
 CREATE OR REPLACE FUNCTION public.commercial_payments_preserve_authority()
@@ -139,6 +157,8 @@ CREATE OR REPLACE FUNCTION public.apply_commercial_payment_event(
   p_provider_event_type text,
   p_normalized_status text,
   p_provider_payment_id text,
+  p_settled_amount_minor bigint,
+  p_settled_currency text,
   p_payload_sha256 text
 )
 RETURNS TABLE (payment_found boolean, duplicate boolean, payment jsonb)
@@ -155,6 +175,20 @@ BEGIN
     OR p_provider_event_id IS NULL OR length(p_provider_event_id) NOT BETWEEN 1 AND 255
     OR p_provider_event_type IS NULL OR length(p_provider_event_type) NOT BETWEEN 1 AND 160
     OR p_normalized_status NOT IN ('pending', 'paid', 'failed')
+    OR (
+      p_normalized_status = 'paid'
+      AND (
+        p_settled_amount_minor IS NULL
+        OR p_settled_amount_minor < 0
+        OR p_settled_amount_minor > 9007199254740991
+        OR p_settled_currency IS NULL
+        OR p_settled_currency !~ '^[A-Z]{3}$'
+      )
+    )
+    OR (
+      p_normalized_status <> 'paid'
+      AND (p_settled_amount_minor IS NOT NULL OR p_settled_currency IS NOT NULL)
+    )
     OR p_payload_sha256 !~ '^[0-9a-f]{64}$'
   THEN
     RAISE EXCEPTION 'invalid normalized commercial payment event';
@@ -172,12 +206,23 @@ BEGIN
     RETURN;
   END IF;
 
+  IF p_normalized_status = 'paid'
+    AND (
+      p_settled_amount_minor IS DISTINCT FROM v_payment.amount_minor
+      OR p_settled_currency IS DISTINCT FROM v_payment.currency
+    )
+  THEN
+    RAISE EXCEPTION 'settled commercial payment authority mismatch';
+  END IF;
+
   INSERT INTO public.commercial_payment_events (
     commercial_payment_id,
     provider_key,
     provider_event_id,
     provider_event_type,
     normalized_status,
+    settled_amount_minor,
+    settled_currency,
     payload_sha256
   ) VALUES (
     v_payment.id,
@@ -185,6 +230,8 @@ BEGIN
     p_provider_event_id,
     p_provider_event_type,
     p_normalized_status,
+    p_settled_amount_minor,
+    p_settled_currency,
     p_payload_sha256
   )
   ON CONFLICT (provider_key, provider_event_id) DO NOTHING;
@@ -219,10 +266,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.apply_commercial_payment_event(
-  text, text, text, text, text, text, text
+  text, text, text, text, text, text, bigint, text, text
 ) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_commercial_payment_event(
-  text, text, text, text, text, text, text
+  text, text, text, text, text, text, bigint, text, text
 ) TO service_role;
 
 COMMIT;
