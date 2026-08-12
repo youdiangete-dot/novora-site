@@ -103,8 +103,12 @@ REVOKE ALL PRIVILEGES ON TABLE public.commercial_payments
   FROM public, anon, authenticated;
 REVOKE ALL PRIVILEGES ON TABLE public.commercial_payment_events
   FROM public, anon, authenticated;
+REVOKE ALL PRIVILEGES ON TABLE public.commercial_payments
+  FROM service_role;
+REVOKE ALL PRIVILEGES ON TABLE public.commercial_payment_events
+  FROM service_role;
 
-GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_payments
+GRANT SELECT ON TABLE public.commercial_payments
   TO service_role;
 GRANT SELECT ON TABLE public.commercial_payment_events
   TO service_role;
@@ -149,6 +153,189 @@ EXECUTE FUNCTION public.commercial_payments_preserve_authority();
 
 REVOKE ALL ON FUNCTION public.commercial_payments_preserve_authority()
   FROM public, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.create_commercial_payment_pending(
+  p_payment_reference text,
+  p_commercial_quotation_reference text,
+  p_provider_key text,
+  p_amount_minor bigint,
+  p_currency text
+)
+RETURNS TABLE (conflict boolean, payment jsonb)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_payment public.commercial_payments%ROWTYPE;
+BEGIN
+  IF p_payment_reference IS NULL
+      OR p_payment_reference !~ '^NOVORA-P-[A-F0-9]{24}$'
+    OR p_commercial_quotation_reference IS NULL
+      OR p_commercial_quotation_reference !~ '^NOVORA-Q-[A-F0-9]{24}$'
+    OR p_provider_key IS NULL
+      OR p_provider_key !~ '^[a-z0-9][a-z0-9_-]{0,63}$'
+    OR p_amount_minor IS NULL
+      OR p_amount_minor < 0
+      OR p_amount_minor > 9007199254740991
+    OR p_currency IS NULL
+      OR p_currency !~ '^[A-Z]{3}$'
+  THEN
+    RAISE EXCEPTION 'invalid pending commercial payment authority';
+  END IF;
+
+  INSERT INTO public.commercial_payments (
+    payment_reference,
+    commercial_quotation_reference,
+    payment_version,
+    provider_key,
+    amount_minor,
+    currency,
+    status
+  ) VALUES (
+    p_payment_reference,
+    p_commercial_quotation_reference,
+    'commercial_payment_v1',
+    p_provider_key,
+    p_amount_minor,
+    p_currency,
+    'pending'
+  )
+  ON CONFLICT DO NOTHING
+  RETURNING * INTO v_payment;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT true, NULL::jsonb;
+    RETURN;
+  END IF;
+
+  RETURN QUERY SELECT false, to_jsonb(v_payment);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_commercial_payment_pending(
+  text, text, text, bigint, text
+) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_commercial_payment_pending(
+  text, text, text, bigint, text
+) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.attach_commercial_payment_checkout(
+  p_payment_reference text,
+  p_provider_key text,
+  p_provider_checkout_id text,
+  p_provider_payment_id text,
+  p_checkout_url text,
+  p_checkout_expires_at timestamptz
+)
+RETURNS TABLE (payment_found boolean, payment jsonb)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_payment public.commercial_payments%ROWTYPE;
+BEGIN
+  IF p_payment_reference IS NULL
+      OR p_payment_reference !~ '^NOVORA-P-[A-F0-9]{24}$'
+    OR p_provider_key IS NULL
+      OR p_provider_key !~ '^[a-z0-9][a-z0-9_-]{0,63}$'
+    OR p_provider_checkout_id IS NULL
+      OR length(p_provider_checkout_id) NOT BETWEEN 1 AND 255
+      OR p_provider_checkout_id ~ '[[:cntrl:]]'
+    OR (
+      p_provider_payment_id IS NOT NULL
+      AND (
+        length(p_provider_payment_id) NOT BETWEEN 1 AND 255
+        OR p_provider_payment_id ~ '[[:cntrl:]]'
+      )
+    )
+    OR p_checkout_url IS NULL
+      OR length(p_checkout_url) NOT BETWEEN 1 AND 2048
+      OR p_checkout_url !~* '^https://'
+      OR p_checkout_url ~ '[[:cntrl:]]'
+    OR (
+      p_checkout_expires_at IS NOT NULL
+      AND NOT isfinite(p_checkout_expires_at)
+    )
+  THEN
+    RAISE EXCEPTION 'invalid commercial payment checkout metadata';
+  END IF;
+
+  UPDATE public.commercial_payments AS p
+     SET provider_checkout_id = p_provider_checkout_id,
+         provider_payment_id = COALESCE(p_provider_payment_id, p.provider_payment_id),
+         checkout_url = p_checkout_url,
+         checkout_expires_at = p_checkout_expires_at,
+         updated_at = timezone('utc', now())
+   WHERE p.payment_reference = p_payment_reference
+     AND p.provider_key = p_provider_key
+     AND p.status = 'pending'
+     AND (
+       p.provider_checkout_id IS NULL
+       OR p.provider_checkout_id = p_provider_checkout_id
+     )
+     AND (
+       p_provider_payment_id IS NULL
+       OR p.provider_payment_id IS NULL
+       OR p.provider_payment_id = p_provider_payment_id
+     )
+  RETURNING p.* INTO v_payment;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT false, NULL::jsonb;
+    RETURN;
+  END IF;
+
+  RETURN QUERY SELECT true, to_jsonb(v_payment);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.attach_commercial_payment_checkout(
+  text, text, text, text, text, timestamptz
+) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.attach_commercial_payment_checkout(
+  text, text, text, text, text, timestamptz
+) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.mark_commercial_payment_failed(
+  p_payment_reference text
+)
+RETURNS TABLE (payment_found boolean, payment jsonb)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_payment public.commercial_payments%ROWTYPE;
+BEGIN
+  IF p_payment_reference IS NULL
+    OR p_payment_reference !~ '^NOVORA-P-[A-F0-9]{24}$'
+  THEN
+    RAISE EXCEPTION 'invalid commercial payment reference';
+  END IF;
+
+  UPDATE public.commercial_payments AS p
+     SET status = 'failed',
+         failed_at = timezone('utc', now()),
+         updated_at = timezone('utc', now())
+   WHERE p.payment_reference = p_payment_reference
+     AND p.status = 'pending'
+  RETURNING p.* INTO v_payment;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT false, NULL::jsonb;
+    RETURN;
+  END IF;
+
+  RETURN QUERY SELECT true, to_jsonb(v_payment);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_commercial_payment_failed(text)
+  FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_commercial_payment_failed(text)
+  TO service_role;
 
 CREATE OR REPLACE FUNCTION public.apply_commercial_payment_event(
   p_provider_key text,

@@ -563,17 +563,65 @@ test("candidate SQL contains provider-neutral tables, RLS, grants, immutable aut
   const sql = readFileSync(
     path.join(process.cwd(), "docs", "novora-m4-3-commercial-payment-foundation-candidate.sql"),
     "utf8",
-  );
+  ).replace(/\r\n/g, "\n");
   expect(sql.match(/CREATE TABLE/gi)).toHaveLength(2);
   expect(sql).toContain("CREATE TABLE public.commercial_payments");
   expect(sql).toContain("CREATE TABLE public.commercial_payment_events");
   expect(sql.match(/ENABLE ROW LEVEL SECURITY/g)).toHaveLength(2);
   expect(sql).toContain("FROM public, anon, authenticated");
-  expect(sql).toContain("GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_payments");
+  expect(sql).toContain(
+    "REVOKE ALL PRIVILEGES ON TABLE public.commercial_payments\n  FROM service_role;",
+  );
+  expect(sql).toContain("GRANT SELECT ON TABLE public.commercial_payments");
+  expect(sql).not.toMatch(
+    /GRANT\s+(?:ALL(?:\s+PRIVILEGES)?|[^;]*\b(?:INSERT|UPDATE|DELETE)\b)[^;]*ON TABLE public\.commercial_payments/i,
+  );
+  expect(
+    sql.match(/GRANT\s+[^;]*ON TABLE public\.commercial_payments[^;]*;/gi),
+  ).toHaveLength(1);
   expect(sql).toContain("GRANT SELECT ON TABLE public.commercial_payment_events");
   expect(sql).not.toMatch(/GRANT\s+[^;]*INSERT[^;]*commercial_payment_events/i);
   expect(sql).toContain("commercial payment authority fields are immutable");
   expect(sql).toContain("paid commercial payment is terminal");
+  const createPendingRpc = sql.match(
+    /CREATE OR REPLACE FUNCTION public\.create_commercial_payment_pending\([\s\S]*?\n\$\$;/,
+  )?.[0];
+  const attachCheckoutRpc = sql.match(
+    /CREATE OR REPLACE FUNCTION public\.attach_commercial_payment_checkout\([\s\S]*?\n\$\$;/,
+  )?.[0];
+  const markFailedRpc = sql.match(
+    /CREATE OR REPLACE FUNCTION public\.mark_commercial_payment_failed\([\s\S]*?\n\$\$;/,
+  )?.[0];
+  expect(createPendingRpc).toContain("SECURITY DEFINER");
+  expect(createPendingRpc).toContain("'pending'");
+  expect(createPendingRpc).not.toMatch(/p_status|paid_at|failed_at|'paid'/);
+  expect(attachCheckoutRpc).toContain("SECURITY DEFINER");
+  expect(attachCheckoutRpc).toContain("p.status = 'pending'");
+  expect(attachCheckoutRpc).not.toMatch(/\bSET\s+status\s*=|'paid'/i);
+  expect(markFailedRpc).toContain("SECURITY DEFINER");
+  expect(markFailedRpc).toContain("SET status = 'failed'");
+  expect(markFailedRpc).toContain("p.status = 'pending'");
+  expect(markFailedRpc).not.toContain("'paid'");
+  for (const signature of [
+    "public.create_commercial_payment_pending(\n  text, text, text, bigint, text\n)",
+    "public.attach_commercial_payment_checkout(\n  text, text, text, text, text, timestamptz\n)",
+    "public.mark_commercial_payment_failed(text)",
+    "public.apply_commercial_payment_event(\n  text, text, text, text, text, text, bigint, text, text\n)",
+  ]) {
+    const whitespaceTolerantSignature = signature
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\s+/g, "\\s+");
+    expect(sql).toMatch(new RegExp(
+      `REVOKE\\s+ALL\\s+ON\\s+FUNCTION\\s+${whitespaceTolerantSignature}` +
+        "\\s+FROM\\s+public\\s*,\\s*anon\\s*,\\s*authenticated\\s*;",
+      "i",
+    ));
+    expect(sql).toMatch(new RegExp(
+      `GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+${whitespaceTolerantSignature}` +
+        "\\s+TO\\s+service_role\\s*;",
+      "i",
+    ));
+  }
   expect(sql).toContain("public.apply_commercial_payment_event");
   expect(sql).toContain("settled_amount_minor bigint");
   expect(sql).toContain("settled_currency text");
@@ -583,6 +631,17 @@ test("candidate SQL contains provider-neutral tables, RLS, grants, immutable aut
   expect(sql).toMatch(/p_normalized_status = 'paid'[\s\S]*p_settled_amount_minor IS NULL/);
   expect(sql).toMatch(/p_normalized_status = 'paid'[\s\S]*p_settled_currency IS NULL/);
   expect(sql).not.toMatch(/GRANT\s+(UPDATE|DELETE)\s+ON TABLE public\.commercial_payment_events/i);
+
+  const paymentSource = readFileSync(
+    path.join(process.cwd(), "lib", "server", "commercial-payment.ts"),
+    "utf8",
+  );
+  expect(paymentSource).not.toMatch(
+    /\.from\("commercial_payments"\)\s*\.(?:insert|update)\(/,
+  );
+  expect(paymentSource).toContain('.rpc("create_commercial_payment_pending"');
+  expect(paymentSource).toContain('.rpc("attach_commercial_payment_checkout"');
+  expect(paymentSource).toContain('.rpc("mark_commercial_payment_failed"');
 });
 
 test("no provider SDK, real provider, or payment key is introduced", () => {

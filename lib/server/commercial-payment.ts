@@ -618,56 +618,47 @@ export function createSupabaseCommercialPaymentRepository(
     },
     async createPending(input) {
       try {
-        const { data, error } = await supabase
-          .from("commercial_payments")
-          .insert({
-            payment_reference: input.paymentReference,
-            commercial_quotation_reference: input.quoteReference,
-            payment_version: COMMERCIAL_PAYMENT_VERSION,
-            provider_key: input.providerKey,
-            amount_minor: input.amountMinor,
-            currency: input.currency,
-            status: "pending",
-          })
-          .select(PAYMENT_SELECT)
-          .maybeSingle();
-        if (error) return error.code === "23505" ? "conflict" : null;
-        return safePaymentFromRow(data);
-      } catch (error) {
-        return error && typeof error === "object" && "code" in error && error.code === "23505"
-          ? "conflict"
+        const { data, error } = await supabase.rpc("create_commercial_payment_pending", {
+          p_payment_reference: input.paymentReference,
+          p_commercial_quotation_reference: input.quoteReference,
+          p_provider_key: input.providerKey,
+          p_amount_minor: input.amountMinor,
+          p_currency: input.currency,
+        });
+        if (error || !Array.isArray(data) || data.length !== 1) return null;
+        const result = data[0] as Record<string, unknown>;
+        if (result.conflict === true) return "conflict";
+        return result.conflict === false
+          ? safePaymentFromRow(result.payment)
           : null;
+      } catch {
+        return null;
       }
     },
     async attachCheckout(input) {
       try {
-        const { data, error } = await supabase
-          .from("commercial_payments")
-          .update({
-            provider_checkout_id: input.providerCheckoutId,
-            provider_payment_id: input.providerPaymentId,
-            checkout_url: input.checkoutUrl,
-            checkout_expires_at: input.checkoutExpiresAt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("payment_reference", input.paymentReference)
-          .eq("provider_key", input.providerKey)
-          .eq("status", "pending")
-          .select(PAYMENT_SELECT)
-          .maybeSingle();
-        return error ? null : safePaymentFromRow(data);
+        const { data, error } = await supabase.rpc("attach_commercial_payment_checkout", {
+          p_payment_reference: input.paymentReference,
+          p_provider_key: input.providerKey,
+          p_provider_checkout_id: input.providerCheckoutId,
+          p_provider_payment_id: input.providerPaymentId,
+          p_checkout_url: input.checkoutUrl,
+          p_checkout_expires_at: input.checkoutExpiresAt,
+        });
+        if (error || !Array.isArray(data) || data.length !== 1) return null;
+        const result = data[0] as Record<string, unknown>;
+        return result.payment_found === true
+          ? safePaymentFromRow(result.payment)
+          : null;
       } catch {
         return null;
       }
     },
     async markFailed(paymentReference) {
       try {
-        const now = new Date().toISOString();
-        await supabase
-          .from("commercial_payments")
-          .update({ status: "failed", failed_at: now, updated_at: now })
-          .eq("payment_reference", paymentReference)
-          .eq("status", "pending");
+        await supabase.rpc("mark_commercial_payment_failed", {
+          p_payment_reference: paymentReference,
+        });
       } catch {
         // A provider error never becomes a paid state, even if this best-effort write fails.
       }
