@@ -17,6 +17,9 @@ const testRequire = createRequire(
 const quotationModule = testRequire(
   "../../lib/server/commercial-quotation",
 ) as typeof import("../../lib/server/commercial-quotation");
+const currencyModule = testRequire(
+  "../../lib/server/commercial-currency",
+) as typeof import("../../lib/server/commercial-currency");
 internals._resolveFilename = original;
 
 const BRIEF_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -196,14 +199,71 @@ test("unknown request fields are rejected", async () => {
   ).resolves.toEqual({ ok: false, reason: "invalid" });
 });
 
-test("invalid currency is rejected", async () => {
-  for (const currency of ["usd", "US", "USDD", "U$D"]) {
+test("new quotation issuance uses the shared supported-currency contract", async () => {
+  const expectedExponents = {
+    CNY: 2,
+    EUR: 2,
+    GBP: 2,
+    JPY: 0,
+    KWD: 3,
+    TWD: 2,
+    USD: 2,
+  } as const;
+  for (const [currency, exponent] of Object.entries(expectedExponents)) {
+    expect(currencyModule.isSupportedCommercialCurrency(currency)).toBe(true);
+    expect(currencyModule.getCommercialCurrencyMinorUnitExponent(currency)).toBe(exponent);
+  }
+  for (const currency of ["CAD", "AUD", "CHF", "ZZZ", "usd", "US", "USDD", "U$D"]) {
+    const fixture = dependencies();
     await expect(
       quotationModule.issueCommercialQuotation(
         quotationInput({ currency }),
-        dependencies().value,
+        fixture.value,
       ),
     ).resolves.toEqual({ ok: false, reason: "invalid" });
+    expect(fixture.writes).toHaveLength(0);
+  }
+});
+
+test("new supported quotations are payment-compatible before persistence", async () => {
+  const cases = [
+    { currency: "CNY", amount: "10.25", minor: 1025 },
+    { currency: "EUR", amount: "10.25", minor: 1025 },
+    { currency: "GBP", amount: "10.25", minor: 1025 },
+    { currency: "JPY", amount: "1234.00", minor: 1234 },
+    { currency: "KWD", amount: "1.23", minor: 1230 },
+    { currency: "TWD", amount: "10.25", minor: 1025 },
+    { currency: "USD", amount: "0.29", minor: 29 },
+  ] as const;
+  for (const value of cases) {
+    const fixture = dependencies();
+    const result = await quotationModule.issueCommercialQuotation(
+      quotationInput({
+        currency: value.currency,
+        lineItems: [{ description: "Payment-compatible item", amount: value.amount }],
+      }),
+      fixture.value,
+    );
+    expect(result.ok).toBe(true);
+    const issued = fixture.writes[0].quotationSnapshot as { totalAmount: string };
+    expect(currencyModule.commercialAmountToMinorUnits(
+      issued.totalAmount,
+      value.currency,
+    )).toBe(value.minor);
+  }
+});
+
+test("JPY non-zero fractions are rejected before durable quotation issuance", async () => {
+  for (const amount of ["1234.50", "0.01"]) {
+    const fixture = dependencies();
+    await expect(quotationModule.issueCommercialQuotation(
+      quotationInput({
+        currency: "JPY",
+        lineItems: [{ description: "Fractional JPY", amount }],
+      }),
+      fixture.value,
+    )).resolves.toEqual({ ok: false, reason: "invalid" });
+    expect(fixture.writes).toHaveLength(0);
   }
 });
 
@@ -287,6 +347,23 @@ test("a newer M4-1 specification without a quote hides the older quotation", asy
   await expect(
     quotationModule.readCustomerCommercialQuotation(REFERENCE, OUTPUT_ID, fixture.value),
   ).resolves.toBeNull();
+});
+
+test("historical quotation-v1 currency snapshots remain readable with their original hash", async () => {
+  const historical = snapshot({ currency: "CAD" });
+  const originalHash = quotationModule.hashCommercialQuotationSnapshot(historical);
+  const fixture = dependencies({
+    latestRows: {
+      [LATEST_CONFIRMATION_ID]: row(historical),
+    },
+  });
+  const result = await quotationModule.readCustomerCommercialQuotation(
+    REFERENCE,
+    OUTPUT_ID,
+    fixture.value,
+  );
+  expect(result?.quotation.currency).toBe("CAD");
+  expect(quotationModule.hashCommercialQuotationSnapshot(result!.quotation)).toBe(originalHash);
 });
 
 test("customer quotation copy preserves payment, order, CAD, and production boundaries", () => {

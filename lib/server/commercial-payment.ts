@@ -22,6 +22,10 @@ import {
   type SafeCommercialQuotation,
 } from "./commercial-quotation";
 import {
+  commercialAmountToMinorUnits as convertCommercialAmountToMinorUnits,
+  isSupportedCommercialCurrency,
+} from "./commercial-currency";
+import {
   getConfiguredPaymentProvider,
   resolveRegisteredPaymentProvider,
   type NormalizedPaymentProviderEvent,
@@ -38,8 +42,6 @@ export const COMMERCIAL_PAYMENT_BINDING_MAX_TOKEN_BYTES = 1_536 as const;
 
 const PAYMENT_REFERENCE_PATTERN = /^NOVORA-P-[A-F0-9]{24}$/;
 const QUOTE_REFERENCE_PATTERN = /^NOVORA-Q-[A-F0-9]{24}$/;
-const CURRENCY_PATTERN = /^[A-Z]{3}$/;
-const AMOUNT_PATTERN = /^(0|[1-9]\d*)\.(\d{2})$/;
 const PROVIDER_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const PROVIDER_ID_MAX_LENGTH = 255;
 const PROVIDER_EVENT_TYPE_MAX_LENGTH = 160;
@@ -172,6 +174,7 @@ type PaymentDependencies = Readonly<{
     outputId: string,
   ) => Promise<SafeCommercialQuotation | null>;
   createPaymentReference?: () => string;
+  now?: () => Date;
 }>;
 
 type WebhookDependencies = Readonly<{
@@ -293,7 +296,7 @@ function safePaymentFromRow(value: unknown): CommercialPaymentRecord | null {
     typeof row.provider_key !== "string" ||
       !PROVIDER_KEY_PATTERN.test(row.provider_key) ||
     !Number.isSafeInteger(amountMinor) || amountMinor < 0 ||
-    typeof row.currency !== "string" || !CURRENCY_PATTERN.test(row.currency) ||
+    !isSupportedCommercialCurrency(row.currency) ||
     !COMMERCIAL_PAYMENT_STATES.includes(row.status as CommercialPaymentStatus) ||
     !isValidIsoTimestamp(row.created_at) ||
     !isValidIsoTimestamp(row.updated_at) ||
@@ -341,17 +344,11 @@ function hasReusablePendingCheckout(payment: CommercialPaymentRecord): boolean {
       Date.parse(payment.checkoutExpiresAt) > Date.now());
 }
 
-export function commercialAmountToMinorUnits(value: unknown): number | null {
-  if (typeof value !== "string") return null;
-  const match = AMOUNT_PATTERN.exec(value);
-  if (!match) return null;
-  const whole = Number(match[1]);
-  const fraction = Number(match[2]);
-  if (!Number.isSafeInteger(whole) || !Number.isSafeInteger(fraction)) return null;
-  const wholeMinor = whole * 100;
-  if (!Number.isSafeInteger(wholeMinor)) return null;
-  const amountMinor = wholeMinor + fraction;
-  return Number.isSafeInteger(amountMinor) ? amountMinor : null;
+export function commercialAmountToMinorUnits(
+  value: unknown,
+  currency: unknown,
+): number | null {
+  return convertCommercialAmountToMinorUnits(value, currency);
 }
 
 export function generateCommercialPaymentReference() {
@@ -363,9 +360,11 @@ function quotationAuthority(
   outputId: string,
   quotation: SafeCommercialQuotation,
 ): CommercialPaymentAuthority | null {
-  const amountMinor = commercialAmountToMinorUnits(quotation.quotation.totalAmount);
+  const amountMinor = commercialAmountToMinorUnits(
+    quotation.quotation.totalAmount,
+    quotation.quotation.currency,
+  );
   return QUOTE_REFERENCE_PATTERN.test(quotation.quoteReference) &&
-    CURRENCY_PATTERN.test(quotation.quotation.currency) &&
     amountMinor !== null
     ? {
         publicReference,
@@ -376,6 +375,25 @@ function quotationAuthority(
         amountMinor,
       }
     : null;
+}
+
+function currentUtcCalendarDate(now: Date): string | null {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) return null;
+  return now.toISOString().slice(0, 10);
+}
+
+function quotationIsExpired(
+  quotation: SafeCommercialQuotation,
+  now: Date,
+): boolean | null {
+  const today = currentUtcCalendarDate(now);
+  if (!today) return null;
+  const validUntil = quotation.quotation.validUntil;
+  return validUntil === null ? false : validUntil < today;
+}
+
+function dependencyNow(dependencies: PaymentDependencies): Date {
+  return dependencies.now ? dependencies.now() : new Date();
 }
 
 function decodeCanonicalBase64Url(value: string): Buffer | null {
@@ -565,56 +583,47 @@ export function createSupabaseCommercialPaymentRepository(
     },
     async createPending(input) {
       try {
-        const { data, error } = await supabase
-          .from("commercial_payments")
-          .insert({
-            payment_reference: input.paymentReference,
-            commercial_quotation_reference: input.quoteReference,
-            payment_version: COMMERCIAL_PAYMENT_VERSION,
-            provider_key: input.providerKey,
-            amount_minor: input.amountMinor,
-            currency: input.currency,
-            status: "pending",
-          })
-          .select(PAYMENT_SELECT)
-          .maybeSingle();
-        if (error) return error.code === "23505" ? "conflict" : null;
-        return safePaymentFromRow(data);
-      } catch (error) {
-        return error && typeof error === "object" && "code" in error && error.code === "23505"
-          ? "conflict"
+        const { data, error } = await supabase.rpc("create_commercial_payment_pending", {
+          p_payment_reference: input.paymentReference,
+          p_commercial_quotation_reference: input.quoteReference,
+          p_provider_key: input.providerKey,
+          p_amount_minor: input.amountMinor,
+          p_currency: input.currency,
+        });
+        if (error || !Array.isArray(data) || data.length !== 1) return null;
+        const result = data[0] as Record<string, unknown>;
+        if (result.conflict === true) return "conflict";
+        return result.conflict === false
+          ? safePaymentFromRow(result.payment)
           : null;
+      } catch {
+        return null;
       }
     },
     async attachCheckout(input) {
       try {
-        const { data, error } = await supabase
-          .from("commercial_payments")
-          .update({
-            provider_checkout_id: input.providerCheckoutId,
-            provider_payment_id: input.providerPaymentId,
-            checkout_url: input.checkoutUrl,
-            checkout_expires_at: input.checkoutExpiresAt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("payment_reference", input.paymentReference)
-          .eq("provider_key", input.providerKey)
-          .eq("status", "pending")
-          .select(PAYMENT_SELECT)
-          .maybeSingle();
-        return error ? null : safePaymentFromRow(data);
+        const { data, error } = await supabase.rpc("attach_commercial_payment_checkout", {
+          p_payment_reference: input.paymentReference,
+          p_provider_key: input.providerKey,
+          p_provider_checkout_id: input.providerCheckoutId,
+          p_provider_payment_id: input.providerPaymentId,
+          p_checkout_url: input.checkoutUrl,
+          p_checkout_expires_at: input.checkoutExpiresAt,
+        });
+        if (error || !Array.isArray(data) || data.length !== 1) return null;
+        const result = data[0] as Record<string, unknown>;
+        return result.payment_found === true
+          ? safePaymentFromRow(result.payment)
+          : null;
       } catch {
         return null;
       }
     },
     async markFailed(paymentReference) {
       try {
-        const now = new Date().toISOString();
-        await supabase
-          .from("commercial_payments")
-          .update({ status: "failed", failed_at: now, updated_at: now })
-          .eq("payment_reference", paymentReference)
-          .eq("status", "pending");
+        await supabase.rpc("mark_commercial_payment_failed", {
+          p_payment_reference: paymentReference,
+        });
       } catch {
         // A provider error never becomes a paid state, even if this best-effort write fails.
       }
@@ -628,6 +637,12 @@ export function createSupabaseCommercialPaymentRepository(
           p_provider_event_type: input.event.providerEventType,
           p_normalized_status: input.event.status,
           p_provider_payment_id: input.event.providerPaymentId ?? null,
+          p_settled_amount_minor: input.event.status === "paid"
+            ? input.event.settledAmountMinor
+            : null,
+          p_settled_currency: input.event.status === "paid"
+            ? input.event.settledCurrency
+            : null,
           p_payload_sha256: input.payloadSha256,
         });
         if (error || !Array.isArray(data) || data.length !== 1) return "unavailable";
@@ -685,6 +700,7 @@ export async function prepareCommercialPayment(
   try {
     const current = await active.resolveCurrentQuotation(publicReference, outputId);
     if (!current || current.quoteReference !== expectedQuotation.quoteReference) return null;
+    if (quotationIsExpired(current, dependencyNow(active)) !== false) return null;
     const authority = quotationAuthority(publicReference, outputId, current);
     if (!authority) return null;
     const binding = createCommercialPaymentBinding(authority, active.signingSecret);
@@ -733,6 +749,9 @@ export async function initiateCommercialPayment(
       claims.outputId,
     );
     if (!quotation || quotation.quoteReference !== claims.quoteReference) {
+      return { ok: false, reason: "stale_quotation" };
+    }
+    if (quotationIsExpired(quotation, dependencyNow(active)) !== false) {
       return { ok: false, reason: "stale_quotation" };
     }
     const authority = quotationAuthority(claims.publicReference, claims.outputId, quotation);
@@ -785,6 +804,9 @@ export async function initiateCommercialPayment(
     }
 
     try {
+      if (quotationIsExpired(quotation, dependencyNow(active)) !== false) {
+        return { ok: false, reason: "stale_quotation" };
+      }
       const checkout = validateCheckoutResult(await provider.createCheckout({
         paymentReference: payment.paymentReference,
         quoteReference: authority.quoteReference,
@@ -811,7 +833,6 @@ export async function initiateCommercialPayment(
         ? { ok: true, payment: safeCustomerPayment(attached) }
         : { ok: false, reason: "unavailable" };
     } catch {
-      await active.repository.markFailed(payment.paymentReference);
       return { ok: false, reason: "unavailable" };
     }
   } catch {
@@ -822,11 +843,21 @@ export async function initiateCommercialPayment(
 function normalizeVerifiedProviderEvent(
   event: NormalizedPaymentProviderEvent,
 ): NormalizedPaymentProviderEvent | null {
-  return isValidProviderText(event.providerEventId) &&
+  const commonValid = isValidProviderText(event.providerEventId) &&
     isValidProviderText(event.providerEventType, PROVIDER_EVENT_TYPE_MAX_LENGTH) &&
     PAYMENT_REFERENCE_PATTERN.test(event.paymentReference) &&
     COMMERCIAL_PAYMENT_STATES.includes(event.status as PaymentProviderStatus) &&
-    (event.providerPaymentId === undefined || isValidProviderText(event.providerPaymentId))
+    (event.providerPaymentId === undefined || isValidProviderText(event.providerPaymentId));
+  if (!commonValid) return null;
+  if (event.status === "paid") {
+    return Number.isSafeInteger(event.settledAmountMinor) &&
+        event.settledAmountMinor >= 0 &&
+        isSupportedCommercialCurrency(event.settledCurrency)
+      ? event
+      : null;
+  }
+  return event.settledAmountMinor === undefined &&
+      event.settledCurrency === undefined
     ? event
     : null;
 }

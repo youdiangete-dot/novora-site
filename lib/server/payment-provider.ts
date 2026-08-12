@@ -21,13 +21,24 @@ export type PaymentProviderCheckoutResult = Readonly<{
   expiresAt?: string;
 }>;
 
-export type NormalizedPaymentProviderEvent = Readonly<{
+type NormalizedPaymentProviderEventBase = Readonly<{
   providerEventId: string;
   providerEventType: string;
   paymentReference: string;
-  status: PaymentProviderStatus;
   providerPaymentId?: string;
 }>;
+
+export type NormalizedPaymentProviderEvent =
+  | (NormalizedPaymentProviderEventBase & Readonly<{
+      status: "paid";
+      settledAmountMinor: number;
+      settledCurrency: string;
+    }>)
+  | (NormalizedPaymentProviderEventBase & Readonly<{
+      status: "pending" | "failed";
+      settledAmountMinor?: never;
+      settledCurrency?: never;
+    }>);
 
 export type PaymentProviderWebhookVerification =
   | Readonly<{ verified: false; reason: "invalid" | "rejected" }>
