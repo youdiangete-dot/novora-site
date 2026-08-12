@@ -10,6 +10,10 @@ import {
   isValidFirstPreviewAssetUuid,
   isValidFirstPreviewPublicReference,
 } from "./ai-sketch/first-preview-generated-assets-contract";
+import {
+  commercialAmountToMinorUnits,
+  isSupportedCommercialCurrency,
+} from "./commercial-currency";
 
 export const COMMERCIAL_QUOTATION_VERSION = "commercial_quotation_v1" as const;
 export const COMMERCIAL_QUOTATION_MAX_LINE_ITEMS = 8 as const;
@@ -288,6 +292,14 @@ export function hashCommercialQuotationSnapshot(snapshot: CommercialQuotationSna
   return createHash("sha256")
     .update(serializeCommercialQuotationSnapshot(snapshot), "utf8")
     .digest("hex");
+}
+
+function isPaymentCompatibleNewQuotation(snapshot: CommercialQuotationSnapshot): boolean {
+  return isSupportedCommercialCurrency(snapshot.currency) &&
+    snapshot.lineItems.every((item) =>
+      commercialAmountToMinorUnits(item.amount, snapshot.currency) !== null
+    ) &&
+    commercialAmountToMinorUnits(snapshot.totalAmount, snapshot.currency) !== null;
 }
 
 export function generateCommercialQuotationReference() {
@@ -576,6 +588,10 @@ export async function issueCommercialQuotation(
     note: record.note,
   });
   if (!normalized) return { ok: false, reason: "invalid" };
+  const snapshot = buildCommercialQuotationSnapshot(normalized);
+  if (!isPaymentCompatibleNewQuotation(snapshot)) {
+    return { ok: false, reason: "invalid" };
+  }
   const active = activeDependencies(dependencies);
   if (!active) return { ok: false, reason: "unavailable" };
 
@@ -585,7 +601,6 @@ export async function issueCommercialQuotation(
     const basis = await latestBasisForJourney(journey, active.repository);
     if (basis === "unavailable") return { ok: false, reason: "unavailable" };
     if (!basis) return { ok: false, reason: "specification_unconfirmed" };
-    const snapshot = buildCommercialQuotationSnapshot(normalized);
     const quotationSha256 = hashCommercialQuotationSnapshot(snapshot);
     const exactRow = await active.repository.findExactQuotation(basis.id, quotationSha256);
     if (exactRow === "unavailable") return { ok: false, reason: "unavailable" };

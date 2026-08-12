@@ -22,6 +22,10 @@ import {
   type SafeCommercialQuotation,
 } from "./commercial-quotation";
 import {
+  commercialAmountToMinorUnits as convertCommercialAmountToMinorUnits,
+  isSupportedCommercialCurrency,
+} from "./commercial-currency";
+import {
   getConfiguredPaymentProvider,
   resolveRegisteredPaymentProvider,
   type NormalizedPaymentProviderEvent,
@@ -38,8 +42,6 @@ export const COMMERCIAL_PAYMENT_BINDING_MAX_TOKEN_BYTES = 1_536 as const;
 
 const PAYMENT_REFERENCE_PATTERN = /^NOVORA-P-[A-F0-9]{24}$/;
 const QUOTE_REFERENCE_PATTERN = /^NOVORA-Q-[A-F0-9]{24}$/;
-const CURRENCY_PATTERN = /^[A-Z]{3}$/;
-const AMOUNT_PATTERN = /^(0|[1-9]\d*)(?:\.(\d+))?$/;
 const PROVIDER_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const PROVIDER_ID_MAX_LENGTH = 255;
 const PROVIDER_EVENT_TYPE_MAX_LENGTH = 160;
@@ -52,16 +54,6 @@ const BINDING_SIGNING_DOMAIN =
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 const MINIMUM_SIGNING_SECRET_BYTES = 32;
 const MAXIMUM_SIGNING_SECRET_RAW_CHARACTERS = 4_096;
-const MAXIMUM_SAFE_AMOUNT_MINOR = BigInt(Number.MAX_SAFE_INTEGER);
-const CURRENCY_MINOR_UNIT_EXPONENTS = Object.freeze({
-  CNY: 2,
-  EUR: 2,
-  GBP: 2,
-  JPY: 0,
-  KWD: 3,
-  TWD: 2,
-  USD: 2,
-} as const);
 
 export type CommercialPaymentStatus = (typeof COMMERCIAL_PAYMENT_STATES)[number];
 
@@ -304,7 +296,7 @@ function safePaymentFromRow(value: unknown): CommercialPaymentRecord | null {
     typeof row.provider_key !== "string" ||
       !PROVIDER_KEY_PATTERN.test(row.provider_key) ||
     !Number.isSafeInteger(amountMinor) || amountMinor < 0 ||
-    typeof row.currency !== "string" || !CURRENCY_PATTERN.test(row.currency) ||
+    !isSupportedCommercialCurrency(row.currency) ||
     !COMMERCIAL_PAYMENT_STATES.includes(row.status as CommercialPaymentStatus) ||
     !isValidIsoTimestamp(row.created_at) ||
     !isValidIsoTimestamp(row.updated_at) ||
@@ -356,33 +348,7 @@ export function commercialAmountToMinorUnits(
   value: unknown,
   currency: unknown,
 ): number | null {
-  if (
-    typeof value !== "string" ||
-    typeof currency !== "string" ||
-    !Object.prototype.hasOwnProperty.call(CURRENCY_MINOR_UNIT_EXPONENTS, currency)
-  ) return null;
-  const exponent = CURRENCY_MINOR_UNIT_EXPONENTS[
-    currency as keyof typeof CURRENCY_MINOR_UNIT_EXPONENTS
-  ];
-  const match = AMOUNT_PATTERN.exec(value);
-  if (!match) return null;
-  const fraction = match[2] ?? "";
-  if (exponent === 0) {
-    if (fraction && !/^0+$/.test(fraction)) return null;
-  } else if (fraction.length > exponent) return null;
-  try {
-    const scale = BigInt(`1${"0".repeat(exponent)}`);
-    const wholeMinor = BigInt(match[1]) * scale;
-    const fractionalMinor = fraction
-      ? BigInt(fraction.padEnd(exponent, "0"))
-      : BigInt(0);
-    const amountMinor = wholeMinor + fractionalMinor;
-    return amountMinor <= MAXIMUM_SAFE_AMOUNT_MINOR
-      ? Number(amountMinor)
-      : null;
-  } catch {
-    return null;
-  }
+  return convertCommercialAmountToMinorUnits(value, currency);
 }
 
 export function generateCommercialPaymentReference() {
@@ -399,7 +365,6 @@ function quotationAuthority(
     quotation.quotation.currency,
   );
   return QUOTE_REFERENCE_PATTERN.test(quotation.quoteReference) &&
-    CURRENCY_PATTERN.test(quotation.quotation.currency) &&
     amountMinor !== null
     ? {
         publicReference,
@@ -887,7 +852,7 @@ function normalizeVerifiedProviderEvent(
   if (event.status === "paid") {
     return Number.isSafeInteger(event.settledAmountMinor) &&
         event.settledAmountMinor >= 0 &&
-        CURRENCY_PATTERN.test(event.settledCurrency)
+        isSupportedCommercialCurrency(event.settledCurrency)
       ? event
       : null;
   }

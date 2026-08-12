@@ -17,6 +17,9 @@ const testRequire = createRequire(
 const paymentModule = testRequire(
   "../../lib/server/commercial-payment",
 ) as typeof import("../../lib/server/commercial-payment");
+const currencyModule = testRequire(
+  "../../lib/server/commercial-currency",
+) as typeof import("../../lib/server/commercial-currency");
 const providerModule = testRequire(
   "../../lib/server/payment-provider",
 ) as typeof import("../../lib/server/payment-provider");
@@ -299,14 +302,21 @@ test("amount and currency come from the server quotation", async () => {
 });
 
 test("currency minor-unit exponents are exact and bounded", () => {
-  expect(paymentModule.commercialAmountToMinorUnits("1234.50", "USD")).toBe(123450);
-  expect(paymentModule.commercialAmountToMinorUnits("1234.00", "JPY")).toBe(1234);
-  expect(paymentModule.commercialAmountToMinorUnits("1234.50", "JPY")).toBeNull();
-  expect(paymentModule.commercialAmountToMinorUnits("1.234", "KWD")).toBe(1234);
-  expect(paymentModule.commercialAmountToMinorUnits("1.23", "KWD")).toBe(1230);
-  expect(paymentModule.commercialAmountToMinorUnits("0.29", "USD")).toBe(29);
-  expect(paymentModule.commercialAmountToMinorUnits("1.2345", "KWD")).toBeNull();
-  expect(paymentModule.commercialAmountToMinorUnits("1.00", "ZZZ")).toBeNull();
+  for (const [amount, currency, expected] of [
+    ["1234.50", "USD", 123450],
+    ["1234.00", "JPY", 1234],
+    ["1234.50", "JPY", null],
+    ["1.234", "KWD", 1234],
+    ["1.23", "KWD", 1230],
+    ["0.29", "USD", 29],
+    ["1.2345", "KWD", null],
+    ["1.00", "ZZZ", null],
+  ] as const) {
+    expect(paymentModule.commercialAmountToMinorUnits(amount, currency)).toBe(expected);
+    expect(paymentModule.commercialAmountToMinorUnits(amount, currency)).toBe(
+      currencyModule.commercialAmountToMinorUnits(amount, currency),
+    );
+  }
 });
 
 test("signed binding is tied to exact public reference, output, and quote", () => {
