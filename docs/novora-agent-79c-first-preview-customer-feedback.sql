@@ -1,5 +1,10 @@
 -- Agent 79C local candidate only. Do not execute from this repository task.
 
+BEGIN;
+
+SET LOCAL lock_timeout = '2s';
+SET LOCAL statement_timeout = '30s';
+
 create table public.first_preview_customer_feedback (
   id uuid primary key default gen_random_uuid(),
   concept_brief_id uuid not null references public.concept_briefs(id),
@@ -51,3 +56,5 @@ create trigger first_preview_customer_feedback_current_ready_insert
 before insert on public.first_preview_customer_feedback
 for each row
 execute function public.enforce_current_ready_first_preview_feedback();
+
+COMMIT;
