@@ -36,6 +36,67 @@
   color: #314332;
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+}
+
+.languageSwitcher,
+.languageSwitcherPlaceholder {
+  width: 5.4rem;
+  min-height: 2rem;
+}
+
+.languageSwitcher {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.14rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.languageSwitcherPlaceholder {
+  display: inline-block;
+}
+
+.languageOption {
+  min-width: 2.5rem;
+  min-height: 1.7rem;
+  padding: 0.24rem 0.38rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #686c5f;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.languageOption:hover,
+.languageOption:focus-visible {
+  color: #314332;
+}
+
+.languageOption:focus-visible {
+  outline: 2px solid #314332;
+  outline-offset: 2px;
+}
+
+.languageOptionActive {
+  background: #314332;
+  color: #fffdf8;
+}
+
+.languageOptionActive:hover,
+.languageOptionActive:focus-visible {
+  color: #fffdf8;
+}
+
 @media (max-width: 900px) {
   .nav {
     display: none;
@@ -49,10 +110,17 @@
 @media (max-width: 520px) {
   .inner {
     gap: 0.65rem;
+    flex-wrap: wrap;
+    padding-block: 0.55rem;
   }
 
   .brand {
     font-size: 1rem;
+  }
+
+  .actions {
+    gap: 0.45rem;
+    margin-left: auto;
   }
 
   .inner :global(.btn) {
@@ -63,6 +131,11 @@
 }
 
 @media (max-width: 380px) {
+  .actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
   .inner :global(.btn) {
     max-width: 10.5rem;
     font-size: 0.9rem;

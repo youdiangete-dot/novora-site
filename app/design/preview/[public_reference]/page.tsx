@@ -20,6 +20,8 @@ import CommercialSpecificationConfirmation from "./CommercialSpecificationConfir
 import FirstPreviewDesignConfirmation from "./FirstPreviewDesignConfirmation";
 import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
 import styles from "./preview.module.css";
+import { getRequestI18n } from '../../../../lib/i18n/request';
+import { localizePath } from '../../../../lib/i18n/routing';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -58,53 +60,11 @@ type PreviewPageProps = {
   }>;
 };
 
-type StateCopy = Readonly<{
-  badge: string;
-  title: string;
-  lead: string;
-  detail: string;
-}>;
-
 const INTERNAL_TRUSTED_HEADERS = {
   state: "x-novora-preview-ui-trusted-state",
   reference: "x-novora-preview-ui-trusted-reference",
   output: "x-novora-preview-ui-trusted-output",
 } as const;
-
-const COPY: Record<CustomerPreviewState, StateCopy> = {
-  pending: {
-    badge: "Preparing automatically",
-    title: "Your First Preview is being prepared",
-    lead:
-      "NOVORA has started preparing your first AI hand-drawn concept sketch automatically. Generation and the required automatic gates are still running.",
-    detail:
-      "You do not need to trigger anything. We cannot promise an exact completion time, and human handling is used only when the system cannot safely converge.",
-  },
-  ready: {
-    badge: "First Preview ready",
-    title: "Your early concept direction is ready",
-    lead:
-      "The first AI hand-drawn concept sketch passed the required automatic safety, privacy, access-control, and output-validity gates for this customer view.",
-    detail:
-      "Use it to discuss the design direction. It may still need refinement and a later production-feasibility review.",
-  },
-  unavailable: {
-    badge: "Unavailable",
-    title: "First Preview unavailable",
-    lead:
-      "We cannot safely show a First Preview for this link right now.",
-    detail:
-      "Please return to your submitted Concept Brief receipt or contact NOVORA. No provider, database, storage, or internal error details are disclosed here.",
-  },
-  denied: {
-    badge: "Access unavailable",
-    title: "You cannot access this First Preview",
-    lead:
-      "This customer link cannot open the requested First Preview.",
-    detail:
-      "Please use the Preview link from your confirmed Concept Brief receipt or contact NOVORA for help.",
-  },
-};
 
 function snapshotOwnDataRecord(
   value: unknown,
@@ -271,13 +231,17 @@ async function readTrustedCustomerPreview(
 export default async function CustomerPreviewPage({
   params,
 }: PreviewPageProps) {
+  const { dictionary, locale } = await getRequestI18n();
+  const copy = dictionary.firstPreview;
+  const legalCopy = dictionary.legalDisclaimer;
+  const accessibilityCopy = dictionary.accessibility;
   const { public_reference: routePublicReference } = await params;
   const trustedResult = await readTrustedCustomerPreview(routePublicReference);
   const preview = resolveCustomerPreview(
     routePublicReference,
     trustedResult,
   );
-  const stateCopy = COPY[preview.state];
+  const stateCopy = copy.states[preview.state];
   const feedbackBinding = preview.state === "ready"
     ? createFirstPreviewCustomerFeedbackBinding(
         {
@@ -321,16 +285,15 @@ export default async function CustomerPreviewPage({
       <section className={`${sharedStyles.shell} ${styles.previewShell}`}>
         <header className={styles.hero}>
           <div>
-            <p className={sharedStyles.eyebrow}>NOVORA First Preview</p>
-            <h1>Customer First Preview</h1>
+            <p className={sharedStyles.eyebrow}>{copy.fp001}</p>
+            <h1>{copy.fp002}</h1>
             <p className={styles.heroLead}>
-              A private early concept view for your submitted design direction.
-            </p>
+              {copy.fp003}</p>
           </div>
           <div className={styles.referenceCard}>
-            <span>Customer reference</span>
+            <span>{copy.fp004}</span>
             <strong>
-              {preview.publicReference ?? "Reference unavailable"}
+              {preview.publicReference ?? copy.fp005}
             </strong>
           </div>
         </header>
@@ -351,24 +314,20 @@ export default async function CustomerPreviewPage({
             <section className={styles.previewCard} aria-labelledby="concept-preview-heading">
               <div className={styles.sectionHeading}>
                 <div>
-                  <p className={sharedStyles.eyebrow}>Concept direction</p>
+                  <p className={sharedStyles.eyebrow}>{copy.fp006}</p>
                   <h2 id="concept-preview-heading">
-                    AI hand-drawn concept sketch
-                  </h2>
+                    {copy.fp007}</h2>
                 </div>
-                <span>Early preview</span>
+                <span>{copy.fp008}</span>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 className={styles.previewImage}
                 src={preview.customerAssetSrc}
-                alt="Early AI hand-drawn jewelry concept sketch for the submitted NOVORA design direction"
+                alt={copy.fp009}
               />
               <p className={styles.imageNote}>
-                This visual is an early communication asset. Details, structure,
-                gemstone orientation, and construction may change during later
-                refinement and production-feasibility review.
-              </p>
+                {copy.fp010}</p>
             </section>
             {confirmationBinding ? (
               <FirstPreviewDesignConfirmation
@@ -407,57 +366,32 @@ export default async function CustomerPreviewPage({
           className={styles.boundaryCard}
           aria-labelledby="preview-boundary-heading"
         >
-          <p className={sharedStyles.eyebrow}>What this Preview means</p>
+          <p className={sharedStyles.eyebrow}>{copy.fp011}</p>
           <h2 id="preview-boundary-heading">
-            Concept communication before paid CAD
-          </h2>
+            {copy.fp012}</h2>
           <p>
-            A First Preview is an early AI hand-drawn concept sketch. It is not
-            CAD, a final quote, an order, payment approval, production approval,
-            or a manufacturability guarantee.
-          </p>
+            {legalCopy.firstPreviewBoundary}</p>
           <p>
-            Opening this route alone does not mean generation has started. Once
-            the live workflow is operating, every eligible confirmed persisted
-            submission starts automatic First Preview preparation. A trusted
-            customer-view state and all mandatory gates are required before
-            website visibility. An unavailable state is not evidence of active
-            generation.
-          </p>
+            {copy.fp014}</p>
           <ul>
             {preview.state !== "denied" ? (
               <li>
-                The live workflow uses mandatory safety, privacy, access-control,
-                output-validity, and safe-failure gates for every eligible
-                confirmed persisted submission.
-              </li>
+                {copy.fp015}</li>
             ) : null}
             <li>
-              Website visibility occurs only after a trusted customer-view
-              state and every required automatic gate pass.
-            </li>
+              {copy.fp016}</li>
             <li>
-              Human intervention during automatic First Preview preparation is
-              exception-only when the automatic preparation system cannot safely
-              converge; no per-image human pre-approval is required.
-            </li>
+              {copy.fp017}</li>
             <li>
-              After the First Preview, structural logic, gemstone orientation,
-              composition, jewelry construction, manufacturability, correction
-              and regeneration, and customer-feedback interpretation remain
-              human-reviewed.
-            </li>
+              {copy.fp018}</li>
             <li>
-              Paid CAD and formal production decisions happen later; these
-              steps, along with gemstone and material confirmation, quotation,
-              order, and payment decisions, remain human-controlled.
-            </li>
+              {copy.fp019}</li>
           </ul>
         </section>
 
-        <nav className={styles.actions} aria-label="Preview actions">
-          <Link href="/design/submitted">Back to submitted receipt</Link>
-          <Link href="/design/start">Start another design direction</Link>
+        <nav className={styles.actions} aria-label={accessibilityCopy.previewActions}>
+          <Link href={localizePath('/design/submitted', locale)}>{copy.fp021}</Link>
+          <Link href={localizePath('/design/start', locale)}>{copy.fp022}</Link>
         </nav>
       </section>
     </main>

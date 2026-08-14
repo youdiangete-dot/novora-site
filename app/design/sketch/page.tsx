@@ -4,6 +4,12 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import styles from '../brief/brief.module.css';
 import sketchStyles from './sketch.module.css';
+import { useI18n } from '../../../lib/i18n/client';
+import { formatDateTime, formatMessage } from '../../../lib/i18n/format';
+import type { Dictionary } from '../../../lib/i18n/dictionaries';
+import { localizePath } from '../../../lib/i18n/routing';
+
+type LegacySketchCopy = Dictionary['legacySketch'];
 
 type SubmittedConceptBrief = {
   conceptBriefId: string;
@@ -22,47 +28,42 @@ type SubmittedConceptBrief = {
 
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
 
-function formatSubmittedTime(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
 function pickValue(value: string | undefined, fallback: string) {
   return value?.trim() ? value : fallback;
 }
 
-function buildSketchDirection(brief: SubmittedConceptBrief) {
-  const pieceType = pickValue(brief.pieceType, 'custom jewelry piece');
+function buildSketchDirection(brief: SubmittedConceptBrief, copy: LegacySketchCopy) {
+  const pieceType = pickValue(brief.pieceType, copy.fallbackPieceType);
   const structure = [brief.structure, brief.subStructure].filter(Boolean).join(' / ');
-  const materialDirection = pickValue(brief.branch, 'the selected material direction');
-  const stoneDirection = pickValue(brief.stoneLogic, 'the requested stone and setting logic');
+  const materialDirection = pickValue(brief.branch, copy.fallbackMaterialDirection);
+  const stoneDirection = pickValue(brief.stoneLogic, copy.fallbackStoneDirection);
   const references =
     brief.referenceImageCount && brief.referenceImageCount > 0
-      ? `${brief.referenceImageCount} submitted reference image${brief.referenceImageCount === 1 ? '' : 's'}`
-      : 'the written concept notes';
+      ? formatMessage(copy.referenceImages, {
+          count: brief.referenceImageCount,
+          plural: brief.referenceImageCount === 1 ? '' : 's',
+        })
+      : copy.writtenConceptNotes;
 
   return {
-    headline: `${pieceType} concept direction`,
+    headline: formatMessage(copy.directionHeadline, { pieceType }),
     lines: [
-      `A future AI sketch could explore a ${pieceType.toLowerCase()} with ${pickValue(
-        structure,
-        'a refined custom silhouette',
-      ).toLowerCase()}.`,
-      `The submitted brief would guide ${materialDirection.toLowerCase()} and ${stoneDirection.toLowerCase()} as early visual conversation inputs.`,
-      `NOVORA would use ${references} to inform proportion, motif, stone placement, and review direction before any CAD path is confirmed.`,
+      formatMessage(copy.directionLineOne, {
+        pieceType: pieceType.toLowerCase(),
+        structure: pickValue(structure, copy.fallbackSilhouette).toLowerCase(),
+      }),
+      formatMessage(copy.directionLineTwo, {
+        materialDirection: materialDirection.toLowerCase(),
+        stoneDirection: stoneDirection.toLowerCase(),
+      }),
+      formatMessage(copy.directionLineThree, { references }),
     ],
   };
 }
 
 export default function DesignSketchPage() {
+  const { dictionary, locale } = useI18n();
+  const copy = dictionary.legacySketch;
   const [submittedBrief, setSubmittedBrief] = useState<SubmittedConceptBrief | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -81,8 +82,8 @@ export default function DesignSketchPage() {
   }, []);
 
   const sketchDirection = useMemo(
-    () => (submittedBrief ? buildSketchDirection(submittedBrief) : null),
-    [submittedBrief],
+    () => (submittedBrief ? buildSketchDirection(submittedBrief, copy) : null),
+    [copy, submittedBrief],
   );
 
   if (!isLoaded) {
@@ -94,19 +95,15 @@ export default function DesignSketchPage() {
       <main className={styles.pageBackground}>
         <section className={`${styles.shell} ${styles.emptyShell}`}>
           <div className={styles.emptyPanel}>
-            <p className={styles.eyebrow}>AI Sketch Preview</p>
-            <h1>No submitted concept brief found in this browser</h1>
+            <p className={styles.eyebrow}>{copy.sk001}</p>
+            <h1>{copy.sk002}</h1>
             <p>
-              This mock preview needs a submitted front-end-only concept brief saved in this browser before it can show
-              the AI hand-drawn sketch direction experience.
-            </p>
+              {copy.sk003}</p>
             <div className={styles.actions}>
-              <Link className={styles.primaryButton} href="/design/concept">
-                Start concept intake
-              </Link>
-              <Link className={styles.secondaryButton} href="/design/start">
-                Back to design start
-              </Link>
+              <Link className={styles.primaryButton} href={localizePath('/design/concept', locale)}>
+                {copy.sk004}</Link>
+              <Link className={styles.secondaryButton} href={localizePath('/design/start', locale)}>
+                {copy.sk005}</Link>
             </div>
           </div>
         </section>
@@ -119,45 +116,41 @@ export default function DesignSketchPage() {
       <section className={`${styles.shell} ${sketchStyles.sketchShell}`}>
         <div className={sketchStyles.layout}>
           <div className={sketchStyles.intro}>
-            <p className={styles.eyebrow}>AI Sketch Preview</p>
+            <p className={styles.eyebrow}>{copy.sk001}</p>
             <div className={sketchStyles.introHeader}>
-              <h1>Preview mode for future AI sketch review</h1>
-              <span className={sketchStyles.modeBadge}>Demo placeholder</span>
+              <h1>{copy.sk006}</h1>
+              <span className={sketchStyles.modeBadge}>{copy.sk007}</span>
             </div>
             <p>
-              This page shows the intended review experience for a future AI hand-drawn concept sketch. Real AI sketch
-              generation is not active yet, and the visual below is not your actual generated design.
-            </p>
+              {copy.sk008}</p>
             <div className={sketchStyles.notice} role="note">
-              <strong>Mock-only boundary</strong>
+              <strong>{copy.sk009}</strong>
               <span>
-                The current board is a CSS demo placeholder. It does not call GPT, OpenAI, or any external image
-                generation API.
-              </span>
+                {copy.sk010}</span>
             </div>
           </div>
 
           <section className={sketchStyles.metadataCard} aria-labelledby="submitted-brief-heading">
             <div className={sketchStyles.sectionHeader}>
-              <p className={styles.eyebrow}>Submitted brief metadata</p>
-              <h2 id="submitted-brief-heading">Brief saved in this browser</h2>
+              <p className={styles.eyebrow}>{copy.sk011}</p>
+              <h2 id="submitted-brief-heading">{copy.sk012}</h2>
             </div>
-            <dl className={styles.submittedDetails} aria-label="Submitted concept brief metadata">
+            <dl className={styles.submittedDetails} aria-label={copy.sk013}>
               <div>
-                <dt>Concept Brief ID</dt>
+                <dt>{copy.sk014}</dt>
                 <dd>{submittedBrief.conceptBriefId}</dd>
               </div>
               <div>
-                <dt>Submitted time</dt>
-                <dd>{formatSubmittedTime(submittedBrief.submittedAt)}</dd>
+                <dt>{copy.sk015}</dt>
+                <dd>{formatDateTime(submittedBrief.submittedAt, locale)}</dd>
               </div>
               <div>
-                <dt>Customer name</dt>
-                <dd>{submittedBrief.customerName || 'Not provided'}</dd>
+                <dt>{copy.sk016}</dt>
+                <dd>{submittedBrief.customerName || copy.sk017}</dd>
               </div>
               <div>
-                <dt>Customer email</dt>
-                <dd>{submittedBrief.customerEmail || 'Not provided'}</dd>
+                <dt>{copy.sk018}</dt>
+                <dd>{submittedBrief.customerEmail || copy.sk017}</dd>
               </div>
             </dl>
           </section>
@@ -165,19 +158,19 @@ export default function DesignSketchPage() {
           <section className={sketchStyles.previewPanel} aria-labelledby="mock-preview-heading">
             <div className={sketchStyles.previewHeader}>
               <div>
-                <p className={styles.eyebrow}>Mock sketch board</p>
-                <h2 id="mock-preview-heading">Demo placeholder, not your generated sketch</h2>
+                <p className={styles.eyebrow}>{copy.sk019}</p>
+                <h2 id="mock-preview-heading">{copy.sk020}</h2>
               </div>
-              <div className={sketchStyles.previewTags} aria-label="Preview limitations">
-                <span>Preview mode</span>
-                <span>Front-end only</span>
-                <span>No AI image generated</span>
+              <div className={sketchStyles.previewTags} aria-label={copy.sk021}>
+                <span>{copy.sk022}</span>
+                <span>{copy.sk023}</span>
+                <span>{copy.sk024}</span>
               </div>
             </div>
 
-            <div className={sketchStyles.paperCard} aria-label="Mock hand-drawn jewelry sketch placeholder">
-              <span className={sketchStyles.mockLabel}>Demo placeholder</span>
-              <span className={sketchStyles.cardTitle}>Not an actual generated sketch</span>
+            <div className={sketchStyles.paperCard} aria-label={copy.sk025}>
+              <span className={sketchStyles.mockLabel}>{copy.sk007}</span>
+              <span className={sketchStyles.cardTitle}>{copy.sk026}</span>
               <span className={sketchStyles.guideVertical} />
               <span className={sketchStyles.guideHorizontal} />
               <span className={sketchStyles.ringOuter} />
@@ -192,88 +185,79 @@ export default function DesignSketchPage() {
               <span className={sketchStyles.noteLineOne} />
               <span className={sketchStyles.noteLineTwo} />
               <span className={sketchStyles.noteLineThree} />
-              <span className={sketchStyles.noteOne}>proportion guide</span>
-              <span className={sketchStyles.noteTwo}>setting study</span>
-              <span className={sketchStyles.noteThree}>placeholder only</span>
+              <span className={sketchStyles.noteOne}>{copy.sk027}</span>
+              <span className={sketchStyles.noteTwo}>{copy.sk028}</span>
+              <span className={sketchStyles.noteThree}>{copy.sk029}</span>
               <span className={sketchStyles.swatchOne} />
               <span className={sketchStyles.swatchTwo} />
               <span className={sketchStyles.swatchThree} />
             </div>
             <p className={sketchStyles.previewNote}>
-              This CSS board is only a premium visual stand-in for the future review page. A real customer-specific
-              hand-drawn sketch has not been generated from this brief.
-            </p>
+              {copy.sk030}</p>
           </section>
 
           <section className={sketchStyles.directionCard}>
-            <p className={styles.eyebrow}>Future AI sketch explanation</p>
+            <p className={styles.eyebrow}>{copy.sk031}</p>
             <h2>{sketchDirection.headline}</h2>
             {sketchDirection.lines.map((line) => (
               <p key={line}>{line}</p>
             ))}
             {submittedBrief.aiSketchInstruction ? (
               <p className={sketchStyles.instructionNote}>
-                Sketch instruction note: {submittedBrief.aiSketchInstruction}
+                {copy.sk032}{submittedBrief.aiSketchInstruction}
               </p>
             ) : null}
           </section>
 
           <section className={sketchStyles.workflowCard} aria-labelledby="future-workflow-heading">
             <div className={sketchStyles.sectionHeader}>
-              <p className={styles.eyebrow}>Future intended workflow</p>
-              <h2 id="future-workflow-heading">From brief to visual direction</h2>
+              <p className={styles.eyebrow}>{copy.sk033}</p>
+              <h2 id="future-workflow-heading">{copy.sk034}</h2>
             </div>
             <ol>
               <li>
-                <strong>NOVORA reads the submitted concept brief.</strong>
-                <span>Piece type, structure, stone logic, references, and notes become the creative input.</span>
+                <strong>{copy.sk035}</strong>
+                <span>{copy.sk036}</span>
               </li>
               <li>
-                <strong>An AI hand-drawn concept sketch may be generated.</strong>
-                <span>The sketch would help explore proportion and visual direction before production decisions.</span>
+                <strong>{copy.sk037}</strong>
+                <span>{copy.sk038}</span>
               </li>
               <li>
-                <strong>NOVORA reviews the direction before CAD.</strong>
-                <span>A human review step keeps the sketch aligned with feasibility, taste, and customer intent.</span>
+                <strong>{copy.sk039}</strong>
+                <span>{copy.sk040}</span>
               </li>
               <li>
-                <strong>Professional CAD and production confirmation happen later.</strong>
-                <span>Pricing, sourcing, CAD, QC, and production approval remain separate professional steps.</span>
+                <strong>{copy.sk041}</strong>
+                <span>{copy.sk042}</span>
               </li>
             </ol>
           </section>
 
           <section className={sketchStyles.boundaryCard}>
-            <p className={styles.eyebrow}>Production boundary</p>
-            <h2>Not CAD, not pricing, not production approval</h2>
+            <p className={styles.eyebrow}>{copy.sk043}</p>
+            <h2>{copy.sk044}</h2>
             <p>
-              This customer-facing mock flow explains how a future AI sketch step could support the custom jewelry
-              conversation. It does not replace NOVORA's later professional CAD, pricing, sourcing, or production review.
-            </p>
+              {copy.sk045}</p>
             <ul>
-              <li>Not production CAD</li>
-              <li>Not final jewelry design</li>
-              <li>Not final pricing</li>
-              <li>Not gemstone sourcing confirmation</li>
-              <li>Not feasibility, QC, packaging, or logistics confirmation</li>
-              <li>Not production approval</li>
+              <li>{copy.sk046}</li>
+              <li>{copy.sk047}</li>
+              <li>{copy.sk048}</li>
+              <li>{copy.sk049}</li>
+              <li>{copy.sk050}</li>
+              <li>{copy.sk051}</li>
             </ul>
             <p>
-              Production-level CAD is a later, separate paid and professional process reviewed through NOVORA designers
-              and factory workflow.
-            </p>
+              {copy.sk052}</p>
           </section>
 
-          <div className={`${styles.actions} ${sketchStyles.nextActions}`} aria-label="Next steps">
-            <Link className={styles.primaryButton} href="/design/submitted">
-              Back to submission
-            </Link>
-            <Link className={styles.secondaryButton} href="/design/start">
-              Start a new concept brief
-            </Link>
+          <div className={`${styles.actions} ${sketchStyles.nextActions}`} aria-label={copy.sk053}>
+            <Link className={styles.primaryButton} href={localizePath('/design/submitted', locale)}>
+              {copy.sk054}</Link>
+            <Link className={styles.secondaryButton} href={localizePath('/design/start', locale)}>
+              {copy.sk055}</Link>
             <span className={sketchStyles.disabledAction} aria-disabled="true">
-              Professional CAD review later
-            </span>
+              {copy.sk056}</span>
           </div>
         </div>
       </section>

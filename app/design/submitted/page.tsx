@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import submittedStyles from './submitted.module.css';
 import styles from '../brief/brief.module.css';
+import { useI18n } from '../../../lib/i18n/client';
+import { formatDateTime, formatMessage } from '../../../lib/i18n/format';
+import { localizePath } from '../../../lib/i18n/routing';
 
 type StartSelection = {
   pieceType?: string;
@@ -55,8 +58,6 @@ type SubmittedConceptBrief = {
 };
 
 const SUBMITTED_BRIEF_STORAGE_KEY = 'novora_submitted_concept_brief';
-const SERVER_RECEIPT_WARNING =
-  'We could not confirm server receipt. Your brief is still saved in this browser. Please try again in a moment or contact NOVORA.';
 
 type ConfirmedSubmittedConceptBrief = SubmittedConceptBrief & {
   apiSubmission: {
@@ -152,20 +153,10 @@ function hasConfirmedServerReceipt(submittedBrief: unknown): submittedBrief is C
   );
 }
 
-function formatSubmittedTime(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
 export default function DesignSubmittedPage() {
+  const { dictionary, locale } = useI18n();
+  const copy = dictionary.submitted;
+  const errorCopy = dictionary.errors;
   const [submittedBrief, setSubmittedBrief] = useState<unknown>(null);
   const [hasStoredBrief, setHasStoredBrief] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -194,14 +185,12 @@ export default function DesignSubmittedPage() {
       <main className={styles.pageBackground}>
         <section className={`${styles.shell} ${styles.emptyShell}`}>
           <div className={styles.emptyPanel}>
-            <p className={styles.eyebrow}>Concept brief submitted</p>
-            <h1>No submitted concept brief found</h1>
+            <p className={styles.eyebrow}>{copy.sub001}</p>
+            <h1>{copy.sub002}</h1>
             <p>
-              Start a new concept intake so NOVORA can organize your design direction for studio review and follow-up.
-            </p>
-            <Link className={styles.primaryButton} href="/design/start">
-              Back to design start
-            </Link>
+              {copy.sub003}</p>
+            <Link className={styles.primaryButton} href={localizePath('/design/start', locale)}>
+              {copy.sub004}</Link>
           </div>
         </section>
       </main>
@@ -213,12 +202,11 @@ export default function DesignSubmittedPage() {
       <main className={styles.pageBackground}>
         <section className={`${styles.shell} ${styles.emptyShell}`}>
           <div className={styles.emptyPanel}>
-            <p className={styles.eyebrow}>Concept brief</p>
-            <h1>Server receipt not confirmed</h1>
-            <p>{SERVER_RECEIPT_WARNING}</p>
-            <Link className={styles.primaryButton} href="/design/brief">
-              Back to concept brief
-            </Link>
+            <p className={styles.eyebrow}>{copy.sub005}</p>
+            <h1>{copy.sub006}</h1>
+            <p>{errorCopy.serverReceiptWarning}</p>
+            <Link className={styles.primaryButton} href={localizePath('/design/brief', locale)}>
+              {copy.sub007}</Link>
           </div>
         </section>
       </main>
@@ -226,57 +214,58 @@ export default function DesignSubmittedPage() {
   }
 
   const displayedConceptBriefId = submittedBrief.apiSubmission.publicReference;
-  const previewHref = `/design/preview/${submittedBrief.apiSubmission.publicReference}`;
+  const previewHref = localizePath(
+    `/design/preview/${submittedBrief.apiSubmission.publicReference}`,
+    locale,
+  );
 
   return (
     <main className={styles.pageBackground}>
       <section className={`${styles.shell} ${styles.submittedShell}`}>
         <div className={styles.submittedPanel}>
-          <p className={styles.eyebrow}>Concept brief submitted</p>
-          <h1>Concept brief received</h1>
+          <p className={styles.eyebrow}>{copy.sub001}</p>
+          <h1>{copy.sub008}</h1>
           <p className={styles.successLead}>
-            NOVORA received your Concept Brief for studio review and may follow up using the contact details you
-            provided.
-          </p>
+            {copy.sub009}</p>
 
           <dl className={styles.submittedDetails}>
             <div>
-              <dt>Concept Brief ID</dt>
+              <dt>{copy.sub010}</dt>
               <dd>{displayedConceptBriefId}</dd>
             </div>
             <div>
-              <dt>Submitted time</dt>
-              <dd>{formatSubmittedTime(submittedBrief.submittedAt)}</dd>
+              <dt>{copy.sub011}</dt>
+              <dd>{formatDateTime(submittedBrief.submittedAt, locale)}</dd>
             </div>
             <div>
-              <dt>Customer name</dt>
-              <dd>{submittedBrief.customerName || 'Not provided'}</dd>
+              <dt>{copy.sub012}</dt>
+              <dd>{submittedBrief.customerName || copy.sub013}</dd>
             </div>
             <div>
-              <dt>Customer email</dt>
-              <dd>{submittedBrief.customerEmail || 'Not provided'}</dd>
+              <dt>{copy.sub014}</dt>
+              <dd>{submittedBrief.customerEmail || copy.sub013}</dd>
             </div>
           </dl>
 
           {(submittedBrief.customerPhone || submittedBrief.customerCountry || submittedBrief.contactNote) ? (
             <section className={styles.boundaryCard}>
-              <h2>Contact details</h2>
+              <h2>{copy.sub015}</h2>
               <dl className={styles.submittedDetails}>
                 {submittedBrief.customerPhone ? (
                   <div>
-                    <dt>Phone or WhatsApp</dt>
+                    <dt>{copy.sub016}</dt>
                     <dd>{submittedBrief.customerPhone}</dd>
                   </div>
                 ) : null}
                 {submittedBrief.customerCountry ? (
                   <div>
-                    <dt>Country / region</dt>
+                    <dt>{copy.sub017}</dt>
                     <dd>{submittedBrief.customerCountry}</dd>
                   </div>
                 ) : null}
                 {submittedBrief.contactNote ? (
                   <div>
-                    <dt>Contact note</dt>
+                    <dt>{copy.sub018}</dt>
                     <dd>{submittedBrief.contactNote}</dd>
                   </div>
                 ) : null}
@@ -286,156 +275,123 @@ export default function DesignSubmittedPage() {
 
           {submittedBrief.startSelection ? (
             <section className={styles.boundaryCard}>
-              <h2>Design start summary</h2>
+              <h2>{copy.sub019}</h2>
               <dl className={styles.submittedDetails}>
                 {submittedBrief.startSelection.recipientLabel ? (
                   <div>
-                    <dt>Recipient</dt>
+                    <dt>{copy.sub020}</dt>
                     <dd>{submittedBrief.startSelection.recipientLabel}</dd>
                   </div>
                 ) : null}
                 {submittedBrief.startSelection.styleLabel ? (
                   <div>
-                    <dt>Start style preference</dt>
+                    <dt>{copy.sub021}</dt>
                     <dd>{submittedBrief.startSelection.styleLabel}</dd>
                   </div>
                 ) : null}
                 {submittedBrief.startSelection.budget ? (
                   <div>
-                    <dt>Budget planning range</dt>
+                    <dt>{copy.sub022}</dt>
                     <dd>{submittedBrief.startSelection.budget}</dd>
                   </div>
                 ) : null}
               </dl>
               <p>
-                These selections guide the concept direction only. They are not final pricing, CAD approval, or
-                production confirmation.
-              </p>
+                {copy.sub023}</p>
             </section>
           ) : null}
 
           {submittedBrief.referenceUpload ? (
             <section className={styles.boundaryCard}>
-              <h2>Reference images</h2>
+              <h2>{copy.sub024}</h2>
               <p>
                 {submittedBrief.referenceUpload.uploaded
-                  ? `${submittedBrief.referenceUpload.uploadedCount || 0} reference image(s) were attached for concept review.`
-                  : submittedBrief.referenceUpload.message || 'No final reference images were uploaded.'}
+                  ? formatMessage(copy.sub025, { value0: submittedBrief.referenceUpload.uploadedCount || 0 })
+                  : locale === 'zh-TW'
+                    ? copy.sub026
+                    : submittedBrief.referenceUpload.message || copy.sub026}
               </p>
               <p>
-                Reference images support concept review only. They are not CAD approval, final pricing, final design
-                approval, or production confirmation.
-              </p>
+                {copy.sub027}</p>
             </section>
           ) : null}
 
           <section className={styles.boundaryCard}>
-            <h2>Important boundary</h2>
+            <h2>{copy.sub028}</h2>
             <p>
-              This submission helps NOVORA understand your design direction, but it is not a final order, final pricing,
-              CAD approval, or production confirmation.
-            </p>
+              {copy.sub029}</p>
             <p>
-              This is not a CAD-ready production order. Final CAD, pricing, sourcing, and production feasibility are
-              confirmed later.
-            </p>
+              {copy.sub030}</p>
             <ul className={submittedStyles.boundaryList}>
-              <li>Not a final order</li>
-              <li>Not final pricing</li>
-              <li>Not CAD approval</li>
-              <li>Not production confirmation</li>
+              <li>{copy.sub031}</li>
+              <li>{copy.sub032}</li>
+              <li>{copy.sub033}</li>
+              <li>{copy.sub034}</li>
             </ul>
           </section>
 
           <section className={submittedStyles.nextSteps}>
             <div>
-              <p className={styles.eyebrow}>What happens after your Concept Brief</p>
-              <h2>Current First Preview status</h2>
+              <p className={styles.eyebrow}>{copy.sub035}</p>
+              <h2>{copy.sub036}</h2>
             </div>
             <p className={submittedStyles.nextStepsIntro}>
-              Your Concept Brief was received and validated. This secure status connection does not add live AI
-              generation, so this receipt does not mean generation has started.
-            </p>
+              {copy.sub037}</p>
             <ol className={submittedStyles.nextStepList}>
               <li>
-                <span className={submittedStyles.stepNumber}>1</span>
+                <span className={submittedStyles.stepNumber}>{copy.sub038}</span>
                 <div>
-                  <h3>Current Production limitation</h3>
+                  <h3>{copy.sub039}</h3>
                   <p>
-                    Live First Preview generation is not yet connected. Opening the query-free Preview page does not
-                    mean generation has started.
-                  </p>
+                    {copy.sub040}</p>
                 </div>
               </li>
               <li>
-                <span className={submittedStyles.stepNumber}>2</span>
+                <span className={submittedStyles.stepNumber}>{copy.sub041}</span>
                 <div>
-                  <h3>Secure customer status</h3>
+                  <h3>{copy.sub042}</h3>
                   <p>
-                    The customer link reads only a trusted server-mediated state. It may safely show pending, ready,
-                    unavailable, or denied, and a receipt cannot manufacture a ready result.
-                  </p>
+                    {copy.sub043}</p>
                 </div>
               </li>
               <li>
-                <span className={submittedStyles.stepNumber}>3</span>
+                <span className={submittedStyles.stepNumber}>{copy.sub044}</span>
                 <div>
-                  <h3>Automatic preparation in the live workflow</h3>
+                  <h3>{copy.sub045}</h3>
                   <p>
-                    Once live generation is operating, successful and verifiable persistence automatically starts an AI
-                    hand-drawn First Preview for every eligible submission. Safety, privacy, access-control,
-                    output-validity, and safe-failure gates remain mandatory before website visibility. No per-image
-                    human pre-approval is required.
-                  </p>
+                    {copy.sub046}</p>
                 </div>
               </li>
               <li>
-                <span className={submittedStyles.stepNumber}>4</span>
+                <span className={submittedStyles.stepNumber}>{copy.sub047}</span>
                 <div>
-                  <h3>Human review and formal decisions</h3>
+                  <h3>{copy.sub048}</h3>
                   <p>
-                    Human intervention during automatic First Preview preparation is exception-only when the system
-                    cannot safely converge. After the preview, structural logic, gemstone orientation and composition,
-                    jewelry construction, manufacturability, correction or regeneration, and customer-feedback
-                    interpretation remain human-reviewed. Paid CAD, gemstone and material confirmation, quotation,
-                    order, payment, and production decisions remain human-controlled.
-                  </p>
+                    {copy.sub049}</p>
                 </div>
               </li>
             </ol>
             <p className={submittedStyles.contactExpectation}>
-              NOVORA will use the submitted email or contact information for follow-up about this Concept Brief. This
-              receipt is not final order, payment, CAD, quote, or production confirmation. No automated customer email is
-              sent from this submission flow.
-            </p>
+              {copy.sub050}</p>
             <div className={submittedStyles.previewEntry}>
               <div>
-                <p className={submittedStyles.previewLabel}>Customer First Preview</p>
-                <h3>Open the guarded First Preview status</h3>
+                <p className={submittedStyles.previewLabel}>{copy.sub051}</p>
+                <h3>{copy.sub052}</h3>
                 <p>
-                  This exact, query-free link is tied to your validated customer reference and a secure server proof.
-                  Opening it does not mean generation has started; only trusted lifecycle evidence can make a First
-                  Preview ready.
-                </p>
+                  {copy.sub053}</p>
               </div>
               <Link className={styles.secondaryButton} href={previewHref}>
-                Open your First Preview
-              </Link>
+                {copy.sub054}</Link>
               <p className={submittedStyles.previewBoundary}>
-                The First Preview is an early concept communication asset. It is not CAD, a final quote, an order,
-                payment approval, production approval, or a manufacturability guarantee, and it may still need later
-                refinement and production-feasibility review.
-              </p>
+                {copy.sub055}</p>
             </div>
           </section>
 
           <div className={styles.actions}>
-            <Link className={styles.primaryButton} href="/design/start">
-              Back to design start
-            </Link>
-            <Link className={styles.secondaryButton} href="/design/brief">
-              Back to concept brief
-            </Link>
+            <Link className={styles.primaryButton} href={localizePath('/design/start', locale)}>
+              {copy.sub004}</Link>
+            <Link className={styles.secondaryButton} href={localizePath('/design/brief', locale)}>
+              {copy.sub007}</Link>
           </div>
         </div>
       </section>

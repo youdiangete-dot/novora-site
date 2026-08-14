@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import styles from "./preview.module.css";
+import { useI18n } from '../../../../lib/i18n/client';
 
 export default function FirstPreviewDesignConfirmation({
   confirmationBinding,
@@ -11,6 +12,8 @@ export default function FirstPreviewDesignConfirmation({
   confirmationBinding: string;
   publicReference: string;
 }) {
+  const { dictionary, locale } = useI18n();
+  const copy = dictionary.firstPreview;
   const [state, setState] = useState<
     "idle" | "submitting" | "success" | "error"
   >("idle");
@@ -31,21 +34,21 @@ export default function FirstPreviewDesignConfirmation({
       const result = (await response.json()) as { message?: unknown };
       if (!response.ok) {
         throw new Error(
-          typeof result.message === "string"
+          locale !== 'zh-TW' && typeof result.message === "string"
             ? result.message
-            : "The design direction could not be confirmed.",
+            : copy.fp023,
         );
       }
       setState("success");
       setMessage(
-        "Design direction confirmed. NOVORA will use this concept direction as the starting point for the next specification step.",
+        copy.fp024,
       );
     } catch (error) {
       setState("error");
       setMessage(
         error instanceof Error
           ? error.message
-          : "The design direction could not be confirmed. Please try again.",
+          : copy.fp025,
       );
     }
   }
@@ -55,20 +58,13 @@ export default function FirstPreviewDesignConfirmation({
       className={styles.confirmationCard}
       aria-labelledby="first-preview-design-confirmation-heading"
     >
-      <p className={styles.confirmationEyebrow}>Selected concept direction</p>
+      <p className={styles.confirmationEyebrow}>{copy.fp026}</p>
       <h2 id="first-preview-design-confirmation-heading">
-        Continue with this design direction
-      </h2>
+        {copy.fp027}</h2>
       <p>
-        Confirm only if this exact First Preview is the concept direction you
-        want NOVORA to use as the starting point. Refinement may still occur,
-        and gemstone, material, size, and other specifications are handled
-        later.
-      </p>
+        {copy.fp028}</p>
       <p>
-        This does not approve CAD, a quotation, payment, an order, or
-        production.
-      </p>
+        {copy.fp029}</p>
       {state === "success" ? (
         <p className={styles.confirmationSuccess} role="status">
           {message}
@@ -82,8 +78,8 @@ export default function FirstPreviewDesignConfirmation({
             type="button"
           >
             {state === "submitting"
-              ? "Confirming…"
-              : "Confirm this design direction"}
+              ? copy.fp030
+              : copy.fp031}
           </button>
           {state === "error" ? (
             <p className={styles.confirmationError} role="alert">

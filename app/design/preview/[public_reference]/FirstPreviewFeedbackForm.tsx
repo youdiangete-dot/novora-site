@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import styles from "./preview.module.css";
+import { useI18n } from '../../../../lib/i18n/client';
 
 export default function FirstPreviewFeedbackForm({
   feedbackBinding,
@@ -12,6 +13,8 @@ export default function FirstPreviewFeedbackForm({
   feedbackBinding: string;
   publicReference: string;
 }) {
+  const { dictionary, locale } = useI18n();
+  const copy = dictionary.feedback;
   const [feedback, setFeedback] = useState("");
   const [state, setState] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -21,7 +24,7 @@ export default function FirstPreviewFeedbackForm({
     const normalized = feedback.trim();
     if (!normalized || normalized.length > 2_000) {
       setState("error");
-      setMessage("Please provide feedback between 1 and 2000 characters.");
+      setMessage(copy.fb001);
       return;
     }
     setState("submitting");
@@ -33,25 +36,25 @@ export default function FirstPreviewFeedbackForm({
         body: JSON.stringify({ feedback: normalized, binding: feedbackBinding }),
       });
       const result = (await response.json()) as { message?: unknown };
-      if (!response.ok) throw new Error(typeof result.message === "string" ? result.message : "Feedback could not be saved.");
+      if (!response.ok) throw new Error(locale === 'zh-TW' ? copy.fb002 : typeof result.message === "string" ? result.message : copy.fb002);
       setState("success");
-      setMessage("Thank you. Your design-direction feedback has been received for this First Preview.");
+      setMessage(copy.fb003);
     } catch (error) {
       setState("error");
-      setMessage(error instanceof Error ? error.message : "Feedback could not be saved. Please try again.");
+      setMessage(error instanceof Error ? error.message : copy.fb004);
     }
   }
 
   return (
     <section className={styles.feedbackCard} aria-labelledby="first-preview-feedback-heading">
-      <p className={styles.feedbackEyebrow}>Design-direction feedback</p>
-      <h2 id="first-preview-feedback-heading">Tell us what you would like to refine</h2>
-      <p>This request guides later human review. It does not approve CAD, create an order, approve a quote, or approve production.</p>
+      <p className={styles.feedbackEyebrow}>{copy.fb005}</p>
+      <h2 id="first-preview-feedback-heading">{copy.fb006}</h2>
+      <p>{copy.fb007}</p>
       {state === "success" ? (
         <p className={styles.feedbackSuccess} role="status">{message}</p>
       ) : (
         <form className={styles.feedbackForm} onSubmit={submit}>
-          <label htmlFor="first-preview-feedback">Your feedback</label>
+          <label htmlFor="first-preview-feedback">{copy.fb008}</label>
           <textarea
             id="first-preview-feedback"
             maxLength={2_000}
@@ -61,9 +64,9 @@ export default function FirstPreviewFeedbackForm({
             value={feedback}
           />
           <div className={styles.feedbackActions}>
-            <span>{feedback.length} / 2000</span>
+            <span>{feedback.length} {copy.fb009}</span>
             <button disabled={state === "submitting"} type="submit">
-              {state === "submitting" ? "Submitting…" : "Submit feedback"}
+              {state === "submitting" ? copy.fb010 : copy.fb011}
             </button>
           </div>
           {state === "error" ? <p className={styles.feedbackError} role="alert">{message}</p> : null}

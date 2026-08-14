@@ -3,51 +3,55 @@
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import styles from './HomeCarousel.module.css';
+import { useI18n } from '../lib/i18n/client';
+import { formatMessage } from '../lib/i18n/format';
 
 const slides = [
   {
     src: '/assets/carousel_ring.png',
-    alt: 'Custom NOVORA ring concept',
-    title: 'Ring concept',
+    altKey: 'home001',
+    titleKey: 'home002',
   },
   {
     src: '/assets/carousel_necklace.png',
-    alt: 'Custom NOVORA necklace concept',
-    title: 'Necklace concept',
+    altKey: 'home003',
+    titleKey: 'home004',
   },
   {
     src: '/assets/carousel_chain_bracelet.png',
-    alt: 'Custom NOVORA chain bracelet concept',
-    title: 'Chain bracelet',
+    altKey: 'home005',
+    titleKey: 'home006',
   },
   {
     src: '/assets/carousel_bangle.png',
-    alt: 'Custom NOVORA bangle concept',
-    title: 'Bangle concept',
+    altKey: 'home007',
+    titleKey: 'home008',
   },
   {
     src: '/assets/carousel_pendant.png',
-    alt: 'Custom NOVORA pendant concept',
-    title: 'Pendant concept',
+    altKey: 'home009',
+    titleKey: 'home010',
   },
   {
     src: '/assets/carousel_stud_earrings.png',
-    alt: 'Custom NOVORA stud earrings concept',
-    title: 'Stud earrings',
+    altKey: 'home011',
+    titleKey: 'home012',
   },
   {
     src: '/assets/carousel_drop_earrings.png',
-    alt: 'Custom NOVORA drop earrings concept',
-    title: 'Drop earrings',
+    altKey: 'home013',
+    titleKey: 'home014',
   },
   {
     src: '/assets/carousel_emerald_cut_eternity_ring.png',
-    alt: 'Custom NOVORA emerald cut eternity ring concept',
-    title: 'Emerald eternity',
+    altKey: 'home015',
+    titleKey: 'home016',
   },
-];
+] as const;
 
 export default function HomeCarousel() {
+  const { dictionary } = useI18n();
+  const copy = dictionary.home;
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
@@ -67,7 +71,7 @@ export default function HomeCarousel() {
   };
 
   return (
-    <div className={styles.carousel} aria-label="NOVORA illustrative custom jewelry concept carousel">
+    <div className={styles.carousel} aria-label={copy.home033}>
       <div className={styles.stage}>
         {slides.map((slide, index) => (
           <div
@@ -75,20 +79,20 @@ export default function HomeCarousel() {
             className={`${styles.slide} ${index === activeIndex ? styles.activeSlide : ''}`}
             aria-hidden={index !== activeIndex}
           >
-            <Image src={slide.src} alt={slide.alt} fill priority={index === 0} sizes="(max-width: 1100px) 100vw, 50vw" />
+            <Image src={slide.src} alt={copy[slide.altKey]} fill priority={index === 0} sizes="(max-width: 1100px) 100vw, 50vw" />
           </div>
         ))}
 
         <div className={styles.caption}>
-          <span>Illustrative concept preview</span>
-          <strong>{slides[activeIndex].title}</strong>
+          <span>{copy.home035}</span>
+          <strong>{copy[slides[activeIndex].titleKey]}</strong>
         </div>
 
         <button
           className={`${styles.navButton} ${styles.previous}`}
           type="button"
           onClick={showPrevious}
-          aria-label="Previous illustrative concept image"
+          aria-label={copy.home036}
         >
           {'<'}
         </button>
@@ -96,20 +100,20 @@ export default function HomeCarousel() {
           className={`${styles.navButton} ${styles.next}`}
           type="button"
           onClick={showNext}
-          aria-label="Next illustrative concept image"
+          aria-label={copy.home037}
         >
           {'>'}
         </button>
       </div>
 
-      <div className={styles.dots} aria-label="Select illustrative concept image">
+      <div className={styles.dots} aria-label={copy.home038}>
         {slides.map((slide, index) => (
           <button
             key={slide.src}
             className={`${styles.dot} ${index === activeIndex ? styles.activeDot : ''}`}
             type="button"
             onClick={() => setActiveIndex(index)}
-            aria-label={`Show ${slide.title} concept image`}
+            aria-label={formatMessage(copy.home039, { value0: copy[slide.titleKey] })}
             aria-current={index === activeIndex}
           />
         ))}

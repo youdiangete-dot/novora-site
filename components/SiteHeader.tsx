@@ -1,29 +1,36 @@
 import Link from 'next/link';
+import LanguageSwitcher from './LanguageSwitcher';
 import styles from './SiteHeader.module.css';
+import { getRequestI18n } from '../lib/i18n/request';
+import { localizePath } from '../lib/i18n/routing';
 
 const navItems = [
-  { label: 'How It Works', href: '/#how-it-works' },
-  { label: 'Concept vs CAD', href: '/#concept-vs-cad' },
-  { label: 'CAD Process', href: '/design/pro-cad' },
-];
+  { labelKey: 'nav001', href: '/#how-it-works' },
+  { labelKey: 'nav002', href: '/#concept-vs-cad' },
+  { labelKey: 'nav003', href: '/design/pro-cad' },
+] as const;
 
-export default function SiteHeader() {
+export default async function SiteHeader() {
+  const { dictionary, locale } = await getRequestI18n();
+  const copy = dictionary.navigation;
+  const accessibilityCopy = dictionary.accessibility;
   return (
     <header className={styles.header}>
       <div className={`container ${styles.inner}`}>
-        <Link href="/" className={styles.brand} aria-label="NOVORA home">
-          NOVORA
-        </Link>
-        <nav aria-label="Main navigation" className={styles.nav}>
+        <Link href={localizePath('/', locale)} className={styles.brand} aria-label={copy.nav004}>
+          {copy.nav005}</Link>
+        <nav aria-label={accessibilityCopy.mainNavigation} className={styles.nav}>
           {navItems.map((item) => (
-            <Link key={item.label} href={item.href}>
-              {item.label}
+            <Link key={item.href} href={localizePath(item.href, locale)}>
+              {copy[item.labelKey]}
             </Link>
           ))}
         </nav>
-        <Link href="/design/start" className="btn" aria-label="Start a Concept Brief">
-          Start a Concept Brief
-        </Link>
+        <div className={styles.actions}>
+          <LanguageSwitcher />
+          <Link href={localizePath('/design/start', locale)} className="btn" aria-label={copy.nav007}>
+            {copy.nav007}</Link>
+        </div>
       </div>
     </header>
   );
