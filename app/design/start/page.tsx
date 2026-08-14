@@ -3,88 +3,104 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import styles from './start.module.css';
+import { useI18n } from '../../../lib/i18n/client';
+import type { Dictionary } from '../../../lib/i18n/dictionaries';
+import { localizePath } from '../../../lib/i18n/routing';
+
+type StartCopyKey = keyof Dictionary['designStart'];
 
 type Option = {
   value: string;
-  label: string;
-  detail: string;
+  labelKey: StartCopyKey;
+  detailKey: StartCopyKey;
   asset: string;
 };
 
 const recipients: Option[] = [
-  { value: 'myself', label: 'Myself', detail: 'A piece for your own story', asset: '/assets/icon_recipient_myself.png' },
-  { value: 'partner', label: 'Partner', detail: 'Love, anniversary, or milestone', asset: '/assets/icon_recipient_partner.png' },
-  { value: 'family-friend', label: 'Family/Friend', detail: 'A thoughtful personal gift', asset: '/assets/icon_recipient_family_friend.png' },
-  { value: 'commemorative', label: 'Commemorative', detail: 'Memory, symbol, or tribute', asset: '/assets/icon_recipient_commemorative.png' },
+  { value: 'myself', labelKey: 'ds001', detailKey: 'ds002', asset: '/assets/icon_recipient_myself.png' },
+  { value: 'partner', labelKey: 'ds003', detailKey: 'ds004', asset: '/assets/icon_recipient_partner.png' },
+  { value: 'family-friend', labelKey: 'ds005', detailKey: 'ds006', asset: '/assets/icon_recipient_family_friend.png' },
+  { value: 'commemorative', labelKey: 'ds007', detailKey: 'ds008', asset: '/assets/icon_recipient_commemorative.png' },
 ];
 
 const jewelryTypes: Option[] = [
-  { value: 'ring', label: 'Ring', detail: 'Center stone, band, or statement', asset: '/assets/icon_jewelry_ring.png' },
-  { value: 'pendant_necklace', label: 'Pendant / Necklace', detail: 'Pendant only, pendant with a matching chain, or a standalone necklace.', asset: '/assets/icon_jewelry_pendant.png' },
-  { value: 'bracelet_bangle', label: 'Bracelet / Bangle', detail: 'Chain bracelet, tennis bracelet, bangle, cuff, charm, or ID bracelet', asset: '/assets/icon_jewelry_bracelet.png' },
-  { value: 'earrings', label: 'Earrings', detail: 'Studs, drops, hoops, huggies, or custom earrings', asset: '/assets/icon_jewelry_earrings.png' },
-  { value: 'other_custom', label: 'Other / custom piece', detail: 'Cufflinks, brooches, pins, hair pieces, tags, keepsakes, or custom forms', asset: '/assets/icon_jewelry_other.png' },
+  { value: 'ring', labelKey: 'ds009', detailKey: 'ds010', asset: '/assets/icon_jewelry_ring.png' },
+  { value: 'pendant_necklace', labelKey: 'ds011', detailKey: 'ds012', asset: '/assets/icon_jewelry_pendant.png' },
+  { value: 'bracelet_bangle', labelKey: 'ds013', detailKey: 'ds014', asset: '/assets/icon_jewelry_bracelet.png' },
+  { value: 'earrings', labelKey: 'ds015', detailKey: 'ds016', asset: '/assets/icon_jewelry_earrings.png' },
+  { value: 'other_custom', labelKey: 'ds017', detailKey: 'ds018', asset: '/assets/icon_jewelry_other.png' },
 ];
 
 const styleOptions: Option[] = [
-  { value: 'minimal', label: 'Minimal', detail: 'Clean lines and quiet detail', asset: '/assets/icon_style_minimal.png' },
-  { value: 'organic', label: 'Organic', detail: 'Nature-inspired movement', asset: '/assets/icon_style_organic.png' },
-  { value: 'vintage', label: 'Vintage-inspired', detail: 'Heirloom mood, modern finish', asset: '/assets/icon_style_vintage.png' },
-  { value: 'bold-modern', label: 'Bold modern', detail: 'Strong silhouette and presence', asset: '/assets/icon_style_bold_modern.png' },
-  { value: 'your-style', label: 'Your Style', detail: 'Upload photos, sketches, references, or your own direction', asset: '/assets/icon_style_your_style.png' },
+  { value: 'minimal', labelKey: 'ds019', detailKey: 'ds020', asset: '/assets/icon_style_minimal.png' },
+  { value: 'organic', labelKey: 'ds021', detailKey: 'ds022', asset: '/assets/icon_style_organic.png' },
+  { value: 'vintage', labelKey: 'ds023', detailKey: 'ds024', asset: '/assets/icon_style_vintage.png' },
+  { value: 'bold-modern', labelKey: 'ds025', detailKey: 'ds026', asset: '/assets/icon_style_bold_modern.png' },
+  { value: 'your-style', labelKey: 'ds027', detailKey: 'ds028', asset: '/assets/icon_style_your_style.png' },
 ];
 
 const budgets = ['Under USD 500', 'USD 500-1200', 'USD 1200-2500', 'USD 2500+'];
-const checklist = ['Create your guided Concept Brief', 'NOVORA studio review and follow-up', 'Offline CAD and quotation discussion later'];
+const budgetCopyKeys: Record<(typeof budgets)[number], StartCopyKey> = {
+  'Under USD 500': 'budgetUnder500',
+  'USD 500-1200': 'budget500To1200',
+  'USD 1200-2500': 'budget1200To2500',
+  'USD 2500+': 'budget2500Plus',
+};
+const checklist: StartCopyKey[] = ['checklistBrief', 'checklistReview', 'checklistCad'];
 
 export default function DesignStartPage() {
+  const { dictionary, locale } = useI18n();
+  const copy = dictionary.designStart;
   const [selectedRecipient, setSelectedRecipient] = useState(recipients[0].value);
   const [selectedJewelryType, setSelectedJewelryType] = useState(jewelryTypes[0].value);
   const [selectedStyle, setSelectedStyle] = useState(styleOptions[0].value);
   const [selectedBudget, setSelectedBudget] = useState(budgets[1]);
 
-  const recipientLabel = recipients.find((item) => item.value === selectedRecipient)?.label;
-  const jewelryLabel = jewelryTypes.find((item) => item.value === selectedJewelryType)?.label;
-  const styleLabel = styleOptions.find((item) => item.value === selectedStyle)?.label;
+  const recipientLabelKey = recipients.find((item) => item.value === selectedRecipient)?.labelKey;
+  const jewelryLabelKey = jewelryTypes.find((item) => item.value === selectedJewelryType)?.labelKey;
+  const styleLabelKey = styleOptions.find((item) => item.value === selectedStyle)?.labelKey;
+  const recipientLabel = recipientLabelKey ? copy[recipientLabelKey] : '';
+  const jewelryLabel = jewelryLabelKey ? copy[jewelryLabelKey] : '';
+  const styleLabel = styleLabelKey ? copy[styleLabelKey] : '';
   const conceptParams = new URLSearchParams({
     pieceType: selectedJewelryType,
     recipient: selectedRecipient,
     style: selectedStyle,
     budget: selectedBudget,
   });
-  const conceptHref = `/design/concept?${conceptParams.toString()}`;
+  const conceptHref = localizePath(`/design/concept?${conceptParams.toString()}`, locale);
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
-          <p className={styles.step}>Step 1 - Design Intake</p>
-          <h1>Build your custom jewelry brief</h1>
+          <p className={styles.step}>{copy.ds029}</p>
+          <h1>{copy.ds030}</h1>
         </div>
-        <p className={styles.headerNote}>A compact studio flow for first-time custom jewelry buyers.</p>
+        <p className={styles.headerNote}>{copy.ds031}</p>
       </header>
 
       <section className={styles.layout}>
         <div className={styles.leftCol}>
           <SelectionSection
-            title="Recipient"
-            subtitle="Who is it for?"
+            title={copy.ds032}
+            subtitle={copy.ds033}
             options={recipients}
             selected={selectedRecipient}
             onSelect={setSelectedRecipient}
           />
 
           <SelectionSection
-            title="Piece type"
-            subtitle="Choose a starting form"
+            title={copy.ds034}
+            subtitle={copy.ds035}
             options={jewelryTypes}
             selected={selectedJewelryType}
             onSelect={setSelectedJewelryType}
           />
 
           <SelectionSection
-            title="Style preference"
-            subtitle="Set the visual tone"
+            title={copy.ds036}
+            subtitle={copy.ds037}
             options={styleOptions}
             selected={selectedStyle}
             onSelect={setSelectedStyle}
@@ -92,8 +108,8 @@ export default function DesignStartPage() {
 
           <article className={styles.cardCompact}>
             <div className={styles.cardHead}>
-              <h2>Budget</h2>
-              <span>Choose a planning range</span>
+              <h2>{copy.ds038}</h2>
+              <span>{copy.ds039}</span>
             </div>
             <div className={styles.budgetGrid}>
               {budgets.map((item) => (
@@ -104,7 +120,7 @@ export default function DesignStartPage() {
                   className={`${styles.budgetButton} ${selectedBudget === item ? styles.budgetSelected : ''}`}
                   onClick={() => setSelectedBudget(item)}
                 >
-                  {item}
+                  {copy[budgetCopyKeys[item]]}
                 </button>
               ))}
             </div>
@@ -112,16 +128,14 @@ export default function DesignStartPage() {
 
           <article className={styles.cardCompact}>
             <div className={styles.cardHead}>
-              <h2>Reference images</h2>
-              <span>Optional at final brief submission</span>
+              <h2>{copy.ds040}</h2>
+              <span>{copy.ds041}</span>
             </div>
             <div className={styles.referenceArea}>
-              <span className={styles.referenceIcon} aria-hidden="true">-&gt;</span>
-              <strong>References can be added later on the final brief page.</strong>
+              <span className={styles.referenceIcon} aria-hidden="true">{copy.ds042}</span>
+              <strong>{copy.ds043}</strong>
               <p>
-                Start with the direction here. The saved upload step happens before you submit the Concept Brief for
-                studio review and concept-direction follow-up.
-              </p>
+                {copy.ds044}</p>
             </div>
           </article>
         </div>
@@ -130,29 +144,27 @@ export default function DesignStartPage() {
           <div className={styles.stickyBox}>
             <article className={styles.panelCardHero}>
               <div>
-                <h3>Preview lane</h3>
-                <p>Illustrative previews help you shape the concept direction for your brief.</p>
+                <h3>{copy.ds045}</h3>
+                <p>{copy.ds046}</p>
               </div>
-              <img src="/assets/novora_ai_sketch_pendant.png" alt="Illustrative pendant concept preview" />
+              <img src="/assets/novora_ai_sketch_pendant.png" alt={copy.ds047} />
             </article>
 
             <article className={styles.panelCard}>
-              <h3>Brief summary</h3>
+              <h3>{copy.ds048}</h3>
               <dl className={styles.summaryList}>
-                <div><dt>Recipient</dt><dd>{recipientLabel}</dd></div>
-                <div><dt>Piece</dt><dd>{jewelryLabel}</dd></div>
-                <div><dt>Style</dt><dd>{styleLabel}</dd></div>
-                <div><dt>Budget</dt><dd>{selectedBudget}</dd></div>
+                <div><dt>{copy.ds032}</dt><dd>{recipientLabel}</dd></div>
+                <div><dt>{copy.ds049}</dt><dd>{jewelryLabel}</dd></div>
+                <div><dt>{copy.ds050}</dt><dd>{styleLabel}</dd></div>
+                <div><dt>{copy.ds038}</dt><dd>{copy[budgetCopyKeys[selectedBudget]]}</dd></div>
               </dl>
-              <h3 className={styles.nextTitle}>What happens next</h3>
+              <h3 className={styles.nextTitle}>{copy.ds051}</h3>
               <ul>
-                {checklist.map((item) => <li key={item}>{item}</li>)}
+                {checklist.map((item) => <li key={item}>{copy[item]}</li>)}
               </ul>
               <p className={styles.note}>
-                Your Concept Brief goes to NOVORA for studio review. Professional CAD is a separate paid step discussed
-                later.
-              </p>
-              <Link href={conceptHref} className={styles.cta}>Continue to Concept</Link>
+                {copy.ds052}</p>
+              <Link href={conceptHref} className={styles.cta}>{copy.ds053}</Link>
             </article>
           </div>
         </aside>
@@ -174,6 +186,8 @@ function SelectionSection({
   selected: string;
   onSelect: (value: string) => void;
 }) {
+  const { dictionary } = useI18n();
+  const copy = dictionary.designStart;
   return (
     <article className={styles.card}>
       <div className={styles.cardHead}>
@@ -196,10 +210,10 @@ function SelectionSection({
                 <img src={item.asset} alt="" />
               </span>
               <span className={styles.optionText}>
-                <strong>{item.label}</strong>
-                <small>{item.detail}</small>
+                <strong>{copy[item.labelKey]}</strong>
+                <small>{copy[item.detailKey]}</small>
               </span>
-              <span className={styles.checkMark} aria-hidden="true">Selected</span>
+              <span className={styles.checkMark} aria-hidden="true">{copy.ds054}</span>
             </button>
           );
         })}

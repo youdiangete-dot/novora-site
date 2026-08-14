@@ -1,31 +1,31 @@
 import type { SafeCommercialQuotation } from "../../../../lib/server/commercial-quotation";
 
 import styles from "./preview.module.css";
+import { formatDateOnly } from '../../../../lib/i18n/format';
+import { getRequestI18n } from '../../../../lib/i18n/request';
 
-function formatIssuedDate(value: string) {
-  return value.slice(0, 10);
-}
-
-export default function CommercialQuotation({
+export default async function CommercialQuotation({
   quotation,
 }: {
   quotation: SafeCommercialQuotation;
 }) {
+  const { dictionary, locale } = await getRequestI18n();
+  const copy = dictionary.quotation;
   return (
     <section className={styles.quotationCard} aria-labelledby="commercial-quotation-heading">
-      <p className={styles.quotationEyebrow}>Confirmed-specification quotation</p>
+      <p className={styles.quotationEyebrow}>{copy.qt001}</p>
       <div className={styles.quotationHeading}>
         <div>
-          <h2 id="commercial-quotation-heading">NOVORA quotation</h2>
+          <h2 id="commercial-quotation-heading">{copy.qt002}</h2>
           <p>{quotation.quoteReference}</p>
         </div>
-        <span>Issued {formatIssuedDate(quotation.issuedAt)}</span>
+        <span>{copy.qt003}{formatDateOnly(quotation.issuedAt, locale)}</span>
       </div>
 
-      <div className={styles.quotationTable} role="table" aria-label="Quotation line items">
+      <div className={styles.quotationTable} role="table" aria-label={copy.qt004}>
         <div className={styles.quotationTableHeader} role="row">
-          <span role="columnheader">Item</span>
-          <span role="columnheader">Amount ({quotation.quotation.currency})</span>
+          <span role="columnheader">{copy.qt005}</span>
+          <span role="columnheader">{copy.qt006}{quotation.quotation.currency}{copy.qt007}</span>
         </div>
         {quotation.quotation.lineItems.map((item, index) => (
           <div className={styles.quotationTableRow} role="row" key={`${item.description}-${index}`}>
@@ -34,7 +34,7 @@ export default function CommercialQuotation({
           </div>
         ))}
         <div className={styles.quotationTotal} role="row">
-          <strong role="cell">Total</strong>
+          <strong role="cell">{copy.qt008}</strong>
           <strong role="cell">
             {quotation.quotation.currency} {quotation.quotation.totalAmount}
           </strong>
@@ -43,7 +43,7 @@ export default function CommercialQuotation({
 
       {quotation.quotation.validUntil ? (
         <p className={styles.quotationMeta}>
-          Valid until: <strong>{quotation.quotation.validUntil}</strong>
+          {copy.qt009}<strong>{formatDateOnly(quotation.quotation.validUntil, locale)}</strong>
         </p>
       ) : null}
       {quotation.quotation.note ? (
@@ -51,10 +51,9 @@ export default function CommercialQuotation({
       ) : null}
 
       <div className={styles.quotationBoundary}>
-        <p>This quotation is based on your latest confirmed specification.</p>
+        <p>{copy.qt010}</p>
         <p>
-          Viewing it does not make a payment, place an order, approve CAD, or approve production.
-        </p>
+          {copy.qt011}</p>
       </div>
     </section>
   );

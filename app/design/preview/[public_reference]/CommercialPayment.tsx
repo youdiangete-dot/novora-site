@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from '../../../../lib/i18n/client';
 
 type CustomerPaymentState = Readonly<{
   paymentReference: string;
@@ -33,6 +34,8 @@ export default function CommercialPayment({
   providerConfigured,
   initialPayment,
 }: Props) {
+  const { dictionary, locale } = useI18n();
+  const copy = dictionary.paymentShell;
   const [payment, setPayment] = useState(initialPayment);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -62,9 +65,9 @@ export default function CommercialPayment({
       };
       if (!response.ok || result.ok !== true || !result.payment) {
         setMessage(
-          typeof result.message === "string"
+          locale !== 'zh-TW' && typeof result.message === "string"
             ? result.message
-            : "Secure payment is temporarily unavailable.",
+            : copy.pay001,
         );
         return;
       }
@@ -73,10 +76,10 @@ export default function CommercialPayment({
       if (result.payment.status === "pending" && checkoutUrl) {
         window.location.assign(checkoutUrl);
       } else if (result.payment.status !== "paid") {
-        setMessage("Secure payment is temporarily unavailable.");
+        setMessage(copy.pay001);
       }
     } catch {
-      setMessage("Secure payment is temporarily unavailable.");
+      setMessage(copy.pay001);
     } finally {
       setSubmitting(false);
     }
@@ -84,22 +87,19 @@ export default function CommercialPayment({
 
   return (
     <section className="commercialPaymentCard" aria-labelledby="commercial-payment-heading">
-      <p className="commercialPaymentEyebrow">Secure payment</p>
+      <p className="commercialPaymentEyebrow">{copy.pay002}</p>
       <h2 id="commercial-payment-heading">
-        {payment?.status === "paid" ? "Payment received" : "Payment for this quotation"}
+        {payment?.status === "paid" ? copy.pay003 : copy.pay004}
       </h2>
       {payment?.status === "paid" ? (
         <p className="commercialPaymentSuccess" role="status">
-          Payment received for the exact current quotation.
-        </p>
+          {copy.pay005}</p>
       ) : payment?.status === "failed" ? (
         <p role="status">
-          The previous payment attempt was not completed. No payment success or order has been recorded.
-        </p>
+          {copy.pay006}</p>
       ) : (
         <p>
-          Continue only when you are ready to use the configured secure payment channel.
-        </p>
+          {copy.pay007}</p>
       )}
       {payment?.status !== "paid" &&
       (providerConfigured || safeCheckoutUrl(payment?.checkoutUrl)) ? (
@@ -108,17 +108,15 @@ export default function CommercialPayment({
           onClick={continueToPayment}
           disabled={submitting}
         >
-          {submitting ? "Preparing secure payment…" : "Continue to secure payment"}
+          {submitting ? copy.pay008 : copy.pay009}
         </button>
       ) : null}
       {message ? <p className="commercialPaymentError" role="alert">{message}</p> : null}
       <div className="commercialPaymentBoundary">
         <p>
-          Payment confirmation does not itself create a commercial order.
-        </p>
+          {copy.pay010}</p>
         <p>
-          NOVORA creates the durable order in a separate later stage before CAD and production handling.
-        </p>
+          {copy.pay011}</p>
       </div>
     </section>
   );

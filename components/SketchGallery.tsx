@@ -1,10 +1,9 @@
 import styles from './SketchGallery.module.css';
+import { getRequestI18n } from '../lib/i18n/request';
+import { formatMessage } from '../lib/i18n/format';
 
 type SketchGalleryItem = {
-  title: string;
-  pieceType: string;
-  tags: string[];
-  boundaryLabel: string;
+  copyIndex: number;
   variant: 'halo' | 'pendant' | 'band' | 'threeStone' | 'pearlDrop' | 'emeraldCut';
   imageSrc: string;
 };
@@ -12,75 +11,62 @@ type SketchGalleryItem = {
 // Future replacement can come from an approved `/api/public/sketch-gallery` endpoint with approved, non-sensitive items only.
 const sketchGalleryItems: SketchGalleryItem[] = [
   {
-    title: 'Oval halo engagement ring concept',
-    pieceType: 'Ring',
-    tags: ['Oval center', 'Soft halo', 'Refined'],
-    boundaryLabel: 'Concept sketch only',
+    copyIndex: 0,
     variant: 'halo',
     imageSrc: '/images/novora-early-sketch-assets/01-oval-halo-engagement-ring-early-sketch.png',
   },
   {
-    title: 'Modern lab diamond pendant concept',
-    pieceType: 'Pendant',
-    tags: ['Lab diamond', 'Minimal', 'Daily wear'],
-    boundaryLabel: 'Concept direction',
+    copyIndex: 1,
     variant: 'pendant',
     imageSrc: '/images/novora-early-sketch-assets/02-modern-lab-diamond-pendant-early-sketch.png',
   },
   {
-    title: 'Minimal pave band concept',
-    pieceType: 'Band',
-    tags: ['Pave detail', 'Low profile', 'Quiet shine'],
-    boundaryLabel: 'Not CAD or quote',
+    copyIndex: 2,
     variant: 'band',
     imageSrc: '/images/novora-early-sketch-assets/03-minimal-pave-band-early-sketch.png',
   },
   {
-    title: 'Romantic three-stone ring concept',
-    pieceType: 'Ring',
-    tags: ['Three stone', 'Balanced', 'Personal'],
-    boundaryLabel: 'Studio review first',
+    copyIndex: 3,
     variant: 'threeStone',
     imageSrc: '/images/novora-early-sketch-assets/04-romantic-three-stone-ring-early-sketch.png',
   },
   {
-    title: 'Sculptural pearl drop earring concept',
-    pieceType: 'Earrings',
-    tags: ['Pearl drop', 'Sculptural', 'Warm line'],
-    boundaryLabel: 'Concept sketch only',
+    copyIndex: 4,
     variant: 'pearlDrop',
     imageSrc: '/images/novora-early-sketch-assets/05-sculptural-pearl-drop-earring-early-sketch.png',
   },
   {
-    title: 'Art deco emerald-cut ring concept',
-    pieceType: 'Ring',
-    tags: ['Emerald cut', 'Art deco', 'Architectural'],
-    boundaryLabel: 'Concept direction',
+    copyIndex: 5,
     variant: 'emeraldCut',
     imageSrc: '/images/novora-early-sketch-assets/06-art-deco-emerald-cut-ring-early-sketch.png',
   },
 ];
 
-function SketchPreview({ imageSrc, title, variant }: Pick<SketchGalleryItem, 'imageSrc' | 'title' | 'variant'>) {
+async function SketchPreview({ imageSrc, title, variant }: { imageSrc: string; title: string; variant: SketchGalleryItem['variant'] }) {
+  const { dictionary } = await getRequestI18n();
+  const copy = dictionary.home;
   return (
     <div className={`${styles.preview} ${styles[variant]}`}>
-      <img className={styles.previewImage} src={imageSrc} alt={`Mock hand-drawn preview for ${title}`} loading="lazy" />
+      <img className={styles.previewImage} src={imageSrc} alt={formatMessage(copy.home040, { value0: title })} loading="lazy" />
     </div>
   );
 }
 
-function SketchCard({ item, isDuplicate = false }: { item: SketchGalleryItem; isDuplicate?: boolean }) {
+async function SketchCard({ item, isDuplicate = false }: { item: SketchGalleryItem; isDuplicate?: boolean }) {
+  const { dictionary } = await getRequestI18n();
+  const copy = dictionary.home;
+  const itemCopy = copy.sketchGalleryItems[item.copyIndex];
   return (
     <article className={`${styles.card} ${isDuplicate ? styles.duplicateCard : ''}`} aria-hidden={isDuplicate}>
-      <SketchPreview imageSrc={item.imageSrc} title={item.title} variant={item.variant} />
+      <SketchPreview imageSrc={item.imageSrc} title={itemCopy.title} variant={item.variant} />
       <div className={styles.cardBody}>
         <div className={styles.cardHeader}>
-          <span>{item.pieceType}</span>
-          <span>{item.boundaryLabel}</span>
+          <span>{itemCopy.pieceType}</span>
+          <span>{itemCopy.boundaryLabel}</span>
         </div>
-        <h3>{item.title}</h3>
-        <ul className={styles.tags} aria-label={`${item.title} style tags`}>
-          {item.tags.map((tag) => (
+        <h3>{itemCopy.title}</h3>
+        <ul className={styles.tags} aria-label={formatMessage(copy.home041, { value0: itemCopy.title })}>
+          {itemCopy.tags.map((tag) => (
             <li key={tag}>{tag}</li>
           ))}
         </ul>
@@ -89,19 +75,19 @@ function SketchCard({ item, isDuplicate = false }: { item: SketchGalleryItem; is
   );
 }
 
-export default function SketchGallery() {
+export default async function SketchGallery() {
+  const { dictionary } = await getRequestI18n();
+  const copy = dictionary.home;
   return (
     <section className={styles.gallerySection} aria-labelledby="sketch-gallery-heading">
       <div className={styles.sectionHeader}>
-        <p className={styles.eyebrow}>Curated mock concept sketch preview</p>
-        <h2 id="sketch-gallery-heading">From idea notes to refined sketch direction.</h2>
+        <p className={styles.eyebrow}>{copy.home042}</p>
+        <h2 id="sketch-gallery-heading">{copy.home043}</h2>
         <p>
-          Mock previews of the kind of concept-only visual language NOVORA can shape before any later CAD, quotation,
-          order, or production approval discussion.
-        </p>
+          {copy.home044}</p>
       </div>
 
-      <div className={styles.marquee} aria-label="Curated mock concept sketch gallery">
+      <div className={styles.marquee} aria-label={copy.home045}>
         <div className={styles.track}>
           {sketchGalleryItems.map((item) => (
             <SketchCard key={item.variant} item={item} />

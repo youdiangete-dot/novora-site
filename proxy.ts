@@ -1,4 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  INTERNAL_LOCALE_HEADER,
+  type SupportedLocale,
+} from "./lib/i18n/config";
+import {
+  isPhase1CustomerPath,
+  localizePath,
+  parseLocalePath,
+} from "./lib/i18n/routing";
 
 const PUBLIC_REFERENCE_PATTERN =
   /^NOVORA-CB-(\d{4})(\d{2})(\d{2})-[A-Z0-9]{4}$/;
@@ -67,8 +76,16 @@ function isValidPublicReference(value: string): boolean {
   return day <= daysInMonth[month - 1];
 }
 
-function sanitizedForwardHeaders(request: NextRequest): Headers {
+function sanitizedForwardHeaders(
+  request: NextRequest,
+  locale?: SupportedLocale,
+): Headers {
   const forwarded = new Headers(request.headers);
+
+  forwarded.delete(INTERNAL_LOCALE_HEADER);
+  if (locale) {
+    forwarded.set(INTERNAL_LOCALE_HEADER, locale);
+  }
 
   for (const name of Object.values(INTERNAL_TRUSTED_HEADERS)) {
     forwarded.delete(name);
@@ -217,8 +234,20 @@ export function proxy(request: NextRequest) {
   if (auditHarnessResponse) return auditHarnessResponse;
 
   const pathname = request.nextUrl.pathname;
-  const previewLike = PREVIEW_LIKE_PATTERN.test(pathname);
-  const previewMatch = PREVIEW_CANONICAL_CANDIDATE_PATTERN.exec(pathname);
+  const localePath = parseLocalePath(pathname);
+  const routingPathname = localePath.pathname;
+  const previewLike = PREVIEW_LIKE_PATTERN.test(routingPathname);
+  const previewMatch =
+    PREVIEW_CANONICAL_CANDIDATE_PATTERN.exec(routingPathname);
+  const phase1CustomerPath = isPhase1CustomerPath(routingPathname);
+
+  if (
+    localePath.hasLocalePrefix &&
+    !phase1CustomerPath &&
+    !previewLike
+  ) {
+    return safeNotFound();
+  }
 
   if (
     previewLike &&
@@ -232,14 +261,24 @@ export function proxy(request: NextRequest) {
       return safeNotFound();
     }
     const canonicalPath = `/design/preview/${previewMatch[1]}`;
-    if (pathname !== canonicalPath || request.nextUrl.search !== "") {
-      return redirectWithoutUnsafeState(request, canonicalPath);
+    if (
+      routingPathname !== canonicalPath ||
+      request.nextUrl.search !== ""
+    ) {
+      return redirectWithoutUnsafeState(
+        request,
+        localizePath(canonicalPath, localePath.locale),
+      );
     }
   } else if (previewLike && request.nextUrl.search !== "") {
     return safeNotFound();
+  } else if (localePath.hasLocalePrefix && previewLike) {
+    return safeNotFound();
   }
 
-  const forwarded = sanitizedForwardHeaders(request);
+  const resolvedCustomerLocale =
+    phase1CustomerPath || previewLike ? localePath.locale : undefined;
+  const forwarded = sanitizedForwardHeaders(request, resolvedCustomerLocale);
   const customerAssetMatch = CUSTOMER_ASSET_PATTERN.exec(pathname);
 
   if (customerAssetMatch) {
@@ -277,6 +316,18 @@ export function proxy(request: NextRequest) {
       headers: {
         "Cache-Control": "private, no-store",
       },
+    });
+  }
+
+  if (localePath.hasLocalePrefix) {
+    const internalRoute = request.nextUrl.clone();
+    internalRoute.pathname = routingPathname;
+
+    return NextResponse.rewrite(internalRoute, {
+      request: { headers: forwarded },
+      headers: previewLike
+        ? { "Cache-Control": "private, no-store" }
+        : undefined,
     });
   }
 

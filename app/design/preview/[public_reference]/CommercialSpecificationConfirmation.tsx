@@ -3,9 +3,11 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 
 import styles from "./preview.module.css";
+import { useI18n } from '../../../../lib/i18n/client';
+import type { Dictionary } from '../../../../lib/i18n/dictionaries';
 
 type CommercialSpecificationInputField = Readonly<{
-  key: string;
+  key: keyof Dictionary['commercialSpecification']['fieldLabels'];
   label: string;
   value: string;
   maxLength: number;
@@ -22,6 +24,8 @@ export default function CommercialSpecificationConfirmation({
   items: CommercialSpecificationInputField[];
   publicReference: string;
 }) {
+  const { dictionary, locale } = useI18n();
+  const copy = dictionary.commercialSpecification;
   const [specification, setSpecification] = useState<Record<string, string>>(
     () => Object.fromEntries(items.map((item) => [item.key, item.value])),
   );
@@ -47,35 +51,31 @@ export default function CommercialSpecificationConfirmation({
       const result = (await response.json()) as { message?: unknown };
       if (!response.ok) {
         throw new Error(
-          typeof result.message === "string"
+          locale !== 'zh-TW' && typeof result.message === "string"
             ? result.message
-            : "The specifications could not be confirmed.",
+            : copy.cs001,
         );
       }
       setState("success");
       setMessage(
-        "Specifications confirmed. NOVORA may use this exact specification state to prepare a quotation.",
+        copy.cs002,
       );
     } catch (error) {
       setState("error");
       setMessage(
         error instanceof Error
           ? error.message
-          : "The specifications could not be confirmed. Please try again.",
+          : copy.cs003,
       );
     }
   }
 
   return (
     <section className={styles.specificationCard} aria-labelledby="commercial-specification-heading">
-      <p className={styles.confirmationEyebrow}>Specifications for quotation</p>
-      <h2 id="commercial-specification-heading">Review and confirm the specification basis</h2>
+      <p className={styles.confirmationEyebrow}>{copy.cs004}</p>
+      <h2 id="commercial-specification-heading">{copy.cs005}</h2>
       <p>
-        These values started from your Concept Brief. Review and correct every
-        applicable field so this form reflects the specifications you intend to
-        confirm for this exact First Preview design direction. You may keep an
-        explicit &quot;not sure&quot; or &quot;to confirm&quot; value where needed.
-      </p>
+        {copy.cs006}</p>
       <form className={styles.specificationForm} onSubmit={confirm}>
         <div className={styles.specificationList}>
           {items.map((item) => {
@@ -95,7 +95,7 @@ export default function CommercialSpecificationConfirmation({
             };
             return (
               <div key={item.key}>
-                <label htmlFor={fieldId}>{item.label}</label>
+                <label htmlFor={fieldId}>{copy.fieldLabels[item.key]}</label>
                 {item.multiline ? (
                   <textarea {...sharedProps} rows={3} />
                 ) : (
@@ -106,10 +106,7 @@ export default function CommercialSpecificationConfirmation({
           })}
         </div>
         <p className={styles.specificationBoundary}>
-          This confirms only the specification basis NOVORA may use to prepare a
-          quotation. It does not accept a quotation, make a payment, place an
-          order, approve CAD, or approve production.
-        </p>
+          {copy.cs007}</p>
         {state === "success" ? (
           <p className={styles.confirmationSuccess} role="status">{message}</p>
         ) : (
@@ -120,8 +117,8 @@ export default function CommercialSpecificationConfirmation({
               type="submit"
             >
               {state === "submitting"
-                ? "Confirming…"
-                : "I confirm these specifications as the basis for NOVORA to prepare a quotation."}
+                ? copy.cs008
+                : copy.cs009}
             </button>
             {state === "error" ? (
               <p className={styles.confirmationError} role="alert">{message}</p>
