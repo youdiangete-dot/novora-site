@@ -1,0 +1,13 @@
+# Non-secret names consumed by cloud-run-deploy.cmd.
+# Set these in the current Windows Command Prompt. Do not place secret values here.
+
+GOOGLE_CLOUD_PROJECT=REPLACE_WITH_GOOGLE_CLOUD_PROJECT_ID
+OPENAI_IMAGE_MODEL=REPLACE_WITH_APPROVED_OPENAI_IMAGE_MODEL
+OPENAI_API_KEY_SECRET=REPLACE_WITH_OPENAI_API_KEY_SECRET_NAME
+NOVORA_GATEWAY_TOKEN_SECRET=REPLACE_WITH_GATEWAY_TOKEN_SECRET_NAME
+
+# Fixed by the handoff package; do not override:
+TARGET_REGION=asia-northeast1
+TARGET_SERVICE=novora-japan-ai-gateway
+
+# Cloud Run supplies PORT automatically. Do not configure PORT manually.
