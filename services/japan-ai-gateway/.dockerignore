@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!.dockerignore
+!package.json
+!tsconfig.json
+!tsconfig.build.json
+!src/
+!src/**
