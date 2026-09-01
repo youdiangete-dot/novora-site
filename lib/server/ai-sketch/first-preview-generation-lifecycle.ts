@@ -29,20 +29,20 @@ import {
   type FirstPreviewProvider,
 } from "./first-preview-runtime";
 import {
+  FIRST_PREVIEW_PROVIDER_TIMEOUT_MS,
+  type FirstPreviewProviderAdapterResult,
+  type FirstPreviewProviderBinding,
+} from "./first-preview-provider-binding";
+import {
   buildFirstPreviewStructuredGenerationInput,
   type FirstPreviewStructuredGenerationInput,
 } from "./first-preview-structured-input";
 import {
-  createOpenAiFirstPreviewProviderBinding,
-  type OpenAiFirstPreviewProviderBinding,
-} from "./openai-first-preview-client";
+  createJapanGatewayFirstPreviewProviderBinding,
+} from "./japan-gateway-first-preview-client";
 import {
   createOpenAiFirstPreviewTrustedOutputEvaluator,
 } from "./openai-first-preview-trusted-output";
-import {
-  OPENAI_FIRST_PREVIEW_TIMEOUT_MS,
-  type OpenAiFirstPreviewAdapterResult,
-} from "./openai-first-preview-provider";
 
 export type FirstPreviewPreparedGenerationInput = Readonly<
   Pick<
@@ -129,7 +129,7 @@ export type FirstPreviewTrustedOutputEvaluator = (
 
 export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
   repository: FirstPreviewRepository;
-  createProvider(): OpenAiFirstPreviewProviderBinding | null;
+  createProvider(): FirstPreviewProviderBinding | null;
   createAssetStore(): FirstPreviewGeneratedAssetStore;
   evaluateTrustedOutput?: FirstPreviewTrustedOutputEvaluator;
   trustedOutputEvidenceTimeoutMs?: number;
@@ -504,7 +504,7 @@ function mapGeneratedAssetFailure(
 }
 
 function mapRuntimeFailure(
-  adapterResult: OpenAiFirstPreviewAdapterResult | null,
+  adapterResult: FirstPreviewProviderAdapterResult | null,
   runtimeCategory: string | null,
   trustedEvidenceFailureCategory: FirstPreviewFailureCategory | null,
 ): Readonly<{
@@ -541,7 +541,7 @@ function mapRuntimeFailure(
   return { category: "unexpected_provider_error", retryEligible: false };
 }
 
-function safeReadUsage(binding: OpenAiFirstPreviewProviderBinding) {
+function safeReadUsage(binding: FirstPreviewProviderBinding) {
   try {
     return binding.readValidatedUsage();
   } catch {
@@ -550,8 +550,8 @@ function safeReadUsage(binding: OpenAiFirstPreviewProviderBinding) {
 }
 
 function safeReadProviderRequestId(
-  binding: OpenAiFirstPreviewProviderBinding,
-  adapterResult: OpenAiFirstPreviewAdapterResult | null,
+  binding: FirstPreviewProviderBinding,
+  adapterResult: FirstPreviewProviderAdapterResult | null,
 ): string | null {
   if (adapterResult?.ok && adapterResult.providerRequestId) {
     return adapterResult.providerRequestId;
@@ -580,7 +580,7 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     );
   }
 
-  let binding: OpenAiFirstPreviewProviderBinding | null;
+  let binding: FirstPreviewProviderBinding | null;
   try {
     binding = dependencies.createProvider();
   } catch {
@@ -608,7 +608,7 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   if (!dispatched.ok) return { status: "duplicate" };
 
   const outputId = (dependencies.outputIdSource ?? randomUUID)();
-  let adapterResult: OpenAiFirstPreviewAdapterResult | null = null;
+  let adapterResult: FirstPreviewProviderAdapterResult | null = null;
   let trustedEvidence: FirstPreviewTrustedOutputEvidence | null = null;
   let trustedEvidenceFailureCategory: FirstPreviewFailureCategory | null = null;
   const provider: FirstPreviewProvider = {
@@ -697,9 +697,9 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
       timeoutMs:
         Number.isSafeInteger(dependencies.attemptTimeoutMs) &&
         dependencies.attemptTimeoutMs! > 0 &&
-        dependencies.attemptTimeoutMs! <= OPENAI_FIRST_PREVIEW_TIMEOUT_MS
+        dependencies.attemptTimeoutMs! <= FIRST_PREVIEW_PROVIDER_TIMEOUT_MS
           ? dependencies.attemptTimeoutMs!
-          : OPENAI_FIRST_PREVIEW_TIMEOUT_MS,
+          : FIRST_PREVIEW_PROVIDER_TIMEOUT_MS,
     },
   );
 
@@ -921,7 +921,7 @@ export function createProductionAutomaticFirstPreviewWorkerDependencies(
 ): AutomaticFirstPreviewWorkerDependencies {
   return {
     repository,
-    createProvider: () => createOpenAiFirstPreviewProviderBinding(),
+    createProvider: () => createJapanGatewayFirstPreviewProviderBinding(),
     createAssetStore: () =>
       createFirstPreviewGeneratedAssetStore({
         authorizer: createFirstPreviewCustomerAccessAuthorizer(),
