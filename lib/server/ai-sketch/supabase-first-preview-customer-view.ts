@@ -38,6 +38,11 @@ export interface FirstPreviewCustomerViewDatabaseClient {
     conceptBriefId: string,
     limit: typeof FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT,
   ): CandidateResult;
+  findReviewCandidates(
+    conceptBriefId: string,
+    outputId: string,
+    limit: typeof FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT,
+  ): CandidateResult;
 }
 
 const BRIEF_COLUMNS = "id, public_reference";
@@ -92,6 +97,8 @@ const JOB_COLUMNS = [
   "created_at",
   "updated_at",
 ].join(", ");
+const REVIEW_COLUMNS =
+  "ai_sketch_output_id, concept_brief_id, review_status";
 
 function normalizeCandidates(
   data: unknown,
@@ -141,6 +148,19 @@ export function createFirstPreviewCustomerViewDatabaseClient(
           .eq("concept_brief_id", conceptBriefId)
           .eq("generation_purpose", "first_preview")
           .order("attempt_number", { ascending: true })
+          .limit(limit);
+        return normalizeCandidates(data, error);
+      } catch {
+        return { data: null, error: { kind: "unavailable" } };
+      }
+    },
+    async findReviewCandidates(conceptBriefId, outputId, limit) {
+      try {
+        const { data, error } = await supabase
+          .from("ai_sketch_reviews")
+          .select(REVIEW_COLUMNS)
+          .eq("concept_brief_id", conceptBriefId)
+          .eq("ai_sketch_output_id", outputId)
           .limit(limit);
         return normalizeCandidates(data, error);
       } catch {
@@ -901,6 +921,21 @@ export class SupabaseFirstPreviewCustomerViewStateSource
           ready.readyAt === null ||
           ready.assetValidatedAt > job.completedAt ||
           job.completedAt > ready.automaticGatePassedAt
+        ) {
+          return unavailable();
+        }
+        const reviewResult = await this.database.findReviewCandidates(
+          lookup.conceptBriefId,
+          ready.id,
+          FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT,
+        );
+        if (
+          reviewResult.error ||
+          reviewResult.data?.length !== 1 ||
+          !isRecord(reviewResult.data[0]) ||
+          reviewResult.data[0].concept_brief_id !== lookup.conceptBriefId ||
+          reviewResult.data[0].ai_sketch_output_id !== ready.id ||
+          reviewResult.data[0].review_status !== "approved_for_customer"
         ) {
           return unavailable();
         }

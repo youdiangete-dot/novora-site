@@ -2,13 +2,14 @@ import type {
   FirstPreviewCustomerAccessDatabaseClient,
 } from "../../../lib/server/ai-sketch/supabase-first-preview-customer-access";
 
-type Operation = "brief" | "output" | "job";
+type Operation = "brief" | "output" | "review" | "job";
 
 export class FakeFirstPreviewCustomerAccessDatabaseClient
   implements FirstPreviewCustomerAccessDatabaseClient
 {
   briefCandidates: readonly unknown[] = [];
   outputCandidates: readonly unknown[] = [];
+  reviewCandidates: readonly unknown[] = [];
   jobCandidates: readonly unknown[] = [];
   readonly requests: Array<Readonly<{
     operation: Operation;
@@ -36,6 +37,19 @@ export class FakeFirstPreviewCustomerAccessDatabaseClient
 
   async findJobCandidates(jobId: string, limit: 2) {
     return this.result("job", jobId, limit, this.jobCandidates);
+  }
+
+  async findReviewCandidates(
+    conceptBriefId: string,
+    outputId: string,
+    limit: 2,
+  ) {
+    return this.result(
+      "review",
+      `${conceptBriefId}:${outputId}`,
+      limit,
+      this.reviewCandidates,
+    );
   }
 
   private result(

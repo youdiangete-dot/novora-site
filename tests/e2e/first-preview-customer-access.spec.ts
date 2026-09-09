@@ -94,6 +94,15 @@ function outputRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function reviewRow(overrides: Record<string, unknown> = {}) {
+  return {
+    ai_sketch_output_id: OUTPUT_ID,
+    concept_brief_id: BRIEF_ID,
+    review_status: "approved_for_customer",
+    ...overrides,
+  };
+}
+
 function expectOpaqueDenial(
   result: unknown,
   additionalSensitiveValues: readonly string[] = [],
@@ -201,6 +210,7 @@ function harness() {
   const database = new FakeFirstPreviewCustomerAccessDatabaseClient();
   database.briefCandidates = [briefRow()];
   database.outputCandidates = [outputRow()];
+  database.reviewCandidates = [reviewRow()];
   database.jobCandidates = [jobRow()];
   const authorizer = createSupabaseFirstPreviewCustomerAccessAuthorizer(
     database,
@@ -251,7 +261,7 @@ test.describe("First Preview customer-access capability and authorizer", () => {
     expect(payload).not.toHaveProperty("outputId");
   });
 
-  test("authorizes an exact current-policy ready/current Brief, Output, and succeeded Job and permits replay only during lifetime", async () => {
+  test("authorizes an exact approved ready/current Brief, Output, and succeeded Job and permits replay only during lifetime", async () => {
     const state = harness();
     const proof = validProof();
     const first = await authorize(state, { accessProof: proof });
@@ -284,9 +294,11 @@ test.describe("First Preview customer-access capability and authorizer", () => {
     expect(state.database.requests).toEqual([
       { operation: "brief", value: PUBLIC_REFERENCE, limit: 2 },
       { operation: "output", value: OUTPUT_ID, limit: 2 },
+      { operation: "review", value: `${BRIEF_ID}:${OUTPUT_ID}`, limit: 2 },
       { operation: "job", value: JOB_ID, limit: 2 },
       { operation: "brief", value: PUBLIC_REFERENCE, limit: 2 },
       { operation: "output", value: OUTPUT_ID, limit: 2 },
+      { operation: "review", value: `${BRIEF_ID}:${OUTPUT_ID}`, limit: 2 },
       { operation: "job", value: JOB_ID, limit: 2 },
     ]);
     expect(JSON.stringify(first)).not.toContain("public_reference");
@@ -474,20 +486,70 @@ test.describe("First Preview customer-access capability and authorizer", () => {
     })).toEqual({ authorized: false });
   });
 
-  test("rejects zero and duplicate Brief, Output, and Job candidates", async () => {
-    for (const operation of ["brief", "output", "job"] as const) {
+  test("requires exactly one approved review for the same Brief and Output", async () => {
+    const scenarios: Array<Readonly<{
+      name: string;
+      reviews: readonly unknown[];
+    }>> = [
+      { name: "missing review", reviews: [] },
+      {
+        name: "internal draft",
+        reviews: [reviewRow({ review_status: "draft_generated_internal_only" })],
+      },
+      {
+        name: "needs revision",
+        reviews: [reviewRow({ review_status: "needs_revision" })],
+      },
+      {
+        name: "internal draft not generated",
+        reviews: [reviewRow({ review_status: "internal_draft_not_generated" })],
+      },
+      {
+        name: "wrong output",
+        reviews: [reviewRow({ ai_sketch_output_id: OTHER_OUTPUT_ID })],
+      },
+      {
+        name: "wrong Brief",
+        reviews: [reviewRow({ concept_brief_id: OTHER_BRIEF_ID })],
+      },
+      {
+        name: "malformed identity",
+        reviews: [reviewRow({ ai_sketch_output_id: null })],
+      },
+      {
+        name: "ambiguous approvals",
+        reviews: [reviewRow(), reviewRow()],
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      await test.step(scenario.name, async () => {
+        const state = harness();
+        state.database.reviewCandidates = scenario.reviews;
+        expect(await authorize(state)).toEqual({ authorized: false });
+      });
+    }
+  });
+
+  test("rejects zero and duplicate Brief, Output, Review, and Job candidates", async () => {
+    for (const operation of ["brief", "output", "review", "job"] as const) {
       for (const candidates of [[], [operation === "brief"
         ? briefRow()
         : operation === "output"
           ? outputRow()
+          : operation === "review"
+            ? reviewRow()
           : jobRow(), operation === "brief"
         ? briefRow()
         : operation === "output"
           ? outputRow()
+          : operation === "review"
+            ? reviewRow()
           : jobRow()]]) {
         const state = harness();
         if (operation === "brief") state.database.briefCandidates = candidates;
         if (operation === "output") state.database.outputCandidates = candidates;
+        if (operation === "review") state.database.reviewCandidates = candidates;
         if (operation === "job") state.database.jobCandidates = candidates;
         expect(await authorize(state)).toEqual({ authorized: false });
       }
@@ -843,7 +905,7 @@ test.describe("First Preview customer-access capability and authorizer", () => {
   });
 
   test("normalizes returned database errors and thrown exceptions without raw-error leakage", async () => {
-    for (const operation of ["brief", "output", "job"] as const) {
+    for (const operation of ["brief", "output", "review", "job"] as const) {
       const returned = harness();
       returned.database.failNext(operation);
       const returnedResult = await authorize(returned);

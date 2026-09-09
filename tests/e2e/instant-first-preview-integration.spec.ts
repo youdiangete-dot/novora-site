@@ -211,6 +211,15 @@ function outputRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function reviewRow(overrides: Record<string, unknown> = {}) {
+  return {
+    ai_sketch_output_id: OUTPUT_ID,
+    concept_brief_id: BRIEF_ID,
+    review_status: "approved_for_customer",
+    ...overrides,
+  };
+}
+
 function jobRow(overrides: Record<string, unknown> = {}) {
   const attemptNumber =
     overrides.attempt_number === 2 ? 2 : 1;
@@ -251,11 +260,20 @@ class FakeViewDatabase implements FirstPreviewCustomerViewDatabaseClient {
   ];
   outputs: unknown[] = [];
   jobs: unknown[] = [];
-  requests: Array<{ operation: string; identity: string; limit: number }> = [];
-  fail: "brief" | "output" | "job" | null = null;
-  throwOperation: "brief" | "output" | "job" | null = null;
+  reviews: unknown[] = [reviewRow()];
+  requests: Array<{
+    operation: string;
+    identity: string;
+    outputIdentity?: string;
+    limit: number;
+  }> = [];
+  fail: "brief" | "output" | "job" | "review" | null = null;
+  throwOperation: "brief" | "output" | "job" | "review" | null = null;
 
-  private result(operation: "brief" | "output" | "job", data: unknown[]) {
+  private result(
+    operation: "brief" | "output" | "job" | "review",
+    data: unknown[],
+  ) {
     if (this.throwOperation === operation) {
       throw new Error(`PRIVATE_${operation.toUpperCase()}_ERROR`);
     }
@@ -298,6 +316,20 @@ class FakeViewDatabase implements FirstPreviewCustomerViewDatabaseClient {
       limit,
     });
     return this.result("job", this.jobs);
+  }
+
+  async findReviewCandidates(
+    conceptBriefId: string,
+    outputId: string,
+    limit: typeof FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT,
+  ) {
+    this.requests.push({
+      operation: "review",
+      identity: conceptBriefId,
+      outputIdentity: outputId,
+      limit,
+    });
+    return this.result("review", this.reviews);
   }
 }
 
@@ -890,7 +922,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
     expect(JSON.stringify(database.requests)).not.toContain("outputId");
   });
 
-  test("returns ready only for an exact fully gated current Output and succeeded Job", async () => {
+  test("returns ready only for an exact human-approved fully gated current Output and succeeded Job", async () => {
     const database = new FakeViewDatabase();
     database.outputs = [outputRow()];
     database.jobs = [jobRow()];
@@ -906,6 +938,61 @@ test.describe("trusted First Preview customer-view production binding", () => {
     expect(JSON.stringify(result)).not.toMatch(
       /conceptBriefId|jobId|bucket|object_path|sha256|provider|prompt|review|gate|https?:/i,
     );
+    expect(database.requests.at(-1)).toEqual({
+      operation: "review",
+      identity: BRIEF_ID,
+      outputIdentity: OUTPUT_ID,
+      limit: 3,
+    });
+  });
+
+  test("keeps generation-ready state unavailable without one exact approved review", async () => {
+    const scenarios: Array<Readonly<{
+      name: string;
+      reviews: readonly unknown[];
+    }>> = [
+      { name: "missing review", reviews: [] },
+      {
+        name: "internal draft",
+        reviews: [reviewRow({ review_status: "draft_generated_internal_only" })],
+      },
+      {
+        name: "needs revision",
+        reviews: [reviewRow({ review_status: "needs_revision" })],
+      },
+      {
+        name: "internal draft not generated",
+        reviews: [reviewRow({ review_status: "internal_draft_not_generated" })],
+      },
+      {
+        name: "wrong output",
+        reviews: [reviewRow({ ai_sketch_output_id: OTHER_OUTPUT_ID })],
+      },
+      {
+        name: "wrong Brief",
+        reviews: [reviewRow({ concept_brief_id: OTHER_BRIEF_ID })],
+      },
+      {
+        name: "malformed identity",
+        reviews: [reviewRow({ concept_brief_id: null })],
+      },
+      {
+        name: "ambiguous approvals",
+        reviews: [reviewRow(), reviewRow()],
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      await test.step(scenario.name, async () => {
+        const database = new FakeViewDatabase();
+        database.outputs = [outputRow()];
+        database.jobs = [jobRow()];
+        database.reviews = [...scenario.reviews];
+        expect(await reader(database)(viewRequest())).toEqual({
+          state: "unavailable",
+        });
+      });
+    }
   });
 
   test("rejects contradictory, orphaned, duplicate, and impossible candidate lineages", async () => {
@@ -1158,6 +1245,13 @@ test.describe("trusted First Preview customer-view production binding", () => {
               ],
               error: null,
             };
+          },
+          async findReviewCandidates(
+            _conceptBriefId: string,
+            _outputId: string,
+            _limit: 2,
+          ) {
+            return { data: [reviewRow()], error: null };
           },
         },
         SECRET,
@@ -1461,7 +1555,15 @@ test.describe("trusted First Preview customer-view production binding", () => {
       outputRow({ id: OTHER_OUTPUT_ID }),
       outputRow({ id: "623e4567-e89b-42d3-a456-426614174000" }),
     ];
-    for (const database of [duplicateBriefs, ambiguousOutputs]) {
+    const ambiguousReviews = new FakeViewDatabase();
+    ambiguousReviews.outputs = [outputRow()];
+    ambiguousReviews.jobs = [jobRow()];
+    ambiguousReviews.reviews = [reviewRow(), reviewRow()];
+    for (const database of [
+      duplicateBriefs,
+      ambiguousOutputs,
+      ambiguousReviews,
+    ]) {
       expect(
         await reader(database)(viewRequest()),
       ).toEqual({ state: "unavailable" });
@@ -1495,9 +1597,13 @@ test.describe("trusted First Preview customer-view production binding", () => {
   });
 
   test("returned database failures and exceptions become safe unavailable", async () => {
-    for (const operation of ["brief", "output", "job"] as const) {
+    for (const operation of ["brief", "output", "job", "review"] as const) {
       for (const mode of ["returned", "thrown"] as const) {
         const database = new FakeViewDatabase();
+        if (operation === "review") {
+          database.outputs = [outputRow()];
+          database.jobs = [jobRow()];
+        }
         if (mode === "returned") database.fail = operation;
         else database.throwOperation = operation;
         const result = await reader(database)(viewRequest());
