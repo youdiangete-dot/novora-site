@@ -251,7 +251,7 @@ test.describe("First Preview customer-access capability and authorizer", () => {
     expect(payload).not.toHaveProperty("outputId");
   });
 
-  test("authorizes an exact current-policy ready/current Brief, Output, and succeeded Job and permits replay only during lifetime", async () => {
+  test("authorizes an exact ready/current Brief, Output, and succeeded Job without a review row and permits replay only during lifetime", async () => {
     const state = harness();
     const proof = validProof();
     const first = await authorize(state, { accessProof: proof });
@@ -472,6 +472,28 @@ test.describe("First Preview customer-access capability and authorizer", () => {
     expect(await authorize(randomOutput, {
       outputId: OTHER_OUTPUT_ID,
     })).toEqual({ authorized: false });
+  });
+
+  test("does not consult internal review state before initial customer asset access", async () => {
+    for (const reviewStatus of [
+      "draft_generated_internal_only",
+      "needs_revision",
+    ]) {
+      const state = harness();
+      let reviewLookupCount = 0;
+      Object.assign(state.database, {
+        async findReviewCandidates() {
+          reviewLookupCount += 1;
+          return {
+            data: [{ review_status: reviewStatus }],
+            error: null,
+          };
+        },
+      });
+
+      expect(await authorize(state)).toMatchObject({ authorized: true });
+      expect(reviewLookupCount).toBe(0);
+    }
   });
 
   test("rejects zero and duplicate Brief, Output, and Job candidates", async () => {

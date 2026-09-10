@@ -3,6 +3,20 @@
 These rules apply to the whole repository. Follow them before reading broad
 swaths of code or making changes.
 
+## Repository CURRENT AUTHORITY — Project And Product Rules
+
+`docs/novora-current-authority-project-rules.md` is the repository-level
+CURRENT AUTHORITY for project and product rule conflicts. It must be read
+before work involving First Preview visibility, First Preview customer access,
+AI review-status behavior, provider activation, or human-review timing/policy.
+
+Old internal-only, email-only, human-review-before-display, and
+`approved_for_customer`-before-first-preview rules are **SUPERSEDED** for the
+initial First Preview. When legacy wording in this file, historical documents,
+chat Memory, summaries, notes, or assumptions conflicts with CURRENT AUTHORITY,
+CURRENT AUTHORITY wins. The commercial-completion contract below remains the
+sole authority for final commercial completion semantics.
+
 ## NOVORA Commercial Website Completion Contract — Sole Final Authority
 
 ### Final authority

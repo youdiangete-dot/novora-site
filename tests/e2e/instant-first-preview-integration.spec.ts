@@ -890,7 +890,7 @@ test.describe("trusted First Preview customer-view production binding", () => {
     expect(JSON.stringify(database.requests)).not.toContain("outputId");
   });
 
-  test("returns ready only for an exact fully gated current Output and succeeded Job", async () => {
+  test("returns ready for an exact fully gated current Output and succeeded Job without a review row", async () => {
     const database = new FakeViewDatabase();
     database.outputs = [outputRow()];
     database.jobs = [jobRow()];
@@ -906,6 +906,41 @@ test.describe("trusted First Preview customer-view production binding", () => {
     expect(JSON.stringify(result)).not.toMatch(
       /conceptBriefId|jobId|bucket|object_path|sha256|provider|prompt|review|gate|https?:/i,
     );
+    expect(database.requests.map((request) => request.operation)).toEqual([
+      "brief",
+      "output",
+      "job",
+    ]);
+  });
+
+  test("does not consult internal review state before initial preview visibility", async () => {
+    for (const reviewStatus of [
+      "draft_generated_internal_only",
+      "needs_revision",
+    ]) {
+      const database = new FakeViewDatabase();
+      database.outputs = [outputRow()];
+      database.jobs = [jobRow()];
+      let reviewLookupCount = 0;
+      Object.assign(database, {
+        async findReviewCandidates() {
+          reviewLookupCount += 1;
+          return {
+            data: [{ review_status: reviewStatus }],
+            error: null,
+          };
+        },
+      });
+
+      expect(await reader(database)(viewRequest())).toEqual({
+        state: "ready",
+        assetRequest: {
+          publicReference: PUBLIC_REFERENCE,
+          outputId: OUTPUT_ID,
+        },
+      });
+      expect(reviewLookupCount).toBe(0);
+    }
   });
 
   test("rejects contradictory, orphaned, duplicate, and impossible candidate lineages", async () => {
