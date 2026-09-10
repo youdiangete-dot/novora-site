@@ -38,11 +38,6 @@ export interface FirstPreviewCustomerAccessDatabaseClient {
     jobId: string,
     limit: typeof FIRST_PREVIEW_CUSTOMER_ACCESS_CANDIDATE_LIMIT,
   ): CandidateResult;
-  findReviewCandidates(
-    conceptBriefId: string,
-    outputId: string,
-    limit: typeof FIRST_PREVIEW_CUSTOMER_ACCESS_CANDIDATE_LIMIT,
-  ): CandidateResult;
 }
 
 export type FirstPreviewCustomerAccessAuthorizer =
@@ -91,8 +86,6 @@ const JOB_COLUMNS = [
   "status",
   "completed_at",
 ].join(", ");
-const REVIEW_COLUMNS =
-  "ai_sketch_output_id, concept_brief_id, review_status";
 
 function normalizedCandidates(
   data: unknown,
@@ -138,19 +131,6 @@ export function createFirstPreviewCustomerAccessDatabaseClient(
           .from("ai_sketch_jobs")
           .select(JOB_COLUMNS)
           .eq("id", jobId)
-          .limit(limit);
-        return normalizedCandidates(data, error);
-      } catch {
-        return { data: null, error: { kind: "unavailable" } };
-      }
-    },
-    async findReviewCandidates(conceptBriefId, outputId, limit) {
-      try {
-        const { data, error } = await supabase
-          .from("ai_sketch_reviews")
-          .select(REVIEW_COLUMNS)
-          .eq("concept_brief_id", conceptBriefId)
-          .eq("ai_sketch_output_id", outputId)
           .limit(limit);
         return normalizedCandidates(data, error);
       } catch {
@@ -366,21 +346,6 @@ export class SupabaseFirstPreviewCustomerAccessAuthorizer
       if (!isRecord(output)) return unavailableAuthorization();
       const asset = this.mapValidatedAsset(output, brief.id, request.outputId);
       if (!asset) return unavailableAuthorization();
-
-      const reviewResult = await this.database.findReviewCandidates(
-        brief.id,
-        request.outputId,
-        FIRST_PREVIEW_CUSTOMER_ACCESS_CANDIDATE_LIMIT,
-      );
-      const review = exactlyOne(reviewResult);
-      if (
-        !isRecord(review) ||
-        review.concept_brief_id !== brief.id ||
-        review.ai_sketch_output_id !== request.outputId ||
-        review.review_status !== "approved_for_customer"
-      ) {
-        return unavailableAuthorization();
-      }
 
       const jobId = output.job_id;
       if (typeof jobId !== "string" || !isValidFirstPreviewAssetUuid(jobId)) {
