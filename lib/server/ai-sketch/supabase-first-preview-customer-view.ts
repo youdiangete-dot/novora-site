@@ -613,8 +613,8 @@ function mapSafeOutput(
     (value.asset_validation_status === "passed" &&
       assetCreatedAt !== null &&
       assetValidatedAt !== null &&
-      createdAt <= assetCreatedAt &&
-      assetCreatedAt <= assetValidatedAt);
+      assetCreatedAt <= assetValidatedAt &&
+      assetValidatedAt <= createdAt);
   if (!validAssetValidation) return null;
 
   const validAutomaticGate =
