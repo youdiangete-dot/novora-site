@@ -117,6 +117,17 @@ function selectBriefRecord(payload: unknown): Record<string, unknown> | null {
   return isPlainRecord(conceptBrief) ? conceptBrief : payload;
 }
 
+function selectGenerationValidationRecord(
+  brief: Record<string, unknown>,
+): Record<string, unknown> {
+  const generationInput: Record<string, unknown> = Object.create(null);
+  for (const key of Object.keys(brief)) {
+    if (key === "summaryItems") continue;
+    generationInput[key] = readOwnValue(brief, key);
+  }
+  return generationInput;
+}
+
 function containsOversizedStructuredValue(
   value: unknown,
   key = "",
@@ -343,7 +354,11 @@ function buildFirstPreviewStructuredGenerationInputUnsafe(input: {
   if (!selectedBrief) {
     return { ok: false, category: "invalid_structured_input" };
   }
-  if (containsOversizedStructuredValue(selectedBrief)) {
+  if (
+    containsOversizedStructuredValue(
+      selectGenerationValidationRecord(selectedBrief),
+    )
+  ) {
     return { ok: false, category: "oversized_input" };
   }
 

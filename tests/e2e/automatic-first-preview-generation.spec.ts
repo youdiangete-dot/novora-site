@@ -459,6 +459,36 @@ test.describe("Goal 2 structured input and native Provider client", () => {
     }
   });
 
+  test("rejects a recognized generation array above the structural limit", () => {
+    expect(
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: validBrief({
+          styleDirection: Array.from(
+            { length: 13 },
+            (_, index) => `style direction ${index + 1}`,
+          ),
+        }),
+        publicReference: PUBLIC_REFERENCE,
+      }),
+    ).toEqual({ ok: false, category: "oversized_input" });
+  });
+
+  test("rejects unrelated nested structural oversize", () => {
+    expect(
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: validBrief({
+          supportMetadata: {
+            selections: Array.from(
+              { length: 13 },
+              (_, index) => `selection ${index + 1}`,
+            ),
+          },
+        }),
+        publicReference: PUBLIC_REFERENCE,
+      }),
+    ).toEqual({ ok: false, category: "oversized_input" });
+  });
+
   test("uses one exact native Image API request and exposes only validated usage", async () => {
     const structured = modules.structured.buildFirstPreviewStructuredGenerationInput({
       payload: validBrief(),
@@ -545,6 +575,38 @@ test.describe("Goal 2 structured input and native Provider client", () => {
 });
 
 test.describe("Goal 2 idempotent trigger and lifecycle", () => {
+  test("enqueues a normal Brief with 24 summaryItems metadata", async () => {
+    const published: Array<
+      import("../../lib/server/ai-sketch/first-preview-queue").FirstPreviewQueuePublishRequest
+    > = [];
+    const result = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+      {
+        payload: validBrief({
+          summaryItems: Array.from({ length: 24 }, (_, index) => ({
+            label: `Summary label ${index + 1}`,
+            value: `Summary value ${index + 1}`,
+          })),
+        }),
+        persistenceConfirmed: true,
+        customerAccessProofEstablished: true,
+        conceptBriefId: BRIEF_ID,
+        publicReference: PUBLIC_REFERENCE,
+      },
+      {
+        featureFlagValue: "true",
+        queueExecutionCapabilityValue: "true",
+        publisher: {
+          async publish(request) {
+            published.push(request);
+          },
+        },
+      },
+    );
+
+    expect(result).toEqual({ status: "enqueued" });
+    expect(published).toHaveLength(1);
+  });
+
   test("only exact feature and Queue gates publish one safe message", async () => {
     for (const featureFlagValue of [
       undefined,
