@@ -125,6 +125,7 @@ const NONCE = "integration_nonce_7iJ9vH2mQ4xK";
 const HASH = "a".repeat(64);
 const CREATED_AT = "2026-07-23T10:00:00.000001Z";
 const VALIDATED_AT = "2026-07-23T10:00:01.000001Z";
+const OUTPUT_CREATED_AT = "2026-07-23T10:00:01.500001Z";
 const GATED_AT = "2026-07-23T10:00:02.000001Z";
 const READY_AT = "2026-07-23T10:00:03.000001Z";
 const REVOKED_AT = "2026-07-23T10:00:04.000001Z";
@@ -206,7 +207,7 @@ function outputRow(overrides: Record<string, unknown> = {}) {
     first_preview_ready_at: READY_AT,
     readiness_revoked_at: null,
     is_current_customer_preview: true,
-    created_at: CREATED_AT,
+    created_at: OUTPUT_CREATED_AT,
     ...overrides,
   };
 }
@@ -529,9 +530,9 @@ function succeededPendingOutputRow(
 ) {
   const completedAt = NOW - completedAgoSeconds;
   return notReadyOutputRow({
-    created_at: epochIso(completedAt - 30),
     asset_created_at: epochIso(completedAt - 20),
     asset_validated_at: epochIso(completedAt - 10),
+    created_at: epochIso(completedAt - 5),
     ...overrides,
   });
 }
@@ -551,7 +552,7 @@ function causalRetryRows(
       options.secondCreatedOffsetSeconds ??
       0);
   const outputCreatedAt =
-    secondStartedAt + (options.outputCreatedOffsetSeconds ?? 0);
+    secondStartedAt + (options.outputCreatedOffsetSeconds ?? 20);
   return {
     jobs: [
       retryableFailureJob({
@@ -569,9 +570,9 @@ function causalRetryRows(
     ],
     output: outputRow({
       job_id: SECOND_JOB_ID,
+      asset_created_at: epochIso(secondStartedAt + 5),
+      asset_validated_at: epochIso(secondStartedAt + 10),
       created_at: epochIso(outputCreatedAt),
-      asset_created_at: epochIso(outputCreatedAt + 5),
-      asset_validated_at: epochIso(outputCreatedAt + 10),
       automatic_gate_passed_at: epochIso(secondStartedAt + 35),
       first_preview_ready_at: epochIso(secondStartedAt + 40),
     }),
@@ -1205,6 +1206,55 @@ test.describe("trusted First Preview customer-view production binding", () => {
         accessProof: proof(),
       }),
     ).toMatchObject({ authorized: true });
+  });
+
+  test("accepts asset creation and validation before Output persistence", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [jobRow()];
+    database.outputs = [
+      outputRow({
+        asset_created_at: CREATED_AT,
+        asset_validated_at: VALIDATED_AT,
+        created_at: OUTPUT_CREATED_AT,
+      }),
+    ];
+    expect(await reader(database)(viewRequest())).toEqual({
+      state: "ready",
+      assetRequest: {
+        publicReference: PUBLIC_REFERENCE,
+        outputId: OUTPUT_ID,
+      },
+    });
+  });
+
+  test("fails closed when asset validation is after Output persistence", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [jobRow()];
+    database.outputs = [
+      outputRow({
+        asset_created_at: CREATED_AT,
+        asset_validated_at: VALIDATED_AT,
+        created_at: "2026-07-23T10:00:00.500001Z",
+      }),
+    ];
+    expect(await reader(database)(viewRequest())).toEqual({
+      state: "unavailable",
+    });
+  });
+
+  test("fails closed when asset creation is after asset validation", async () => {
+    const database = new FakeViewDatabase();
+    database.jobs = [jobRow()];
+    database.outputs = [
+      outputRow({
+        asset_created_at: "2026-07-23T10:00:01.000002Z",
+        asset_validated_at: VALIDATED_AT,
+        created_at: OUTPUT_CREATED_AT,
+      }),
+    ];
+    expect(await reader(database)(viewRequest())).toEqual({
+      state: "unavailable",
+    });
   });
 
   test("enforces canonical complete ready-asset chronology", async () => {
