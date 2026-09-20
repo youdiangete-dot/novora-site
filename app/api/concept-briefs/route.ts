@@ -19,7 +19,9 @@ import {
 } from "../../../lib/server/ai-sketch/first-preview-customer-access-contract";
 import {
   triggerAutomaticFirstPreviewAfterPersistence,
+  type AutomaticFirstPreviewStructuredInputCategory,
   type AutomaticFirstPreviewTriggerDependencies,
+  type AutomaticFirstPreviewTriggerResult,
 } from "../../../lib/server/ai-sketch/first-preview-automatic-trigger";
 
 export const maxDuration = 300;
@@ -94,12 +96,28 @@ type PersistedConceptBriefIdentity = Readonly<{
   conceptBriefId: string;
 }>;
 
+type AutomaticFirstPreviewTriggerDiagnostic = Readonly<{
+  publicReference: string;
+  status: AutomaticFirstPreviewTriggerResult["status"];
+  reason: AutomaticFirstPreviewTriggerResult["reason"];
+  structuredInputCategory?: AutomaticFirstPreviewStructuredInputCategory;
+}>;
+
+function writeAutomaticFirstPreviewDiagnostic(
+  diagnostic: AutomaticFirstPreviewTriggerDiagnostic,
+) {
+  console.info("Automatic First Preview trigger resolved.", diagnostic);
+}
+
 type ConceptBriefPostDependencies = Readonly<{
   checkRateLimit?: typeof checkPublicApiRateLimit;
   persistSubmission?: typeof persistConceptBriefSubmission;
   sessionDependencies?: FirstPreviewSessionRouteDependencies;
   triggerAutomaticPreview?: typeof triggerAutomaticFirstPreviewAfterPersistence;
   triggerDependencies?: AutomaticFirstPreviewTriggerDependencies;
+  logAutomaticPreviewDiagnostic?: (
+    diagnostic: AutomaticFirstPreviewTriggerDiagnostic,
+  ) => void;
 }>;
 
 export function createPersistedConceptBriefResponse(
@@ -135,6 +153,9 @@ export function createConceptBriefPostHandler(
   const triggerAutomaticPreview =
     dependencies.triggerAutomaticPreview ??
     triggerAutomaticFirstPreviewAfterPersistence;
+  const logAutomaticPreviewDiagnostic =
+    dependencies.logAutomaticPreviewDiagnostic ??
+    writeAutomaticFirstPreviewDiagnostic;
 
   return async function postConceptBrief(request: Request) {
   const ipRateLimit = await checkRateLimit({
@@ -220,7 +241,7 @@ export function createConceptBriefPostHandler(
     dependencies.sessionDependencies,
   );
 
-  await triggerAutomaticPreview(
+  const triggerResult = await triggerAutomaticPreview(
     {
       payload,
       persistenceConfirmed: true,
@@ -232,6 +253,15 @@ export function createConceptBriefPostHandler(
     },
     dependencies.triggerDependencies,
   );
+
+  logAutomaticPreviewDiagnostic({
+    publicReference: persistedIdentity.publicReference,
+    status: triggerResult.status,
+    reason: triggerResult.reason,
+    ...("structuredInputCategory" in triggerResult
+      ? { structuredInputCategory: triggerResult.structuredInputCategory }
+      : {}),
+  });
 
   return response;
   };

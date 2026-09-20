@@ -21,14 +21,39 @@ import {
 } from "./first-preview-generated-assets-contract";
 import { buildFirstPreviewStructuredGenerationInput } from "./first-preview-structured-input";
 
-export type AutomaticFirstPreviewTriggerResult = Readonly<{
-  status: "disabled" | "enqueued" | "not_enqueued";
-}>;
+export type AutomaticFirstPreviewStructuredInputCategory =
+  | "invalid_structured_input"
+  | "unsafe_input"
+  | "oversized_input"
+  | "contradictory_input";
+
+export type AutomaticFirstPreviewTriggerResult =
+  | Readonly<{
+      status: "disabled";
+      reason: "feature_disabled" | "queue_execution_disabled";
+    }>
+  | Readonly<{
+      status: "not_enqueued";
+      reason:
+        | "eligibility_rejected"
+        | "queue_message_rejected"
+        | "queue_publish_failed";
+    }>
+  | Readonly<{
+      status: "not_enqueued";
+      reason: "structured_input_rejected";
+      structuredInputCategory: AutomaticFirstPreviewStructuredInputCategory;
+    }>
+  | Readonly<{
+      status: "enqueued";
+      reason: "enqueued";
+    }>;
 
 export type AutomaticFirstPreviewTriggerDependencies = Readonly<{
   featureFlagValue?: unknown;
   queueExecutionCapabilityValue?: unknown;
   publisher?: FirstPreviewQueuePublisher;
+  createQueueMessage?: typeof createFirstPreviewQueueMessage;
 }>;
 
 function hasOwn(value: object, key: string): boolean {
@@ -49,7 +74,7 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
     ? dependencies.featureFlagValue
     : process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
   if (!isInstantFirstPreviewAgentEnabled(featureFlagValue)) {
-    return { status: "disabled" };
+    return { status: "disabled", reason: "feature_disabled" };
   }
 
   const queueExecutionCapabilityValue = hasOwn(
@@ -61,7 +86,7 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
   if (
     !isFirstPreviewQueueExecutionConfirmed(queueExecutionCapabilityValue)
   ) {
-    return { status: "disabled" };
+    return { status: "disabled", reason: "queue_execution_disabled" };
   }
 
   if (
@@ -70,24 +95,38 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
     !isValidFirstPreviewAssetUuid(input.conceptBriefId) ||
     !isValidFirstPreviewPublicReference(input.publicReference)
   ) {
-    return { status: "not_enqueued" };
+    return { status: "not_enqueued", reason: "eligibility_rejected" };
   }
 
   const structured = buildFirstPreviewStructuredGenerationInput({
     payload: input.payload,
     publicReference: input.publicReference,
   });
-  if (!structured.ok) return { status: "not_enqueued" };
+  if (structured.ok === false) {
+    return {
+      status: "not_enqueued",
+      reason: "structured_input_rejected",
+      structuredInputCategory: structured.category,
+    };
+  }
 
-  const message = createFirstPreviewQueueMessage({
+  const message = (
+    dependencies.createQueueMessage ?? createFirstPreviewQueueMessage
+  )({
     conceptBriefId: input.conceptBriefId,
     publicReference: input.publicReference,
     generationInput: prepareFirstPreviewGenerationInput(structured.value),
   });
-  if (!message.ok) return { status: "not_enqueued" };
+  if (!message.ok) {
+    return { status: "not_enqueued", reason: "queue_message_rejected" };
+  }
 
-  return publishFirstPreviewQueueMessage(
+  const publishResult = await publishFirstPreviewQueueMessage(
     message.value,
     dependencies.publisher ?? productionFirstPreviewQueuePublisher,
   );
+
+  return publishResult.status === "enqueued"
+    ? { status: "enqueued", reason: "enqueued" }
+    : { status: "not_enqueued", reason: "queue_publish_failed" };
 }

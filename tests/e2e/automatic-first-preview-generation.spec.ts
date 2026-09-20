@@ -603,7 +603,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       },
     );
 
-    expect(result).toEqual({ status: "enqueued" });
+    expect(result).toEqual({ status: "enqueued", reason: "enqueued" });
     expect(published).toHaveLength(1);
   });
 
@@ -636,7 +636,10 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
           },
         },
       );
-      expect(result).toEqual({ status: "disabled" });
+      expect(result).toEqual({
+        status: "disabled",
+        reason: "feature_disabled",
+      });
       expect(publishCalls).toBe(0);
     }
 
@@ -661,7 +664,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         },
       },
     );
-    expect(result).toEqual({ status: "enqueued" });
+    expect(result).toEqual({ status: "enqueued", reason: "enqueued" });
     expect(published).toHaveLength(1);
     expect(published[0].topic).toBe(modules.queue.FIRST_PREVIEW_QUEUE_TOPIC);
     expect(published[0].message.conceptBriefId).toBe(BRIEF_ID);
@@ -700,7 +703,10 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
           },
         },
       );
-      expect(result).toEqual({ status: "disabled" });
+      expect(result).toEqual({
+        status: "disabled",
+        reason: "queue_execution_disabled",
+      });
       expect(publishCalls).toBe(0);
     }
     expect(
@@ -737,8 +743,62 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
           },
         },
       );
-      expect(denied).toEqual({ status: "not_enqueued" });
+      expect(denied).toEqual({
+        status: "not_enqueued",
+        reason: "eligibility_rejected",
+      });
     }
+    expect(publishCalls).toBe(0);
+
+    const structuredRejected =
+      await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+        {
+          payload: {},
+          persistenceConfirmed: true,
+          customerAccessProofEstablished: true,
+          conceptBriefId: BRIEF_ID,
+          publicReference: PUBLIC_REFERENCE,
+        },
+        {
+          featureFlagValue: "true",
+          queueExecutionCapabilityValue: "true",
+          publisher: {
+            async publish() {
+              publishCalls += 1;
+            },
+          },
+        },
+      );
+    expect(structuredRejected).toEqual({
+      status: "not_enqueued",
+      reason: "structured_input_rejected",
+      structuredInputCategory: "invalid_structured_input",
+    });
+
+    const queueMessageRejected =
+      await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
+        {
+          payload: validBrief(),
+          persistenceConfirmed: true,
+          customerAccessProofEstablished: true,
+          conceptBriefId: BRIEF_ID,
+          publicReference: PUBLIC_REFERENCE,
+        },
+        {
+          featureFlagValue: "true",
+          queueExecutionCapabilityValue: "true",
+          createQueueMessage: () => ({ ok: false }),
+          publisher: {
+            async publish() {
+              publishCalls += 1;
+            },
+          },
+        },
+      );
+    expect(queueMessageRejected).toEqual({
+      status: "not_enqueued",
+      reason: "queue_message_rejected",
+    });
     expect(publishCalls).toBe(0);
 
     const failed = await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
@@ -759,7 +819,10 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         },
       },
     );
-    expect(failed).toEqual({ status: "not_enqueued" });
+    expect(failed).toEqual({
+      status: "not_enqueued",
+      reason: "queue_publish_failed",
+    });
   });
 
   test("claims Provider dispatch once with the conservative reservation", async () => {
@@ -1189,6 +1252,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
 
   test("preserves the confirmed Concept Brief response when Queue publication fails closed", async () => {
     let publishCalls = 0;
+    const diagnostics: unknown[] = [];
     const post = modules.route.createConceptBriefPostHandler({
       checkRateLimit: () =>
         Promise.resolve({
@@ -1218,19 +1282,44 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
           },
         },
       },
+      logAutomaticPreviewDiagnostic(diagnostic) {
+        diagnostics.push(diagnostic);
+      },
     });
 
     const response = await post(conceptBriefRequest());
     const confirmedBody = await response.json();
     expect(response.status).toBe(201);
-    expect(confirmedBody).toMatchObject({
+    expect(confirmedBody).toEqual({
       ok: true,
+      mode: "supabase",
       persisted: true,
+      message:
+        "Concept Brief submitted for NOVORA review. This is not CAD approval, pricing approval, sourcing confirmation, or production confirmation.",
       publicReference: PUBLIC_REFERENCE,
       conceptBriefId: BRIEF_ID,
     });
     expect(publishCalls).toBe(1);
     expect(JSON.stringify(confirmedBody)).not.toContain("Queue");
+    expect(diagnostics).toEqual([
+      {
+        publicReference: PUBLIC_REFERENCE,
+        status: "not_enqueued",
+        reason: "queue_publish_failed",
+      },
+    ]);
+
+    const serializedDiagnostic = JSON.stringify(diagnostics[0]);
+    expect(
+      Object.keys(diagnostics[0] as Record<string, unknown>).sort(),
+    ).toEqual(["publicReference", "reason", "status"]);
+    expect(serializedDiagnostic).not.toContain("Synthetic Customer");
+    expect(serializedDiagnostic).not.toContain("synthetic@example.invalid");
+    expect(serializedDiagnostic).not.toContain(
+      "A balanced heirloom ring with a pear center stone.",
+    );
+    expect(serializedDiagnostic).not.toContain(BRIEF_ID);
+    expect(serializedDiagnostic).not.toContain("brief");
   });
 
   test("missing configuration and trustworthy cost overrun fail before Storage and readiness", async () => {
