@@ -287,7 +287,7 @@ test.describe("First Preview Queue contract and producer", () => {
         },
         dependencies,
       ),
-    ).toEqual({ status: "enqueued" });
+    ).toEqual({ status: "enqueued", reason: "enqueued" });
     expect(published).toHaveLength(1);
 
     const firstKey = published[0].idempotencyKey;
@@ -303,7 +303,7 @@ test.describe("First Preview Queue contract and producer", () => {
         },
         dependencies,
       ),
-    ).toEqual({ status: "enqueued" });
+    ).toEqual({ status: "enqueued", reason: "enqueued" });
     expect(published).toHaveLength(1);
     expect(published[0].idempotencyKey).toBe(firstKey);
     expect(published[0].topic).toBe(
