@@ -44,6 +44,16 @@ const PIECE_TYPE_MAP: Readonly<Record<string, string>> = {
   other_custom: "custom jewelry",
 };
 
+const CUSTOM_JEWELRY_STRUCTURE_MAP: Readonly<Record<string, string>> = {
+  custom_brooch_pin: "brooch",
+  custom_cufflinks: "cufflink",
+  custom_hair_jewelry: "hair jewelry",
+  custom_pet_tag_keepsake: "pet tag / keepsake",
+  custom_keychain_object: "keychain / small object",
+  custom_symbolic_piece: "symbolic piece",
+  not_sure: "custom jewelry type to confirm",
+};
+
 const LONG_TEXT_FIELDS = new Set([
   "designIntent",
   "aiSketchInstruction",
@@ -218,11 +228,12 @@ function createCoreInput(payload: unknown): Record<string, unknown> | null {
       `${pieceType} concept direction`,
     );
 
+  const customJewelryStructure = readString(brief, "structure", 500);
   const otherJewelryType =
     pieceType === "custom jewelry"
-      ? readString(brief, "customUse", 500) ??
-        readString(brief, "structure", 500) ??
-        "brooch"
+      ? customJewelryStructure
+        ? CUSTOM_JEWELRY_STRUCTURE_MAP[customJewelryStructure] ?? null
+        : null
       : readString(brief, "otherJewelryType", 500);
 
   return {

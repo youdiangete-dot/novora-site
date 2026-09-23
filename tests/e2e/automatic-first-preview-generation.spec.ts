@@ -574,6 +574,123 @@ test.describe("Goal 2 structured input and native Provider client", () => {
   });
 });
 
+test.describe("Goal 2 structured input compatibility regressions", () => {
+  function buildStructuredInput(overrides: Record<string, unknown>) {
+    const result =
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: validBrief(overrides),
+        publicReference: PUBLIC_REFERENCE,
+      });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(`Expected structured input success, got ${result.category}`);
+    }
+    return result.value;
+  }
+
+  test("keeps the brooch type controlled by structure instead of customUse", () => {
+    const formalOccasions = buildStructuredInput({
+      pieceType: "other_custom",
+      structure: "custom_brooch_pin",
+      customUse: "formal occasions",
+      designIntent: "A refined custom brooch with a balanced focal motif.",
+      dimensions: ["wearable lapel scale"],
+    });
+    const weekendCelebrations = buildStructuredInput({
+      pieceType: "other_custom",
+      structure: "custom_brooch_pin",
+      customUse: "weekend celebrations",
+      designIntent: "A refined custom brooch with a balanced focal motif.",
+      dimensions: ["wearable lapel scale"],
+    });
+
+    expect(formalOccasions.structuredBrief.piece).toEqual(
+      weekendCelebrations.structuredBrief.piece,
+    );
+    expect(formalOccasions.structuredBrief.piece).toMatchObject({
+      canonicalType: "other_custom",
+      category: "other_jewelry",
+      boundedOtherJewelryType: "brooch",
+    });
+    expect(formalOccasions.designSpec.piece_type).toBe("other_custom");
+    expect(JSON.stringify(formalOccasions.structuredBrief.piece)).not.toContain(
+      "formal occasions",
+    );
+    expect(JSON.stringify(weekendCelebrations.structuredBrief.piece)).not.toContain(
+      "weekend celebrations",
+    );
+  });
+
+  const customStructureCases = [
+    ["custom_brooch_pin", "brooch"],
+    ["custom_cufflinks", "cufflink"],
+    ["custom_hair_jewelry", "hair jewelry"],
+    ["custom_pet_tag_keepsake", "pet tag / keepsake"],
+    ["custom_keychain_object", "keychain / small object"],
+    ["custom_symbolic_piece", "symbolic piece"],
+    ["not_sure", "custom jewelry type to confirm"],
+  ] as const;
+
+  for (const [structure, expectedOtherJewelryType] of customStructureCases) {
+    test(`maps frontend other_custom structure ${structure}`, () => {
+      const value = buildStructuredInput({
+        pieceType: "other_custom",
+        structure,
+        customUse: "formal occasions",
+        designIntent: "A refined custom jewelry concept for personal wear.",
+        dimensions: ["wearable scale to confirm"],
+      });
+
+      expect(value.structuredBrief.piece).toMatchObject({
+        canonicalType: "other_custom",
+        category: "other_jewelry",
+        boundedOtherJewelryType: expectedOtherJewelryType,
+      });
+      expect(value.designSpec.piece_type).toBe("other_custom");
+      expect(value.structuredBrief.piece.boundedOtherJewelryType).not.toBe(
+        "formal occasions",
+      );
+    });
+  }
+
+  const normalPieceCases = [
+    ["ring", "ring_center_stone", ["ring size to confirm"]],
+    [
+      "pendant_necklace",
+      "pendant_center_stone",
+      ["pendant scale to confirm"],
+    ],
+    ["bracelet_bangle", "bracelet_bangle", ["wrist fit to confirm"]],
+    ["earrings", "earrings_drop", ["drop length to confirm"]],
+  ] as const;
+
+  for (const [pieceType, structure, dimensions] of normalPieceCases) {
+    test(`preserves the normal ${pieceType} structured-input path`, () => {
+      const value = buildStructuredInput({ pieceType, structure, dimensions });
+
+      expect(value.structuredBrief.piece).toMatchObject({
+        canonicalType: pieceType,
+        category: pieceType,
+        boundedOtherJewelryType: null,
+      });
+      expect(value.designSpec.piece_type).toBe(pieceType);
+    });
+  }
+
+  test("accepts a normal Brief with 24 top-level summaryItems", () => {
+    const value = buildStructuredInput({
+      summaryItems: Array.from({ length: 24 }, (_, index) => ({
+        label: `Summary label ${index + 1}`,
+        value: `Summary value ${index + 1}`,
+      })),
+    });
+
+    expect(value.structuredBrief.piece.canonicalType).toBe("ring");
+    expect(value.designSpec.piece_type).toBe("ring");
+  });
+});
+
 test.describe("Goal 2 idempotent trigger and lifecycle", () => {
   test("enqueues a normal Brief with 24 summaryItems metadata", async () => {
     const published: Array<
