@@ -288,10 +288,11 @@ async function preparedWork(options: {
   jobId?: string;
   attemptNumber?: unknown;
   parentJobId?: string | null;
+  payload?: unknown;
 } = {}) {
   const targetRepository = options.repository ?? repository();
   const result = await modules.lifecycle.reserveAutomaticFirstPreviewAttempt({
-    payload: validBrief(),
+    payload: options.payload ?? validBrief(),
     persistenceConfirmed: true,
     customerAccessEligible: true,
     conceptBriefId: BRIEF_ID,
@@ -597,16 +598,16 @@ test.describe("Goal 2 structured input compatibility regressions", () => {
       designIntent: "A refined custom brooch with a balanced focal motif.",
       dimensions: ["wearable lapel scale"],
     });
-    const weekendCelebrations = buildStructuredInput({
+    const dailyCommemorativeWear = buildStructuredInput({
       pieceType: "other_custom",
       structure: "custom_brooch_pin",
-      customUse: "weekend celebrations",
+      customUse: "daily commemorative wear",
       designIntent: "A refined custom brooch with a balanced focal motif.",
       dimensions: ["wearable lapel scale"],
     });
 
     expect(formalOccasions.structuredBrief.piece).toEqual(
-      weekendCelebrations.structuredBrief.piece,
+      dailyCommemorativeWear.structuredBrief.piece,
     );
     expect(formalOccasions.structuredBrief.piece).toMatchObject({
       canonicalType: "other_custom",
@@ -617,9 +618,176 @@ test.describe("Goal 2 structured input compatibility regressions", () => {
     expect(JSON.stringify(formalOccasions.structuredBrief.piece)).not.toContain(
       "formal occasions",
     );
-    expect(JSON.stringify(weekendCelebrations.structuredBrief.piece)).not.toContain(
-      "weekend celebrations",
+    expect(
+      JSON.stringify(dailyCommemorativeWear.structuredBrief.piece),
+    ).not.toContain(
+      "daily commemorative wear",
     );
+
+    for (const [value, intendedUse] of [
+      [formalOccasions, "formal occasions"],
+      [dailyCommemorativeWear, "daily commemorative wear"],
+    ] as const) {
+      expect(value.structuredBrief.customerIntent.designDescription).toContain(
+        intendedUse,
+      );
+      expect(value.designSpec.customer_intent_summary).toContain(intendedUse);
+      expect(
+        value.handSketchInstruction.source_design_spec_summary
+          .customer_intent_summary,
+      ).toContain(intendedUse);
+      expect(value.structuredBrief.wearability.requirements).not.toContain(
+        intendedUse,
+      );
+      expect(
+        value.designSpec.jewelry_structure.structure_risk_flags,
+      ).not.toContain(intendedUse);
+      expect(
+        value.handSketchInstruction.jewelry_rendering_instructions
+          .structure_risk_flags,
+      ).not.toContain(intendedUse);
+    }
+  });
+
+  test("preserves intended-use context through narrowed provider serialization", async () => {
+    const intendedUse = "formal occasions";
+    const rawBriefSentinel = "RAW_BRIEF_SENTINEL_P2";
+    const internalNoteSentinel = "INTERNAL_NOTE_SENTINEL_P2";
+    const prepared = await preparedWork({
+      payload: {
+        brief: validBrief({
+          pieceType: "other_custom",
+          structure: "custom_brooch_pin",
+          customUse: intendedUse,
+          designIntent: "A refined custom brooch with a balanced focal motif.",
+          dimensions: ["wearable lapel scale"],
+        }),
+        rawCustomerBrief: rawBriefSentinel,
+        customerEmail: "private@example.invalid",
+        contact: { customerName: "Private Customer", phone: "+1 555 0100" },
+        adminNote: internalNoteSentinel,
+      },
+    });
+    let calls = 0;
+    let capturedBody: Record<string, unknown> | null = null;
+    const binding = modules.client.createOpenAiFirstPreviewProviderBinding({
+      environment: { OPENAI_API_KEY: `sk-${"a".repeat(32)}` },
+      fetchImplementation: async (_url, init) => {
+        calls += 1;
+        capturedBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            data: [{ b64_json: Buffer.from(VALID_PNG).toString("base64") }],
+            usage: {
+              input_tokens: 20,
+              output_tokens: 80,
+              total_tokens: 100,
+              input_tokens_details: { text_tokens: 20, image_tokens: 0 },
+            },
+          }),
+          {
+            status: 200,
+            headers: { "x-request-id": "req_intended_use_p2_001" },
+          },
+        );
+      },
+    });
+    expect(binding).not.toBeNull();
+    if (!binding) throw new Error("Expected synthetic Provider binding.");
+
+    const runtimeRequests: FirstPreviewProviderRequest[] = [];
+    const originalGenerate =
+      binding.adapter.generateFirstPreviewImage.bind(binding.adapter);
+    binding.adapter.generateFirstPreviewImage = async (request, context) => {
+      runtimeRequests.push(structuredClone(request));
+      return originalGenerate(request, context);
+    };
+
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        prepared.work,
+        workerDependencies(prepared.repository, binding),
+      ),
+    ).toMatchObject({ status: "ready" });
+    expect(calls).toBe(1);
+    expect(runtimeRequests).toHaveLength(1);
+
+    const runtimeSummary =
+      runtimeRequests[0].handSketchInstruction.source_design_spec_summary;
+    expect(Object.keys(runtimeSummary)).toEqual(["customer_intent_summary"]);
+    expect(runtimeSummary.customer_intent_summary).toContain(intendedUse);
+
+    const prompt = String(capturedBody?.prompt);
+    const providerInstruction = JSON.parse(
+      prompt.split("\n").at(-1) ?? "",
+    ) as Record<string, unknown>;
+    const providerSummary =
+      providerInstruction.source_design_spec_summary as Record<string, unknown>;
+    expect(Object.keys(providerSummary)).toEqual(["customer_intent_summary"]);
+    expect(providerSummary.customer_intent_summary).toContain(intendedUse);
+    expect(prompt).not.toContain(rawBriefSentinel);
+    expect(prompt).not.toContain("private@example.invalid");
+    expect(prompt).not.toContain("Private Customer");
+    expect(prompt).not.toContain(internalNoteSentinel);
+
+    const secondIntendedUse = "daily commemorative wear";
+    const secondPrepared = await preparedWork({
+      payload: validBrief({
+        pieceType: "other_custom",
+        structure: "custom_brooch_pin",
+        customUse: secondIntendedUse,
+        designIntent: "A refined custom brooch with a balanced focal motif.",
+        dimensions: ["wearable lapel scale"],
+      }),
+    });
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        secondPrepared.work,
+        workerDependencies(secondPrepared.repository, binding),
+      ),
+    ).toMatchObject({ status: "ready" });
+    expect(calls).toBe(2);
+    expect(runtimeRequests).toHaveLength(2);
+
+    const secondRuntimeSummary =
+      runtimeRequests[1].handSketchInstruction.source_design_spec_summary;
+    expect(Object.keys(secondRuntimeSummary)).toEqual([
+      "customer_intent_summary",
+    ]);
+    expect(secondRuntimeSummary.customer_intent_summary).toContain(
+      secondIntendedUse,
+    );
+
+    const secondPrompt = String(capturedBody?.prompt);
+    const secondProviderInstruction = JSON.parse(
+      secondPrompt.split("\n").at(-1) ?? "",
+    ) as Record<string, unknown>;
+    const secondProviderSummary =
+      secondProviderInstruction.source_design_spec_summary as Record<
+        string,
+        unknown
+      >;
+    expect(Object.keys(secondProviderSummary)).toEqual([
+      "customer_intent_summary",
+    ]);
+    expect(secondProviderSummary.customer_intent_summary).toContain(
+      secondIntendedUse,
+    );
+
+    const unsafeRequest = structuredClone(runtimeRequests[0]);
+    unsafeRequest.handSketchInstruction.source_design_spec_summary = {
+      customer_intent_summary: "Contact private@example.invalid",
+    };
+    expect(
+      await binding.adapter.generateFirstPreviewImage(unsafeRequest, {
+        signal: new AbortController().signal,
+      }),
+    ).toEqual({
+      ok: false,
+      category: "invalid_request",
+      retryEligible: false,
+    });
+    expect(calls).toBe(2);
   });
 
   const customStructureCases = [

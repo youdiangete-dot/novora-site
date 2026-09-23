@@ -249,6 +249,7 @@ function createCoreInput(payload: unknown): Record<string, unknown> | null {
         readString(brief, "emotionalStory"),
         readString(brief, "customLook"),
         readString(brief, "referenceDetails"),
+        readString(brief, "customUse", 500),
       ],
       "Concept direction supplied through NOVORA guided intake.",
     ),

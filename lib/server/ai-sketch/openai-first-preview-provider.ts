@@ -157,6 +157,10 @@ function selectAllowedHandSketchInstruction(
     instruction_version: instruction.instruction_version,
     design_spec_version: instruction.design_spec_version,
     language: instruction.language,
+    source_design_spec_summary: {
+      customer_intent_summary:
+        instruction.source_design_spec_summary.customer_intent_summary,
+    },
     sheet_style: {
       style_version: instruction.sheet_style.style_version,
       warm_light_background: instruction.sheet_style.warm_light_background,
