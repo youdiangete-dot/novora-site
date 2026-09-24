@@ -69,6 +69,9 @@ const modules = loadWithServerOnlyTestShim(() => ({
   structured: testRequire(
     "../../lib/server/ai-sketch/first-preview-structured-input",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-structured-input"),
+  jewelry: testRequire(
+    "../../lib/server/ai-sketch/jewelry-design-skills",
+  ) as typeof import("../../lib/server/ai-sketch/jewelry-design-skills"),
   lifecycle: testRequire(
     "../../lib/server/ai-sketch/first-preview-generation-lifecycle",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle"),
@@ -460,6 +463,115 @@ test.describe("Goal 2 structured input and native Provider client", () => {
     }
   });
 
+  test("maps each bounded structured-input reject stage at its first known boundary", () => {
+    expect(
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: {},
+        publicReference: PUBLIC_REFERENCE,
+      }),
+    ).toEqual({
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "core_input",
+    });
+
+    expect(
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: validBrief({ pieceType: "watch" }),
+        publicReference: PUBLIC_REFERENCE,
+      }),
+    ).toEqual({
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "core_structure",
+    });
+
+    expect(
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: validBrief({
+          stones: [
+            {
+              role: "center",
+              type: "lab-grown diamond",
+              shape: "pear",
+              orientation: "point toward fingertip",
+              setting: "five prongs",
+            },
+            {
+              role: "center",
+              type: "sapphire",
+              shape: "oval",
+              orientation: "long axis vertical",
+              setting: "four prongs",
+            },
+          ],
+        }),
+        publicReference: PUBLIC_REFERENCE,
+      }),
+    ).toEqual({
+      ok: false,
+      category: "contradictory_input",
+      structuredInputRejectStage: "jewelry_skills",
+    });
+
+    const privateMarker = "OUTER_EXCEPTION_PRIVATE_MARKER";
+    const outerException = modules.structured.buildFirstPreviewStructuredGenerationInput({
+      payload: new Proxy(
+        {},
+        {
+          getPrototypeOf() {
+            throw new Error(privateMarker);
+          },
+        },
+      ),
+      publicReference: PUBLIC_REFERENCE,
+    });
+    expect(outerException).toEqual({
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "outer_exception",
+    });
+    expect(JSON.stringify(outerException)).not.toContain(privateMarker);
+  });
+
+  test("maps a final output-contract failure without serializing internal details", () => {
+    const mutableJewelryDesignSkills = modules.jewelry as {
+      executeNovoraJewelryDesignSkills: typeof modules.jewelry.executeNovoraJewelryDesignSkills;
+    };
+    const originalExecute =
+      mutableJewelryDesignSkills.executeNovoraJewelryDesignSkills;
+
+    try {
+      mutableJewelryDesignSkills.executeNovoraJewelryDesignSkills = ((input) => {
+        const result = originalExecute(input);
+        if (!result.ok) return result;
+        return {
+          ok: true,
+          value: {
+            ...result.value,
+            designSpec: {
+              ...result.value.designSpec,
+              piece_type: "pendant_necklace",
+            },
+          },
+        };
+      }) as typeof originalExecute;
+
+      expect(
+        modules.structured.buildFirstPreviewStructuredGenerationInput({
+          payload: validBrief(),
+          publicReference: PUBLIC_REFERENCE,
+        }),
+      ).toEqual({
+        ok: false,
+        category: "invalid_structured_input",
+        structuredInputRejectStage: "output_contract",
+      });
+    } finally {
+      mutableJewelryDesignSkills.executeNovoraJewelryDesignSkills = originalExecute;
+    }
+  });
+
   test("rejects a recognized generation array above the structural limit", () => {
     expect(
       modules.structured.buildFirstPreviewStructuredGenerationInput({
@@ -471,7 +583,11 @@ test.describe("Goal 2 structured input and native Provider client", () => {
         }),
         publicReference: PUBLIC_REFERENCE,
       }),
-    ).toEqual({ ok: false, category: "oversized_input" });
+    ).toEqual({
+      ok: false,
+      category: "oversized_input",
+      structuredInputRejectStage: "core_input",
+    });
   });
 
   test("rejects unrelated nested structural oversize", () => {
@@ -487,7 +603,11 @@ test.describe("Goal 2 structured input and native Provider client", () => {
         }),
         publicReference: PUBLIC_REFERENCE,
       }),
-    ).toEqual({ ok: false, category: "oversized_input" });
+    ).toEqual({
+      ok: false,
+      category: "oversized_input",
+      structuredInputRejectStage: "core_input",
+    });
   });
 
   test("uses one exact native Image API request and exposes only validated usage", async () => {
@@ -889,6 +1009,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     );
 
     expect(result).toEqual({ status: "enqueued", reason: "enqueued" });
+    expect(result).not.toHaveProperty("structuredInputRejectStage");
     expect(published).toHaveLength(1);
   });
 
@@ -1058,6 +1179,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       status: "not_enqueued",
       reason: "structured_input_rejected",
       structuredInputCategory: "invalid_structured_input",
+      structuredInputRejectStage: "core_input",
     });
 
     const queueMessageRejected =
@@ -1603,6 +1725,83 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     expect(serializedDiagnostic).not.toContain(
       "A balanced heirloom ring with a pear center stone.",
     );
+    expect(serializedDiagnostic).not.toContain(BRIEF_ID);
+    expect(serializedDiagnostic).not.toContain("brief");
+  });
+
+  test("logs only the bounded structured-rejection diagnostic contract", async () => {
+    let publishCalls = 0;
+    const diagnostics: unknown[] = [];
+    const post = modules.route.createConceptBriefPostHandler({
+      checkRateLimit: () =>
+        Promise.resolve({
+          allowed: true,
+          mode: "disabled" as const,
+          reason: "synthetic_test",
+        }),
+      persistSubmission: () =>
+        Promise.resolve({
+          persisted: true as const,
+          publicReference: PUBLIC_REFERENCE,
+          conceptBriefId: BRIEF_ID,
+        }),
+      sessionDependencies: {
+        featureFlagValue: "true",
+        signingSecret: SIGNING_SECRET,
+        clock: () => 1_785_715_200,
+        nonceSource: () => "structured_rejection_route_nonce_abcdefghijkl",
+      },
+      triggerDependencies: {
+        featureFlagValue: "true",
+        queueExecutionCapabilityValue: "true",
+        publisher: {
+          async publish() {
+            publishCalls += 1;
+          },
+        },
+      },
+      logAutomaticPreviewDiagnostic(diagnostic) {
+        diagnostics.push(diagnostic);
+      },
+    });
+
+    const response = await post(
+      new Request("http://localhost/api/concept-briefs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...validSubmissionPayload(),
+          brief: validBrief({
+            designDescription: "PRIVATE_STAGE_EMAIL@example.invalid",
+          }),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(publishCalls).toBe(0);
+    expect(diagnostics).toEqual([
+      {
+        publicReference: PUBLIC_REFERENCE,
+        status: "not_enqueued",
+        reason: "structured_input_rejected",
+        structuredInputCategory: "unsafe_input",
+        structuredInputRejectStage: "core_structure",
+      },
+    ]);
+
+    const diagnostic = diagnostics[0] as Record<string, unknown>;
+    const serializedDiagnostic = JSON.stringify(diagnostic);
+    expect(Object.keys(diagnostic).sort()).toEqual([
+      "publicReference",
+      "reason",
+      "status",
+      "structuredInputCategory",
+      "structuredInputRejectStage",
+    ]);
+    expect(serializedDiagnostic).not.toContain("PRIVATE_STAGE_EMAIL@example.invalid");
+    expect(serializedDiagnostic).not.toContain("Synthetic Customer");
+    expect(serializedDiagnostic).not.toContain("synthetic@example.invalid");
     expect(serializedDiagnostic).not.toContain(BRIEF_ID);
     expect(serializedDiagnostic).not.toContain("brief");
   });

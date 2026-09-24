@@ -25,6 +25,13 @@ export type FirstPreviewStructuredGenerationInput = Readonly<{
   handSketchInstructionSha256: string;
 }>;
 
+export type FirstPreviewStructuredInputRejectStage =
+  | "core_input"
+  | "core_structure"
+  | "jewelry_skills"
+  | "output_contract"
+  | "outer_exception";
+
 export type BuildFirstPreviewStructuredGenerationInputResult =
   | Readonly<{ ok: true; value: FirstPreviewStructuredGenerationInput }>
   | Readonly<{
@@ -34,6 +41,7 @@ export type BuildFirstPreviewStructuredGenerationInputResult =
         | "unsafe_input"
         | "oversized_input"
         | "contradictory_input";
+      structuredInputRejectStage: FirstPreviewStructuredInputRejectStage;
     }>;
 
 const PIECE_TYPE_MAP: Readonly<Record<string, string>> = {
@@ -359,34 +367,58 @@ function buildFirstPreviewStructuredGenerationInputUnsafe(input: {
   publicReference: string;
 }): BuildFirstPreviewStructuredGenerationInputResult {
   if (!isValidFirstPreviewPublicReference(input.publicReference)) {
-    return { ok: false, category: "invalid_structured_input" };
+    return {
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "core_input",
+    };
   }
 
   const selectedBrief = selectBriefRecord(input.payload);
   if (!selectedBrief) {
-    return { ok: false, category: "invalid_structured_input" };
+    return {
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "core_input",
+    };
   }
   if (
     containsOversizedStructuredValue(
       selectGenerationValidationRecord(selectedBrief),
     )
   ) {
-    return { ok: false, category: "oversized_input" };
+    return {
+      ok: false,
+      category: "oversized_input",
+      structuredInputRejectStage: "core_input",
+    };
   }
 
   const coreInput = createCoreInput(input.payload);
   if (!coreInput) {
-    return { ok: false, category: "invalid_structured_input" };
+    return {
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "core_input",
+    };
   }
 
   const structured = structureConceptBriefForInstantPreview(coreInput);
   if (structured.ok === false) {
-    return { ok: false, category: mapFailureCategory(structured.error.category) };
+    return {
+      ok: false,
+      category: mapFailureCategory(structured.error.category),
+      structuredInputRejectStage: "core_structure",
+    };
   }
 
   const skills = executeNovoraJewelryDesignSkills(structured.value);
   if (skills.ok === false) {
-    return { ok: false, category: mapFailureCategory(skills.error.category) };
+    return {
+      ok: false,
+      category: mapFailureCategory(skills.error.category),
+      structuredInputRejectStage: "jewelry_skills",
+    };
   }
 
   const designSpec: NovoraDesignSpec = {
@@ -407,7 +439,11 @@ function buildFirstPreviewStructuredGenerationInputUnsafe(input: {
     designSpec.piece_type !==
       handSketchInstruction.source_design_spec_summary.piece_type
   ) {
-    return { ok: false, category: "invalid_structured_input" };
+    return {
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "output_contract",
+    };
   }
 
   return {
@@ -429,6 +465,10 @@ export function buildFirstPreviewStructuredGenerationInput(input: {
   try {
     return buildFirstPreviewStructuredGenerationInputUnsafe(input);
   } catch {
-    return { ok: false, category: "invalid_structured_input" };
+    return {
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "outer_exception",
+    };
   }
 }
