@@ -19,13 +19,19 @@ import {
   isValidFirstPreviewAssetUuid,
   isValidFirstPreviewPublicReference,
 } from "./first-preview-generated-assets-contract";
-import { buildFirstPreviewStructuredGenerationInput } from "./first-preview-structured-input";
+import {
+  buildFirstPreviewStructuredGenerationInput,
+  type FirstPreviewStructuredInputRejectStage,
+} from "./first-preview-structured-input";
 
 export type AutomaticFirstPreviewStructuredInputCategory =
   | "invalid_structured_input"
   | "unsafe_input"
   | "oversized_input"
   | "contradictory_input";
+
+export type AutomaticFirstPreviewStructuredInputRejectStage =
+  FirstPreviewStructuredInputRejectStage;
 
 export type AutomaticFirstPreviewTriggerResult =
   | Readonly<{
@@ -43,6 +49,7 @@ export type AutomaticFirstPreviewTriggerResult =
       status: "not_enqueued";
       reason: "structured_input_rejected";
       structuredInputCategory: AutomaticFirstPreviewStructuredInputCategory;
+      structuredInputRejectStage: AutomaticFirstPreviewStructuredInputRejectStage;
     }>
   | Readonly<{
       status: "enqueued";
@@ -107,6 +114,7 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
       status: "not_enqueued",
       reason: "structured_input_rejected",
       structuredInputCategory: structured.category,
+      structuredInputRejectStage: structured.structuredInputRejectStage,
     };
   }
 

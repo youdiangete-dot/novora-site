@@ -20,6 +20,7 @@ import {
 import {
   triggerAutomaticFirstPreviewAfterPersistence,
   type AutomaticFirstPreviewStructuredInputCategory,
+  type AutomaticFirstPreviewStructuredInputRejectStage,
   type AutomaticFirstPreviewTriggerDependencies,
   type AutomaticFirstPreviewTriggerResult,
 } from "../../../lib/server/ai-sketch/first-preview-automatic-trigger";
@@ -101,6 +102,7 @@ type AutomaticFirstPreviewTriggerDiagnostic = Readonly<{
   status: AutomaticFirstPreviewTriggerResult["status"];
   reason: AutomaticFirstPreviewTriggerResult["reason"];
   structuredInputCategory?: AutomaticFirstPreviewStructuredInputCategory;
+  structuredInputRejectStage?: AutomaticFirstPreviewStructuredInputRejectStage;
 }>;
 
 function writeAutomaticFirstPreviewDiagnostic(
@@ -260,6 +262,9 @@ export function createConceptBriefPostHandler(
     reason: triggerResult.reason,
     ...("structuredInputCategory" in triggerResult
       ? { structuredInputCategory: triggerResult.structuredInputCategory }
+      : {}),
+    ...("structuredInputRejectStage" in triggerResult
+      ? { structuredInputRejectStage: triggerResult.structuredInputRejectStage }
       : {}),
   });
 
