@@ -47,7 +47,12 @@ const BOUNDED_OTHER_JEWELRY_TYPES = new Set([
   "tie clip",
   "tiara",
   "hairpin",
+  "hair jewelry",
   "body jewelry",
+  "pet tag / keepsake",
+  "keychain / small object",
+  "symbolic piece",
+  "custom jewelry type to confirm",
 ]);
 
 export type NovoraJewelryDesignSkillsFailureCategory =

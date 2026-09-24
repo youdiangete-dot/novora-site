@@ -159,7 +159,7 @@ const STRUCTURAL_REVIEW_REQUIREMENTS = [
 
 const EMPTY_OPTIONAL_VALUES = new Set(["", "-", "n/a", "not applicable"]);
 const OTHER_JEWELRY_TYPE_PATTERN =
-  /\b(brooch|pin|charm|anklet|cufflink|tie clip|tiara|hairpin|body jewelry)\b/i;
+  /\b(brooch|pin|charm|anklet|cufflink|tie clip|tiara|hairpin|hair jewelry|body jewelry|pet tag|keepsake|keychain|small object|symbolic piece|custom jewelry type to confirm)\b/i;
 const MAXIMUM_SECURITY_DECODE_PASSES = 2;
 const MAXIMUM_SECURITY_VARIANTS = 12;
 const MAXIMUM_SECURITY_SCAN_CHARACTERS = 4_000;

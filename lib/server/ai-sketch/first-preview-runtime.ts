@@ -51,7 +51,12 @@ export type FirstPreviewProviderRequest = {
     | "composition_instructions"
     | "disclaimer_instructions"
     | "negative_constraints"
-  >;
+  > & {
+    source_design_spec_summary: Pick<
+      NovoraHandSketchInstruction["source_design_spec_summary"],
+      "customer_intent_summary"
+    >;
+  };
 };
 
 export type FirstPreviewProviderImage = {
@@ -505,6 +510,10 @@ function createProviderRequest(
       instruction_version: handSketchInstruction.instruction_version,
       design_spec_version: handSketchInstruction.design_spec_version,
       language: handSketchInstruction.language,
+      source_design_spec_summary: {
+        customer_intent_summary:
+          handSketchInstruction.source_design_spec_summary.customer_intent_summary,
+      },
       sheet_style: handSketchInstruction.sheet_style,
       brand_placement: handSketchInstruction.brand_placement,
       views: handSketchInstruction.views,

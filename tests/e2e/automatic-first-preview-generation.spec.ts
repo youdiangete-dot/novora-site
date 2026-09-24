@@ -288,10 +288,11 @@ async function preparedWork(options: {
   jobId?: string;
   attemptNumber?: unknown;
   parentJobId?: string | null;
+  payload?: unknown;
 } = {}) {
   const targetRepository = options.repository ?? repository();
   const result = await modules.lifecycle.reserveAutomaticFirstPreviewAttempt({
-    payload: validBrief(),
+    payload: options.payload ?? validBrief(),
     persistenceConfirmed: true,
     customerAccessEligible: true,
     conceptBriefId: BRIEF_ID,
@@ -571,6 +572,290 @@ test.describe("Goal 2 structured input and native Provider client", () => {
         environment: { OPENAI_API_KEY: " malformed " },
       }),
     ).toBeNull();
+  });
+});
+
+test.describe("Goal 2 structured input compatibility regressions", () => {
+  function buildStructuredInput(overrides: Record<string, unknown>) {
+    const result =
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: validBrief(overrides),
+        publicReference: PUBLIC_REFERENCE,
+      });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(`Expected structured input success, got ${result.category}`);
+    }
+    return result.value;
+  }
+
+  test("keeps the brooch type controlled by structure instead of customUse", () => {
+    const formalOccasions = buildStructuredInput({
+      pieceType: "other_custom",
+      structure: "custom_brooch_pin",
+      customUse: "formal occasions",
+      designIntent: "A refined custom brooch with a balanced focal motif.",
+      dimensions: ["wearable lapel scale"],
+    });
+    const dailyCommemorativeWear = buildStructuredInput({
+      pieceType: "other_custom",
+      structure: "custom_brooch_pin",
+      customUse: "daily commemorative wear",
+      designIntent: "A refined custom brooch with a balanced focal motif.",
+      dimensions: ["wearable lapel scale"],
+    });
+
+    expect(formalOccasions.structuredBrief.piece).toEqual(
+      dailyCommemorativeWear.structuredBrief.piece,
+    );
+    expect(formalOccasions.structuredBrief.piece).toMatchObject({
+      canonicalType: "other_custom",
+      category: "other_jewelry",
+      boundedOtherJewelryType: "brooch",
+    });
+    expect(formalOccasions.designSpec.piece_type).toBe("other_custom");
+    expect(JSON.stringify(formalOccasions.structuredBrief.piece)).not.toContain(
+      "formal occasions",
+    );
+    expect(
+      JSON.stringify(dailyCommemorativeWear.structuredBrief.piece),
+    ).not.toContain(
+      "daily commemorative wear",
+    );
+
+    for (const [value, intendedUse] of [
+      [formalOccasions, "formal occasions"],
+      [dailyCommemorativeWear, "daily commemorative wear"],
+    ] as const) {
+      expect(value.structuredBrief.customerIntent.designDescription).toContain(
+        intendedUse,
+      );
+      expect(value.designSpec.customer_intent_summary).toContain(intendedUse);
+      expect(
+        value.handSketchInstruction.source_design_spec_summary
+          .customer_intent_summary,
+      ).toContain(intendedUse);
+      expect(value.structuredBrief.wearability.requirements).not.toContain(
+        intendedUse,
+      );
+      expect(
+        value.designSpec.jewelry_structure.structure_risk_flags,
+      ).not.toContain(intendedUse);
+      expect(
+        value.handSketchInstruction.jewelry_rendering_instructions
+          .structure_risk_flags,
+      ).not.toContain(intendedUse);
+    }
+  });
+
+  test("preserves intended-use context through narrowed provider serialization", async () => {
+    const intendedUse = "formal occasions";
+    const rawBriefSentinel = "RAW_BRIEF_SENTINEL_P2";
+    const internalNoteSentinel = "INTERNAL_NOTE_SENTINEL_P2";
+    const prepared = await preparedWork({
+      payload: {
+        brief: validBrief({
+          pieceType: "other_custom",
+          structure: "custom_brooch_pin",
+          customUse: intendedUse,
+          designIntent: "A refined custom brooch with a balanced focal motif.",
+          dimensions: ["wearable lapel scale"],
+        }),
+        rawCustomerBrief: rawBriefSentinel,
+        customerEmail: "private@example.invalid",
+        contact: { customerName: "Private Customer", phone: "+1 555 0100" },
+        adminNote: internalNoteSentinel,
+      },
+    });
+    let calls = 0;
+    let capturedBody: Record<string, unknown> | null = null;
+    const binding = modules.client.createOpenAiFirstPreviewProviderBinding({
+      environment: { OPENAI_API_KEY: `sk-${"a".repeat(32)}` },
+      fetchImplementation: async (_url, init) => {
+        calls += 1;
+        capturedBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            data: [{ b64_json: Buffer.from(VALID_PNG).toString("base64") }],
+            usage: {
+              input_tokens: 20,
+              output_tokens: 80,
+              total_tokens: 100,
+              input_tokens_details: { text_tokens: 20, image_tokens: 0 },
+            },
+          }),
+          {
+            status: 200,
+            headers: { "x-request-id": "req_intended_use_p2_001" },
+          },
+        );
+      },
+    });
+    expect(binding).not.toBeNull();
+    if (!binding) throw new Error("Expected synthetic Provider binding.");
+
+    const runtimeRequests: FirstPreviewProviderRequest[] = [];
+    const originalGenerate =
+      binding.adapter.generateFirstPreviewImage.bind(binding.adapter);
+    binding.adapter.generateFirstPreviewImage = async (request, context) => {
+      runtimeRequests.push(structuredClone(request));
+      return originalGenerate(request, context);
+    };
+
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        prepared.work,
+        workerDependencies(prepared.repository, binding),
+      ),
+    ).toMatchObject({ status: "ready" });
+    expect(calls).toBe(1);
+    expect(runtimeRequests).toHaveLength(1);
+
+    const runtimeSummary =
+      runtimeRequests[0].handSketchInstruction.source_design_spec_summary;
+    expect(Object.keys(runtimeSummary)).toEqual(["customer_intent_summary"]);
+    expect(runtimeSummary.customer_intent_summary).toContain(intendedUse);
+
+    const prompt = String(capturedBody?.prompt);
+    const providerInstruction = JSON.parse(
+      prompt.split("\n").at(-1) ?? "",
+    ) as Record<string, unknown>;
+    const providerSummary =
+      providerInstruction.source_design_spec_summary as Record<string, unknown>;
+    expect(Object.keys(providerSummary)).toEqual(["customer_intent_summary"]);
+    expect(providerSummary.customer_intent_summary).toContain(intendedUse);
+    expect(prompt).not.toContain(rawBriefSentinel);
+    expect(prompt).not.toContain("private@example.invalid");
+    expect(prompt).not.toContain("Private Customer");
+    expect(prompt).not.toContain(internalNoteSentinel);
+
+    const secondIntendedUse = "daily commemorative wear";
+    const secondPrepared = await preparedWork({
+      payload: validBrief({
+        pieceType: "other_custom",
+        structure: "custom_brooch_pin",
+        customUse: secondIntendedUse,
+        designIntent: "A refined custom brooch with a balanced focal motif.",
+        dimensions: ["wearable lapel scale"],
+      }),
+    });
+    expect(
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        secondPrepared.work,
+        workerDependencies(secondPrepared.repository, binding),
+      ),
+    ).toMatchObject({ status: "ready" });
+    expect(calls).toBe(2);
+    expect(runtimeRequests).toHaveLength(2);
+
+    const secondRuntimeSummary =
+      runtimeRequests[1].handSketchInstruction.source_design_spec_summary;
+    expect(Object.keys(secondRuntimeSummary)).toEqual([
+      "customer_intent_summary",
+    ]);
+    expect(secondRuntimeSummary.customer_intent_summary).toContain(
+      secondIntendedUse,
+    );
+
+    const secondPrompt = String(capturedBody?.prompt);
+    const secondProviderInstruction = JSON.parse(
+      secondPrompt.split("\n").at(-1) ?? "",
+    ) as Record<string, unknown>;
+    const secondProviderSummary =
+      secondProviderInstruction.source_design_spec_summary as Record<
+        string,
+        unknown
+      >;
+    expect(Object.keys(secondProviderSummary)).toEqual([
+      "customer_intent_summary",
+    ]);
+    expect(secondProviderSummary.customer_intent_summary).toContain(
+      secondIntendedUse,
+    );
+
+    const unsafeRequest = structuredClone(runtimeRequests[0]);
+    unsafeRequest.handSketchInstruction.source_design_spec_summary = {
+      customer_intent_summary: "Contact private@example.invalid",
+    };
+    expect(
+      await binding.adapter.generateFirstPreviewImage(unsafeRequest, {
+        signal: new AbortController().signal,
+      }),
+    ).toEqual({
+      ok: false,
+      category: "invalid_request",
+      retryEligible: false,
+    });
+    expect(calls).toBe(2);
+  });
+
+  const customStructureCases = [
+    ["custom_brooch_pin", "brooch"],
+    ["custom_cufflinks", "cufflink"],
+    ["custom_hair_jewelry", "hair jewelry"],
+    ["custom_pet_tag_keepsake", "pet tag / keepsake"],
+    ["custom_keychain_object", "keychain / small object"],
+    ["custom_symbolic_piece", "symbolic piece"],
+    ["not_sure", "custom jewelry type to confirm"],
+  ] as const;
+
+  for (const [structure, expectedOtherJewelryType] of customStructureCases) {
+    test(`maps frontend other_custom structure ${structure}`, () => {
+      const value = buildStructuredInput({
+        pieceType: "other_custom",
+        structure,
+        customUse: "formal occasions",
+        designIntent: "A refined custom jewelry concept for personal wear.",
+        dimensions: ["wearable scale to confirm"],
+      });
+
+      expect(value.structuredBrief.piece).toMatchObject({
+        canonicalType: "other_custom",
+        category: "other_jewelry",
+        boundedOtherJewelryType: expectedOtherJewelryType,
+      });
+      expect(value.designSpec.piece_type).toBe("other_custom");
+      expect(value.structuredBrief.piece.boundedOtherJewelryType).not.toBe(
+        "formal occasions",
+      );
+    });
+  }
+
+  const normalPieceCases = [
+    ["ring", "ring_center_stone", ["ring size to confirm"]],
+    [
+      "pendant_necklace",
+      "pendant_center_stone",
+      ["pendant scale to confirm"],
+    ],
+    ["bracelet_bangle", "bracelet_bangle", ["wrist fit to confirm"]],
+    ["earrings", "earrings_drop", ["drop length to confirm"]],
+  ] as const;
+
+  for (const [pieceType, structure, dimensions] of normalPieceCases) {
+    test(`preserves the normal ${pieceType} structured-input path`, () => {
+      const value = buildStructuredInput({ pieceType, structure, dimensions });
+
+      expect(value.structuredBrief.piece).toMatchObject({
+        canonicalType: pieceType,
+        category: pieceType,
+        boundedOtherJewelryType: null,
+      });
+      expect(value.designSpec.piece_type).toBe(pieceType);
+    });
+  }
+
+  test("accepts a normal Brief with 24 top-level summaryItems", () => {
+    const value = buildStructuredInput({
+      summaryItems: Array.from({ length: 24 }, (_, index) => ({
+        label: `Summary label ${index + 1}`,
+        value: `Summary value ${index + 1}`,
+      })),
+    });
+
+    expect(value.structuredBrief.piece.canonicalType).toBe("ring");
+    expect(value.designSpec.piece_type).toBe("ring");
   });
 });
 
