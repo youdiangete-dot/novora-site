@@ -696,10 +696,10 @@ test.describe("Goal 2 structured input and native Provider client", () => {
 });
 
 test.describe("Goal 2 structured input compatibility regressions", () => {
-  function buildStructuredInput(overrides: Record<string, unknown>) {
+  function buildStructuredInputFromBrief(brief: Record<string, unknown>) {
     const result =
       modules.structured.buildFirstPreviewStructuredGenerationInput({
-        payload: validBrief(overrides),
+        payload: brief,
         publicReference: PUBLIC_REFERENCE,
       });
 
@@ -709,6 +709,89 @@ test.describe("Goal 2 structured input compatibility regressions", () => {
     }
     return result.value;
   }
+
+  function buildStructuredInput(overrides: Record<string, unknown>) {
+    return buildStructuredInputFromBrief(validBrief(overrides));
+  }
+
+  const metalOnlyBand = {
+    pieceType: "ring",
+    structure: "ring_simple_band",
+    stoneLogic: "none",
+    designIntent: "A polished metal-only band with a balanced profile.",
+    designDescription: "A simple band without stones.",
+    metalDirection: "yellow gold",
+    dimensions: ["ring size to confirm"],
+    requestedViews: ["front view", "side profile"],
+  };
+
+  test("does not create a stone from the hidden station-setting sentinel", () => {
+    const value = buildStructuredInputFromBrief({
+      ...metalOnlyBand,
+      stationSetting: "not_sure",
+    });
+
+    expect(value.structuredBrief.stones.items).toEqual([]);
+  });
+
+  test("does not create a stone from other hidden stone sentinels", () => {
+    const value = buildStructuredInputFromBrief({
+      ...metalOnlyBand,
+      focalStoneType: "not_sure",
+      focalStoneColor: "not_sure",
+      focalStoneShape: "not_sure",
+      focalStoneSize: "not_sure",
+      repeatedSettingStyle: "not_sure",
+      stoneDirection: "not_sure",
+      multiStoneSizeRelationship: "not_sure",
+    });
+
+    expect(value.structuredBrief.stones.items).toEqual([]);
+  });
+
+  test("preserves a real stone and its supported setting", () => {
+    const value = buildStructuredInputFromBrief({
+      ...metalOnlyBand,
+      structure: "ring_center_stone",
+      stoneLogic: "center_stone",
+      designIntent: "A balanced ring with a round center stone.",
+      designDescription: "A refined center-stone ring.",
+      focalStoneType: "lab-grown diamond",
+      focalStoneShape: "round",
+      focalStoneSize: "1 ct direction",
+      stationSetting: "bezel setting",
+    });
+
+    expect(value.structuredBrief.stones.items).toHaveLength(1);
+    expect(value.structuredBrief.stones.items[0]).toMatchObject({
+      type: "lab-grown diamond",
+      shape: "round",
+      setting: "bezel setting",
+    });
+  });
+
+  test("still rejects a genuine unsupported stone setting", () => {
+    expect(
+      modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: {
+          ...metalOnlyBand,
+          structure: "ring_center_stone",
+          stoneLogic: "center_stone",
+          designIntent: "A balanced ring with a round center stone.",
+          designDescription: "A refined center-stone ring.",
+          focalStoneType: "lab-grown diamond",
+          focalStoneShape: "round",
+          stationSetting: "quantum floating matrix",
+        },
+        publicReference: PUBLIC_REFERENCE,
+      }),
+    ).toEqual({
+      ok: false,
+      category: "invalid_structured_input",
+      structuredInputRejectStage: "jewelry_skills",
+      jewelrySkillsErrorCategory: "unsupported_input",
+    });
+  });
 
   test("keeps the brooch type controlled by structure instead of customUse", () => {
     const formalOccasions = buildStructuredInput({

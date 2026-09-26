@@ -187,17 +187,27 @@ function mapPieceType(value: string | null): string | null {
   return PIECE_TYPE_MAP[value.toLowerCase()] ?? value;
 }
 
+function readStoneString(
+  brief: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = readString(brief, key, 500);
+  return value === "not_sure" ? null : value;
+}
+
 function buildStoneInput(brief: Record<string, unknown>): unknown[] {
   const direct = readOwnValue(brief, "stones");
   if (Array.isArray(direct)) return direct;
 
-  const type = readString(brief, "focalStoneType", 500);
-  const color = readString(brief, "focalStoneColor", 500);
-  const shape = readString(brief, "focalStoneShape", 500);
-  const size = readString(brief, "focalStoneSize", 500);
+  if (readString(brief, "stoneLogic", 500) === "none") return [];
+
+  const type = readStoneString(brief, "focalStoneType");
+  const color = readStoneString(brief, "focalStoneColor");
+  const shape = readStoneString(brief, "focalStoneShape");
+  const size = readStoneString(brief, "focalStoneSize");
   const setting =
-    readString(brief, "stationSetting", 500) ??
-    readString(brief, "repeatedSettingStyle", 500);
+    readStoneString(brief, "stationSetting") ??
+    readStoneString(brief, "repeatedSettingStyle");
   if (!type && !color && !shape && !size && !setting) return [];
 
   return [
@@ -207,10 +217,10 @@ function buildStoneInput(brief: Record<string, unknown>): unknown[] {
       color,
       shape,
       setting,
-      orientation: readString(brief, "stoneDirection", 500),
+      orientation: readStoneString(brief, "stoneDirection"),
       sizeRelationship: size,
       relationshipToOtherStones:
-        readString(brief, "multiStoneSizeRelationship", 500),
+        readStoneString(brief, "multiStoneSizeRelationship"),
     },
   ];
 }
