@@ -19,6 +19,7 @@ import {
 } from "../../../lib/server/ai-sketch/first-preview-customer-access-contract";
 import {
   triggerAutomaticFirstPreviewAfterPersistence,
+  type AutomaticFirstPreviewJewelrySkillsErrorCategory,
   type AutomaticFirstPreviewStructuredInputCategory,
   type AutomaticFirstPreviewStructuredInputRejectStage,
   type AutomaticFirstPreviewTriggerDependencies,
@@ -103,6 +104,7 @@ type AutomaticFirstPreviewTriggerDiagnostic = Readonly<{
   reason: AutomaticFirstPreviewTriggerResult["reason"];
   structuredInputCategory?: AutomaticFirstPreviewStructuredInputCategory;
   structuredInputRejectStage?: AutomaticFirstPreviewStructuredInputRejectStage;
+  jewelrySkillsErrorCategory?: AutomaticFirstPreviewJewelrySkillsErrorCategory;
 }>;
 
 function writeAutomaticFirstPreviewDiagnostic(
@@ -265,6 +267,12 @@ export function createConceptBriefPostHandler(
       : {}),
     ...("structuredInputRejectStage" in triggerResult
       ? { structuredInputRejectStage: triggerResult.structuredInputRejectStage }
+      : {}),
+    ...("jewelrySkillsErrorCategory" in triggerResult
+      ? {
+          jewelrySkillsErrorCategory:
+            triggerResult.jewelrySkillsErrorCategory,
+        }
       : {}),
   });
 

@@ -1010,6 +1010,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
 
     expect(result).toEqual({ status: "enqueued", reason: "enqueued" });
     expect(result).not.toHaveProperty("structuredInputRejectStage");
+    expect(result).not.toHaveProperty("jewelrySkillsErrorCategory");
     expect(published).toHaveLength(1);
   });
 
@@ -1181,6 +1182,9 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       structuredInputCategory: "invalid_structured_input",
       structuredInputRejectStage: "core_input",
     });
+    expect(structuredRejected).not.toHaveProperty(
+      "jewelrySkillsErrorCategory",
+    );
 
     const queueMessageRejected =
       await modules.trigger.triggerAutomaticFirstPreviewAfterPersistence(
@@ -1804,6 +1808,122 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     expect(serializedDiagnostic).not.toContain("synthetic@example.invalid");
     expect(serializedDiagnostic).not.toContain(BRIEF_ID);
     expect(serializedDiagnostic).not.toContain("brief");
+    expect(diagnostic).not.toHaveProperty("jewelrySkillsErrorCategory");
+  });
+
+  test("propagates only allowlisted Jewelry Skills categories through the bounded diagnostic", async () => {
+    const mutableJewelryDesignSkills = modules.jewelry as {
+      executeNovoraJewelryDesignSkills: typeof modules.jewelry.executeNovoraJewelryDesignSkills;
+    };
+    const originalExecute =
+      mutableJewelryDesignSkills.executeNovoraJewelryDesignSkills;
+    const categories = [
+      "invalid_input",
+      "unsupported_input",
+      "internal_failure",
+    ] as const;
+
+    try {
+      for (const category of categories) {
+        mutableJewelryDesignSkills.executeNovoraJewelryDesignSkills = (() => ({
+          ok: false as const,
+          error: {
+            category,
+            message: "PRIVATE_EXCEPTION_MESSAGE",
+            stack: "PRIVATE_EXCEPTION_STACK",
+            arbitrary: "ARBITRARY_SKILLS_ERROR_STRING",
+            rawBrief: { marker: "PRIVATE_RAW_BRIEF" },
+            customerProse: "PRIVATE_CUSTOMER_PROSE",
+            customerEmail: "private-diagnostic@example.invalid",
+            prompt: "PRIVATE_PROMPT_TEXT",
+            designSpec: { marker: "PRIVATE_DESIGN_SPEC" },
+            handSketchInstruction: { marker: "PRIVATE_HSI" },
+          },
+        })) as typeof originalExecute;
+
+        let publishCalls = 0;
+        const diagnostics: unknown[] = [];
+        const post = modules.route.createConceptBriefPostHandler({
+          checkRateLimit: () =>
+            Promise.resolve({
+              allowed: true,
+              mode: "disabled" as const,
+              reason: "synthetic_test",
+            }),
+          persistSubmission: () =>
+            Promise.resolve({
+              persisted: true as const,
+              publicReference: PUBLIC_REFERENCE,
+              conceptBriefId: BRIEF_ID,
+            }),
+          sessionDependencies: {
+            featureFlagValue: "true",
+            signingSecret: SIGNING_SECRET,
+            clock: () => 1_785_715_200,
+            nonceSource: () =>
+              `jewelry_skills_${category}_nonce_abcdefghijkl`,
+          },
+          triggerDependencies: {
+            featureFlagValue: "true",
+            queueExecutionCapabilityValue: "true",
+            publisher: {
+              async publish() {
+                publishCalls += 1;
+              },
+            },
+          },
+          logAutomaticPreviewDiagnostic(diagnostic) {
+            diagnostics.push(diagnostic);
+          },
+        });
+
+        const response = await post(conceptBriefRequest());
+
+        expect(response.status).toBe(201);
+        expect(publishCalls).toBe(0);
+        expect(diagnostics).toEqual([
+          {
+            publicReference: PUBLIC_REFERENCE,
+            status: "not_enqueued",
+            reason: "structured_input_rejected",
+            structuredInputCategory: "invalid_structured_input",
+            structuredInputRejectStage: "jewelry_skills",
+            jewelrySkillsErrorCategory: category,
+          },
+        ]);
+
+        const diagnostic = diagnostics[0] as Record<string, unknown>;
+        const serializedDiagnostic = JSON.stringify(diagnostic);
+        expect(Object.keys(diagnostic).sort()).toEqual([
+          "jewelrySkillsErrorCategory",
+          "publicReference",
+          "reason",
+          "status",
+          "structuredInputCategory",
+          "structuredInputRejectStage",
+        ]);
+        for (const privateValue of [
+          "PRIVATE_EXCEPTION_MESSAGE",
+          "PRIVATE_EXCEPTION_STACK",
+          "ARBITRARY_SKILLS_ERROR_STRING",
+          "PRIVATE_RAW_BRIEF",
+          "PRIVATE_CUSTOMER_PROSE",
+          "private-diagnostic@example.invalid",
+          "PRIVATE_PROMPT_TEXT",
+          "PRIVATE_DESIGN_SPEC",
+          "PRIVATE_HSI",
+          "Synthetic Customer",
+          "synthetic@example.invalid",
+          "A balanced heirloom ring with a pear center stone.",
+          BRIEF_ID,
+        ]) {
+          expect(serializedDiagnostic).not.toContain(privateValue);
+        }
+      }
+    } finally {
+      mutableJewelryDesignSkills.executeNovoraJewelryDesignSkills =
+        originalExecute;
+    }
   });
 
   test("missing configuration and trustworthy cost overrun fail before Storage and readiness", async () => {

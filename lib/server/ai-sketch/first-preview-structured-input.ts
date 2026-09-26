@@ -14,7 +14,10 @@ import {
   structureConceptBriefForInstantPreview,
   type InstantPreviewAgentStructuredInput,
 } from "./instant-preview-agent-core";
-import { executeNovoraJewelryDesignSkills } from "./jewelry-design-skills";
+import {
+  executeNovoraJewelryDesignSkills,
+  type NovoraJewelryDesignSkillsFailureCategory,
+} from "./jewelry-design-skills";
 import { isValidFirstPreviewPublicReference } from "./first-preview-generated-assets-contract";
 
 export type FirstPreviewStructuredGenerationInput = Readonly<{
@@ -32,6 +35,11 @@ export type FirstPreviewStructuredInputRejectStage =
   | "output_contract"
   | "outer_exception";
 
+export type JewelrySkillsDiagnosticErrorCategory =
+  | "invalid_input"
+  | "unsupported_input"
+  | "internal_failure";
+
 export type BuildFirstPreviewStructuredGenerationInputResult =
   | Readonly<{ ok: true; value: FirstPreviewStructuredGenerationInput }>
   | Readonly<{
@@ -42,6 +50,7 @@ export type BuildFirstPreviewStructuredGenerationInputResult =
         | "oversized_input"
         | "contradictory_input";
       structuredInputRejectStage: FirstPreviewStructuredInputRejectStage;
+      jewelrySkillsErrorCategory?: JewelrySkillsDiagnosticErrorCategory;
     }>;
 
 const PIECE_TYPE_MAP: Readonly<Record<string, string>> = {
@@ -362,6 +371,19 @@ function mapFailureCategory(
   return "invalid_structured_input";
 }
 
+function mapJewelrySkillsDiagnosticErrorCategory(
+  category: NovoraJewelryDesignSkillsFailureCategory,
+): JewelrySkillsDiagnosticErrorCategory | undefined {
+  if (
+    category === "invalid_input" ||
+    category === "unsupported_input" ||
+    category === "internal_failure"
+  ) {
+    return category;
+  }
+  return undefined;
+}
+
 function buildFirstPreviewStructuredGenerationInputUnsafe(input: {
   payload: unknown;
   publicReference: string;
@@ -414,10 +436,15 @@ function buildFirstPreviewStructuredGenerationInputUnsafe(input: {
 
   const skills = executeNovoraJewelryDesignSkills(structured.value);
   if (skills.ok === false) {
+    const jewelrySkillsErrorCategory =
+      mapJewelrySkillsDiagnosticErrorCategory(skills.error.category);
     return {
       ok: false,
       category: mapFailureCategory(skills.error.category),
       structuredInputRejectStage: "jewelry_skills",
+      ...(jewelrySkillsErrorCategory
+        ? { jewelrySkillsErrorCategory }
+        : {}),
     };
   }
 
