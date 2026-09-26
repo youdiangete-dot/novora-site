@@ -22,6 +22,7 @@ import {
 import {
   buildFirstPreviewStructuredGenerationInput,
   type FirstPreviewStructuredInputRejectStage,
+  type JewelrySkillsDiagnosticErrorCategory,
 } from "./first-preview-structured-input";
 
 export type AutomaticFirstPreviewStructuredInputCategory =
@@ -32,6 +33,9 @@ export type AutomaticFirstPreviewStructuredInputCategory =
 
 export type AutomaticFirstPreviewStructuredInputRejectStage =
   FirstPreviewStructuredInputRejectStage;
+
+export type AutomaticFirstPreviewJewelrySkillsErrorCategory =
+  JewelrySkillsDiagnosticErrorCategory;
 
 export type AutomaticFirstPreviewTriggerResult =
   | Readonly<{
@@ -50,6 +54,7 @@ export type AutomaticFirstPreviewTriggerResult =
       reason: "structured_input_rejected";
       structuredInputCategory: AutomaticFirstPreviewStructuredInputCategory;
       structuredInputRejectStage: AutomaticFirstPreviewStructuredInputRejectStage;
+      jewelrySkillsErrorCategory?: AutomaticFirstPreviewJewelrySkillsErrorCategory;
     }>
   | Readonly<{
       status: "enqueued";
@@ -115,6 +120,12 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
       reason: "structured_input_rejected",
       structuredInputCategory: structured.category,
       structuredInputRejectStage: structured.structuredInputRejectStage,
+      ...(structured.jewelrySkillsErrorCategory
+        ? {
+            jewelrySkillsErrorCategory:
+              structured.jewelrySkillsErrorCategory,
+          }
+        : {}),
     };
   }
 
