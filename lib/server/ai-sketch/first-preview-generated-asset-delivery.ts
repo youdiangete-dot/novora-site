@@ -116,10 +116,7 @@ class UnavailableFirstPreviewGeneratedAssetDeliveryService
   readonly kind = "unavailable" as const;
 
   read(): Promise<FirstPreviewGeneratedAssetDeliveryResult> {
-    return Promise.resolve({
-      ok: false,
-      diagnostic: diagnostic("service_binding", "unavailable_binding"),
-    });
+    return Promise.resolve({ ok: false });
   }
 }
 
