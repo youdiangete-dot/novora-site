@@ -68,6 +68,48 @@ export type FirstPreviewGeneratedAssetFailureCode =
   | "access_denied"
   | "asset_not_found";
 
+export type FirstPreviewAssetDeliveryStage =
+  | "access_proof"
+  | "service_binding"
+  | "initial_authorization"
+  | "bucket_privacy"
+  | "object_download"
+  | "image_integrity"
+  | "object_metadata"
+  | "final_authorization"
+  | "delivered"
+  | "outer_exception";
+
+export type FirstPreviewAssetDeliveryFailureCode =
+  | "access_denied"
+  | "privacy_failure"
+  | "asset_not_found"
+  | "storage_unavailable"
+  | "asset_integrity_failure"
+  | "invalid_input"
+  | "unavailable_binding"
+  | "none";
+
+export type FirstPreviewAssetDeliveryDiagnostic = Readonly<{
+  assetDeliveryStage: FirstPreviewAssetDeliveryStage;
+  assetDeliveryFailureCode: FirstPreviewAssetDeliveryFailureCode;
+}>;
+
+export type FirstPreviewAssetDeliveryDiagnosticReporter = (
+  diagnostic: FirstPreviewAssetDeliveryDiagnostic,
+) => void;
+
+export function reportFirstPreviewAssetDeliveryDiagnosticSafely(
+  reporter: FirstPreviewAssetDeliveryDiagnosticReporter | undefined,
+  diagnostic: FirstPreviewAssetDeliveryDiagnostic,
+): void {
+  try {
+    reporter?.(diagnostic);
+  } catch {
+    // Diagnostics must never change protected asset delivery behavior.
+  }
+}
+
 export type FirstPreviewGeneratedAssetResult<T> =
   | Readonly<{ ok: true; value: T }>
   | Readonly<{ ok: false; code: FirstPreviewGeneratedAssetFailureCode }>;
@@ -100,6 +142,7 @@ export interface FirstPreviewGeneratedAssetStore {
 
   readAuthorizedPng(
     request: FirstPreviewGeneratedAssetAccessRequest,
+    reportDiagnostic?: FirstPreviewAssetDeliveryDiagnosticReporter,
   ): Promise<ReadFirstPreviewGeneratedAssetResult>;
 }
 
@@ -184,7 +227,14 @@ class UnavailableFirstPreviewGeneratedAssetStore
     return unavailable();
   }
 
-  readAuthorizedPng(): Promise<ReadFirstPreviewGeneratedAssetResult> {
+  readAuthorizedPng(
+    _request: FirstPreviewGeneratedAssetAccessRequest,
+    reportDiagnostic?: FirstPreviewAssetDeliveryDiagnosticReporter,
+  ): Promise<ReadFirstPreviewGeneratedAssetResult> {
+    reportFirstPreviewAssetDeliveryDiagnosticSafely(reportDiagnostic, {
+      assetDeliveryStage: "service_binding",
+      assetDeliveryFailureCode: "unavailable_binding",
+    });
     return unavailable();
   }
 }

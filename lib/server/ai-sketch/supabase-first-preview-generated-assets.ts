@@ -18,6 +18,9 @@ import {
   isValidFirstPreviewPublicReference,
   sha256FirstPreviewAsset,
   type FirstPreviewAssetAccessAuthorizer,
+  type FirstPreviewAssetDeliveryDiagnosticReporter,
+  type FirstPreviewAssetDeliveryFailureCode,
+  type FirstPreviewAssetDeliveryStage,
   type FirstPreviewAuthorizedAssetDescriptor,
   type FirstPreviewGeneratedAssetFailureCode,
   type FirstPreviewGeneratedAssetResult,
@@ -26,6 +29,7 @@ import {
   type PersistFirstPreviewGeneratedAssetInput,
   type PersistFirstPreviewGeneratedAssetResult,
   type ReadFirstPreviewGeneratedAssetResult,
+  reportFirstPreviewAssetDeliveryDiagnosticSafely,
 } from "./first-preview-generated-assets-contract";
 
 type StorageClientError = Readonly<{
@@ -92,6 +96,21 @@ function failure<T>(
   code: FirstPreviewGeneratedAssetFailureCode,
 ): FirstPreviewGeneratedAssetResult<T> {
   return { ok: false, code };
+}
+
+function readFailure(
+  stage: FirstPreviewAssetDeliveryStage,
+  code: Extract<
+    FirstPreviewGeneratedAssetFailureCode,
+    FirstPreviewAssetDeliveryFailureCode
+  >,
+  reportDiagnostic?: FirstPreviewAssetDeliveryDiagnosticReporter,
+): ReadFirstPreviewGeneratedAssetResult {
+  reportFirstPreviewAssetDeliveryDiagnosticSafely(reportDiagnostic, {
+    assetDeliveryStage: stage,
+    assetDeliveryFailureCode: code,
+  });
+  return failure(code);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -579,29 +598,50 @@ export class SupabaseFirstPreviewGeneratedAssetStore
       outputId: string;
       accessProof: string;
     },
+    reportDiagnostic?: FirstPreviewAssetDeliveryDiagnosticReporter,
   ): Promise<ReadFirstPreviewGeneratedAssetResult> {
     if (
       !isValidFirstPreviewPublicReference(request.publicReference) ||
       !isValidFirstPreviewAssetUuid(request.outputId)
     ) {
-      return failure("invalid_input");
+      return readFailure(
+        "initial_authorization",
+        "invalid_input",
+        reportDiagnostic,
+      );
     }
 
     let authorization;
     try {
       authorization = await this.authorizer.authorize(request);
     } catch {
-      return failure("access_denied");
+      return readFailure(
+        "initial_authorization",
+        "access_denied",
+        reportDiagnostic,
+      );
     }
     if (
       !authorization.authorized ||
       !descriptorIsAuthorizedAndConsistent(request, authorization.descriptor)
     ) {
-      return failure("access_denied");
+      return readFailure(
+        "initial_authorization",
+        "access_denied",
+        reportDiagnostic,
+      );
     }
 
     const privateBucket = await this.requirePrivateBucket();
-    if (privateBucket.ok === false) return privateBucket;
+    if (privateBucket.ok === false) {
+      return readFailure(
+        "bucket_privacy",
+        privateBucket.code === "privacy_failure"
+          ? "privacy_failure"
+          : "storage_unavailable",
+        reportDiagnostic,
+      );
+    }
     const asset = authorization.descriptor.asset;
     let download;
     try {
@@ -610,19 +650,31 @@ export class SupabaseFirstPreviewGeneratedAssetStore
         asset.assetId,
       );
     } catch {
-      return failure("storage_unavailable");
+      return readFailure(
+        "object_download",
+        "storage_unavailable",
+        reportDiagnostic,
+      );
     }
     if (download.error || !download.data) {
-      return download.error?.kind === "not_found"
-        ? failure("asset_not_found")
-        : failure("storage_unavailable");
+      return readFailure(
+        "object_download",
+        download.error?.kind === "not_found"
+          ? "asset_not_found"
+          : "storage_unavailable",
+        reportDiagnostic,
+      );
     }
     if (
       download.data.byteLength !== asset.byteSize ||
       sha256FirstPreviewAsset(download.data) !== asset.contentSha256 ||
       !isValidatedFirstPreviewPng(download.data)
     ) {
-      return failure("asset_integrity_failure");
+      return readFailure(
+        "image_integrity",
+        "asset_integrity_failure",
+        reportDiagnostic,
+      );
     }
 
     let object;
@@ -632,12 +684,20 @@ export class SupabaseFirstPreviewGeneratedAssetStore
         asset.assetId,
       );
     } catch {
-      return failure("storage_unavailable");
+      return readFailure(
+        "object_metadata",
+        "storage_unavailable",
+        reportDiagnostic,
+      );
     }
     if (object.error || !object.data) {
-      return object.error?.kind === "not_found"
-        ? failure("asset_not_found")
-        : failure("storage_unavailable");
+      return readFailure(
+        "object_metadata",
+        object.error?.kind === "not_found"
+          ? "asset_not_found"
+          : "storage_unavailable",
+        reportDiagnostic,
+      );
     }
     if (
       object.data.byteSize !== download.data.byteLength ||
@@ -645,14 +705,22 @@ export class SupabaseFirstPreviewGeneratedAssetStore
       object.data.createdAt !== asset.assetCreatedAt ||
       !isIsoTimestamp(object.data.createdAt)
     ) {
-      return failure("asset_integrity_failure");
+      return readFailure(
+        "object_metadata",
+        "asset_integrity_failure",
+        reportDiagnostic,
+      );
     }
 
     let finalAuthorization;
     try {
       finalAuthorization = await this.authorizer.authorize(request);
     } catch {
-      return failure("access_denied");
+      return readFailure(
+        "final_authorization",
+        "access_denied",
+        reportDiagnostic,
+      );
     }
     if (
       !finalAuthorization.authorized ||
@@ -665,7 +733,11 @@ export class SupabaseFirstPreviewGeneratedAssetStore
         finalAuthorization.descriptor,
       )
     ) {
-      return failure("access_denied");
+      return readFailure(
+        "final_authorization",
+        "access_denied",
+        reportDiagnostic,
+      );
     }
 
     return {
