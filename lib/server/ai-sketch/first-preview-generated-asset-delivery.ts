@@ -4,6 +4,11 @@ import {
   FIRST_PREVIEW_GENERATED_ASSET_CACHE_CONTROL,
   isValidFirstPreviewAssetUuid,
   isValidFirstPreviewPublicReference,
+  reportFirstPreviewAssetDeliveryDiagnosticSafely,
+  type FirstPreviewAssetDeliveryDiagnostic,
+  type FirstPreviewAssetDeliveryDiagnosticReporter,
+  type FirstPreviewAssetDeliveryFailureCode,
+  type FirstPreviewGeneratedAssetFailureCode,
   type FirstPreviewGeneratedAssetStore,
 } from "./first-preview-generated-assets-contract";
 import {
@@ -24,7 +29,10 @@ export type FirstPreviewGeneratedAssetDeliveryResult =
       body: Uint8Array;
       contentLength: number;
     }>
-  | Readonly<{ ok: false }>;
+  | Readonly<{
+      ok: false;
+      diagnostic?: FirstPreviewAssetDeliveryDiagnostic;
+    }>;
 
 export interface FirstPreviewGeneratedAssetDeliveryService {
   readonly kind: "unavailable" | "supabase";
@@ -48,6 +56,7 @@ type RouteHandlerDependencies = Readonly<{
   createService: () =>
     | FirstPreviewGeneratedAssetDeliveryService
     | Promise<FirstPreviewGeneratedAssetDeliveryService>;
+  reportDiagnostic?: FirstPreviewAssetDeliveryDiagnosticReporter;
 }>;
 
 type RouteContext = Readonly<{
@@ -68,7 +77,38 @@ type CurrentRouteHandlerDependencies = Readonly<{
   createService: () =>
     | FirstPreviewGeneratedAssetDeliveryService
     | Promise<FirstPreviewGeneratedAssetDeliveryService>;
+  reportDiagnostic?: FirstPreviewAssetDeliveryDiagnosticReporter;
 }>;
+
+function diagnostic(
+  assetDeliveryStage: FirstPreviewAssetDeliveryDiagnostic["assetDeliveryStage"],
+  assetDeliveryFailureCode: FirstPreviewAssetDeliveryFailureCode,
+): FirstPreviewAssetDeliveryDiagnostic {
+  return { assetDeliveryStage, assetDeliveryFailureCode };
+}
+
+function normalizeReadFailureCode(
+  code: FirstPreviewGeneratedAssetFailureCode,
+): FirstPreviewAssetDeliveryFailureCode {
+  switch (code) {
+    case "access_denied":
+    case "privacy_failure":
+    case "asset_not_found":
+    case "storage_unavailable":
+    case "asset_integrity_failure":
+    case "invalid_input":
+      return code;
+    case "invalid_persisted_png":
+    case "idempotency_conflict":
+      return "asset_integrity_failure";
+  }
+}
+
+export function reportFirstPreviewAssetDeliveryDiagnostic(
+  value: FirstPreviewAssetDeliveryDiagnostic,
+): void {
+  console.info("NOVORA First Preview asset delivery diagnostic.", value);
+}
 
 class UnavailableFirstPreviewGeneratedAssetDeliveryService
   implements FirstPreviewGeneratedAssetDeliveryService
@@ -76,7 +116,10 @@ class UnavailableFirstPreviewGeneratedAssetDeliveryService
   readonly kind = "unavailable" as const;
 
   read(): Promise<FirstPreviewGeneratedAssetDeliveryResult> {
-    return Promise.resolve({ ok: false });
+    return Promise.resolve({
+      ok: false,
+      diagnostic: diagnostic("service_binding", "unavailable_binding"),
+    });
   }
 }
 
@@ -93,17 +136,38 @@ class SupabaseFirstPreviewGeneratedAssetDeliveryService
     accessProof: string;
   }): Promise<FirstPreviewGeneratedAssetDeliveryResult> {
     try {
-      const result = await this.store.readAuthorizedPng(input);
-      return result.ok &&
-        result.value.contentLength === result.value.body.byteLength
-        ? {
-            ok: true,
-            body: new Uint8Array(result.value.body),
-            contentLength: result.value.contentLength,
-          }
-        : { ok: false };
+      let storeDiagnostic: FirstPreviewAssetDeliveryDiagnostic | undefined;
+      const result = await this.store.readAuthorizedPng(input, (value) => {
+        storeDiagnostic = value;
+      });
+      if (result.ok === false) {
+        return {
+          ok: false,
+          diagnostic: storeDiagnostic ?? diagnostic(
+            "outer_exception",
+            normalizeReadFailureCode(result.code),
+          ),
+        };
+      }
+      if (result.value.contentLength !== result.value.body.byteLength) {
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "image_integrity",
+            "asset_integrity_failure",
+          ),
+        };
+      }
+      return {
+        ok: true,
+        body: new Uint8Array(result.value.body),
+        contentLength: result.value.contentLength,
+      };
     } catch {
-      return { ok: false };
+      return {
+        ok: false,
+        diagnostic: diagnostic("outer_exception", "storage_unavailable"),
+      };
     }
   }
 }
@@ -190,12 +254,20 @@ export function createFirstPreviewGeneratedAssetRouteHandler(
   get: (request: Request, context: RouteContext) => Promise<Response>;
   unsupported: () => Response;
 }> {
+  const reportDiagnostic = (
+    value: FirstPreviewAssetDeliveryDiagnostic,
+  ): void => reportFirstPreviewAssetDeliveryDiagnosticSafely(
+    dependencies.reportDiagnostic ?? reportFirstPreviewAssetDeliveryDiagnostic,
+    value,
+  );
+
   return {
     async get(request, context) {
       let url: URL;
       try {
         url = new URL(request.url);
       } catch {
+        reportDiagnostic(diagnostic("outer_exception", "invalid_input"));
         return opaqueEmptyResponse(404);
       }
       const params = await context.params;
@@ -206,6 +278,7 @@ export function createFirstPreviewGeneratedAssetRouteHandler(
         !isValidFirstPreviewPublicReference(publicReference) ||
         !isValidFirstPreviewAssetUuid(outputId)
       ) {
+        reportDiagnostic(diagnostic("access_proof", "invalid_input"));
         return opaqueEmptyResponse(404);
       }
 
@@ -213,17 +286,25 @@ export function createFirstPreviewGeneratedAssetRouteHandler(
       try {
         accessProof = await dependencies.readAccessProof();
       } catch {
+        reportDiagnostic(diagnostic("access_proof", "access_denied"));
         return opaqueEmptyResponse(404);
       }
-      if (!accessProof) return opaqueEmptyResponse(404);
+      if (!accessProof) {
+        reportDiagnostic(diagnostic("access_proof", "access_denied"));
+        return opaqueEmptyResponse(404);
+      }
 
       let service: FirstPreviewGeneratedAssetDeliveryService;
       try {
         service = await dependencies.createService();
       } catch {
+        reportDiagnostic(diagnostic("service_binding", "unavailable_binding"));
         return opaqueEmptyResponse(404);
       }
-      if (service.kind !== "supabase") return opaqueEmptyResponse(404);
+      if (service.kind !== "supabase") {
+        reportDiagnostic(diagnostic("service_binding", "unavailable_binding"));
+        return opaqueEmptyResponse(404);
+      }
 
       let result: FirstPreviewGeneratedAssetDeliveryResult;
       try {
@@ -233,9 +314,18 @@ export function createFirstPreviewGeneratedAssetRouteHandler(
           accessProof,
         });
       } catch {
+        reportDiagnostic(diagnostic("outer_exception", "storage_unavailable"));
         return opaqueEmptyResponse(404);
       }
-      if (!result.ok) return opaqueEmptyResponse(404);
+      if (result.ok === false) {
+        reportDiagnostic(
+          result.diagnostic ??
+            diagnostic("outer_exception", "storage_unavailable"),
+        );
+        return opaqueEmptyResponse(404);
+      }
+
+      reportDiagnostic(diagnostic("delivered", "none"));
 
       return new Response(Buffer.from(result.body), {
         status: 200,
@@ -264,9 +354,16 @@ export function createFirstPreviewCurrentAssetRouteHandler(
   get: (request: Request, context: CurrentRouteContext) => Promise<Response>;
   unsupported: () => Response;
 }> {
+  const reportDiagnostic = (
+    value: FirstPreviewAssetDeliveryDiagnostic,
+  ): void => reportFirstPreviewAssetDeliveryDiagnosticSafely(
+    dependencies.reportDiagnostic ?? reportFirstPreviewAssetDeliveryDiagnostic,
+    value,
+  );
   const protectedAssetHandler = createFirstPreviewGeneratedAssetRouteHandler({
     readAccessProof: dependencies.readAccessProof,
     createService: dependencies.createService,
+    reportDiagnostic,
   });
 
   return {
@@ -279,6 +376,7 @@ export function createFirstPreviewCurrentAssetRouteHandler(
           url.search !== "" ||
           !isValidFirstPreviewPublicReference(publicReference)
         ) {
+          reportDiagnostic(diagnostic("access_proof", "invalid_input"));
           return opaqueEmptyResponse(404);
         }
 
@@ -288,6 +386,9 @@ export function createFirstPreviewCurrentAssetRouteHandler(
           customerView.assetRequest.publicReference !== publicReference ||
           !isValidFirstPreviewAssetUuid(customerView.assetRequest.outputId)
         ) {
+          reportDiagnostic(
+            diagnostic("initial_authorization", "access_denied"),
+          );
           return opaqueEmptyResponse(404);
         }
 
@@ -298,6 +399,9 @@ export function createFirstPreviewCurrentAssetRouteHandler(
           },
         });
       } catch {
+        reportDiagnostic(
+          diagnostic("outer_exception", "storage_unavailable"),
+        );
         return opaqueEmptyResponse(404);
       }
     },
