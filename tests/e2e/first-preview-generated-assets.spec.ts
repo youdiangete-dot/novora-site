@@ -576,6 +576,65 @@ test.describe("server-only private First Preview generated assets", () => {
     }
   });
 
+  for (const scenario of [
+    {
+      name: "observed 325-microsecond precision discrepancy",
+      assetCreatedAt: "2026-10-08T07:01:11.309Z",
+      objectCreatedAt: "2026-10-08T07:01:11.309325+00:00",
+      matches: true,
+    },
+    {
+      name: "equivalent ISO timestamps with different offsets",
+      assetCreatedAt: "2026-10-08T07:01:11.309Z",
+      objectCreatedAt: "2026-10-08T15:01:11.309000+08:00",
+      matches: true,
+    },
+    {
+      name: "different millisecond timestamps",
+      assetCreatedAt: "2026-10-08T07:01:11.309Z",
+      objectCreatedAt: "2026-10-08T07:01:11.310000Z",
+      matches: false,
+    },
+    {
+      name: "malformed timezone",
+      assetCreatedAt: "2026-10-08T07:01:11.309Z",
+      objectCreatedAt: "2026-10-08T07:01:11.309325+25:00",
+      matches: false,
+    },
+    {
+      name: "invalid calendar date",
+      assetCreatedAt: "2026-10-08T07:01:11.309Z",
+      objectCreatedAt: "2026-02-30T07:01:11.309325Z",
+      matches: false,
+    },
+  ] as const) {
+    test(`compares Storage creation time: ${scenario.name}`, async () => {
+      const { storage, authorizer, store } = harness();
+      storage.seedObject(ASSET_ID, VALID_PNG, {
+        createdAt: scenario.objectCreatedAt,
+      });
+      authorizer.result = {
+        authorized: true,
+        descriptor: descriptor(metadata({
+          assetCreatedAt: scenario.assetCreatedAt,
+        })),
+      };
+
+      const result = await store.readAuthorizedPng({
+        publicReference: PUBLIC_REFERENCE,
+        outputId: OUTPUT_ID,
+        accessProof: "test-access-proof",
+      });
+      if (scenario.matches) {
+        expect(result).toMatchObject({ ok: true });
+        expect(authorizer.requests).toHaveLength(2);
+      } else {
+        expect(result).toEqual({ ok: false, code: "asset_integrity_failure" });
+        expect(authorizer.requests).toHaveLength(1);
+      }
+    });
+  }
+
   test("serves validated bytes only through an exact authorized ready/current descriptor", async () => {
     const { storage, authorizer, store } = harness();
     storage.seedObject(ASSET_ID, VALID_PNG);

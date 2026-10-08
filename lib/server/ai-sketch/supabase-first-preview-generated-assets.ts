@@ -144,6 +144,37 @@ function isIsoTimestamp(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
+function strictIsoTimestampMilliseconds(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d{1,6}))?(Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/.exec(value);
+  if (!match) return null;
+
+  const [, date, hour, minute, second, fraction = "", zone] = match;
+  const wallClock = `${date}T${hour}:${minute}:${second}`;
+  const calendarDate = new Date(`${wallClock}Z`);
+  if (
+    !Number.isFinite(calendarDate.getTime()) ||
+    calendarDate.toISOString().slice(0, 19) !== wallClock ||
+    (zone !== "Z" && zone.slice(1, 3) === "14" && zone.slice(4) !== "00")
+  ) {
+    return null;
+  }
+
+  const milliseconds = fraction.padEnd(3, "0").slice(0, 3);
+  const instant = Date.parse(`${wallClock}.${milliseconds}${zone}`);
+  return Number.isFinite(instant) ? instant : null;
+}
+
+function isSameIsoInstantToMillisecond(first: unknown, second: unknown): boolean {
+  const firstMilliseconds = strictIsoTimestampMilliseconds(first);
+  const secondMilliseconds = strictIsoTimestampMilliseconds(second);
+  return (
+    firstMilliseconds !== null &&
+    secondMilliseconds !== null &&
+    firstMilliseconds === secondMilliseconds
+  );
+}
+
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
 
@@ -702,8 +733,10 @@ export class SupabaseFirstPreviewGeneratedAssetStore
     if (
       object.data.byteSize !== download.data.byteLength ||
       object.data.mimeType !== "image/png" ||
-      object.data.createdAt !== asset.assetCreatedAt ||
-      !isIsoTimestamp(object.data.createdAt)
+      !isSameIsoInstantToMillisecond(
+        object.data.createdAt,
+        asset.assetCreatedAt,
+      )
     ) {
       return readFailure(
         "object_metadata",
