@@ -43,6 +43,7 @@ const CONCEPT_BRIEF_ROUTE_NAME = "/api/concept-briefs";
 // Redis/KV enforcement only activates after separately approved provider/env
 // setup and later Preview/Production verification. Missing provider env stays
 // disabled so current Concept Brief submissions continue to fail open.
+// Paid First Preview initiation requires verified enforcement from both checks.
 
 // MVP defaults: intentionally generous for first beta/manual testing. Revisit
 // after real traffic patterns and provider telemetry are available.
@@ -92,6 +93,48 @@ function rateLimitResponse(headers?: HeadersInit) {
   );
 }
 
+type FirstPreviewRateLimitEvidence = Readonly<
+  | { status: "within_limit" }
+  | { status: "rate_limited"; headers?: HeadersInit }
+  | { status: "unverified" }
+>;
+
+function readOwnRateLimitValue(evidence: object, field: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(evidence, field);
+  return descriptor && "value" in descriptor ? descriptor.value : undefined;
+}
+
+function classifyFirstPreviewRateLimitEvidence(
+  evidence: unknown,
+): FirstPreviewRateLimitEvidence {
+  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
+    return { status: "unverified" };
+  }
+
+  const allowed = readOwnRateLimitValue(evidence, "allowed");
+  const mode = readOwnRateLimitValue(evidence, "mode");
+  const reason = readOwnRateLimitValue(evidence, "reason");
+
+  if (allowed === true && mode === "enforced" && reason === "within_limit") {
+    return { status: "within_limit" };
+  }
+
+  if (allowed === false && mode === "enforced" && reason === "rate_limit_exceeded") {
+    let headers: Headers | undefined;
+    try {
+      const suppliedHeaders = readOwnRateLimitValue(evidence, "headers");
+      if (suppliedHeaders !== undefined) {
+        headers = new Headers(suppliedHeaders as HeadersInit);
+      }
+    } catch {
+      // Malformed optional headers must not erase a genuine rate-limit denial.
+    }
+    return { status: "rate_limited", headers };
+  }
+
+  return { status: "unverified" };
+}
+
 type PersistedConceptBriefIdentity = Readonly<{
   persisted: true;
   publicReference: string;
@@ -101,7 +144,9 @@ type PersistedConceptBriefIdentity = Readonly<{
 type AutomaticFirstPreviewTriggerDiagnostic = Readonly<{
   publicReference: string;
   status: AutomaticFirstPreviewTriggerResult["status"];
-  reason: AutomaticFirstPreviewTriggerResult["reason"];
+  reason:
+    | AutomaticFirstPreviewTriggerResult["reason"]
+    | "rate_limit_enforcement_unverified";
   structuredInputCategory?: AutomaticFirstPreviewStructuredInputCategory;
   structuredInputRejectStage?: AutomaticFirstPreviewStructuredInputRejectStage;
   jewelrySkillsErrorCategory?: AutomaticFirstPreviewJewelrySkillsErrorCategory;
@@ -161,14 +206,25 @@ export function createConceptBriefPostHandler(
     dependencies.logAutomaticPreviewDiagnostic ??
     writeAutomaticFirstPreviewDiagnostic;
 
+  async function readRateLimitEvidence(
+    input: Parameters<typeof checkPublicApiRateLimit>[0],
+  ): Promise<FirstPreviewRateLimitEvidence> {
+    try {
+      return classifyFirstPreviewRateLimitEvidence(await checkRateLimit(input));
+    } catch {
+      // Unavailable evidence preserves intake, but cannot admit paid generation.
+      return { status: "unverified" };
+    }
+  }
+
   return async function postConceptBrief(request: Request) {
-  const ipRateLimit = await checkRateLimit({
+  const ipRateLimit = await readRateLimitEvidence({
     routeName: CONCEPT_BRIEF_ROUTE_NAME,
     request,
     policy: CONCEPT_BRIEF_IP_RATE_LIMIT,
   });
 
-  if (!ipRateLimit.allowed) {
+  if (ipRateLimit.status === "rate_limited") {
     return rateLimitResponse(ipRateLimit.headers);
   }
 
@@ -208,15 +264,16 @@ export function createConceptBriefPostHandler(
     readPayloadString(payload as ConceptBriefSubmissionPayload, "customerEmail"),
   );
 
+  let emailRateLimit: FirstPreviewRateLimitEvidence = { status: "unverified" };
   if (normalizedEmail) {
-    const emailRateLimit = await checkRateLimit({
+    emailRateLimit = await readRateLimitEvidence({
       routeName: CONCEPT_BRIEF_ROUTE_NAME,
       request,
       policy: CONCEPT_BRIEF_EMAIL_RATE_LIMIT,
       normalizedEmail,
     });
 
-    if (!emailRateLimit.allowed) {
+    if (emailRateLimit.status === "rate_limited") {
       return rateLimitResponse(emailRateLimit.headers);
     }
   }
@@ -244,6 +301,22 @@ export function createConceptBriefPostHandler(
     persistedIdentity,
     dependencies.sessionDependencies,
   );
+
+  if (
+    ipRateLimit.status !== "within_limit" ||
+    emailRateLimit.status !== "within_limit"
+  ) {
+    try {
+      logAutomaticPreviewDiagnostic({
+        publicReference: persistedIdentity.publicReference,
+        status: "not_enqueued",
+        reason: "rate_limit_enforcement_unverified",
+      });
+    } catch {
+      // Diagnostic failure must not invalidate an already persisted receipt.
+    }
+    return response;
+  }
 
   const triggerResult = await triggerAutomaticPreview(
     {
