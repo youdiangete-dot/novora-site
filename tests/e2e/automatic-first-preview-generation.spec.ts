@@ -308,6 +308,20 @@ function passingTrustedOutputEvaluator(
   };
 }
 
+function passingEvidence(input: Parameters<FirstPreviewTrustedOutputEvaluator>[0]) {
+  return {
+    evidenceVersion:
+      modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+    subject: { ...input.subject },
+    visualPrivacyEvidence: boundVisualEvidence(input.subject),
+    results: {
+      contentSafetyPassed: true,
+      privacyPassed: true,
+      outputValidityPassed: true,
+    },
+  };
+}
+
 async function preparedWork(options: {
   repository?: InstanceType<typeof modules.memory.InMemoryFirstPreviewRepository>;
   jobId?: string;
@@ -1611,6 +1625,129 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         await prepared.repository.findCustomerReadyOutput(BRIEF_ID),
       ).toBeNull();
     }
+  });
+
+  test("sequential deadline permits moderation and reserved inspection beyond ten seconds", async () => {
+    const prepared = await preparedWork();
+    const providerCalls = { value: 0 };
+    const events: string[] = [];
+    let reservationCalls = 0;
+    const originalReserve = prepared.repository.reserveVisualPrivacyInspection.bind(prepared.repository);
+    prepared.repository.reserveVisualPrivacyInspection = async (subject) => {
+      reservationCalls += 1;
+      events.push("reservation");
+      return originalReserve(subject);
+    };
+    const evaluator: FirstPreviewTrustedOutputEvaluator = async (input, context) => {
+      events.push("moderation");
+      await new Promise((resolve) => setTimeout(resolve, 5_300));
+      if (!await context.reserveVisualPrivacyInspection?.()) throw new Error("synthetic reservation failed");
+      events.push("inspection");
+      await new Promise((resolve) => setTimeout(resolve, 5_300));
+      if (context.signal.aborted) throw new Error("synthetic evaluation aborted");
+      return passingEvidence(input);
+    };
+    const started = Date.now();
+    const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work,
+      workerDependencies(
+        prepared.repository,
+        successfulBinding({ callCounter: providerCalls }),
+        assetStore(),
+        evaluator,
+      ),
+    );
+    expect(Date.now() - started).toBeGreaterThan(10_000);
+    expect(result).toEqual({ status: "ready" });
+    expect(events).toEqual(["moderation", "reservation", "inspection"]);
+    expect(reservationCalls).toBe(1);
+    expect(providerCalls.value).toBe(1);
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toMatchObject({
+      id: OUTPUT_ID,
+      readinessStatus: "first_preview_ready",
+    });
+    const job = await prepared.repository.findJobById(JOB_1_ID);
+    expect(Date.parse(job?.deadlineAt ?? "") - Date.parse(job?.startedAt ?? "")).toBe(150_000);
+  });
+
+  test("sequential deadline expiry retains one unknown-billing reservation and ignores late evidence", async () => {
+    const prepared = await preparedWork();
+    let reservationCalls = 0;
+    let inspectionDispatches = 0;
+    let lateEvidenceReturned = false;
+    let operationalEvidence: unknown = null;
+    const originalReserve = prepared.repository.reserveVisualPrivacyInspection.bind(prepared.repository);
+    prepared.repository.reserveVisualPrivacyInspection = async (subject) => {
+      reservationCalls += 1;
+      return originalReserve(subject);
+    };
+    const originalFailure = prepared.repository.recordVisualPrivacyOperationalFailure.bind(prepared.repository);
+    prepared.repository.recordVisualPrivacyOperationalFailure = async (subject, reason, evidence) => {
+      const result = await originalFailure(subject, reason, evidence);
+      if (result.ok) operationalEvidence = result.value.automaticGateEvidence;
+      return result;
+    };
+    const evaluator: FirstPreviewTrustedOutputEvaluator = async (input, context) => {
+      if (!await context.reserveVisualPrivacyInspection?.()) throw new Error("synthetic reservation failed");
+      inspectionDispatches += 1;
+      return new Promise((resolve) => {
+        context.signal.addEventListener("abort", () => {
+          setTimeout(() => {
+            lateEvidenceReturned = true;
+            resolve(passingEvidence(input));
+          }, 10);
+        }, { once: true });
+      });
+    };
+    const dependencies = workerDependencies(prepared.repository, successfulBinding(), assetStore(), evaluator);
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, {
+      ...dependencies,
+      trustedOutputEvidenceTimeoutMs: 100,
+      attemptTimeoutMs: 5_000,
+    })).toEqual({ status: "failed", failureCategory: "lifecycle_conflict" });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(reservationCalls).toBe(1);
+    expect(inspectionDispatches).toBe(1);
+    expect(lateEvidenceReturned).toBe(true);
+    expect(operationalEvidence).toMatchObject({
+      result: "failed",
+      reason: "inspection_interrupted",
+      billingStatus: "unknown",
+      reservedCostMicros: 30_000,
+    });
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("sequential deadline yields to the earlier parent attempt cancellation", async () => {
+    const prepared = await preparedWork();
+    let reservationCalls = 0;
+    let inspectionDispatches = 0;
+    let evaluatorSignal: AbortSignal | null = null;
+    const originalReserve = prepared.repository.reserveVisualPrivacyInspection.bind(prepared.repository);
+    prepared.repository.reserveVisualPrivacyInspection = async (subject) => {
+      reservationCalls += 1;
+      return originalReserve(subject);
+    };
+    const evaluator: FirstPreviewTrustedOutputEvaluator = async (input, context) => {
+      if (!await context.reserveVisualPrivacyInspection?.()) throw new Error("synthetic reservation failed");
+      inspectionDispatches += 1;
+      evaluatorSignal = context.signal;
+      return new Promise((resolve) => {
+        context.signal.addEventListener("abort", () => resolve(passingEvidence(input)), { once: true });
+      });
+    };
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work,
+      {
+        ...workerDependencies(prepared.repository, successfulBinding(), assetStore(), evaluator),
+        trustedOutputEvidenceTimeoutMs: 1_000,
+        attemptTimeoutMs: 80,
+      },
+    )).toEqual({ status: "failed", failureCategory: "timeout" });
+    expect(evaluatorSignal?.aborted).toBe(true);
+    expect(reservationCalls).toBe(1);
+    expect(inspectionDispatches).toBe(1);
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
   });
 
   test("evaluator exception and local timeout fail closed with truthful terminal timing", async () => {

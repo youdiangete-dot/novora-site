@@ -146,8 +146,11 @@ export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
   outputIdSource?: () => string;
 }>;
 
-const DEFAULT_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS = 10_000;
-const MAX_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS = 30_000;
+// Moderation and the (up to 30-second) visual inspection run sequentially.
+// The attempt timer starts before image generation, so it remains the earlier
+// authoritative deadline while this evaluator retains a finite local timer.
+const DEFAULT_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS = OPENAI_FIRST_PREVIEW_TIMEOUT_MS;
+const MAX_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS = OPENAI_FIRST_PREVIEW_TIMEOUT_MS;
 
 type TrustedOutputEvidenceFailureReason =
   | "unavailable"

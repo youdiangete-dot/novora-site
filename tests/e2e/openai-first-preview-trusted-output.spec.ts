@@ -451,6 +451,38 @@ test.describe("OpenAI First Preview trusted-output evaluator", () => {
     expect(fetchCalls).toBe(1);
   });
 
+  test("sequential deadline cancellation reaches the one reserved visual request", async () => {
+    const requests: string[] = [];
+    let reservations = 0;
+    let visualSignal: AbortSignal | undefined;
+    let visualStarted!: () => void;
+    const started = new Promise<void>((resolve) => { visualStarted = resolve; });
+    const evaluator = evaluatorWithFetch(fetchFake(async (input, init) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith("/moderations")) return response({ results: [{ flagged: false }] });
+      visualSignal = init?.signal;
+      visualStarted();
+      return new Promise<Response>((resolve) => {
+        init?.signal?.addEventListener("abort", () => resolve(visualInspectionResponse()), { once: true });
+      });
+    }));
+    const controller = new AbortController();
+    const evaluation = evaluator(evaluatorInput(), {
+      signal: controller.signal,
+      reserveVisualPrivacyInspection: async () => { reservations += 1; return true; },
+    });
+    await started;
+    controller.abort();
+    await expect(evaluation).rejects.toThrow();
+    expect(reservations).toBe(1);
+    expect(requests).toEqual([
+      "https://api.openai.com/v1/moderations",
+      "https://api.openai.com/v1/chat/completions",
+    ]);
+    expect(visualSignal?.aborted).toBe(true);
+  });
+
   test("fails closed without a valid server-only API key before fetch", async () => {
     let fetchCalls = 0;
     const evaluator =
