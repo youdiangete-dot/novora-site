@@ -198,6 +198,13 @@ function repository(currentOutput: FirstPreviewOutputRecord | null): FirstPrevie
     async findCustomerReadyOutput() {
       return currentOutput;
     },
+    async ensureReadyReviewLink() {
+      return currentOutput
+        ? { ok: true, value: { outputId: currentOutput.id, conceptBriefId: currentOutput.conceptBriefId,
+            reviewStatus: "draft_generated_internal_only", revisionInstruction: null,
+            createdAt: "2026-08-07T10:00:02.000Z" } }
+        : { ok: false, code: "output_not_found" };
+    },
   } as unknown as FirstPreviewRepository;
 }
 
@@ -369,6 +376,29 @@ test("saves needs_revision and its exact instruction for the exact current outpu
       ],
     },
   ]);
+});
+
+test("crash-consistency repairs a missing lifecycle Review link before an authorized admin write", async () => {
+  const state = {
+    existingRow: null as ReviewRow | null,
+    savedRow: reviewRow({ review_status: "needs_revision", revision_instruction: "Refine the setting." }),
+  };
+  const persistence = reviewPersistence(state);
+  const targetRepository = repository(output());
+  let repairs = 0;
+  targetRepository.ensureReadyReviewLink = async () => {
+    repairs += 1;
+    state.existingRow = reviewRow();
+    return { ok: true, value: { outputId: OUTPUT_ID, conceptBriefId: BRIEF_ID,
+      reviewStatus: "draft_generated_internal_only", revisionInstruction: null,
+      createdAt: "2026-08-07T10:00:02.000Z" } };
+  };
+  expect(await modules.reviewWrite.updateAdminAiSketchReview(
+    BRIEF_ID, OUTPUT_ID, "needs_revision", "Refine the setting.",
+    { supabaseClient: persistence.client, repository: targetRepository },
+  )).toMatchObject({ ok: true, aiSketchOutputId: OUTPUT_ID });
+  expect(repairs).toBe(1);
+  expect(persistence.updateCalls).toHaveLength(1);
 });
 
 test("keeps output mismatch and review linkage conflict fail-closed", async () => {

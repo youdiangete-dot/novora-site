@@ -3,6 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 
 import { createSupabaseAdminClientOrNull } from "../supabase";
+import { createFirstPreviewRepository } from "./first-preview-persistence";
 import {
   FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME,
   FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV,
@@ -88,6 +89,7 @@ export async function readFirstPreviewCustomerViewBinding(
         const stateSource = supabase
           ? createSupabaseFirstPreviewCustomerViewStateSource(
               createFirstPreviewCustomerViewDatabaseClient(supabase),
+              { recoveryRepository: createFirstPreviewRepository({ supabaseClient: supabase }) },
             )
           : createUnavailableFirstPreviewCustomerViewStateSource();
         return stateSource.readExactCustomerPreviewState(lookup);

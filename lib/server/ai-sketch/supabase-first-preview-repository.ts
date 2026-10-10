@@ -1,6 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { FIRST_PREVIEW_COST_CONTRACT } from "./first-preview-cost-contract";
+import {
+  FIRST_PREVIEW_VISUAL_PRIVACY_BRIEF_LIMIT_MICROS,
+  FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS,
+  hasPassedFirstPreviewAutomaticGateEvidence,
+  isVisualPrivacySubject,
+  validateFirstPreviewInspectionInterruptionEvidence,
+  validateFirstPreviewVisualPrivacyEvidence,
+  type FirstPreviewVisualPrivacyEvidence,
+  type VisualPrivacySubject,
+} from "./first-preview-visual-privacy-contract";
 
 // This dependency-injected implementation contains no credentials and creates
 // no client by itself. Production construction is exposed only through the
@@ -14,7 +24,9 @@ import {
   FIRST_PREVIEW_LINEAGE_IDENTITY,
   FIRST_PREVIEW_MAX_ATTEMPT_NUMBER,
   FIRST_PREVIEW_PERSISTENCE_CONTRACT_VERSION,
+  FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS,
   FIRST_PREVIEW_PROVIDER_PROFILE,
+  parseFirstPreviewCanonicalUtcTimestampMicros,
   type FirstPreviewAutomaticGateEvidence,
   type FirstPreviewFailureCategory,
   type FirstPreviewJobRecord,
@@ -90,6 +102,10 @@ export type FirstPreviewOutputRow = {
   readiness_revoked_at: string | null;
   is_current_customer_preview: boolean;
   created_at: string;
+  automatic_gate_status?: "pending" | "passed" | "failed" | null;
+  automatic_gate_evidence?: unknown;
+  automatic_gate_policy_version?: string | null;
+  automatic_gate_passed_at?: string | null;
 };
 
 export type FirstPreviewReviewRow = {
@@ -98,6 +114,11 @@ export type FirstPreviewReviewRow = {
   review_status: string;
   revision_instruction: string | null;
   created_at: string;
+  updated_at?: string | null;
+  approved_for_customer_at?: string | null;
+  approved_by?: string | null;
+  approval_revoked_at?: string | null;
+  revoked_by?: string | null;
 };
 
 type RowPatch = Record<string, unknown>;
@@ -130,6 +151,13 @@ export interface FirstPreviewDatabaseClient {
   insertOutput(row: RowPatch): DatabaseResult<FirstPreviewOutputRow>;
   findOutputById(id: string): DatabaseResult<FirstPreviewOutputRow>;
   findOutputByJobId(jobId: string): DatabaseResult<FirstPreviewOutputRow>;
+  findOutputsByConceptBriefId(conceptBriefId: string): DatabaseResult<FirstPreviewOutputRow[]>;
+  claimOutputAutomaticGate(
+    subject: VisualPrivacySubject,
+    expectedStatus: "pending" | null,
+    expectedPolicyVersion: string | null,
+    patch: RowPatch,
+  ): DatabaseResult<FirstPreviewOutputRow>;
   findCustomerReadyOutput(conceptBriefId: string): DatabaseResult<FirstPreviewOutputRow>;
   updateOutput(
     identity: { id: string; jobId: string; conceptBriefId: string },
@@ -138,6 +166,12 @@ export interface FirstPreviewDatabaseClient {
   ): DatabaseResult<FirstPreviewOutputRow>;
   insertReview(row: RowPatch): DatabaseResult<FirstPreviewReviewRow>;
   findReviewByConceptBriefId(conceptBriefId: string): DatabaseResult<FirstPreviewReviewRow>;
+  relinkProvisionalReview(
+    conceptBriefId: string,
+    oldOutputId: string,
+    newOutputId: string,
+    expectedUpdatedAt: string | null,
+  ): DatabaseResult<FirstPreviewReviewRow>;
 }
 
 const JOB_COLUMNS = [
@@ -156,11 +190,13 @@ const OUTPUT_COLUMNS = [
   "byte_size", "width_px", "height_px", "content_sha256", "asset_created_at",
   "asset_validation_status", "asset_validated_at", "readiness_status",
   "first_preview_ready_at", "readiness_revoked_at", "is_current_customer_preview",
+  "automatic_gate_status", "automatic_gate_evidence", "automatic_gate_policy_version",
+  "automatic_gate_passed_at",
   "created_at",
 ].join(", ");
 
 const REVIEW_COLUMNS =
-  "ai_sketch_output_id, concept_brief_id, review_status, revision_instruction, created_at";
+  "ai_sketch_output_id, concept_brief_id, review_status, revision_instruction, created_at, updated_at, approved_for_customer_at, approved_by, approval_revoked_at, revoked_by";
 
 export function createFirstPreviewDatabaseClient(
   supabase: SupabaseClient,
@@ -252,6 +288,30 @@ export function createFirstPreviewDatabaseClient(
         .eq("job_id", jobId)
         .maybeSingle();
     },
+    async findOutputsByConceptBriefId(conceptBriefId) {
+      return supabase.from("ai_sketch_outputs").select(OUTPUT_COLUMNS)
+        .eq("concept_brief_id", conceptBriefId).limit(3).returns<FirstPreviewOutputRow[]>();
+    },
+    async claimOutputAutomaticGate(subject, expectedStatus, expectedPolicyVersion, patch) {
+      let query = supabase.from("ai_sketch_outputs").update(patch)
+        .eq("id", subject.outputId)
+        .eq("job_id", subject.jobId)
+        .eq("concept_brief_id", subject.conceptBriefId)
+        .eq("content_sha256", subject.contentSha256)
+        .eq("readiness_status", "not_ready")
+        .eq("is_current_customer_preview", false)
+        .eq("asset_validation_status", "passed")
+        .not("asset_validated_at", "is", null)
+        .is("automatic_gate_evidence", null)
+        .is("automatic_gate_passed_at", null);
+      query = expectedStatus === null
+        ? query.is("automatic_gate_status", null)
+        : query.eq("automatic_gate_status", expectedStatus);
+      query = expectedPolicyVersion === null
+        ? query.is("automatic_gate_policy_version", null)
+        : query.eq("automatic_gate_policy_version", expectedPolicyVersion);
+      return query.select(OUTPUT_COLUMNS).maybeSingle();
+    },
     async findCustomerReadyOutput(conceptBriefId) {
       return supabase
         .from("ai_sketch_outputs")
@@ -259,6 +319,8 @@ export function createFirstPreviewDatabaseClient(
         .eq("concept_brief_id", conceptBriefId)
         .eq("readiness_status", "first_preview_ready")
         .eq("is_current_customer_preview", true)
+        .eq("automatic_gate_status", "passed")
+        .eq("automatic_gate_policy_version", FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION)
         .maybeSingle();
     },
     async updateOutput(identity, allowedReadinessStatuses, patch) {
@@ -281,6 +343,22 @@ export function createFirstPreviewDatabaseClient(
         .select(REVIEW_COLUMNS)
         .eq("concept_brief_id", conceptBriefId)
         .maybeSingle();
+    },
+    async relinkProvisionalReview(conceptBriefId, oldOutputId, newOutputId, expectedUpdatedAt) {
+      let query = supabase.from("ai_sketch_reviews")
+        .update({ ai_sketch_output_id: newOutputId })
+        .eq("concept_brief_id", conceptBriefId)
+        .eq("ai_sketch_output_id", oldOutputId)
+        .eq("review_status", "draft_generated_internal_only")
+        .is("revision_instruction", null)
+        .is("approved_for_customer_at", null)
+        .is("approved_by", null)
+        .is("approval_revoked_at", null)
+        .is("revoked_by", null);
+      query = expectedUpdatedAt === null
+        ? query.is("updated_at", null)
+        : query.eq("updated_at", expectedUpdatedAt);
+      return query.select(REVIEW_COLUMNS).maybeSingle();
     },
   };
 }
@@ -358,8 +436,49 @@ function maxTimestamp(left: string, right: string): string {
   return left >= right ? left : right;
 }
 
-function gatesPassed(gates: FirstPreviewAutomaticGateEvidence): boolean {
-  return Object.values(gates).every((value) => value === true);
+function visualSubject(output: FirstPreviewOutputRecord): VisualPrivacySubject {
+  return {
+    conceptBriefId: output.conceptBriefId,
+    jobId: output.jobId,
+    outputId: output.id,
+    contentSha256: output.contentSha256,
+  };
+}
+
+function subjectMatches(output: FirstPreviewOutputRecord, subject: VisualPrivacySubject): boolean {
+  return output.id === subject.outputId && output.jobId === subject.jobId &&
+    output.conceptBriefId === subject.conceptBriefId &&
+    output.contentSha256 === subject.contentSha256;
+}
+
+function sanitizedVisualEvidence(evidence: FirstPreviewVisualPrivacyEvidence): FirstPreviewVisualPrivacyEvidence {
+  return {
+    subject: {
+      conceptBriefId: evidence.subject.conceptBriefId,
+      jobId: evidence.subject.jobId,
+      outputId: evidence.subject.outputId,
+      contentSha256: evidence.subject.contentSha256,
+    },
+    inspectorVersion: evidence.inspectorVersion,
+    policyVersion: evidence.policyVersion,
+    model: evidence.model,
+    result: evidence.result,
+    usageTrusted: evidence.usageTrusted,
+    actualCostMicros: evidence.actualCostMicros,
+  };
+}
+
+function sanitizedGateEvidence(gates: FirstPreviewAutomaticGateEvidence) {
+  return {
+    outputValid: gates.outputValid,
+    assetExists: gates.assetExists,
+    ownershipConsistent: gates.ownershipConsistent,
+    privacyPassed: gates.privacyPassed,
+    customerAccessEligible: gates.customerAccessEligible,
+    lifecycleEligible: gates.lifecycleEligible,
+    visualPrivacyEvidence: sanitizedVisualEvidence(gates.visualPrivacyEvidence),
+    result: "passed",
+  };
 }
 
 function isSafeAssetPath(value: string): boolean {
@@ -468,6 +587,10 @@ function mapOutput(row: FirstPreviewOutputRow | null): FirstPreviewOutputRecord 
     createdAt: row.created_at,
     readyAt: row.first_preview_ready_at,
     revokedAt: row.readiness_revoked_at,
+    automaticGateStatus: row.automatic_gate_status ?? null,
+    automaticGateEvidence: row.automatic_gate_evidence ?? null,
+    automaticGatePolicyVersion: row.automatic_gate_policy_version ?? null,
+    automaticGatePassedAt: row.automatic_gate_passed_at ?? null,
   };
 }
 
@@ -750,9 +873,19 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     const outputResult = await this.database.findOutputByJobId(jobId);
     if (outputResult.error) return failure("repository_unavailable");
     if (!outputResult.data) return failure("output_not_found");
-    if (!mapOutput(outputResult.data)) return failure("repository_unavailable");
+    const output = mapOutput(outputResult.data);
+    if (!output) return failure("repository_unavailable");
+    const jobResult = await this.database.findJobById(jobId);
+    if (jobResult.error) return failure("repository_unavailable");
+    const job = mapJob(jobResult.data);
+    const completedAt = this.clock();
+    if (!job || job.status !== "processing" || !isIsoTimestamp(job.startedAt) ||
+      !isIsoTimestamp(job.deadlineAt) || !isIsoTimestamp(completedAt) ||
+      Date.parse(completedAt) > Date.parse(job.deadlineAt) ||
+      Date.parse(completedAt) < Date.parse(job.startedAt) ||
+      Date.parse(completedAt) < Date.parse(output.assetValidatedAt)) return failure("job_not_active");
     return this.updateJob(jobId, ["processing"], {
-      status: "succeeded", completed_at: this.clock(), actual_cost_micros: success.actualCostMicros,
+      status: "succeeded", completed_at: completedAt, actual_cost_micros: success.actualCostMicros,
       failure_category: null, retry_eligible: null, terminal_reason: null, error_message: null,
     });
   }
@@ -871,31 +1004,212 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     return output ? { ok: true, value: output } : failure("repository_unavailable");
   }
 
+  async reserveVisualPrivacyInspection(subject: VisualPrivacySubject): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    if (!isVisualPrivacySubject(subject)) return failure("invalid_input");
+    const outputResult = await this.database.findOutputById(subject.outputId);
+    if (outputResult.error) return failure("repository_unavailable");
+    const output = mapOutput(outputResult.data);
+    if (!output) return failure("output_not_found");
+    if (!subjectMatches(output, subject)) return failure("linkage_mismatch");
+    if (output.readinessStatus !== "not_ready" || output.isCurrentCustomerPreview ||
+      output.automaticGateStatus !== null || output.automaticGatePolicyVersion !== null ||
+      output.automaticGateEvidence !== null || output.automaticGatePassedAt !== null) {
+      return failure("idempotency_conflict");
+    }
+    const jobResult = await this.database.findJobById(subject.jobId);
+    if (jobResult.error) return failure("repository_unavailable");
+    const job = mapJob(jobResult.data);
+    const now = this.clock();
+    if (!job || job.conceptBriefId !== subject.conceptBriefId || job.status !== "processing" ||
+      (job.attemptNumber !== 1 && job.attemptNumber !== 2) || job.actualCostMicros === null ||
+      !isNonblank(job.providerRequestId) || !isIsoTimestamp(job.deadlineAt) ||
+      !isIsoTimestamp(now) || Date.parse(job.deadlineAt) <= Date.parse(now)) {
+      return failure("job_not_active");
+    }
+    const rows = await this.database.findOutputsByConceptBriefId(subject.conceptBriefId);
+    if (rows.error || !rows.data) return failure("repository_unavailable");
+    if (rows.data.length > 2) return failure("automatic_gates_not_passed");
+    let accountedCost = FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS;
+    for (const row of rows.data) {
+      const candidate = mapOutput(row);
+      if (!candidate || candidate.conceptBriefId !== subject.conceptBriefId) return failure("repository_unavailable");
+      if (candidate.automaticGateStatus === null && candidate.automaticGatePolicyVersion === null &&
+        candidate.automaticGateEvidence === null && candidate.automaticGatePassedAt === null) continue;
+      if (candidate.automaticGatePolicyVersion !== FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION) {
+        return failure("automatic_gates_not_passed");
+      }
+      let charge: number = FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS;
+      if (candidate.automaticGateStatus === "pending") {
+        if (candidate.automaticGateEvidence !== null || candidate.automaticGatePassedAt !== null) return failure("automatic_gates_not_passed");
+      } else if (candidate.automaticGateStatus === "failed" || candidate.automaticGateStatus === "passed") {
+        const evidence = candidate.automaticGateEvidence;
+        if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) return failure("automatic_gates_not_passed");
+        if (candidate.automaticGateStatus === "failed" &&
+          validateFirstPreviewInspectionInterruptionEvidence(evidence, visualSubject(candidate))) {
+          charge = Math.max(charge, evidence.visualPrivacyEvidence?.actualCostMicros ?? 0);
+        } else {
+          const visualEvidence = (evidence as Record<string, unknown>).visualPrivacyEvidence;
+          if (!validateFirstPreviewVisualPrivacyEvidence(visualEvidence, visualSubject(candidate), false)) return failure("automatic_gates_not_passed");
+          charge = Math.max(charge, (visualEvidence as FirstPreviewVisualPrivacyEvidence).actualCostMicros);
+        }
+      } else return failure("automatic_gates_not_passed");
+      accountedCost += charge;
+      if (!Number.isSafeInteger(accountedCost) || accountedCost > FIRST_PREVIEW_VISUAL_PRIVACY_BRIEF_LIMIT_MICROS) return failure("automatic_gates_not_passed");
+    }
+    // Unique brief/attempt and one-output/job constraints, combined with the
+    // attempt 1|2 restriction, bound concurrent claims to two reservations.
+    // Pending v2 always accounts for 30000 micros, including a crash before
+    // dispatch or an unknown bill. It never replays as a successful claim.
+    const claimed = await this.database.claimOutputAutomaticGate(subject, null, null, {
+      automatic_gate_status: "pending",
+      automatic_gate_policy_version: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+      automatic_gate_evidence: null,
+      automatic_gate_passed_at: null,
+    });
+    if (claimed.error) return failure("repository_unavailable");
+    const reserved = mapOutput(claimed.data);
+    if (!reserved || !subjectMatches(reserved, subject) ||
+      reserved.automaticGateStatus !== "pending" ||
+      reserved.automaticGatePolicyVersion !== FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION ||
+      reserved.automaticGateEvidence !== null || reserved.automaticGatePassedAt !== null) return failure("idempotency_conflict");
+    const currentJobResult = await this.database.findJobById(subject.jobId);
+    if (currentJobResult.error) return failure("repository_unavailable");
+    const currentJob = mapJob(currentJobResult.data);
+    const claimedAt = Date.parse(this.clock());
+    if (!currentJob || currentJob.status !== "processing" ||
+      currentJob.conceptBriefId !== subject.conceptBriefId || !isIsoTimestamp(currentJob.deadlineAt) ||
+      !Number.isFinite(claimedAt) || Date.parse(currentJob.deadlineAt) <= claimedAt) return failure("job_not_active");
+    return { ok: true, value: reserved };
+  }
+
+  async recordVisualPrivacyInspectionFailure(subject: VisualPrivacySubject, evidence: FirstPreviewVisualPrivacyEvidence): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    if (!isVisualPrivacySubject(subject) || evidence?.result !== "failed" ||
+      !validateFirstPreviewVisualPrivacyEvidence(evidence, subject, false)) return failure("invalid_input");
+    const updated = await this.database.claimOutputAutomaticGate(
+      subject, "pending", FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+      {
+        automatic_gate_status: "failed",
+        automatic_gate_evidence: { result: "failed", visualPrivacyEvidence: sanitizedVisualEvidence(evidence) },
+        automatic_gate_passed_at: null,
+      },
+    );
+    if (updated.error) return failure("repository_unavailable");
+    const output = mapOutput(updated.data);
+    return output && subjectMatches(output, subject)
+      ? { ok: true, value: output } : failure("idempotency_conflict");
+  }
+
+  async recordVisualPrivacyOperationalFailure(
+    subject: VisualPrivacySubject,
+    reason: "inspection_interrupted" | "gate_pipeline_failed",
+    visualEvidence?: FirstPreviewVisualPrivacyEvidence,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    if (!isVisualPrivacySubject(subject) ||
+      (visualEvidence !== undefined && !validateFirstPreviewVisualPrivacyEvidence(visualEvidence, subject, false))) {
+      return failure("invalid_input");
+    }
+    const evidence = {
+      result: "failed" as const,
+      reason,
+      subject,
+      billingStatus: "unknown" as const,
+      reservedCostMicros: FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS,
+      ...(visualEvidence ? { visualPrivacyEvidence: sanitizedVisualEvidence(visualEvidence) } : {}),
+    };
+    if (!validateFirstPreviewInspectionInterruptionEvidence(evidence, subject)) return failure("invalid_input");
+    const updated = await this.database.claimOutputAutomaticGate(
+      subject, "pending", FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+      { automatic_gate_status: "failed", automatic_gate_evidence: evidence, automatic_gate_passed_at: null },
+    );
+    if (updated.error) return failure("repository_unavailable");
+    const output = mapOutput(updated.data);
+    return output && subjectMatches(output, subject)
+      ? { ok: true, value: output } : failure("idempotency_conflict");
+  }
+
+  async reconcileInterruptedInspection(
+    jobId: string,
+    conceptBriefId: string,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord | null>> {
+    if (!UUID_PATTERN.test(jobId) || !UUID_PATTERN.test(conceptBriefId)) return failure("invalid_input");
+    const [jobResult, outputResult] = await Promise.all([
+      this.database.findJobById(jobId), this.database.findOutputByJobId(jobId),
+    ]);
+    if (jobResult.error || outputResult.error) return failure("repository_unavailable");
+    const job = mapJob(jobResult.data);
+    if (!job || job.conceptBriefId !== conceptBriefId) return failure("linkage_mismatch");
+    if (!outputResult.data) return { ok: true, value: null };
+    const output = mapOutput(outputResult.data);
+    if (!output || output.jobId !== jobId || output.conceptBriefId !== conceptBriefId) return failure("linkage_mismatch");
+    const now = parseFirstPreviewCanonicalUtcTimestampMicros(this.clock());
+    const deadline = parseFirstPreviewCanonicalUtcTimestampMicros(job.deadlineAt);
+    if (now === null || deadline === null) return failure("job_not_active");
+    const terminalFailure = job.status === "failed" || job.status === "cancelled" || job.status === "timed_out";
+    let expired = now > deadline;
+    if (job.status === "succeeded") {
+      const completed = parseFirstPreviewCanonicalUtcTimestampMicros(job.completedAt);
+      const started = parseFirstPreviewCanonicalUtcTimestampMicros(job.startedAt);
+      if (completed === null || started === null || completed < started || completed > deadline || now < completed) {
+        return failure("job_not_active");
+      }
+      expired = now >= completed + BigInt(FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS) * BigInt(1_000_000);
+    }
+    if (!terminalFailure && !expired) return { ok: true, value: output };
+    if (output.automaticGateStatus === "pending" &&
+      output.automaticGatePolicyVersion === FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION &&
+      output.automaticGateEvidence === null && output.automaticGatePassedAt === null &&
+      output.readinessStatus === "not_ready" && !output.isCurrentCustomerPreview) {
+      const settled = await this.recordVisualPrivacyOperationalFailure(
+        visualSubject(output), "inspection_interrupted",
+      );
+      if (settled.ok === false && settled.code !== "idempotency_conflict") return failure(settled.code);
+    }
+    // A second invocation finishes a crash between Output and Job settlement.
+    if (job.status === "processing" && expired) {
+      const timedOut = await this.recordJobFailure(jobId, {
+        category: "timeout", retryEligible: false, actualCostMicros: job.actualCostMicros,
+      });
+      if (timedOut.ok === false && timedOut.code !== "job_not_active") return failure(timedOut.code);
+    }
+    const current = await this.database.findOutputByJobId(jobId);
+    if (current.error) return failure("repository_unavailable");
+    const currentOutput = mapOutput(current.data);
+    return currentOutput && currentOutput.conceptBriefId === conceptBriefId
+      ? { ok: true, value: currentOutput } : failure("linkage_mismatch");
+  }
+
   async markOutputReady(input: MarkFirstPreviewReadyInput): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
-    if (!gatesPassed(input.gates)) return failure("automatic_gates_not_passed");
     if (input.automaticGatePolicyVersion !== FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION) return failure("invalid_input");
     const outputResult = await this.database.findOutputById(input.outputId);
     if (outputResult.error) return failure("repository_unavailable");
     const output = mapOutput(outputResult.data);
     if (!output) return outputResult.data ? failure("repository_unavailable") : failure("output_not_found");
     if (output.jobId !== input.jobId || output.conceptBriefId !== input.conceptBriefId) return failure("linkage_mismatch");
+    if (!hasPassedFirstPreviewAutomaticGateEvidence({ ...input.gates, result: "passed" }, visualSubject(output))) return failure("automatic_gates_not_passed");
+    if (output.readinessStatus !== "not_ready" || output.isCurrentCustomerPreview ||
+      output.automaticGateStatus !== "pending" ||
+      output.automaticGatePolicyVersion !== FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION ||
+      output.automaticGateEvidence !== null || output.automaticGatePassedAt !== null) return failure("automatic_gates_not_passed");
     const jobResult = await this.database.findJobById(input.jobId);
     if (jobResult.error) return failure("repository_unavailable");
     const job = mapJob(jobResult.data);
     if (!job || job.status !== "succeeded") return failure("job_not_active");
-    const review = await this.ensureReviewLink(input.outputId, input.conceptBriefId);
-    if (review.ok === false) return review;
-    if (output.readinessStatus === "first_preview_ready" && output.isCurrentCustomerPreview) {
-      return { ok: true, value: output };
-    }
-    if (output.readinessStatus !== "not_ready") return failure("job_not_active");
-    const passedAt = maxTimestamp(this.clock(), output.assetValidatedAt);
-    const updated = await this.database.updateOutput(
-      { id: input.outputId, jobId: input.jobId, conceptBriefId: input.conceptBriefId },
-      ["not_ready"],
+    const now = this.clock();
+    if (!isIsoTimestamp(job.startedAt) || !isIsoTimestamp(job.completedAt) ||
+      !isIsoTimestamp(job.deadlineAt) || !isIsoTimestamp(now) ||
+      Date.parse(now) > Date.parse(job.deadlineAt) ||
+      Date.parse(job.completedAt) > Date.parse(job.deadlineAt) ||
+      Date.parse(job.completedAt) < Date.parse(job.startedAt) ||
+      Date.parse(job.completedAt) < Date.parse(output.assetValidatedAt) ||
+      Date.parse(now) < Date.parse(job.completedAt)) return failure("job_not_active");
+    const passedAt = this.clock();
+    if (!isIsoTimestamp(passedAt) || Date.parse(passedAt) > Date.parse(job.deadlineAt) ||
+      Date.parse(passedAt) < Date.parse(job.completedAt)) return failure("job_not_active");
+    const updated = await this.database.claimOutputAutomaticGate(
+      visualSubject(output), "pending", FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
       {
         automatic_gate_status: "passed",
-        automatic_gate_evidence: { ...input.gates, result: "passed" },
+        automatic_gate_evidence: sanitizedGateEvidence(input.gates),
         automatic_gate_policy_version: input.automaticGatePolicyVersion,
         automatic_gate_passed_at: passedAt,
         readiness_status: "first_preview_ready",
@@ -907,7 +1221,11 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     if (updated.error) return isUniqueConflict(updated.error)
       ? failure("attempt_identity_conflict") : failure("repository_unavailable");
     const ready = mapOutput(updated.data);
-    return ready ? { ok: true, value: ready } : failure("job_not_active");
+    if (!ready) return failure("job_not_active");
+    // Review is post-preview human workflow. A crash here leaves a genuine
+    // ready Output; an authorized admin read/write can repair the link later.
+    await this.ensureReadyReviewLink(ready.id, ready.conceptBriefId);
+    return { ok: true, value: ready };
   }
 
   async revokeOutput(input: RevokeFirstPreviewOutputInput): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
@@ -945,7 +1263,12 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
   async findCustomerReadyOutput(conceptBriefId: string): Promise<FirstPreviewOutputRecord | null> {
     if (!UUID_PATTERN.test(conceptBriefId)) return null;
     const result = await this.database.findCustomerReadyOutput(conceptBriefId);
-    return result.error ? null : mapOutput(result.data);
+    const output = result.error ? null : mapOutput(result.data);
+    return output && output.automaticGateStatus === "passed" &&
+      output.automaticGatePolicyVersion === FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION &&
+      isIsoTimestamp(output.automaticGatePassedAt) &&
+      hasPassedFirstPreviewAutomaticGateEvidence(output.automaticGateEvidence, visualSubject(output))
+      ? output : null;
   }
 
   async findReviewByConceptBriefId(conceptBriefId: string): Promise<FirstPreviewReviewRecord | null> {
@@ -979,14 +1302,53 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     return current.data ? failure("job_not_active") : failure("job_not_found");
   }
 
-  private async ensureReviewLink(outputId: string, conceptBriefId: string): Promise<FirstPreviewRepositoryResult<FirstPreviewReviewRecord>> {
+  async ensureReadyReviewLink(outputId: string, conceptBriefId: string): Promise<FirstPreviewRepositoryResult<FirstPreviewReviewRecord>> {
+    if (!UUID_PATTERN.test(outputId) || !UUID_PATTERN.test(conceptBriefId)) return failure("invalid_input");
+    const readyResult = await this.database.findCustomerReadyOutput(conceptBriefId);
+    if (readyResult.error) return failure("repository_unavailable");
+    const ready = mapOutput(readyResult.data);
+    if (!ready || ready.id !== outputId || ready.conceptBriefId !== conceptBriefId ||
+      ready.readinessStatus !== "first_preview_ready" || !ready.isCurrentCustomerPreview ||
+      ready.automaticGateStatus !== "passed" ||
+      ready.automaticGatePolicyVersion !== FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION ||
+      !hasPassedFirstPreviewAutomaticGateEvidence(ready.automaticGateEvidence, visualSubject(ready))) {
+      return failure("automatic_gates_not_passed");
+    }
     const existingResult = await this.database.findReviewByConceptBriefId(conceptBriefId);
     if (existingResult.error) return failure("repository_unavailable");
     const existing = mapReview(existingResult.data);
     if (existingResult.data && !existing) return failure("repository_unavailable");
-    if (existing) return existing.outputId === outputId
-      ? { ok: true, value: existing }
-      : failure("review_linkage_conflict");
+    if (existing) {
+      if (existing.outputId === outputId) return { ok: true, value: existing };
+      const raw = existingResult.data!;
+      if (existing.reviewStatus !== "draft_generated_internal_only" ||
+        existing.revisionInstruction !== null ||
+        raw.approved_for_customer_at != null || raw.approved_by != null ||
+        raw.approval_revoked_at != null || raw.revoked_by != null ||
+        !isIsoTimestamp(raw.updated_at)) return failure("review_linkage_conflict");
+      const oldResult = await this.database.findOutputById(existing.outputId);
+      if (oldResult.error) return failure("repository_unavailable");
+      const oldOutput = mapOutput(oldResult.data);
+      if (!oldOutput || oldOutput.conceptBriefId !== conceptBriefId ||
+        oldOutput.readinessStatus !== "not_ready" || oldOutput.readyAt !== null ||
+        oldOutput.isCurrentCustomerPreview || oldOutput.automaticGateStatus !== "failed") {
+        return failure("review_linkage_conflict");
+      }
+      const oldJobResult = await this.database.findJobById(oldOutput.jobId);
+      if (oldJobResult.error) return failure("repository_unavailable");
+      const oldJob = mapJob(oldJobResult.data);
+      if (!oldJob || oldJob.conceptBriefId !== conceptBriefId ||
+        !["failed", "cancelled", "timed_out", "succeeded"].includes(oldJob.status)) {
+        return failure("review_linkage_conflict");
+      }
+      const relinked = await this.database.relinkProvisionalReview(
+        conceptBriefId, existing.outputId, outputId, raw.updated_at!,
+      );
+      if (relinked.error) return failure("repository_unavailable");
+      const repaired = mapReview(relinked.data);
+      return repaired && repaired.outputId === outputId && repaired.conceptBriefId === conceptBriefId
+        ? { ok: true, value: repaired } : failure("review_linkage_conflict");
+    }
     const inserted = await this.database.insertReview({
       ai_sketch_output_id: outputId,
       concept_brief_id: conceptBriefId,

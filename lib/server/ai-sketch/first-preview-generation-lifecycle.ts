@@ -20,6 +20,7 @@ import {
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   type FirstPreviewFailureCategory,
   type FirstPreviewJobRecord,
+  type FirstPreviewOutputRecord,
   type FirstPreviewRepository,
 } from "./first-preview-persistence-contract";
 import { createFirstPreviewRepository } from "./first-preview-persistence";
@@ -43,6 +44,10 @@ import {
   OPENAI_FIRST_PREVIEW_TIMEOUT_MS,
   type OpenAiFirstPreviewAdapterResult,
 } from "./openai-first-preview-provider";
+import {
+  validateFirstPreviewVisualPrivacyEvidence,
+  type FirstPreviewVisualPrivacyEvidence,
+} from "./first-preview-visual-privacy-contract";
 
 export type FirstPreviewPreparedGenerationInput = Readonly<
   Pick<
@@ -97,7 +102,7 @@ export type AutomaticFirstPreviewWorkerResult = Readonly<{
 }>;
 
 export const FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION =
-  "novora_first_preview_trusted_output_evidence_v1" as const;
+  "novora_first_preview_trusted_output_evidence_v2" as const;
 
 export type FirstPreviewTrustedOutputSubject = Readonly<{
   conceptBriefId: string;
@@ -109,6 +114,7 @@ export type FirstPreviewTrustedOutputSubject = Readonly<{
 export type FirstPreviewTrustedOutputEvidence = Readonly<{
   evidenceVersion: typeof FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION;
   subject: FirstPreviewTrustedOutputSubject;
+  visualPrivacyEvidence: FirstPreviewVisualPrivacyEvidence;
   results: Readonly<{
     contentSafetyPassed: boolean;
     privacyPassed: boolean;
@@ -124,7 +130,10 @@ export type FirstPreviewTrustedOutputEvaluator = (
     widthPx: 1024;
     heightPx: 1024;
   }>,
-  context: Readonly<{ signal: AbortSignal }>,
+  context: Readonly<{
+    signal: AbortSignal;
+    reserveVisualPrivacyInspection?: () => Promise<boolean>;
+  }>,
 ) => Promise<unknown>;
 
 export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
@@ -180,7 +189,7 @@ function validateTrustedOutputEvidence(
   }
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ["evidenceVersion", "results", "subject"]) ||
+    !hasExactKeys(value, ["evidenceVersion", "results", "subject", "visualPrivacyEvidence"]) ||
     value.evidenceVersion !== FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION ||
     !isRecord(value.subject) ||
     !hasExactKeys(value.subject, [
@@ -216,6 +225,9 @@ function validateTrustedOutputEvidence(
   if (value.results.privacyPassed !== true) {
     return { ok: false, reason: "privacy_failed" };
   }
+  if (!validateFirstPreviewVisualPrivacyEvidence(value.visualPrivacyEvidence, expectedSubject)) {
+    return { ok: false, reason: "privacy_failed" };
+  }
   if (value.results.outputValidityPassed !== true) {
     return { ok: false, reason: "output_validity_failed" };
   }
@@ -231,6 +243,8 @@ async function readTrustedOutputEvidence(
   subject: FirstPreviewTrustedOutputSubject,
   imageBytes: Uint8Array,
   attemptSignal: AbortSignal,
+  reserveInspection: () => Promise<boolean>,
+  readVisualEvidence: (value: unknown) => void,
 ): Promise<TrustedOutputEvidenceResult> {
   if (!dependencies.evaluateTrustedOutput) {
     return { ok: false, reason: "unavailable" };
@@ -284,11 +298,21 @@ async function readTrustedOutputEvidence(
               widthPx: 1024,
               heightPx: 1024,
             },
-            { signal: evaluatorController.signal },
+            {
+              signal: evaluatorController.signal,
+              reserveVisualPrivacyInspection: async () => {
+                if (evaluatorController.signal.aborted) return false;
+                const reserved = await reserveInspection();
+                return reserved && !evaluatorController.signal.aborted;
+              },
+            },
           ),
         )
         .then(
-          (value) => ({ kind: "value" as const, value }),
+          (value) => {
+            if (!evaluatorController.signal.aborted) readVisualEvidence(value);
+            return { kind: "value" as const, value };
+          },
           () => ({ kind: "exception" as const }),
         ),
       interruption,
@@ -611,6 +635,9 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   let adapterResult: OpenAiFirstPreviewAdapterResult | null = null;
   let trustedEvidence: FirstPreviewTrustedOutputEvidence | null = null;
   let trustedEvidenceFailureCategory: FirstPreviewFailureCategory | null = null;
+  let candidateOutput: FirstPreviewOutputRecord | null = null;
+  let inspectionReserved = false;
+  let visualEvidence: FirstPreviewVisualPrivacyEvidence | null = null;
   const provider: FirstPreviewProvider = {
     async generateFirstPreview(request, context) {
       adapterResult = await binding!.adapter.generateFirstPreviewImage(
@@ -646,11 +673,88 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
         outputId,
         contentSha256: createHash("sha256").update(imageBytes).digest("hex"),
       };
+      // Preserve image-generation accounting separately from the incremental
+      // visual-inspection reservation. No inspection is admitted over this cap.
+      const imageCost = reconcileFirstPreviewActualCost({
+        dispatched: true,
+        usage: safeReadUsage(binding!),
+      });
+      if (firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
+        trustedEvidenceFailureCategory = "budget_blocked";
+        return { outcome: "invalid_output" };
+      }
+      const requestId = safeReadProviderRequestId(binding!, adapterResult);
+      if (!requestId || context.signal.aborted) {
+        trustedEvidenceFailureCategory = "lifecycle_conflict";
+        return { outcome: "invalid_output" };
+      }
+      const requestRecorded = await dependencies.repository.recordProviderRequest(
+        work.jobId, { providerRequestId: requestId },
+      );
+      if (!requestRecorded.ok || context.signal.aborted) {
+        trustedEvidenceFailureCategory = "lifecycle_conflict";
+        return { outcome: "invalid_output" };
+      }
+
+      // A private, validated candidate must exist durably before the one-call
+      // inspection claim. It remains not_ready throughout automatic evaluation.
+      let stored: PersistFirstPreviewGeneratedAssetResult;
+      try {
+        stored = await dependencies.createAssetStore().persistValidatedPng({
+          conceptBriefId: work.conceptBriefId,
+          jobId: work.jobId,
+          outputId,
+          mimeType: "image/png",
+          imageBytes,
+        });
+      } catch {
+        trustedEvidenceFailureCategory = "storage_failure";
+        return { outcome: "invalid_output" };
+      }
+      if (stored.ok === false) {
+        trustedEvidenceFailureCategory = mapGeneratedAssetFailure(stored.code);
+        return { outcome: "invalid_output" };
+      }
+      if (stored.value.asset.contentSha256 !== subject.contentSha256 || context.signal.aborted) {
+        trustedEvidenceFailureCategory = "lifecycle_conflict";
+        return { outcome: "invalid_output" };
+      }
+      const output = await dependencies.repository.persistOutput({
+        outputId,
+        jobId: work.jobId,
+        conceptBriefId: work.conceptBriefId,
+        assetId: stored.value.asset.assetId,
+        assetPersisted: true,
+        bucketName: FIRST_PREVIEW_ASSET_BUCKET,
+        mimeType: stored.value.asset.mimeType,
+        byteSize: stored.value.asset.byteSize,
+        widthPx: stored.value.asset.widthPx,
+        heightPx: stored.value.asset.heightPx,
+        contentSha256: stored.value.asset.contentSha256,
+        assetCreatedAt: stored.value.asset.assetCreatedAt,
+        assetValidatedAt: stored.value.asset.assetValidatedAt,
+      });
+      if (!output.ok || context.signal.aborted) {
+        trustedEvidenceFailureCategory = "lifecycle_conflict";
+        return { outcome: "invalid_output" };
+      }
+      candidateOutput = output.value;
       const evidenceResult = await readTrustedOutputEvidence(
         dependencies,
         subject,
         imageBytes,
         context.signal,
+        async () => {
+          if (context.signal.aborted) return false;
+          const reserved = await dependencies.repository.reserveVisualPrivacyInspection(subject);
+          inspectionReserved = reserved.ok;
+          return reserved.ok && !context.signal.aborted;
+        },
+        (value) => {
+          if (isRecord(value) && validateFirstPreviewVisualPrivacyEvidence(value.visualPrivacyEvidence, subject, false)) {
+            visualEvidence = value.visualPrivacyEvidence;
+          }
+        },
       );
       if (evidenceResult.ok === false) {
         trustedEvidenceFailureCategory = mapTrustedOutputEvidenceFailure(
@@ -708,6 +812,29 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     usage: safeReadUsage(binding),
   });
   const providerRequestId = safeReadProviderRequestId(binding, adapterResult);
+  if (inspectionReserved && (!trustedEvidence || !runtime.gates.ready)) {
+    const output = candidateOutput as FirstPreviewOutputRecord | null;
+    if (output) {
+      const subject = {
+        conceptBriefId: work.conceptBriefId,
+        jobId: work.jobId,
+        outputId,
+        contentSha256: output.contentSha256,
+      };
+      const recordedVisualEvidence = visualEvidence as FirstPreviewVisualPrivacyEvidence | null;
+      // Preserve a real inspector verdict exactly. An absent verdict is an
+      // operational interruption, not manufactured privacy evidence.
+      if (recordedVisualEvidence?.result === "failed") {
+        await dependencies.repository.recordVisualPrivacyInspectionFailure(subject, recordedVisualEvidence);
+      } else {
+        await dependencies.repository.recordVisualPrivacyOperationalFailure(
+          subject,
+          recordedVisualEvidence ? "gate_pipeline_failed" : "inspection_interrupted",
+          recordedVisualEvidence ?? undefined,
+        );
+      }
+    }
+  }
   if (providerRequestId) {
     const recorded = await dependencies.repository.recordProviderRequest(
       work.jobId,
@@ -769,74 +896,8 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     );
   }
 
-  let assetStore: FirstPreviewGeneratedAssetStore;
-  try {
-    assetStore = dependencies.createAssetStore();
-  } catch {
-    return recordFailure(
-      dependencies.repository,
-      work.jobId,
-      "storage_failure",
-      false,
-      cost.actualCostMicros,
-    );
-  }
-  let stored: PersistFirstPreviewGeneratedAssetResult;
-  try {
-    stored = await assetStore.persistValidatedPng({
-      conceptBriefId: work.conceptBriefId,
-      jobId: work.jobId,
-      outputId,
-      mimeType: "image/png",
-      imageBytes: Buffer.from(adapterResult.imageBase64, "base64"),
-    });
-  } catch {
-    return recordFailure(
-      dependencies.repository,
-      work.jobId,
-      "storage_failure",
-      false,
-      cost.actualCostMicros,
-    );
-  }
-  if (stored.ok === false) {
-    return recordFailure(
-      dependencies.repository,
-      work.jobId,
-      mapGeneratedAssetFailure(stored.code),
-      false,
-      cost.actualCostMicros,
-    );
-  }
-  if (
-    stored.value.asset.contentSha256 !==
-    trustedEvidence.subject.contentSha256
-  ) {
-    return recordFailure(
-      dependencies.repository,
-      work.jobId,
-      "lifecycle_conflict",
-      false,
-      cost.actualCostMicros,
-    );
-  }
-
-  const output = await dependencies.repository.persistOutput({
-    outputId,
-    jobId: work.jobId,
-    conceptBriefId: work.conceptBriefId,
-    assetId: stored.value.asset.assetId,
-    assetPersisted: true,
-    bucketName: FIRST_PREVIEW_ASSET_BUCKET,
-    mimeType: stored.value.asset.mimeType,
-    byteSize: stored.value.asset.byteSize,
-    widthPx: stored.value.asset.widthPx,
-    heightPx: stored.value.asset.heightPx,
-    contentSha256: stored.value.asset.contentSha256,
-    assetCreatedAt: stored.value.asset.assetCreatedAt,
-    assetValidatedAt: stored.value.asset.assetValidatedAt,
-  });
-  if (!output.ok) {
+  const output = candidateOutput as FirstPreviewOutputRecord | null;
+  if (!output || !inspectionReserved || output.contentSha256 !== trustedEvidence.subject.contentSha256) {
     return recordFailure(
       dependencies.repository,
       work.jobId,
@@ -870,13 +931,14 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     conceptBriefId: work.conceptBriefId,
     gates: {
       outputValid: trustedEvidence.results.outputValidityPassed,
-      assetExists: stored.value.asset.assetPersisted === true,
+      assetExists: output.assetPersisted === true,
       ownershipConsistent:
-        output.value.id === trustedEvidence.subject.outputId &&
-        output.value.jobId === trustedEvidence.subject.jobId &&
-        output.value.conceptBriefId === trustedEvidence.subject.conceptBriefId &&
-        output.value.contentSha256 === trustedEvidence.subject.contentSha256,
+        output.id === trustedEvidence.subject.outputId &&
+        output.jobId === trustedEvidence.subject.jobId &&
+        output.conceptBriefId === trustedEvidence.subject.conceptBriefId &&
+        output.contentSha256 === trustedEvidence.subject.contentSha256,
       privacyPassed: trustedEvidence.results.privacyPassed,
+      visualPrivacyEvidence: trustedEvidence.visualPrivacyEvidence,
       customerAccessEligible: true,
       lifecycleEligible:
         runtime.gates.ready &&
@@ -905,6 +967,7 @@ export async function runAutomaticFirstPreviewWorker(
           retryEligible: false,
           actualCostMicros: job.actualCostMicros ?? 0,
         });
+        await dependencies.repository.reconcileInterruptedInspection(work.jobId, work.conceptBriefId);
       }
     } catch {
       // Repository failure still leaves the customer state fail-closed.

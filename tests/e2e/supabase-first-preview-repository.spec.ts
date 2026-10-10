@@ -14,6 +14,11 @@ import {
 } from "../../lib/server/ai-sketch/first-preview-persistence-contract";
 import { FakeFirstPreviewDatabaseClient } from "../fixtures/ai-sketch/fake-first-preview-database-client";
 import { FIRST_PREVIEW_COST_CONTRACT } from "../../lib/server/ai-sketch/first-preview-cost-contract";
+import {
+  FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+  FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+  FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+} from "../../lib/server/ai-sketch/first-preview-visual-privacy-contract";
 
 const BRIEF_ID = "123e4567-e89b-42d3-a456-426614174000";
 const OTHER_BRIEF_ID = "223e4567-e89b-42d3-a456-426614174000";
@@ -35,6 +40,21 @@ const PASSING_GATES = {
   privacyPassed: true,
   customerAccessEligible: true,
   lifecycleEligible: true,
+  visualPrivacyEvidence: {
+    subject: { conceptBriefId: BRIEF_ID, jobId: JOB_ID, outputId: OUTPUT_ID, contentSha256: CONTENT_HASH },
+    inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+    policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+    model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+    result: "passed", usageTrusted: true, actualCostMicros: 1_000,
+  },
+} as const;
+
+const SECOND_OUTPUT_GATES = {
+  ...PASSING_GATES,
+  visualPrivacyEvidence: {
+    ...PASSING_GATES.visualPrivacyEvidence,
+    subject: { conceptBriefId: BRIEF_ID, jobId: OTHER_JOB_ID, outputId: SECOND_OUTPUT_ID, contentSha256: "d".repeat(64) },
+  },
 } as const;
 
 function reservation(
@@ -80,9 +100,9 @@ function output(
 
 function harness() {
   const client = new FakeFirstPreviewDatabaseClient();
-  let tick = 0;
+  let tick = 20;
   const repository = createSupabaseFirstPreviewRepository(client, {
-    clock: () => `2026-07-22T00:00:${String(tick++).padStart(2, "0")}.000Z`,
+    clock: () => new Date(Date.parse("2026-07-22T00:00:00.000Z") + tick++ * 1000).toISOString(),
     processingTimeoutMs: 30_000,
   });
   return { client, repository };
@@ -127,6 +147,7 @@ async function completeWithOutput() {
     ok: true,
     value: { readinessStatus: "not_ready", assetPersisted: true },
   });
+  expect(await state.repository.reserveVisualPrivacyInspection(PASSING_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
   expect(
     await state.repository.recordJobSucceeded(JOB_ID, { actualCostMicros: 41_000 }),
   ).toMatchObject({
@@ -495,6 +516,10 @@ test.describe("Supabase-backed First Preview repository", () => {
       ),
     ).toMatchObject({ ok: true });
     expect(
+      await repository.recordProviderDispatch(OTHER_JOB_ID),
+    ).toMatchObject({ ok: true });
+    expect(await repository.reserveVisualPrivacyInspection(SECOND_OUTPUT_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
+    expect(
       await repository.recordJobSucceeded(OTHER_JOB_ID, { actualCostMicros: 41_000 }),
     ).toMatchObject({ ok: true });
     expect(
@@ -502,7 +527,7 @@ test.describe("Supabase-backed First Preview repository", () => {
         outputId: SECOND_OUTPUT_ID,
         jobId: OTHER_JOB_ID,
         conceptBriefId: BRIEF_ID,
-        gates: PASSING_GATES,
+        gates: SECOND_OUTPUT_GATES,
         automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
       }),
     ).toMatchObject({ ok: true });
@@ -603,6 +628,10 @@ test.describe("Supabase-backed First Preview repository", () => {
       ),
     ).toMatchObject({ ok: true });
     expect(
+      await repository.recordProviderDispatch(OTHER_JOB_ID),
+    ).toMatchObject({ ok: true });
+    expect(await repository.reserveVisualPrivacyInspection(SECOND_OUTPUT_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
+    expect(
       await repository.recordJobSucceeded(OTHER_JOB_ID, { actualCostMicros: 41_000 }),
     ).toMatchObject({ ok: true });
     expect(
@@ -623,7 +652,7 @@ test.describe("Supabase-backed First Preview repository", () => {
         outputId: SECOND_OUTPUT_ID,
         jobId: OTHER_JOB_ID,
         conceptBriefId: BRIEF_ID,
-        gates: PASSING_GATES,
+        gates: SECOND_OUTPUT_GATES,
         automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
       }),
     ).toMatchObject({ ok: true });
@@ -837,7 +866,7 @@ test.describe("Supabase-backed First Preview repository", () => {
     expect(client.outputs.size).toBe(0);
   });
 
-  test("creates the required output-linked review before making the output current", async () => {
+  test("makes the trusted output current before linking its review", async () => {
     const { client, repository } = await completeWithOutput();
     const operationStart = client.operations.length;
     const ready = await repository.markOutputReady({
@@ -855,9 +884,10 @@ test.describe("Supabase-backed First Preview repository", () => {
     expect(client.operations.slice(operationStart)).toEqual([
       "findOutputById",
       "findJobById",
+      "claimOutputAutomaticGate",
+      "findCustomerReadyOutput",
       "findReviewByConceptBriefId",
       "insertReview",
-      "updateOutput",
     ]);
     expect(client.insertedReviewRows).toEqual([
       {
@@ -885,8 +915,8 @@ test.describe("Supabase-backed First Preview repository", () => {
         automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
       }),
     ).toMatchObject({
-      ok: true,
-      value: { readinessStatus: "first_preview_ready" },
+      ok: false,
+      code: "automatic_gates_not_passed",
     });
     expect(client.insertedReviewRows).toHaveLength(1);
   });
@@ -906,7 +936,7 @@ test.describe("Supabase-backed First Preview repository", () => {
     expect(client.outputs.get(OUTPUT_ID)?.readiness_status).toBe("not_ready");
   });
 
-  test("refuses readiness when an existing review points at another output", async () => {
+  test("keeps trusted readiness while preserving an unrelated review conflict", async () => {
     const { client, repository } = await completeWithOutput();
     client.reviews.set(BRIEF_ID, {
       ai_sketch_output_id: OTHER_OUTPUT_ID,
@@ -924,8 +954,86 @@ test.describe("Supabase-backed First Preview repository", () => {
         gates: PASSING_GATES,
         automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
       }),
-    ).toEqual({ ok: false, code: "review_linkage_conflict" });
-    expect(client.outputs.get(OUTPUT_ID)?.readiness_status).toBe("not_ready");
+    ).toMatchObject({ ok: true, value: { readinessStatus: "first_preview_ready" } });
+    expect(client.outputs.get(OUTPUT_ID)?.readiness_status).toBe("first_preview_ready");
+    expect(client.reviews.get(BRIEF_ID)?.ai_sketch_output_id).toBe(OTHER_OUTPUT_ID);
+    expect(await repository.ensureReadyReviewLink(OUTPUT_ID, BRIEF_ID)).toEqual({ ok: false, code: "review_linkage_conflict" });
+  });
+
+  test("crash-consistency repairs a missing Review link after trusted readiness", async () => {
+    const { client, repository } = await completeWithOutput();
+    client.failNext("insertReview");
+    expect(await repository.markOutputReady({
+      outputId: OUTPUT_ID, jobId: JOB_ID, conceptBriefId: BRIEF_ID,
+      gates: PASSING_GATES, automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+    })).toMatchObject({ ok: true, value: { readinessStatus: "first_preview_ready" } });
+    expect(client.reviews.size).toBe(0);
+    expect(await repository.findCustomerReadyOutput(BRIEF_ID)).toMatchObject({ id: OUTPUT_ID });
+    expect(await repository.ensureReadyReviewLink(OUTPUT_ID, BRIEF_ID)).toMatchObject({
+      ok: true, value: { outputId: OUTPUT_ID, reviewStatus: "draft_generated_internal_only" },
+    });
+    expect(await repository.ensureReadyReviewLink(OUTPUT_ID, BRIEF_ID)).toMatchObject({ ok: true });
+    expect(client.reviews.size).toBe(1);
+  });
+
+  test("crash-consistency conditionally repairs only an untouched, never-ready orphan", async () => {
+    const { client, repository } = await completeWithOutput();
+    const current = client.outputs.get(OUTPUT_ID)!;
+    const oldJob = client.jobs.get(JOB_ID)!;
+    client.jobs.set(OTHER_JOB_ID, {
+      ...oldJob, id: OTHER_JOB_ID, status: "failed", completed_at: null,
+      failed_at: "2026-07-22T00:00:25.000Z", retry_eligible: false,
+    });
+    client.outputs.set(OTHER_OUTPUT_ID, {
+      ...current, id: OTHER_OUTPUT_ID, job_id: OTHER_JOB_ID,
+      automatic_gate_status: "failed", automatic_gate_evidence: { result: "failed" },
+      readiness_status: "not_ready", first_preview_ready_at: null,
+    });
+    client.reviews.set(BRIEF_ID, {
+      ai_sketch_output_id: OTHER_OUTPUT_ID, concept_brief_id: BRIEF_ID,
+      review_status: "draft_generated_internal_only", revision_instruction: null,
+      created_at: "2026-07-22T00:00:30.000Z", updated_at: "2026-07-22T00:00:30.000Z",
+      approved_for_customer_at: null, approved_by: null, approval_revoked_at: null, revoked_by: null,
+    });
+    expect(await repository.markOutputReady({
+      outputId: OUTPUT_ID, jobId: JOB_ID, conceptBriefId: BRIEF_ID,
+      gates: PASSING_GATES, automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+    })).toMatchObject({ ok: true });
+    expect(client.reviews.get(BRIEF_ID)?.ai_sketch_output_id).toBe(OUTPUT_ID);
+    expect(client.operations).toContain("relinkProvisionalReview");
+  });
+
+  test("crash-consistency preserves human-reviewed and formerly ready Review history", async () => {
+    for (const prior of ["human", "formerly-ready"] as const) {
+      const { client, repository } = await completeWithOutput();
+      const current = client.outputs.get(OUTPUT_ID)!;
+      const oldJob = client.jobs.get(JOB_ID)!;
+      client.jobs.set(OTHER_JOB_ID, {
+        ...oldJob, id: OTHER_JOB_ID, status: "failed", completed_at: null,
+        failed_at: "2026-07-22T00:00:25.000Z", retry_eligible: false,
+      });
+      client.outputs.set(OTHER_OUTPUT_ID, {
+        ...current, id: OTHER_OUTPUT_ID, job_id: OTHER_JOB_ID,
+        automatic_gate_status: "failed", automatic_gate_evidence: { result: "failed" },
+        readiness_status: prior === "formerly-ready" ? "revoked" : "not_ready",
+        first_preview_ready_at: prior === "formerly-ready" ? "2026-07-22T00:00:26.000Z" : null,
+        readiness_revoked_at: prior === "formerly-ready" ? "2026-07-22T00:00:27.000Z" : null,
+      });
+      client.reviews.set(BRIEF_ID, {
+        ai_sketch_output_id: OTHER_OUTPUT_ID, concept_brief_id: BRIEF_ID,
+        review_status: prior === "human" ? "needs_revision" : "draft_generated_internal_only",
+        revision_instruction: prior === "human" ? "Keep the original human note." : null,
+        created_at: "2026-07-22T00:00:30.000Z", updated_at: "2026-07-22T00:00:31.000Z",
+      });
+      expect(await repository.markOutputReady({
+        outputId: OUTPUT_ID, jobId: JOB_ID, conceptBriefId: BRIEF_ID,
+        gates: PASSING_GATES, automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+      })).toMatchObject({ ok: true });
+      expect(await repository.ensureReadyReviewLink(OUTPUT_ID, BRIEF_ID)).toEqual({
+        ok: false, code: "review_linkage_conflict",
+      });
+      expect(client.reviews.get(BRIEF_ID)?.ai_sketch_output_id).toBe(OTHER_OUTPUT_ID);
+    }
   });
 
   test("revokes customer readiness without deleting output or review history", async () => {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { hasPassedFirstPreviewAutomaticGateEvidence } from "./first-preview-visual-privacy-contract";
 
 import {
   FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES,
@@ -12,6 +13,8 @@ import {
 import {
   FIRST_PREVIEW_ASSET_BUCKET,
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
+  FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS,
+  type FirstPreviewRepository,
 } from "./first-preview-persistence-contract";
 import type {
   FirstPreviewCustomerPreviewStateLookup,
@@ -170,7 +173,6 @@ const DAYS_BEFORE_MONTH = [
 const MICROSECONDS_PER_SECOND = BigInt(1_000_000);
 const SECONDS_PER_DAY = BigInt(86_400);
 const FIRST_PREVIEW_QUEUED_JOB_MAX_AGE_SECONDS = BigInt(1_800);
-const FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS = BigInt(1_800);
 const FIRST_PREVIEW_RETRY_AVAILABILITY_MAX_AGE_SECONDS = BigInt(1_800);
 const FIRST_PREVIEW_FAILURE_CATEGORIES = new Set([
   "rate_limited",
@@ -244,31 +246,13 @@ function parseCanonicalUtcTimestampMicros(value: unknown): bigint | null {
   );
 }
 
-const AUTOMATIC_GATE_EVIDENCE_KEYS = [
-  "result",
-  "outputValid",
-  "assetExists",
-  "ownershipConsistent",
-  "privacyPassed",
-  "customerAccessEligible",
-  "lifecycleEligible",
-] as const;
-
-function hasPassedAutomaticGateEvidence(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    Object.keys(value).length === AUTOMATIC_GATE_EVIDENCE_KEYS.length &&
-    AUTOMATIC_GATE_EVIDENCE_KEYS.every((key) =>
-      Object.prototype.hasOwnProperty.call(value, key),
-    ) &&
-    value.result === "passed" &&
-    value.outputValid === true &&
-    value.assetExists === true &&
-    value.ownershipConsistent === true &&
-    value.privacyPassed === true &&
-    value.customerAccessEligible === true &&
-    value.lifecycleEligible === true
-  );
+function hasPassedAutomaticGateEvidence(value: unknown, output: Record<string, unknown>): boolean {
+  return hasPassedFirstPreviewAutomaticGateEvidence(value, {
+    conceptBriefId: output.concept_brief_id as string,
+    jobId: output.job_id as string,
+    outputId: output.id as string,
+    contentSha256: output.content_sha256 as string,
+  });
 }
 
 function isValidReadyOutput(
@@ -312,7 +296,7 @@ function isValidReadyOutput(
     output.automatic_gate_status === "passed" &&
     output.automatic_gate_policy_version ===
       FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION &&
-    hasPassedAutomaticGateEvidence(output.automatic_gate_evidence) &&
+    hasPassedAutomaticGateEvidence(output.automatic_gate_evidence, output) &&
     gatePassedAt !== null &&
     readyAt !== null &&
     createdAt !== null &&
@@ -637,7 +621,7 @@ function mapSafeOutput(
       value.asset_validation_status === "passed" &&
       value.automatic_gate_policy_version ===
         FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION &&
-      hasPassedAutomaticGateEvidence(value.automatic_gate_evidence) &&
+      hasPassedAutomaticGateEvidence(value.automatic_gate_evidence, value) &&
       gatePassedAt !== null &&
       assetValidatedAt !== null &&
       assetValidatedAt <= gatePassedAt);
@@ -801,10 +785,16 @@ export class SupabaseFirstPreviewCustomerViewStateSource
 
   constructor(
     private readonly database: FirstPreviewCustomerViewDatabaseClient,
-    options: Readonly<{ clock?: () => number }> = {},
+    options: Readonly<{
+      clock?: () => number;
+      recoveryRepository?: Pick<FirstPreviewRepository, "reconcileInterruptedInspection">;
+    }> = {},
   ) {
     this.clock = options.clock ?? (() => Math.floor(Date.now() / 1_000));
+    this.recoveryRepository = options.recoveryRepository;
   }
+
+  private readonly recoveryRepository?: Pick<FirstPreviewRepository, "reconcileInterruptedInspection">;
 
   readonly readExactCustomerPreviewState = async (
     lookup: FirstPreviewCustomerPreviewStateLookup,
@@ -884,6 +874,26 @@ export class SupabaseFirstPreviewCustomerViewStateSource
         return unavailable();
       }
 
+      // The caller verifies the signed customer proof before reaching this
+      // source, and the exact Brief/reference pair was checked above.
+      for (const output of safeOutputs) {
+        if (output.automaticGateStatus !== "pending") continue;
+        const job = safeJobs.find((candidate) => candidate.id === output.jobId);
+        if (!job || job.deadlineAt === null) return unavailable();
+        const terminalFailure = job.status === "failed" ||
+          job.status === "cancelled" || job.status === "timed_out";
+        if (job.status === "succeeded") {
+          if (job.completedAt === null) return unavailable();
+          if (nowMicros < job.completedAt +
+            BigInt(FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS) * MICROSECONDS_PER_SECOND) continue;
+        } else if (!terminalFailure && nowMicros <= job.deadlineAt) continue;
+        if (!this.recoveryRepository) return unavailable();
+        const recovery = await this.recoveryRepository.reconcileInterruptedInspection(
+          job.id, lookup.conceptBriefId,
+        );
+        if (!recovery.ok || recovery.value?.automaticGateStatus === "failed") return unavailable();
+      }
+
       const readyCandidates = safeOutputs.filter(
         (output) => output.readinessStatus === "first_preview_ready",
       );
@@ -961,7 +971,7 @@ export class SupabaseFirstPreviewCustomerViewStateSource
           linkedOutput.assetValidatedAt <= latest.completedAt &&
           nowMicros <
             latest.completedAt +
-              FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS *
+              BigInt(FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS) *
                 MICROSECONDS_PER_SECOND &&
           (linkedOutput.automaticGateStatus === null ||
             linkedOutput.automaticGateStatus === "pending")
@@ -989,7 +999,10 @@ export class SupabaseFirstPreviewCustomerViewStateSource
 
 export function createSupabaseFirstPreviewCustomerViewStateSource(
   database: FirstPreviewCustomerViewDatabaseClient,
-  options: Readonly<{ clock?: () => number }> = {},
+  options: Readonly<{
+    clock?: () => number;
+    recoveryRepository?: Pick<FirstPreviewRepository, "reconcileInterruptedInspection">;
+  }> = {},
 ): FirstPreviewCustomerPreviewStateSource {
   return new SupabaseFirstPreviewCustomerViewStateSource(database, options);
 }

@@ -13,6 +13,12 @@ import type { OpenAiFirstPreviewProviderBinding } from "../../lib/server/ai-sket
 import type { OpenAiFirstPreviewAdapterResult } from "../../lib/server/ai-sketch/openai-first-preview-provider";
 import type { FirstPreviewProviderRequest } from "../../lib/server/ai-sketch/first-preview-runtime";
 import { createSyntheticFirstPreviewPng } from "../fixtures/ai-sketch/fake-first-preview-storage-client";
+import {
+  FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+  FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+  FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+  type VisualPrivacySubject,
+} from "../../lib/server/ai-sketch/first-preview-visual-privacy-contract";
 
 const moduleInternals = Module as unknown as {
   _resolveFilename(
@@ -131,9 +137,9 @@ function validBrief(overrides: Record<string, unknown> = {}) {
 }
 
 function repository() {
-  let tick = 0;
+  let tick = 60;
   return new modules.memory.InMemoryFirstPreviewRepository(
-    () => `2026-08-03T00:00:${String(tick++).padStart(2, "0")}.000Z`,
+    () => new Date(Date.parse("2026-08-03T00:00:00.000Z") + tick++ * 1000).toISOString(),
   );
 }
 
@@ -262,6 +268,18 @@ function assetStore(counter?: { value: number }): FirstPreviewGeneratedAssetStor
   };
 }
 
+function boundVisualEvidence(subject: VisualPrivacySubject) {
+  return {
+    subject: { ...subject },
+    inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+    policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+    model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+    result: "passed" as const,
+    usageTrusted: true,
+    actualCostMicros: 1_000,
+  };
+}
+
 function passingTrustedOutputEvaluator(
   resultOverrides: Partial<{
     contentSafetyPassed: boolean;
@@ -272,10 +290,14 @@ function passingTrustedOutputEvaluator(
 ): FirstPreviewTrustedOutputEvaluator {
   return async (input, context) => {
     if (observation) observation.signal = context.signal;
+    if (!await context.reserveVisualPrivacyInspection?.()) {
+      throw new Error("Synthetic visual inspection reservation must succeed");
+    }
     return {
       evidenceVersion:
         modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
       subject: { ...input.subject },
+      visualPrivacyEvidence: boundVisualEvidence(input.subject),
       results: {
         contentSafetyPassed: true,
         privacyPassed: true,
@@ -704,7 +726,7 @@ test.describe("Goal 2 structured input compatibility regressions", () => {
       });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) {
+    if (result.ok === false) {
       throw new Error(`Expected structured input success, got ${result.category}`);
     }
     return result.value;
@@ -1417,7 +1439,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       status: "failed",
       failureCategory: "lifecycle_conflict",
     });
-    expect(stores.value).toBe(0);
+    expect(stores.value).toBe(1);
     expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
       status: "failed",
       failureCategory: "lifecycle_conflict",
@@ -1500,16 +1522,20 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
 
     for (const mismatch of mismatches) {
       const prepared = await preparedWork();
-      const evaluator: FirstPreviewTrustedOutputEvaluator = async (input) => ({
+      const evaluator: FirstPreviewTrustedOutputEvaluator = async (input, context) => {
+        if (!await context.reserveVisualPrivacyInspection?.()) throw new Error("Synthetic claim failed");
+        return {
         evidenceVersion:
           modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
         subject: { ...input.subject, ...mismatch },
+        visualPrivacyEvidence: boundVisualEvidence(input.subject),
         results: {
           contentSafetyPassed: true,
           privacyPassed: true,
           outputValidityPassed: true,
         },
-      });
+        };
+      };
       expect(
         await modules.lifecycle.runAutomaticFirstPreviewWorker(
           prepared.work,
@@ -1654,7 +1680,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     expect(evaluatorSettled).toBe(true);
     expect(attemptSignal.listenerAdds).toBe(1);
     expect(attemptSignal.listenerRemoves).toBe(1);
-    expect(stores.value).toBe(0);
+    expect(stores.value).toBe(1);
     expect(timedOutJob?.failedAt).not.toBeNull();
     expect(timedOutJob?.deadlineAt).not.toBeNull();
     expect(
@@ -1730,7 +1756,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     expect(attemptSignal.listenerAdds).toBe(1);
     expect(attemptSignal.listenerRemoves).toBe(1);
     expect(calls.value).toBe(1);
-    expect(stores.value).toBe(0);
+    expect(stores.value).toBe(1);
 
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(evaluatorAbortCount).toBe(1);
