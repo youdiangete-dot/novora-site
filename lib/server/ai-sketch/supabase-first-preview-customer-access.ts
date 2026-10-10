@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { hasPassedFirstPreviewAutomaticGateEvidence } from "./first-preview-visual-privacy-contract";
 
 import {
   FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES,
@@ -232,31 +233,13 @@ function parseCanonicalUtcTimestampMicros(value: unknown): bigint | null {
   return secondsSinceEpoch * MICROSECONDS_PER_SECOND + fractionMicros;
 }
 
-const AUTOMATIC_GATE_EVIDENCE_KEYS = [
-  "result",
-  "outputValid",
-  "assetExists",
-  "ownershipConsistent",
-  "privacyPassed",
-  "customerAccessEligible",
-  "lifecycleEligible",
-] as const;
-
-function isPassedAutomaticGateEvidence(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    Object.keys(value).length === AUTOMATIC_GATE_EVIDENCE_KEYS.length &&
-    AUTOMATIC_GATE_EVIDENCE_KEYS.every((key) =>
-      Object.prototype.hasOwnProperty.call(value, key)
-    ) &&
-    value.result === "passed" &&
-    value.outputValid === true &&
-    value.assetExists === true &&
-    value.ownershipConsistent === true &&
-    value.privacyPassed === true &&
-    value.customerAccessEligible === true &&
-    value.lifecycleEligible === true
-  );
+function isPassedAutomaticGateEvidence(value: unknown, output: Record<string, unknown>): boolean {
+  return hasPassedFirstPreviewAutomaticGateEvidence(value, {
+    conceptBriefId: output.concept_brief_id as string,
+    jobId: output.job_id as string,
+    outputId: output.id as string,
+    contentSha256: output.content_sha256 as string,
+  });
 }
 
 function exactlyOne(
@@ -423,7 +406,7 @@ export class SupabaseFirstPreviewCustomerAccessAuthorizer
       output.automatic_gate_status !== "passed" ||
       output.automatic_gate_policy_version !==
         FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION ||
-      !isPassedAutomaticGateEvidence(output.automatic_gate_evidence) ||
+      !isPassedAutomaticGateEvidence(output.automatic_gate_evidence, output) ||
       automaticGatePassedAtMicros === null ||
       firstPreviewReadyAtMicros === null ||
       !isIsoTimestamp(output.created_at) ||

@@ -50,6 +50,20 @@ function validAutomaticGateEvidence() {
     privacyPassed: true,
     customerAccessEligible: true,
     lifecycleEligible: true,
+    visualPrivacyEvidence: {
+      subject: {
+        conceptBriefId: BRIEF_ID,
+        jobId: JOB_ID,
+        outputId: OUTPUT_ID,
+        contentSha256: HASH,
+      },
+      inspectorVersion: "novora_openai_visual_privacy_inspector_v1",
+      policyVersion: "novora_first_preview_visual_privacy_v1",
+      model: "gpt-4.1-mini-2025-04-14",
+      result: "passed",
+      usageTrusted: true,
+      actualCostMicros: 640,
+    },
   };
 }
 
