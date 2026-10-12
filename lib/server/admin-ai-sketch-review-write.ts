@@ -152,12 +152,10 @@ export async function updateAdminAiSketchReview(
       };
     }
 
+    const repository = options.repository ?? createFirstPreviewRepository({ supabaseClient: supabase });
     const currentOutput = await resolveAdminCurrentFirstPreview(
       normalizedConceptBriefId,
-      {
-        repository:
-          options.repository ?? createFirstPreviewRepository({ supabaseClient: supabase }),
-      },
+      { repository },
     );
 
     if (!currentOutput || currentOutput.id !== normalizedOutputId) {
@@ -167,6 +165,8 @@ export async function updateAdminAiSketchReview(
         message: "The displayed First Preview is no longer the current ready output. Reload before reviewing.",
       };
     }
+
+    await repository.ensureReadyReviewLink(normalizedOutputId, normalizedConceptBriefId);
 
     const { data: existingRow, error: existingError } = await supabase
       .from("ai_sketch_reviews")

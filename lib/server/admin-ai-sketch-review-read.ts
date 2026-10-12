@@ -113,14 +113,14 @@ export async function loadAdminAiSketchReviewByConceptBriefId(
       return createFallbackAdminAiSketchReviewReadModel();
     }
 
+    const repository = createFirstPreviewRepository({ supabaseClient: supabase });
     const currentOutput = await resolveAdminCurrentFirstPreview(
       normalizedConceptBriefId,
-      {
-        repository: createFirstPreviewRepository({
-          supabaseClient: supabase,
-        }),
-      },
+      { repository },
     );
+    if (currentOutput) {
+      await repository.ensureReadyReviewLink(currentOutput.id, normalizedConceptBriefId);
+    }
 
     const { data: reviewRow, error: reviewError } = await supabase
       .from("ai_sketch_reviews")

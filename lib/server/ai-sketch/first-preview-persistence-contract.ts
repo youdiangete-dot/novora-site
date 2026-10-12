@@ -1,10 +1,66 @@
 import { createHash } from "node:crypto";
+import type {
+  FirstPreviewVisualPrivacyEvidence,
+  VisualPrivacySubject,
+} from "./first-preview-visual-privacy-contract";
 
 export const FIRST_PREVIEW_PERSISTENCE_CONTRACT_VERSION =
   "novora_first_preview_persistence_v1" as const;
 export const FIRST_PREVIEW_IDEMPOTENCY_VERSION =
   "novora:first-preview-idempotency:v1" as const;
 export const FIRST_PREVIEW_LINEAGE_IDENTITY = "first-preview:v1" as const;
+export const FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS = 1_800 as const;
+
+const CANONICAL_UTC_TIMESTAMP_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(?:Z|\+00:00)$/;
+const DAYS_BEFORE_MONTH = [
+  0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334,
+] as const;
+const MICROSECONDS_PER_SECOND = BigInt(1_000_000);
+const SECONDS_PER_DAY = BigInt(86_400);
+
+function isGregorianLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function daysBeforeGregorianYear(year: number): number {
+  return (
+    365 * year +
+    Math.floor((year + 3) / 4) -
+    Math.floor((year + 99) / 100) +
+    Math.floor((year + 399) / 400)
+  );
+}
+
+export function parseFirstPreviewCanonicalUtcTimestampMicros(value: unknown): bigint | null {
+  if (typeof value !== "string") return null;
+  const match = CANONICAL_UTC_TIMESTAMP_PATTERN.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) return null;
+  const daysInMonth =
+    month === 2 && isGregorianLeapYear(year)
+      ? 29
+      : ([31, 28, 31, 30, 31, 30, 31, 31, 30, 31] as const)[month - 1];
+  if (day < 1 || day > daysInMonth) return null;
+  const daysSinceEpoch =
+    daysBeforeGregorianYear(year) -
+    daysBeforeGregorianYear(1970) +
+    DAYS_BEFORE_MONTH[month - 1] +
+    (month > 2 && isGregorianLeapYear(year) ? 1 : 0) +
+    day - 1;
+  return (
+    (BigInt(daysSinceEpoch) * SECONDS_PER_DAY +
+      BigInt(hour * 3_600 + minute * 60 + second)) *
+      MICROSECONDS_PER_SECOND +
+    BigInt((match[7] ?? "").padEnd(6, "0") || "0")
+  );
+}
 
 export type FirstPreviewJobStatus =
   | "queued"
@@ -61,7 +117,7 @@ export const FIRST_PREVIEW_ASSET_BUCKET = "novora-ai-sketches" as const;
 export const FIRST_PREVIEW_ASSET_VALIDATOR_VERSION =
   "novora_first_preview_asset_validator_v1" as const;
 export const FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION =
-  "novora_first_preview_automatic_gates_v1" as const;
+  "novora_first_preview_automatic_gates_v2" as const;
 
 export type FirstPreviewJobRecord = Readonly<{
   id: string;
@@ -114,6 +170,10 @@ export type FirstPreviewOutputRecord = Readonly<{
   createdAt: string;
   readyAt: string | null;
   revokedAt: string | null;
+  automaticGateStatus?: "pending" | "passed" | "failed" | null;
+  automaticGateEvidence?: unknown;
+  automaticGatePolicyVersion?: string | null;
+  automaticGatePassedAt?: string | null;
 }>;
 
 export type FirstPreviewReviewRecord = Readonly<{
@@ -219,6 +279,7 @@ export type FirstPreviewAutomaticGateEvidence = Readonly<{
   privacyPassed: boolean;
   customerAccessEligible: boolean;
   lifecycleEligible: boolean;
+  visualPrivacyEvidence: FirstPreviewVisualPrivacyEvidence;
 }>;
 
 export type MarkFirstPreviewReadyInput = Readonly<{
@@ -280,6 +341,31 @@ export interface FirstPreviewRepository {
   persistOutput(
     input: PersistFirstPreviewOutputInput,
   ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>>;
+
+  reserveVisualPrivacyInspection(
+    subject: VisualPrivacySubject,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>>;
+
+  recordVisualPrivacyInspectionFailure(
+    subject: VisualPrivacySubject,
+    evidence: FirstPreviewVisualPrivacyEvidence,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>>;
+
+  recordVisualPrivacyOperationalFailure(
+    subject: VisualPrivacySubject,
+    reason: "inspection_interrupted" | "gate_pipeline_failed",
+    visualEvidence?: FirstPreviewVisualPrivacyEvidence,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>>;
+
+  reconcileInterruptedInspection(
+    jobId: string,
+    conceptBriefId: string,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord | null>>;
+
+  ensureReadyReviewLink(
+    outputId: string,
+    conceptBriefId: string,
+  ): Promise<FirstPreviewRepositoryResult<FirstPreviewReviewRecord>>;
 
   markOutputReady(
     input: MarkFirstPreviewReadyInput,
@@ -400,6 +486,26 @@ class UnavailableFirstPreviewRepository implements FirstPreviewRepository {
   }
 
   persistOutput(): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    return unavailable();
+  }
+
+  reserveVisualPrivacyInspection(): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    return unavailable();
+  }
+
+  recordVisualPrivacyInspectionFailure(): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    return unavailable();
+  }
+
+  recordVisualPrivacyOperationalFailure(): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
+    return unavailable();
+  }
+
+  reconcileInterruptedInspection(): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord | null>> {
+    return unavailable();
+  }
+
+  ensureReadyReviewLink(): Promise<FirstPreviewRepositoryResult<FirstPreviewReviewRecord>> {
     return unavailable();
   }
 

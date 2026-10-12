@@ -159,7 +159,12 @@ function proof(
   return value;
 }
 
-function automaticGateEvidence() {
+function automaticGateEvidence(subject = {
+  conceptBriefId: BRIEF_ID,
+  jobId: JOB_ID,
+  outputId: OUTPUT_ID,
+  contentSha256: HASH,
+}) {
   return {
     result: "passed",
     outputValid: true,
@@ -168,6 +173,15 @@ function automaticGateEvidence() {
     privacyPassed: true,
     customerAccessEligible: true,
     lifecycleEligible: true,
+    visualPrivacyEvidence: {
+      subject,
+      inspectorVersion: "novora_openai_visual_privacy_inspector_v1",
+      policyVersion: "novora_first_preview_visual_privacy_v1",
+      model: "gpt-4.1-mini-2025-04-14",
+      result: "passed",
+      usageTrusted: true,
+      actualCostMicros: 640,
+    },
   };
 }
 
@@ -199,7 +213,15 @@ function outputRow(overrides: Record<string, unknown> = {}) {
     asset_validation_status: "passed",
     asset_validated_at: VALIDATED_AT,
     automatic_gate_status: "passed",
-    automatic_gate_evidence: automaticGateEvidence(),
+    automatic_gate_evidence: automaticGateEvidence({
+      conceptBriefId,
+      jobId,
+      outputId,
+      contentSha256:
+        typeof overrides.content_sha256 === "string"
+          ? overrides.content_sha256
+          : HASH,
+    }),
     automatic_gate_policy_version:
       FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
     automatic_gate_passed_at: GATED_AT,

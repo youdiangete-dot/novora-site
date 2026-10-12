@@ -445,6 +445,12 @@ export async function consumeFirstPreviewQueueMessage(
     return { status: "acknowledged", disposition: "completed" };
   }
   if (workerResult.status === "duplicate") {
+    // Redelivery may follow a process crash after the paid inspection claim.
+    // This is a bounded state repair only; it never re-enters Provider work.
+    await repository.reconcileInterruptedInspection(
+      reservation.work.jobId,
+      reservation.work.conceptBriefId,
+    );
     return { status: "acknowledged", disposition: "duplicate" };
   }
   return { status: "acknowledged", disposition: "terminal_failure" };

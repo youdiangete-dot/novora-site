@@ -11,6 +11,11 @@ import type {
   FirstPreviewTrustedOutputEvaluator,
 } from "../../lib/server/ai-sketch/first-preview-generation-lifecycle";
 import type { FirstPreviewRepository } from "../../lib/server/ai-sketch/first-preview-persistence-contract";
+import {
+  FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+  FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+  FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+} from "../../lib/server/ai-sketch/first-preview-visual-privacy-contract";
 import { createSyntheticFirstPreviewPng } from "../fixtures/ai-sketch/fake-first-preview-storage-client";
 
 const moduleInternals = Module as unknown as {
@@ -114,6 +119,42 @@ function fetchFake(
   return implementation as typeof fetch;
 }
 
+function visualInspectionResponse(customerContact = false): Response {
+  return response({
+    model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+    object: "chat.completion",
+    service_tier: "default",
+    choices: [{
+      index: 0,
+      finish_reason: "stop",
+      message: {
+        role: "assistant",
+        refusal: null,
+        content: JSON.stringify({
+          inspectionComplete: true,
+          allVisibleTextDetected: true,
+          allVisibleTextReadable: true,
+          noVisibleText: !customerContact,
+          privacyRisks: {
+            customerContact,
+            internalPrompt: false,
+            reviewerAdminNotes: false,
+            credentials: false,
+            privatePaths: false,
+          },
+          visibleText: customerContact ? ["synthetic@example.invalid"] : [],
+        }),
+      },
+    }],
+    usage: {
+      prompt_tokens: 1200,
+      completion_tokens: 100,
+      total_tokens: 1300,
+      prompt_tokens_details: { cached_tokens: 600 },
+    },
+  });
+}
+
 function evaluatorWithFetch(fetchImplementation: typeof fetch) {
   return modules.trustedOutput.createOpenAiFirstPreviewTrustedOutputEvaluator({
     environment: { OPENAI_API_KEY: API_KEY },
@@ -136,15 +177,24 @@ function removePngChunk(imageBytes: Uint8Array, removedType: string): Uint8Array
 }
 
 test.describe("OpenAI First Preview trusted-output evaluator", () => {
-  test("returns the exact existing evidence after one valid PNG receives one unflagged moderation result", async () => {
+  test("returns bound v2 evidence after moderation and one durably reserved visual inspection", async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
+    let reservations = 0;
     const evaluator = evaluatorWithFetch(fetchFake(async (input, init) => {
       requests.push({ url: String(input), init });
-      return response({ results: [{ flagged: false }] });
+      return String(input).endsWith("/moderations")
+        ? response({ results: [{ flagged: false }] })
+        : visualInspectionResponse();
     }));
 
     await expect(
-      evaluator(evaluatorInput(), { signal: new AbortController().signal }),
+      evaluator(evaluatorInput(), {
+        signal: new AbortController().signal,
+        reserveVisualPrivacyInspection: async () => {
+          reservations += 1;
+          return true;
+        },
+      }),
     ).resolves.toEqual({
       evidenceVersion:
         modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
@@ -159,9 +209,19 @@ test.describe("OpenAI First Preview trusted-output evaluator", () => {
         privacyPassed: true,
         outputValidityPassed: true,
       },
+      visualPrivacyEvidence: {
+        subject: evaluatorInput().subject,
+        inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+        policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+        model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+        result: "passed",
+        usageTrusted: true,
+        actualCostMicros: 640,
+      },
     });
 
-    expect(requests).toHaveLength(1);
+    expect(reservations).toBe(1);
+    expect(requests).toHaveLength(2);
     expect(requests[0].url).toBe("https://api.openai.com/v1/moderations");
     expect(requests[0].init?.method).toBe("POST");
     const body = JSON.parse(String(requests[0].init?.body));
@@ -182,6 +242,60 @@ test.describe("OpenAI First Preview trusted-output evaluator", () => {
     expect(serializedBody).not.toContain(OUTPUT_ID);
     expect(serializedBody).not.toContain("NOVORA-CB-");
     expect(serializedBody).not.toContain("customer");
+    expect(requests[1].url).toBe("https://api.openai.com/v1/chat/completions");
+    const inspectionBody = JSON.parse(String(requests[1].init?.body));
+    expect(inspectionBody.model).toBe(FIRST_PREVIEW_VISUAL_PRIVACY_MODEL);
+    expect(inspectionBody.messages[1].content[0].image_url.url).toBe(
+      `data:image/png;base64,${Buffer.from(VALID_PNG).toString("base64")}`,
+    );
+  });
+
+  test("never dispatches visual inspection without a successful durable reservation", async () => {
+    for (const reserveVisualPrivacyInspection of [
+      undefined,
+      async () => false,
+      async () => { throw new Error("synthetic reservation failure"); },
+    ]) {
+      const requests: string[] = [];
+      const evaluator = evaluatorWithFetch(fetchFake(async (input) => {
+        requests.push(String(input));
+        return response({ results: [{ flagged: false }] });
+      }));
+      await expect(evaluator(evaluatorInput(), {
+        signal: new AbortController().signal,
+        reserveVisualPrivacyInspection,
+      })).rejects.toThrow();
+      expect(requests).toEqual(["https://api.openai.com/v1/moderations"]);
+    }
+  });
+
+  test("preserves moderation success while a visual privacy failure prevents passing evidence", async () => {
+    let fetchCalls = 0;
+    const evaluator = evaluatorWithFetch(fetchFake(async (input) => {
+      fetchCalls += 1;
+      return String(input).endsWith("/moderations")
+        ? response({ results: [{ flagged: false }] })
+        : visualInspectionResponse(true);
+    }));
+    const evidence = await evaluator(evaluatorInput(), {
+      signal: new AbortController().signal,
+      reserveVisualPrivacyInspection: async () => true,
+    }) as import("../../lib/server/ai-sketch/first-preview-generation-lifecycle").FirstPreviewTrustedOutputEvidence;
+    expect(fetchCalls).toBe(2);
+    expect(evidence.results).toEqual({
+      contentSafetyPassed: true,
+      privacyPassed: false,
+      outputValidityPassed: true,
+    });
+    expect(evidence.visualPrivacyEvidence).toEqual({
+      subject: evaluatorInput().subject,
+      inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+      policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+      model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+      result: "failed",
+      usageTrusted: true,
+      actualCostMicros: 640,
+    });
   });
 
   test("rejects identity, declared-container, and size mismatches before fetch", async () => {
@@ -335,6 +449,38 @@ test.describe("OpenAI First Preview trusted-output evaluator", () => {
 
     await expect(evaluation).rejects.toThrow();
     expect(fetchCalls).toBe(1);
+  });
+
+  test("sequential deadline cancellation reaches the one reserved visual request", async () => {
+    const requests: string[] = [];
+    let reservations = 0;
+    let visualSignal: AbortSignal | undefined;
+    let visualStarted!: () => void;
+    const started = new Promise<void>((resolve) => { visualStarted = resolve; });
+    const evaluator = evaluatorWithFetch(fetchFake(async (input, init) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith("/moderations")) return response({ results: [{ flagged: false }] });
+      visualSignal = init?.signal;
+      visualStarted();
+      return new Promise<Response>((resolve) => {
+        init?.signal?.addEventListener("abort", () => resolve(visualInspectionResponse()), { once: true });
+      });
+    }));
+    const controller = new AbortController();
+    const evaluation = evaluator(evaluatorInput(), {
+      signal: controller.signal,
+      reserveVisualPrivacyInspection: async () => { reservations += 1; return true; },
+    });
+    await started;
+    controller.abort();
+    await expect(evaluation).rejects.toThrow();
+    expect(reservations).toBe(1);
+    expect(requests).toEqual([
+      "https://api.openai.com/v1/moderations",
+      "https://api.openai.com/v1/chat/completions",
+    ]);
+    expect(visualSignal?.aborted).toBe(true);
   });
 
   test("fails closed without a valid server-only API key before fetch", async () => {
