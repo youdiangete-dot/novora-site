@@ -373,6 +373,19 @@ Do not create copied final-completion contracts in other repository files.
 - Do not run `git add .` unless the user explicitly approves that exact action.
   Prefer path-specific staging when staging is requested.
 
+### First Preview Automation Closeout Lock — 85/100 Optional Quality Stop
+
+- Owner-approved on 2026-10-16. Applies to the existing First Preview automation closeout within M2 / A04-A08, without adding milestones or changing the complete commercial M1-M6 contract.
+- All applicable mandatory P0/P1 requirements for security, privacy, identity, access authorization, spending limits, idempotency, durable execution, customer-visible correctness, and real end-to-end operation must pass. An optional quality score cannot waive any mandatory requirement.
+- The 85/100 threshold applies ONLY to non-blocking quality, optional polish, minor UI details and nonessential implementation improvements. At 85/100 or above, stop optional optimization. Do not invent an unmeasured score or use scoring to override objective evidence.
+- The First Preview automation completion scope is frozen to six required outcomes: truthful atomic customer intake; real automatic image generation; trustworthy spending and failure controls; required automatic safety/privacy/output gates; secure customer access to the correct private preview; and controlled Production acceptance with applicable Owner authority.
+- The closeout execution budget is capped at 30 additional gates counted from the original Owner closeout approval on 2026-10-16, not restarted by this document change or task renaming. Target completion as early as practical, preferably within 2-4 weeks; the eight-week control limit ends on 2026-12-11. Neither limit grants permission to waive mandatory acceptance.
+- Admit only demonstrated P0/P1 blockers against existing acceptance items. Defer P2 improvements, extra agents, new frameworks, speculative refactoring, optional governance work, and unnecessary test or Build repetition. Reuse accepted PASS evidence within its original valid scope.
+- WIP=1. Each task answers one acceptance question and crosses one execution gate. Preserve separate Build, Git, SQL, deployment, Provider and Production authorization boundaries.
+- Stop on COMPLETE, NO-GO or OWNER_HOLD. COMPLETE requires all applicable mandatory outcomes and Owner approval. An unresolved mandatory blocker is NO-GO; exhausted budget, missing authority or unresolved scope is OWNER_HOLD. Reaching 85/100, 30 gates or the time limit does not itself establish COMPLETE.
+- This rule supplements but never overrides AGENTS.md S1-S2, One-Step Scope Brake v1.2, Delivery Lock v1, or existing security and commercial requirements.
+- This rule is frozen. Do not create further scoring systems, governance documents, scope extensions, or revised quality thresholds without explicit Owner change authorization.
+
 ## Must-Stop Actions
 
 Stop for separate plain-language Owner approval before Production deployment or
