@@ -1914,8 +1914,8 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       checkRateLimit: () =>
         Promise.resolve({
           allowed: true,
-          mode: "disabled" as const,
-          reason: "synthetic_test",
+          mode: "enforced" as const,
+          reason: "within_limit",
         }),
       persistSubmission: () =>
         Promise.resolve({
@@ -1986,8 +1986,8 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       checkRateLimit: () =>
         Promise.resolve({
           allowed: true,
-          mode: "disabled" as const,
-          reason: "synthetic_test",
+          mode: "enforced" as const,
+          reason: "within_limit",
         }),
       persistSubmission: () =>
         Promise.resolve({
@@ -2093,8 +2093,8 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
           checkRateLimit: () =>
             Promise.resolve({
               allowed: true,
-              mode: "disabled" as const,
-              reason: "synthetic_test",
+              mode: "enforced" as const,
+              reason: "within_limit",
             }),
           persistSubmission: () =>
             Promise.resolve({
