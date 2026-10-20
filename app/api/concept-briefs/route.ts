@@ -6,6 +6,7 @@ import {
   persistConceptBriefSubmissionWithPreviewIntent,
   prepareAtomicConceptBriefSubmission,
   type AtomicConceptBriefIntakeDependencies,
+  type AtomicAdmissionHoldReason,
 } from "../../../lib/server/concept-brief-persistence";
 import {
   type ConceptBriefSubmissionPayload,
@@ -296,6 +297,18 @@ export function createConceptBriefPostHandler(
     ? prepareAtomicConceptBriefSubmission(
       payload as ConceptBriefSubmissionPayload, ratePolicyEvidence,
       atomicIntake, dependencies.sessionDependencies,
+      process.env.VERCEL_ENV === "preview" && process.env.NODE_ENV === "production" &&
+        (process.env.VERCEL_TARGET_ENV === undefined || process.env.VERCEL_TARGET_ENV === "preview")
+        ? diagnostic => {
+          const reasons: AtomicAdmissionHoldReason[] = [...diagnostic.reasons];
+          if (ipRateLimit.status !== "within_limit") reasons.push("ip_rate_limit_enforcement_unverified");
+          if (emailRateLimit.status !== "within_limit") reasons.push("email_rate_limit_enforcement_unverified");
+          // Only bounded codes and the existing public reference leave this boundary.
+          // No raw limiter results, proof, payload, context, keys or errors.
+          console.info("Atomic First Preview admission context unavailable.", {
+            publicReference: diagnostic.publicReference, reasons,
+          });
+        } : undefined,
     ) : null;
   const persistence = atomicSelected
     ? atomicPreparation

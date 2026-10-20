@@ -128,29 +128,52 @@ export type PreparedFirstPreviewCustomerProof = Readonly<{
   binding: FirstPreviewCustomerAccessBinding;
 }>;
 
+export type CustomerProofPreparationFailure =
+  | "feature_disabled"
+  | "customer_signing_authority_unavailable"
+  | "customer_proof_preparation_failed";
+
 export function prepareFirstPreviewCustomerProof(
   identity: Readonly<{ conceptBriefId: string; publicReference: string }>,
   dependencies: FirstPreviewSessionRouteDependencies = {},
+  onFailure?: (reason: CustomerProofPreparationFailure) => void,
 ): PreparedFirstPreviewCustomerProof | null {
+  function report(reason: CustomerProofPreparationFailure) {
+    try { onFailure?.(reason); } catch { /* Observability cannot affect proof preparation. */ }
+  }
   try {
     const enabled = hasOwn(dependencies, "featureFlagValue")
       ? dependencies.featureFlagValue : process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
     const secret = hasOwn(dependencies, "signingSecret")
       ? dependencies.signingSecret : process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV];
-    if (!isInstantFirstPreviewAgentEnabled(enabled) || !hasUsableSigningSecret(secret)) return null;
+    if (!isInstantFirstPreviewAgentEnabled(enabled) || !hasUsableSigningSecret(secret)) {
+      if (onFailure) {
+        if (!isInstantFirstPreviewAgentEnabled(enabled)) report("feature_disabled");
+        if (!hasUsableSigningSecret(secret)) report("customer_signing_authority_unavailable");
+      }
+      return null;
+    }
     const now = (dependencies.clock ?? (() => Math.floor(Date.now() / 1_000)))();
-    if (!Number.isSafeInteger(now) || now < 0) return null;
+    if (!Number.isSafeInteger(now) || now < 0) {
+      report("customer_proof_preparation_failed");
+      return null;
+    }
     const proof = createFirstPreviewCustomerAccessProof({
       briefId: identity.conceptBriefId, publicReference: identity.publicReference,
       issuedAt: now,
       nonce: (dependencies.nonceSource ?? (() => randomBytes(24).toString("base64url")))(),
     }, secret);
-    if (!proof) return null;
+    if (!proof) {
+      report("customer_proof_preparation_failed");
+      return null;
+    }
     const binding = deriveFirstPreviewCustomerAccessBinding(
       proof, secret, now, identity.conceptBriefId, identity.publicReference,
     );
+    if (!binding) report("customer_proof_preparation_failed");
     return binding ? Object.freeze({ proof, binding }) : null;
   } catch {
+    report("customer_proof_preparation_failed");
     return null;
   }
 }

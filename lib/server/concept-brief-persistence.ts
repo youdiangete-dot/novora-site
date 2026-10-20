@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { EnforcedPublicApiRatePolicy } from "./public-api-rate-limit";
 import {
   prepareFirstPreviewCustomerProof,
+  type CustomerProofPreparationFailure,
   type FirstPreviewSessionRouteDependencies,
 } from "./ai-sketch/instant-first-preview-feature-flag";
 
@@ -267,6 +268,12 @@ export type AtomicConceptBriefIntakeDependencies = Readonly<{
   identitySource?: () => Readonly<{ conceptBriefId: string; publicReference: string }>;
 }>;
 
+export type AtomicAdmissionHoldReason = CustomerProofPreparationFailure
+  | "ip_rate_limit_enforcement_unverified"
+  | "email_rate_limit_enforcement_unverified"
+  | "rate_policy_provenance_unverified"
+  | "admission_context_validation_rejected";
+
 /** Limiter metadata must come from the route's genuine enforcement receipts,
  * never submission JSON. A pending Intent is not paid admission: publication
  * and dispatch retain their independent admission/spending gates.
@@ -276,6 +283,9 @@ export function prepareAtomicConceptBriefSubmission(
   rateEvidence: EnforcedPublicApiRatePolicy | null,
   dependencies: AtomicConceptBriefIntakeDependencies,
   sessionDependencies: FirstPreviewSessionRouteDependencies = {},
+  onAdmissionHold?: (diagnostic: Readonly<{
+    publicReference: string; reasons: readonly AtomicAdmissionHoldReason[];
+  }>) => void,
 ) {
   try {
     const selected = dependencies.identitySource?.() ?? {
@@ -290,7 +300,9 @@ export function prepareAtomicConceptBriefSubmission(
     // Detached fixed JSON representation: caller mutation cannot replace intake data.
     const snapshot = JSON.parse(JSON.stringify(payload)) as ConceptBriefSubmissionPayload;
     const brief = readBriefRecord(snapshot);
-    const prepared = prepareFirstPreviewCustomerProof(identity, sessionDependencies);
+    const reasons: AtomicAdmissionHoldReason[] = [];
+    const prepared = prepareFirstPreviewCustomerProof(identity, sessionDependencies,
+      onAdmissionHold ? reason => reasons.push(reason) : undefined);
     const context = prepared && rateEvidence ? Object.freeze({
       version: INITIATION_VERSION,
       ip_key: rateEvidence.ip.redisKey, email_key: rateEvidence.email.redisKey,
@@ -302,6 +314,15 @@ export function prepareAtomicConceptBriefSubmission(
       rateEvidence.email.subject === "email" && rateEvidence.email.derivation === "hmac_sha256" &&
       isPrivateAdmissionContext(context, identity.conceptBriefId, identity.publicReference)
       ? context : null;
+    if (onAdmissionHold && admissionContext === null) {
+      if (!rateEvidence) reasons.push("rate_policy_provenance_unverified");
+      if (context) reasons.push("admission_context_validation_rejected");
+      try {
+        onAdmissionHold({ publicReference: identity.publicReference, reasons });
+      } catch {
+        // Diagnostics must not change RPC input, HTTP receipt or cookie behavior.
+      }
+    }
     const customerName = readContactString(snapshot, "customerName");
     const customerEmail = readContactString(snapshot, "customerEmail");
     if (!customerName || !customerEmail) return null;

@@ -660,10 +660,14 @@ test.describe("Atomic HTTP intake integration", () => {
     held?: boolean; missingClient?: boolean; invalidClient?: boolean; factoryThrows?: boolean;
     denied?: "ip" | "email"; rpcError?: string; failAt?: string;
     tamper?: (receipt: Record<string, unknown>) => void;
+    environment?: Record<string, string | undefined>;
+    unverified?: readonly ("ip" | "email")[];
+    proofFails?: boolean; invalidContext?: boolean; diagnosticThrows?: boolean;
   } = {}) {
     const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
     const committed: string[] = [];
     const logs: unknown[][] = [];
+    const diagnostics: unknown[][] = [];
     let factoryCalls = 0, splitCalls = 0, triggerCalls = 0, externalCalls = 0;
     let available = !options.missingClient;
     const client = {
@@ -697,15 +701,19 @@ test.describe("Atomic HTTP intake integration", () => {
     };
     const fakeRatePolicy = {
       rate_policy_version: "synthetic-v1", key_version: "synthetic-v1",
-      ip: { redisKey: `rl:v1:concept-briefs:ip:${"a".repeat(48)}`, subject: "ip", derivation: "hmac_sha256" },
+      ip: { redisKey: options.invalidContext ? privateMarker : `rl:v1:concept-briefs:ip:${"a".repeat(48)}`, subject: "ip", derivation: "hmac_sha256" },
       email: { redisKey: `rl:v1:concept-briefs:email:${"b".repeat(48)}`, subject: "email", derivation: "hmac_sha256" },
     };
     const fakeLimiter = {
       CONCEPT_BRIEF_ROUTE_NAME: "/api/concept-briefs",
       CONCEPT_BRIEF_IP_RATE_LIMIT: {}, CONCEPT_BRIEF_EMAIL_RATE_LIMIT: {},
       normalizePublicApiRateLimitEmail: (value: string) => value?.trim().toLowerCase() ?? null,
-      readEnforcedPublicApiRatePolicy: () => options.held ? null : fakeRatePolicy,
+      readEnforcedPublicApiRatePolicy: () => options.held || options.unverified?.length ? null : fakeRatePolicy,
       async checkPublicApiRateLimit(input: { normalizedEmail?: string }) {
+        if (options.unverified?.includes(input.normalizedEmail ? "email" : "ip")) {
+          return { allowed: true, mode: "provider_error", reason: "provider_error",
+            privateDetail: privateMarker, redisKey: fakeRatePolicy.ip.redisKey };
+        }
         return (input.normalizedEmail ? "email" : "ip") === options.denied
           ? { allowed: false, mode: "enforced", reason: "rate_limit_exceeded", headers: { "retry-after": "60" } }
           : { allowed: true, mode: "enforced", reason: "within_limit" };
@@ -719,8 +727,12 @@ test.describe("Atomic HTTP intake integration", () => {
       process: { env: {
         NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
         NOVORA_FIRST_PREVIEW_ACCESS_SIGNING_SECRET: "synthetic-offline-atomic-secret-00000000000000000000",
+        ...options.environment,
       } },
-      console: { error: (...args: unknown[]) => logs.push(args), info: () => {}, warn: () => {} },
+      console: { error: (...args: unknown[]) => logs.push(args), info: (...args: unknown[]) => {
+        if (options.diagnosticThrows) throw new Error(privateMarker);
+        diagnostics.push(args);
+      }, warn: () => {} },
       fetch: async () => { externalCalls++; throw new Error("Offline transport forbidden"); },
     });
     const cache = new Map<string, Record<string, unknown>>();
@@ -738,6 +750,9 @@ test.describe("Atomic HTTP intake integration", () => {
       );
       wrapper(exports, (name: string) => {
           if (name === "server-only") return {};
+          if (name === "node:crypto" && options.proofFails) return {
+            ...testRequire(name), randomBytes() { throw new Error(privateMarker); },
+          };
           if (["next/server", "node:crypto", "node:buffer", "node:util"].includes(name)) return testRequire(name);
           if (name === "./supabase" || name === "../../../lib/server/supabase") return fakeFactory;
           if (name.endsWith("public-api-rate-limit")) return fakeLimiter;
@@ -759,7 +774,7 @@ test.describe("Atomic HTTP intake integration", () => {
       });
     }
     return {
-      post: route.POST, request, calls, committed, logs,
+      post: route.POST, request, calls, committed, logs, diagnostics,
       revokeClient() { available = false; },
       counts: () => ({ factoryCalls, splitCalls, triggerCalls, externalCalls }),
     };
@@ -867,5 +882,101 @@ test.describe("Atomic HTTP intake integration", () => {
     await expectFailure(h);
     expect(h.calls).toHaveLength(1);
     expect(h.counts().factoryCalls).toBe(2);
+  });
+
+  const previewDiagnostics = { VERCEL_ENV: "preview", NODE_ENV: "production" };
+  const diagnosticCases: Array<{
+    name: string; options: Parameters<typeof harness>[0]; reasons: string[];
+  }> = [
+    { name: "disabled feature", options: { environment: { NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "false" } },
+      reasons: ["feature_disabled"] },
+    { name: "absent customer signing authority", options: { environment: { NOVORA_FIRST_PREVIEW_ACCESS_SIGNING_SECRET: undefined } },
+      reasons: ["customer_signing_authority_unavailable"] },
+    { name: "invalid customer signing authority", options: { environment: { NOVORA_FIRST_PREVIEW_ACCESS_SIGNING_SECRET: "short" } },
+      reasons: ["customer_signing_authority_unavailable"] },
+    { name: "customer proof preparation exception", options: { proofFails: true },
+      reasons: ["customer_proof_preparation_failed"] },
+    { name: "IP enforcement unavailable", options: { unverified: ["ip"] },
+      reasons: ["rate_policy_provenance_unverified", "ip_rate_limit_enforcement_unverified"] },
+    { name: "email enforcement unavailable", options: { unverified: ["email"] },
+      reasons: ["rate_policy_provenance_unverified", "email_rate_limit_enforcement_unverified"] },
+    { name: "receipts pass but policy provenance is unverified", options: { held: true },
+      reasons: ["rate_policy_provenance_unverified"] },
+    { name: "context validator rejects otherwise prepared context", options: { invalidContext: true },
+      reasons: ["admission_context_validation_rejected"] },
+    { name: "multiple independent prerequisites unavailable", options: { unverified: ["ip", "email"],
+      environment: { NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "false", NOVORA_FIRST_PREVIEW_ACCESS_SIGNING_SECRET: undefined } },
+      reasons: ["feature_disabled", "customer_signing_authority_unavailable", "rate_policy_provenance_unverified",
+        "ip_rate_limit_enforcement_unverified", "email_rate_limit_enforcement_unverified"] },
+  ];
+  for (const { name, options, reasons } of diagnosticCases) {
+    test(`Preview admission diagnostics: ${name}`, async () => {
+      const h = harness({ ...options, environment: { ...previewDiagnostics, ...options?.environment } });
+      const response = await h.post(h.request());
+      const body = await response.json();
+      expect(response.status).toBe(201);
+      expect(body).toEqual({ ok: true, mode: "supabase", persisted: true,
+        message: "Concept Brief submitted for NOVORA review. This is not CAD approval, pricing approval, sourcing confirmation, or production confirmation.",
+        conceptBriefId: h.calls[0].args.p_concept_brief_id, publicReference: h.calls[0].args.p_public_reference });
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(h.calls).toHaveLength(1);
+      expect(h.calls[0].args.p_admission_context).toBeNull();
+      expect(h.committed).toEqual(["brief", "contact", "intent"]);
+      expect(h.counts()).toEqual({ factoryCalls: 1, splitCalls: 0, triggerCalls: 0, externalCalls: 0 });
+      expect(h.diagnostics).toEqual([["Atomic First Preview admission context unavailable.",
+        { publicReference: body.publicReference, reasons }]]);
+      const emitted = JSON.stringify({ diagnostics: h.diagnostics, body, headers: [...response.headers] });
+      for (const value of [privateMarker, payload.customerName, payload.customerEmail,
+        "synthetic-offline-atomic-secret", "rl:v1:", "access_binding", "binding_digest", "ip_key", "email_key"])
+        expect(emitted).not.toContain(value);
+    });
+  }
+
+  test("Preview admission diagnostics: successful admission emits nothing and preserves the cookie", async () => {
+    const h = harness({ environment: previewDiagnostics });
+    const response = await h.post(h.request());
+    expect(response.status).toBe(201);
+    expect(response.headers.get("set-cookie")).not.toBeNull();
+    expect(h.calls[0].args.p_admission_context).not.toBeNull();
+    expect(h.diagnostics).toEqual([]);
+  });
+
+  test("Preview admission diagnostics: matching explicit Preview target permits safe logging", async () => {
+    const h = harness({ held: true, environment: { ...previewDiagnostics, VERCEL_TARGET_ENV: "preview" } });
+    expect((await h.post(h.request())).status).toBe(201);
+    expect(h.diagnostics).toEqual([["Atomic First Preview admission context unavailable.", {
+      publicReference: h.calls[0].args.p_public_reference, reasons: ["rate_policy_provenance_unverified"],
+    }]]);
+  });
+
+  for (const environment of [
+    { VERCEL_ENV: "production", NODE_ENV: "production" },
+    { VERCEL_ENV: "preview", NODE_ENV: "production", VERCEL_TARGET_ENV: "production" },
+    { NODE_ENV: "production" },
+    { VERCEL_ENV: "development", NODE_ENV: "development" },
+  ]) {
+    test(`Preview admission diagnostics: no emission for ${JSON.stringify(environment)}`, async () => {
+      const h = harness({ held: true, environment });
+      expect((await h.post(h.request())).status).toBe(201);
+      expect(h.calls[0].args.p_admission_context).toBeNull();
+      expect(h.diagnostics).toEqual([]);
+    });
+  }
+
+  test("Preview admission diagnostics: logging failure cannot change held persistence", async () => {
+    const h = harness({ held: true, diagnosticThrows: true, environment: previewDiagnostics });
+    const response = await h.post(h.request());
+    expect(response.status).toBe(201);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0].args.p_admission_context).toBeNull();
+    expect(h.committed).toEqual(["brief", "contact", "intent"]);
+  });
+
+  test("Preview admission diagnostics: held RPC failure retains the 202 response", async () => {
+    const h = harness({ held: true, rpcError: "42501", environment: previewDiagnostics });
+    await expectFailure(h);
+    expect(h.diagnostics).toHaveLength(1);
+    expect(h.calls[0].args.p_admission_context).toBeNull();
   });
 });
