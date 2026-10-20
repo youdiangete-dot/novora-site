@@ -175,11 +175,10 @@ async function cleanupConceptBriefRow(supabase: SupabaseAdminClient, conceptBrie
 }
 
 /**
- * Unconnected source adapter for the candidate's transactional receipt RPC.
- * A future coordinated caller must supply trusted server-side input and a client
- * with independently established installed-RPC/ACL capability. There is no env
- * lookup, capability probe or activation switch. The route requires explicit
- * trusted atomic dependencies; its default persistence remains legacy.
+ * Source adapter for the transactional receipt RPC. The exported HTTP handler
+ * supplies its guarded server client through the existing trusted atomic seam.
+ * This adapter performs no env lookup, capability probe or activation switch.
+ * Installed function equivalence and runtime readiness require separate evidence.
  * Context shape checks do not authenticate admission or customer access. Explicit
  * NULL context is held intake only; absent/malformed non-null context is rejected.
  * Held Intents have no accepted automatic recovery transition in this candidate.
@@ -262,7 +261,7 @@ export async function persistConceptBriefSubmissionWithPreviewIntent(
 }
 
 
-/** Trusted construction seam only. Production has no default atomic selection. */
+/** Trusted server construction only; never populated from submitted authority. */
 export type AtomicConceptBriefIntakeDependencies = Readonly<{
   rpcClient: Pick<SupabaseAdminClient, "rpc"> | null;
   identitySource?: () => Readonly<{ conceptBriefId: string; publicReference: string }>;

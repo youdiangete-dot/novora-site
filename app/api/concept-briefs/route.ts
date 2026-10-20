@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createSupabaseAdminClientOrNull } from "../../../lib/server/supabase";
 
 import {
   persistConceptBriefSubmission,
@@ -386,4 +387,15 @@ export function createConceptBriefPostHandler(
   };
 }
 
-export const POST = createConceptBriefPostHandler();
+export async function POST(request: Request) {
+  let rpcClient: AtomicConceptBriefIntakeDependencies["rpcClient"] = null;
+  try {
+    // The guarded server client calls the existing EXECUTE-granted RPC. Only
+    // its SECURITY DEFINER owner acquires intake authority inside the database.
+    rpcClient = createSupabaseAdminClientOrNull();
+  } catch {
+    // Missing/invalid configuration must not select legacy split writes, and
+    // must not bypass the handler's request validation or failure response.
+  }
+  return createConceptBriefPostHandler({ atomicIntake: { rpcClient } })(request);
+}

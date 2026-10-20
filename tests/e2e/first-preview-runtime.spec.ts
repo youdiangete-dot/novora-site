@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { runInNewContext } from "node:vm";
+import { createContext, runInContext, runInNewContext } from "node:vm";
 
 import {
   evaluateAutomaticFirstPreviewGates,
@@ -646,5 +646,226 @@ test.describe("Supabase access brake", () => {
     client.calls.length = 0;
     client.env.VERCEL_ENV = undefined;
     expectBlocked(client);
+  });
+});
+
+test.describe("Atomic HTTP intake integration", () => {
+  const testRequire = createRequire(path.join(process.cwd(), "package.json"));
+  const ts = testRequire("typescript") as typeof import("typescript");
+  const compiled = new Map<string, string>();
+  const privateMarker = "synthetic-private-atomic-rpc-detail";
+  const payload = { customerName: "Synthetic", customerEmail: "synthetic@example.invalid", pieceType: "ring" };
+
+  function harness(options: {
+    held?: boolean; missingClient?: boolean; invalidClient?: boolean; factoryThrows?: boolean;
+    denied?: "ip" | "email"; rpcError?: string; failAt?: string;
+    tamper?: (receipt: Record<string, unknown>) => void;
+  } = {}) {
+    const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const committed: string[] = [];
+    const logs: unknown[][] = [];
+    let factoryCalls = 0, splitCalls = 0, triggerCalls = 0, externalCalls = 0;
+    let available = !options.missingClient;
+    const client = {
+      from() { splitCalls++; throw new Error("Legacy table writes forbidden"); },
+      async rpc(name: string, args: Record<string, unknown>) {
+        calls.push({ name, args });
+        if (options.rpcError) return { data: null, error: { code: options.rpcError, message: privateMarker } };
+        // Model only the accepted RPC's all-or-nothing contract, not a live DB.
+        const transaction: string[] = [];
+        for (const stage of ["brief", "contact", "intent", "deferred_constraints"]) {
+          if (options.failAt === stage) throw new Error(privateMarker);
+          if (stage !== "deferred_constraints") transaction.push(stage);
+        }
+        committed.push(...transaction);
+        const receipt: Record<string, unknown> = {
+          persisted: true, concept_brief_id: args.p_concept_brief_id, public_reference: args.p_public_reference,
+          intent_version: "novora_first_preview_initiation_v1", intent_created: true,
+          intent_state: args.p_admission_context === null ? "operator_hold" : "pending",
+          private_context: privateMarker,
+        };
+        options.tamper?.(receipt);
+        return { data: { ok: true, value: receipt }, error: null };
+      },
+    };
+    const fakeFactory = {
+      createSupabaseAdminClientOrNull() {
+        factoryCalls++;
+        if (options.factoryThrows) throw new Error(privateMarker);
+        return available ? (options.invalidClient ? { from: client.from } : client) : null;
+      },
+    };
+    const fakeRatePolicy = {
+      rate_policy_version: "synthetic-v1", key_version: "synthetic-v1",
+      ip: { redisKey: `rl:v1:concept-briefs:ip:${"a".repeat(48)}`, subject: "ip", derivation: "hmac_sha256" },
+      email: { redisKey: `rl:v1:concept-briefs:email:${"b".repeat(48)}`, subject: "email", derivation: "hmac_sha256" },
+    };
+    const fakeLimiter = {
+      CONCEPT_BRIEF_ROUTE_NAME: "/api/concept-briefs",
+      CONCEPT_BRIEF_IP_RATE_LIMIT: {}, CONCEPT_BRIEF_EMAIL_RATE_LIMIT: {},
+      normalizePublicApiRateLimitEmail: (value: string) => value?.trim().toLowerCase() ?? null,
+      readEnforcedPublicApiRatePolicy: () => options.held ? null : fakeRatePolicy,
+      async checkPublicApiRateLimit(input: { normalizedEmail?: string }) {
+        return (input.normalizedEmail ? "email" : "ip") === options.denied
+          ? { allowed: false, mode: "enforced", reason: "rate_limit_exceeded", headers: { "retry-after": "60" } }
+          : { allowed: true, mode: "enforced", reason: "within_limit" };
+      },
+    };
+    // Application modules share intrinsics, but each keeps its own CommonJS
+    // scope. In particular, JSON objects retain one Object.prototype identity.
+    const context = createContext({
+      Buffer, URL, Request, Response, Headers,
+      // Never consult real environment values, credentials or transports.
+      process: { env: {
+        NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
+        NOVORA_FIRST_PREVIEW_ACCESS_SIGNING_SECRET: "synthetic-offline-atomic-secret-00000000000000000000",
+      } },
+      console: { error: (...args: unknown[]) => logs.push(args), info: () => {}, warn: () => {} },
+      fetch: async () => { externalCalls++; throw new Error("Offline transport forbidden"); },
+    });
+    const cache = new Map<string, Record<string, unknown>>();
+    function load(file: string): Record<string, unknown> {
+      if (cache.has(file)) return cache.get(file)!;
+      if (!compiled.has(file)) compiled.set(file, ts.transpileModule(readFileSync(file, "utf8"), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+      }).outputText);
+      const exports = {};
+      const module = { exports };
+      cache.set(file, exports);
+      const wrapper = runInContext(
+        `(function(exports, require, module, __filename, __dirname) {\n${compiled.get(file)!}\n})`,
+        context, { filename: file },
+      );
+      wrapper(exports, (name: string) => {
+          if (name === "server-only") return {};
+          if (["next/server", "node:crypto", "node:buffer", "node:util"].includes(name)) return testRequire(name);
+          if (name === "./supabase" || name === "../../../lib/server/supabase") return fakeFactory;
+          if (name.endsWith("public-api-rate-limit")) return fakeLimiter;
+          if (name.endsWith("first-preview-automatic-trigger")) return {
+            triggerAutomaticFirstPreviewAfterPersistence() { triggerCalls++; throw new Error("No direct generation"); },
+          };
+          if (name.startsWith(".")) return load(testRequire.resolve(path.resolve(path.dirname(file), name)));
+          throw new Error(`Unexpected dependency: ${name}`);
+      }, module, file, path.dirname(file));
+      cache.set(file, module.exports);
+      return module.exports;
+    }
+    const route = load(path.join(process.cwd(), "app/api/concept-briefs/route.ts")) as {
+      POST: (request: Request) => Promise<Response>;
+    };
+    function request(body: unknown = payload) {
+      return new Request("https://request-authority.invalid/api/concept-briefs", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+    }
+    return {
+      post: route.POST, request, calls, committed, logs,
+      revokeClient() { available = false; },
+      counts: () => ({ factoryCalls, splitCalls, triggerCalls, externalCalls }),
+    };
+  }
+
+  async function expectFailure(h: ReturnType<typeof harness>) {
+    const response = await h.post(h.request());
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ persisted: false });
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(h.counts()).toMatchObject({ splitCalls: 0, triggerCalls: 0, externalCalls: 0 });
+    expect(JSON.stringify(h.logs)).not.toContain(privateMarker);
+  }
+
+  for (const held of [false, true]) {
+    test(`exported POST commits Brief/contact/intent through one RPC, held=${held}`, async () => {
+      const h = harness({ held });
+      expect(h.counts().factoryCalls).toBe(0); // No import-time authority capture.
+      const response = await h.post(h.request());
+      const body = await response.json();
+      expect(response.status).toBe(201);
+      expect(body).toMatchObject({ ok: true, persisted: true, mode: "supabase" });
+      expect(body.publicReference).toMatch(/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/);
+      expect(body.conceptBriefId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(h.calls).toHaveLength(1);
+      expect(h.calls[0].name).toBe("novora_persist_concept_brief_with_preview_intent");
+      expect(Object.keys(h.calls[0].args).sort()).toEqual([
+        "p_admission_context", "p_brief", "p_concept_brief_id", "p_contact", "p_public_reference",
+      ]);
+      expect(h.calls[0].args).toMatchObject({ p_concept_brief_id: body.conceptBriefId, p_public_reference: body.publicReference,
+        p_brief: { summary_items: null, brief_payload: payload },
+        p_contact: { customer_name: payload.customerName, customer_email: payload.customerEmail } });
+      expect(h.calls[0].args.p_admission_context === null).toBe(held);
+      expect(Boolean(response.headers.get("set-cookie"))).toBe(!held);
+      expect(h.committed).toEqual(["brief", "contact", "intent"]);
+      expect(h.counts()).toEqual({ factoryCalls: 1, splitCalls: 0, triggerCalls: 0, externalCalls: 0 });
+      const output = JSON.stringify({ body, headers: [...response.headers], logs: h.logs });
+      for (const value of [privateMarker, "intent_state", "admission_context", "rl:v1:"]) expect(output).not.toContain(value);
+    });
+  }
+
+  for (const options of [{ missingClient: true }, { invalidClient: true }, { factoryThrows: true },
+    { rpcError: "42501" }, { rpcError: "PGRST202" }]) {
+    test(`missing or invalid authority fails closed: ${JSON.stringify(options)}`, async () => {
+      const h = harness(options);
+      await expectFailure(h);
+      expect(h.calls).toHaveLength(options.rpcError ? 1 : 0);
+      expect(h.committed).toEqual([]);
+    });
+  }
+
+  for (const failAt of ["brief", "contact", "intent", "deferred_constraints"]) {
+    test(`mock RPC failure at ${failAt} has no partial commit, retry or cleanup`, async () => {
+      const h = harness({ failAt });
+      await expectFailure(h);
+      expect(h.calls).toHaveLength(1);
+      expect(h.committed).toEqual([]);
+    });
+  }
+
+  for (const [field, value] of [["concept_brief_id", "wrong-identity"], ["intent_version", "wrong-version"],
+    ["intent_state", "dispatched"], ["intent_created", undefined]] as const) {
+    test(`invalid ${field} cannot produce a successful HTTP receipt`, async () => {
+      const h = harness({ tamper: receipt => { receipt[field] = value; } });
+      await expectFailure(h);
+      expect(h.calls).toHaveLength(1);
+    });
+  }
+
+  test("preserves invalid JSON and payload 400 responses without invoking the RPC", async () => {
+    const h = harness();
+    const invalidJson = new Request("https://request-authority.invalid/api/concept-briefs", { method: "POST", body: "{" });
+    for (const request of [invalidJson, h.request({ pieceType: "ring" })]) {
+      const response = await h.post(request);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ persisted: false });
+    }
+    expect(h.calls).toEqual([]);
+    expect(h.committed).toEqual([]);
+  });
+
+  for (const denied of ["ip", "email"] as const) {
+    test(`preserves enforced ${denied} 429 before RPC execution`, async () => {
+      const h = harness({ denied });
+      const response = await h.post(h.request());
+      expect(response.status).toBe(429);
+      expect(response.headers.get("retry-after")).toBe("60");
+      expect(h.calls).toEqual([]);
+      expect(h.counts()).toMatchObject({ splitCalls: 0, triggerCalls: 0, externalCalls: 0 });
+    });
+  }
+
+  test("client authority assertions cannot upgrade missing trusted admission", async () => {
+    const h = harness({ held: true });
+    expect((await h.post(h.request({ ...payload, atomic: false, generationAuthorized: true,
+      p_admission_context: { granted: true }, intent_state: "pending" }))).status).toBe(201);
+    expect(h.calls[0].args.p_admission_context).toBeNull();
+    expect(h.counts()).toMatchObject({ splitCalls: 0, triggerCalls: 0, externalCalls: 0 });
+  });
+
+  test("each request reacquires guarded authority and never reuses a revoked client", async () => {
+    const h = harness();
+    expect((await h.post(h.request())).status).toBe(201);
+    h.revokeClient();
+    await expectFailure(h);
+    expect(h.calls).toHaveLength(1);
+    expect(h.counts().factoryCalls).toBe(2);
   });
 });
