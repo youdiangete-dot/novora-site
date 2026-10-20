@@ -12,6 +12,34 @@ type SupabaseServerReadiness = {
 const SUPABASE_URL_ENV = "NEXT_PUBLIC_SUPABASE_URL";
 const SUPABASE_ANON_KEY_ENV = "NEXT_PUBLIC_SUPABASE_ANON_KEY";
 const SUPABASE_SERVICE_ROLE_KEY_ENV = "SUPABASE_SERVICE_ROLE_KEY";
+const PRODUCTION_PROJECT_ID = "pzjypjddmrngdnrjbhsw";
+const ISOLATED_PROJECT_ID = "kiwoujhhhsnromxfwdxh";
+
+function isSupabaseTargetAllowed(url: URL): boolean {
+  const { VERCEL_ENV, VERCEL_TARGET_ENV, NODE_ENV } = process.env;
+  // Deployment signals are server configuration, never request-derived. An
+  // absent optional target is compatible; a present conflicting target is not.
+  if (VERCEL_TARGET_ENV !== undefined && VERCEL_TARGET_ENV !== VERCEL_ENV) {
+    return false;
+  }
+  if (VERCEL_ENV === "production" && NODE_ENV === "production") {
+    return true; // Preserve the existing authorized Production URL behavior.
+  }
+  const verifiedNonProduction =
+    (VERCEL_ENV === "preview" && NODE_ENV === "production") ||
+    (VERCEL_ENV === "development" && NODE_ENV === "development");
+  if (!verifiedNonProduction) return false;
+
+  // A syntactically valid arbitrary project is not verified isolation. Only
+  // the independently identified test project may pass this identity brake;
+  // this does not establish schema readiness or authorize runtime operations.
+  const projectId = /^([a-z0-9]{20})\.supabase\.co$/.exec(url.hostname)?.[1];
+  return Boolean(
+    projectId && projectId !== PRODUCTION_PROJECT_ID && projectId === ISOLATED_PROJECT_ID &&
+    url.protocol === "https:" && !url.port && !url.username && !url.password &&
+    url.pathname === "/" && !url.search && !url.hash,
+  );
+}
 
 function getEnvValue(name: string): string | null {
   const value = process.env[name]?.trim();
@@ -30,6 +58,10 @@ function getSupabaseUrlValue(): string | null {
     const url = new URL(value);
 
     if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname) {
+      return null;
+    }
+
+    if (!isSupabaseTargetAllowed(url)) {
       return null;
     }
 

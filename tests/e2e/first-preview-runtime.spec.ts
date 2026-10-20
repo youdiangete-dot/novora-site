@@ -492,3 +492,159 @@ test.describe("Preview queue entry guard", () => {
     expectDeferred();
   });
 });
+
+test.describe("Supabase access brake", () => {
+  const testRequire = createRequire(path.join(process.cwd(), "package.json"));
+  const ts = testRequire("typescript") as typeof import("typescript");
+  const sourcePath = path.join(process.cwd(), "lib/server/supabase.ts");
+  const code = ts.transpileModule(readFileSync(sourcePath, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const productionUrl = "https://pzjypjddmrngdnrjbhsw.supabase.co";
+  const isolatedUrl = "https://kiwoujhhhsnromxfwdxh.supabase.co";
+  const preview = { VERCEL_ENV: "preview", NODE_ENV: "production" };
+  const production = { VERCEL_ENV: "production", NODE_ENV: "production" };
+
+  function loadClient(environment: Record<string, string | undefined>, url = isolatedUrl) {
+    // Only synthetic VM configuration and a recording constructor are used.
+    // The real SDK, process environment, HTTP and services are never accessed.
+    const env: Record<string, string | undefined> = {
+      NEXT_PUBLIC_SUPABASE_URL: url,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "synthetic-offline-anon-key",
+      SUPABASE_SERVICE_ROLE_KEY: "sb_secret_synthetic_offline_only",
+      ...environment,
+    };
+    const calls: Array<{ url: string; key: string; options: unknown }> = [];
+    const api = {} as typeof import("../../lib/server/supabase");
+    runInNewContext(code, {
+      exports: api, process: { env }, URL, Buffer,
+      require(name: string) {
+        if (name === "server-only") return {};
+        if (name === "@supabase/supabase-js") {
+          return { createClient(url: string, key: string, options: unknown) {
+            const client = { url, key, options };
+            calls.push(client);
+            return client;
+          } };
+        }
+        throw new Error("Unexpected client dependency in offline test");
+      },
+    }, { filename: sourcePath });
+    return { api, calls, env };
+  }
+
+  function expectBlocked(client: ReturnType<typeof loadClient>) {
+    expect(client.api.createSupabasePublicServerClientOrNull()).toBeNull();
+    expect(client.api.createSupabaseAdminClientOrNull()).toBeNull();
+    expect(client.api.getSupabaseServerReadiness()).toMatchObject({
+      readyForPublicServerClient: false, readyForAdminClient: false,
+    });
+    expect(client.calls).toEqual([]);
+  }
+
+  for (const target of [undefined, "preview"]) {
+    test(`blocks Production project in Preview with target ${String(target)}`, () => {
+      expectBlocked(loadClient({ ...preview, VERCEL_TARGET_ENV: target }, productionUrl));
+    });
+  }
+
+  const invalidTargets: Array<[string, string | undefined]> = [
+    ["missing URL", undefined], ["empty URL", ""], ["malformed URL", "not-a-url"],
+    ["missing project ID", "https://supabase.co"],
+    ["malformed project ID", "https://short.supabase.co"],
+    ["unverified project", "https://aaaaaaaaaaaaaaaaaaaa.supabase.co"],
+    ["custom hostname", "https://database.example.invalid"],
+    ["Production hostname suffix spoof", `${productionUrl}.example.invalid`],
+    ["isolated hostname suffix spoof", `${isolatedUrl}.example.invalid`],
+    ["insecure transport", isolatedUrl.replace("https:", "http:")],
+    ["alternate port", `${isolatedUrl}:8443`],
+    ["URL credentials", isolatedUrl.replace("https://", "https://synthetic@")],
+    ["path override", `${isolatedUrl}/another-project`],
+    ["query override", `${isolatedUrl}?target=production`],
+    ["fragment", `${isolatedUrl}#production`],
+  ];
+  for (const [name, url] of invalidTargets) {
+    test(`blocks ${name} before either SDK constructor`, () => {
+      expectBlocked(loadClient({ ...preview, NEXT_PUBLIC_SUPABASE_URL: url }));
+    });
+  }
+
+  const invalidEnvironments: Array<[string, Record<string, string | undefined>]> = [
+    ["NODE_ENV alone", { NODE_ENV: "production" }],
+    ["target alone", { VERCEL_TARGET_ENV: "preview", NODE_ENV: "production" }],
+    ["empty identity", { VERCEL_ENV: "", NODE_ENV: "production" }],
+    ["unknown identity", { VERCEL_ENV: "Production", NODE_ENV: "production" }],
+    ["missing Node identity", { VERCEL_ENV: "preview" }],
+    ["Preview with development Node", { VERCEL_ENV: "preview", NODE_ENV: "development" }],
+    ["development with production Node", { VERCEL_ENV: "development", NODE_ENV: "production" }],
+    ["Production with development Node", { VERCEL_ENV: "production", NODE_ENV: "development" }],
+    ["Production with Preview target", { ...production, VERCEL_TARGET_ENV: "preview" }],
+    ["Preview with Production target", { ...preview, VERCEL_TARGET_ENV: "production" }],
+    ["empty target", { ...production, VERCEL_TARGET_ENV: "" }],
+    ["unverified custom target", { ...preview, VERCEL_TARGET_ENV: "staging" }],
+  ];
+  for (const [name, environment] of invalidEnvironments) {
+    test(`blocks ${name} even for the isolated project`, () => {
+      expectBlocked(loadClient(environment));
+    });
+  }
+
+  for (const environment of [
+    preview, { ...preview, VERCEL_TARGET_ENV: "preview" },
+    { VERCEL_ENV: "development", NODE_ENV: "development" },
+    { VERCEL_ENV: "development", VERCEL_TARGET_ENV: "development", NODE_ENV: "development" },
+  ]) {
+    test(`allows only the isolated identity in ${JSON.stringify(environment)}`, () => {
+      const client = loadClient(environment);
+      expect(client.api.getSupabaseServerReadiness()).toMatchObject({
+        readyForPublicServerClient: true, readyForAdminClient: true,
+      });
+      expect(client.calls).toEqual([]); // Readiness never constructs a client.
+      expect(client.api.createSupabasePublicServerClientOrNull()).not.toBeNull();
+      expect(client.api.createSupabaseAdminClientOrNull()).not.toBeNull();
+      expect(client.calls.map(call => call.url)).toEqual([isolatedUrl, isolatedUrl]);
+    });
+  }
+
+  for (const target of [undefined, "production"]) {
+    test(`preserves Production constructors and options with target ${String(target)}`, () => {
+      const client = loadClient({ ...production, VERCEL_TARGET_ENV: target }, productionUrl);
+      client.api.createSupabasePublicServerClientOrNull();
+      client.api.createSupabaseAdminClientOrNull();
+      expect(client.calls).toEqual([
+        { url: productionUrl, key: client.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          options: { auth: { persistSession: false, autoRefreshToken: false } } },
+        { url: productionUrl, key: client.env.SUPABASE_SERVICE_ROLE_KEY,
+          options: { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+            global: { headers: { Authorization: `Bearer ${client.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              apikey: client.env.SUPABASE_SERVICE_ROLE_KEY } } } },
+      ]);
+    });
+  }
+
+  test("preserves existing Production URL and key validation behavior", () => {
+    const client = loadClient(production, "http://synthetic-database.invalid:8080");
+    client.env.SUPABASE_SERVICE_ROLE_KEY = `synthetic.${Buffer.from(JSON.stringify({ role: "service_role" })).toString("base64url")}.offline`;
+    expect(client.api.createSupabaseAdminClientOrNull()).not.toBeNull();
+    client.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-invalid-role";
+    expect(client.api.createSupabaseAdminClientOrNull()).toBeNull();
+    client.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = undefined;
+    expect(client.api.createSupabasePublicServerClientOrNull()).toBeNull();
+    client.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
+    expect(client.api.createSupabasePublicServerClientOrNull()).toBeNull();
+    expect(client.calls).toHaveLength(1);
+  });
+
+  test("rechecks deployment and resource identity on every construction", () => {
+    const client = loadClient(production, productionUrl);
+    expect(client.api.createSupabaseAdminClientOrNull()).not.toBeNull();
+    client.calls.length = 0;
+    client.env.VERCEL_ENV = "preview";
+    expectBlocked(client);
+    client.env.NEXT_PUBLIC_SUPABASE_URL = isolatedUrl;
+    expect(client.api.createSupabaseAdminClientOrNull()).not.toBeNull();
+    client.calls.length = 0;
+    client.env.VERCEL_ENV = undefined;
+    expectBlocked(client);
+  });
+});
