@@ -305,8 +305,10 @@ Do not create copied final-completion contracts in other repository files.
 - Each Work task must answer exactly one acceptance question, cross exactly one
   execution gate, and stop after PASS, BLOCKED, or insufficient evidence.
   Build, validation, commit, push, PR creation, review, Ready, merge,
-  deployment, and cleanup remain separate gates. Conditional continuation and
-  uncontrolled retry are prohibited.
+  deployment, Production E2E, rollback, and cleanup remain separate gates,
+  subject only to the existing expressly approved safe-restoration package.
+  Consolidate ordinary read-only checks supporting the same acceptance question.
+  Conditional continuation and uncontrolled retry are prohibited.
 - WIP is one: no more than one NOVORA Work task may be active at a time.
 - The newest exact current-task instruction controls. Starting a Codex-ready
   task authorizes every low-risk, reversible operation expressly named and
@@ -338,9 +340,11 @@ Do not create copied final-completion contracts in other repository files.
   recovery requires a root-cause replan; renaming the goal does not reset the
   cap.
 - Reuse accepted validation when exact hashes/diff and relevant environment are
-  unchanged. Git/PR gates verify identity instead of rerunning tests. Chat
-  directly verifies available read-only GitHub facts and distinguishes that
-  evidence from Work reports.
+  unchanged. Repeating accepted tests, builds, reviews, or checks requires
+  specific material invalidation evidence and a bounded reason to revalidate.
+  Git/PR gates verify identity instead of rerunning tests. Chat directly verifies
+  available read-only GitHub facts and distinguishes that evidence from Work
+  reports.
 - After a result, Chat first evaluates the Owner's broader stated goal. If it is
   complete, stop with `STOP / HOLD FOR OWNER DECISION`. If it is incomplete,
   Chat may choose one low-risk, technically determined next gate within that
@@ -350,6 +354,35 @@ Do not create copied final-completion contracts in other repository files.
 - Optimize MVP closeout for one clear outcome, minimum necessary evidence,
   evidence reuse, bounded corrections, and no unnecessary Agent, document,
   test, review, approval, or task expansion.
+
+### Delivery Execution Discipline
+
+- Admit a proposed task only when it identifies an existing acceptance
+  requirement or verified P0/P1 blocker, why action is necessary now, and the
+  concrete delivery result it unlocks. Follow the existing M1-M6 mapping;
+  unrelated P2 features, architecture redesign, and full infrastructure rebuilds
+  require separate approval.
+- Codex's suggested next action is advice, not authorization. Chat independently
+  assesses necessity, contains scope, and selects the next action. The Owner
+  controls commercial goals, risk, cost, and required approvals.
+- Do not repeat equivalent investigations without a credible new evidence
+  source. After two consecutive non-progress tasks on one blocker, stop the
+  sequence and reassess the delivery route in Chat, without creating another
+  Codex gate for that reassessment. Existing stricter recovery limits still apply.
+- Before issuing a task, compare current authority, accepted PASS evidence,
+  known state, and unexecuted prior instructions. Explicitly supersede
+  conflicting proposals; keep only one active instruction.
+- Preserve working keys and services. Never expose secret values or request
+  unnecessary regeneration, replacement, or repeated manual entry. Configured
+  keys alone do not prove environment isolation.
+- After each result, Chat reports the acceptance judgment, actual delivery
+  increment, and one necessary next action, or STOP when no action is justified.
+  Provide a Codex-ready instruction only when execution is justified. Distinguish
+  local code, validation, remote source delivery, runtime readiness, E2E
+  acceptance, and milestone COMPLETE; a PASS report alone is not functional
+  delivery. Preserve COMPLETE, NO-GO, and OWNER_HOLD mechanisms and all frozen
+  acceptance authorities. Detailed enforcement remains in
+  `docs/novora-one-step-scope-brake-v1.md`.
 
 ### Vertical Acceptance Packages
 

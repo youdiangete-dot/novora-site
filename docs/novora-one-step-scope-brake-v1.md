@@ -16,10 +16,10 @@ technical coordination; Work executes one exact gate.
 2. Every Work task crosses exactly one execution gate.
 3. Only one NOVORA Work task may be active at a time: WIP=1.
 4. Build, validation, commit, push, PR creation, PR review, Ready transition,
-   merge, deployment, and cleanup remain separate gates. Read-only
-   investigation, local implementation, Vercel verification, Preview request,
-   runtime probe, rollback, and other materially distinct operations are also
-   separate gates except for the expressly authorized operations within a
+   merge, deployment, Production E2E, rollback, and cleanup remain separate
+   gates. Read-only investigation, local implementation, Vercel verification,
+   Preview request, runtime probe, and other materially distinct operations are
+   also separate gates except for the expressly authorized operations within a
    vertical acceptance package defined below.
 5. When the current instruction expressly defines one bounded
    implementation-and-validation gate, only its named local acceptance checks
@@ -34,12 +34,34 @@ technical coordination; Work executes one exact gate.
    If not, it is over-scoped and must be reduced or blocked.
 10. Wording, formatting, optional refactoring, speculative risk, and
     non-material observations do not create more work.
+11. Consolidate ordinary read-only checks that support the same acceptance
+    question into that gate; do not create a task for each setting or query.
+    This does not combine mandatory independent execution or high-risk gates.
+
+## Delivery-Linked Task Admission
+
+Before proposing a task, Chat must identify the existing acceptance requirement
+or verified P0/P1 blocker, why action is necessary now, and the concrete delivery
+result the task unlocks. Bind it to the existing milestone and acceptance mapping;
+do not invent a new acceptance requirement to justify the task.
+
+Unrelated P2 features, architecture redesign, and full infrastructure rebuilds
+require separate approval. A narrow blocker does not authorize those expansions.
+
+These execution rules do not modify AGENTS.md's sole commercial completion
+contract (S1/M1-M6), the existing A01-A18 acceptance mapping, NOVORA MVP Delivery
+Lock v1, NOVORA MVP Release Baseline v1, S2 automatic safety gates, Owner
+change-control authority, or COMPLETE / NO-GO / OWNER_HOLD mechanisms. Preserve
+their existing meaning and requirements; do not copy or redefine them here.
 
 ## Technical Decision Ownership
 
 1. NOVORA web Chat owns technical coordination decisions.
 2. When evidence is sufficient, Chat determines the single technically
-   appropriate next gate and provides one bounded Codex-ready instruction.
+   necessary next action and provides one bounded Codex-ready instruction only
+   when execution passes Delivery-Linked Task Admission. A Work/Codex suggested
+   next action is advice, not automatic authorization; Chat must independently
+   assess its necessity and contain its scope before selecting it.
 3. Chat does not ask the Owner to choose or interpret:
    - Base, Head, branch, or SHA;
    - commit and PR sequencing;
@@ -52,9 +74,9 @@ technical coordination; Work executes one exact gate.
    - optional refactoring, naming, or formatting preferences.
 4. When evidence is insufficient, Chat requests only one missing fact or one
    narrow verification step. It never asks the Owner to guess.
-5. The Owner remains responsible for product and business intent, including
-   material product-scope and policy choices, not software implementation
-   judgment.
+5. The Owner controls commercial goals, risk, cost, and required approvals,
+   including material product-scope and policy choices. Chat owns technical
+   necessity assessment, scope containment, and next-action selection.
 
 ## Owner Approval Boundary
 
@@ -73,6 +95,12 @@ For each approval, Chat provides one recommended decision, what the action
 accomplishes in plain language, the material risk, the exact bounded
 authorization, and a simple approve / do-not-approve response. The Owner is not
 required to approve technical terminology they cannot reasonably evaluate.
+
+Preserve existing working keys and services. Do not request unnecessary key
+regeneration, replacement, or repeated manual entry. Never expose secret values;
+any necessary credential handling stays within a separately authorized secure
+channel and gate. Configured keys or working services alone do not establish
+verified environment isolation or authorize a live operation.
 
 A Codex-ready task may itself carry that separate approval only when the Owner
 submits an exact, plain-language, identity-bound authorization covering the
@@ -95,6 +123,11 @@ but it stops if identity, scope, evidence, or safety differs.
 4. Read-only wording from an earlier gate cannot override the explicit
    authorization in the current task.
 5. The newest exact task authorization controls the current Work task.
+6. Before issuing the task, Chat compares it with current authority, accepted
+   PASS evidence, known state, and unexecuted prior instructions. Explicitly
+   identify and supersede conflicting proposals within the applicable authority;
+   do not silently override higher authority or an Owner hold. Keep only one
+   active instruction; supersession does not authorize execution by itself.
 
 ## Vertical Acceptance Package Clarification
 
@@ -218,17 +251,29 @@ Behavior:
    correction budget, not another recovery task.
 6. Renaming or rewording the same acceptance goal does not reset the recovery
    limit.
+7. Do not repeat equivalent investigations without identifying a credible new
+   evidence source capable of resolving the remaining question. After two
+   consecutive tasks on one blocker produce neither material delivery progress
+   nor new evidence that changes the next necessary action, stop that sequence.
+   Chat reassesses the delivery route using existing evidence; this reassessment
+   is not a new Codex gate. Do not rename the blocker to restart the sequence.
+   Stricter failure, recovery, NO-GO, and OWNER_HOLD rules still apply; this
+   two-task limit grants no extra attempt or automatic continuation.
 
 ## Evidence Reuse
 
 1. Accepted validation evidence remains valid when exact file hashes are
    unchanged, the relevant commit or diff is unchanged, and the relevant
    environment requirement has not materially changed.
-2. Do not rerun tests merely because another Git or PR gate follows.
-3. Rerun validation only when source or test content changed, the exact Head
-   changed with unvalidated content, previous validation did not execute, the
-   relevant environment materially changed, or a material review finding
-   requires new proof.
+2. Do not repeat accepted tests, builds, reviews, or checks merely because
+   another gate follows. Fresh identity checks establish the gate's current
+   inputs; they do not reopen accepted validation without material cause.
+3. Before repeating accepted evidence, identify the specific material
+   invalidation and the affected proof: relevant source or test content changed,
+   the exact Head includes unvalidated content, prior execution was not
+   established, the relevant environment materially changed, or a material
+   review finding requires new proof. Run only the necessary affected checks;
+   a docs-only or unrelated Head change does not invalidate all prior evidence.
 4. Commit, push, PR-state, and merge gates verify identity and reuse accepted
    evidence instead of repeating TypeScript, Playwright, or Build.
 
@@ -261,6 +306,16 @@ Behavior:
    existence of an entire possible Git, PR, or deployment lifecycle. Chat does
    not silently redefine local implementation, local commit, or remote delivery
    as the same goal.
+8. After every Work result, Chat supplies the acceptance judgment, actual
+   delivery increment, and one necessary next action, or the applicable STOP /
+   COMPLETE / NO-GO / OWNER_HOLD outcome when no execution is justified. Supply
+   a Codex-ready instruction only when independently justified by task admission,
+   available evidence, and authorization boundaries; never automatically resume
+   Work or treat a suggested action as approval.
+9. Report local code, validation, remote source delivery, runtime readiness,
+   E2E acceptance, and milestone COMPLETE as distinct states. A PASS report alone
+   is not functional delivery. Claim only the increment actually demonstrated;
+   milestone completion still requires its existing acceptance contract.
 
 ## Throughput And MVP Priority
 
@@ -279,6 +334,8 @@ Behavior:
 Before issuing a task, confirm that it:
 
 - states one acceptance question and one execution gate;
+- names the existing acceptance requirement or verified P0/P1 blocker, current
+  necessity, and concrete delivery result unlocked;
 - names exact identity, scope, evidence, budgets, material blockers, and
   excluded later gates;
 - carries all low-risk authorization required for its named operations;
@@ -286,6 +343,9 @@ Before issuing a task, confirm that it:
 - contains no conditional continuation, uncontrolled retry, or hidden recovery
   chain;
 - states what accepted evidence may be reused;
+- cites specific material invalidation before repeating accepted evidence;
+- reconciles authority, accepted PASS, known state, and unexecuted instructions,
+  explicitly superseding conflicting proposals without overriding higher authority;
 - returns control to Chat after classification.
 
 If any check fails, reduce the instruction to one gate or classify it BLOCKED
