@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { runInNewContext } from "node:vm";
 
 import {
   evaluateAutomaticFirstPreviewGates,
@@ -315,5 +319,176 @@ test.describe("server-only first-preview runtime foundation", () => {
     expect(result.providerInvoked).toBe(false);
     expect(result.generation.status).toBe("aborted");
     expect(result.gates.ready).toBe(false);
+  });
+});
+
+test.describe("Preview queue entry guard", () => {
+  const testRequire = createRequire(path.join(process.cwd(), "package.json"));
+  const ts = testRequire("typescript") as typeof import("typescript");
+  const sdk = testRequire("@vercel/queue") as typeof import("@vercel/queue");
+  const routePath = path.join(process.cwd(), "app/api/queues/first-preview-generation/route.ts");
+  const routeCode = ts.transpileModule(readFileSync(routePath, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const message = { marker: "offline-queue-entry-regression" };
+  let savedFetch: typeof fetch;
+  let savedConsoleError: typeof console.error;
+  let queueRequests: Array<{ method: string; path: string; body: unknown }>;
+
+  test.beforeEach(() => {
+    queueRequests = [];
+    savedFetch = globalThis.fetch;
+    savedConsoleError = console.error;
+    console.error = () => {};
+    // Exercise the installed SDK's acknowledgement/reschedule behavior entirely
+    // in memory. Never read deployment credentials or contact a queue service.
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.origin !== "https://queue-entry-guard.invalid") {
+        throw new Error("External transport forbidden in this offline test");
+      }
+      queueRequests.push({
+        method: init?.method ?? "GET",
+        path: url.pathname,
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      return new Response(null, { status: 204 });
+    };
+  });
+
+  test.afterEach(() => {
+    globalThis.fetch = savedFetch;
+    console.error = savedConsoleError;
+  });
+
+  function loadRoute(environment: Record<string, string | undefined>, failure?: Error) {
+    const calls: unknown[] = [];
+    const client = new sdk.QueueClient({
+      region: "iad1",
+      token: "synthetic-offline-token",
+      deploymentId: "dpl_synthetic_offline",
+      resolveBaseUrl: () => new URL("https://queue-entry-guard.invalid"),
+      telemetry: { isEnabled: false },
+    });
+    const routeExports: { POST?: (request: Request) => Promise<Response> } = {};
+    runInNewContext(routeCode, {
+      exports: routeExports,
+      process: { env: environment },
+      require(name: string) {
+        if (name === "@vercel/queue") {
+          return { handleCallback: client.handleCallback.bind(client) };
+        }
+        if (name === "../../../../lib/server/ai-sketch/first-preview-queue") {
+          return {
+            async consumeFirstPreviewQueueMessage(value: unknown) {
+              calls.push(value);
+              if (failure) throw failure;
+            },
+          };
+        }
+        throw new Error("Unexpected route dependency");
+      },
+    }, { filename: routePath });
+    if (!routeExports.POST) throw new Error("Queue route POST missing");
+    return { post: routeExports.POST, calls };
+  }
+
+  function delivery(deliveryCount = 1): Request {
+    return new Request("https://callback.invalid/api/queues/first-preview-generation", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "ce-type": "com.vercel.queue.v2beta",
+        "ce-vqsqueuename": "novora-first-preview-generation-v1",
+        "ce-vqsconsumergroup": "synthetic-consumer",
+        "ce-vqsmessageid": "synthetic-message",
+        "ce-vqsreceipthandle": "synthetic-receipt",
+        "ce-vqsdeliverycount": String(deliveryCount),
+        "ce-vqscreatedat": new Date().toISOString(),
+        "ce-vqsexpiresat": new Date(Date.now() + 86_400_000).toISOString(),
+      },
+      body: JSON.stringify(message),
+    });
+  }
+
+  function expectDeferred() {
+    // A successful callback HTTP response is not a message acknowledgement:
+    // the real SDK must PATCH visibility, never DELETE the message lease.
+    expect(queueRequests).toEqual([{
+      method: "PATCH",
+      path: "/api/v3/topic/novora-first-preview-generation-v1/consumer/synthetic-consumer/lease/synthetic-receipt",
+      body: { visibilityTimeoutSeconds: 3_600 },
+    }]);
+  }
+
+  const deniedEnvironments: Array<[string, Record<string, string | undefined>]> = [
+    ["Preview even with existing generation flags enabled", {
+      VERCEL_ENV: "preview", VERCEL_TARGET_ENV: "preview", NODE_ENV: "production",
+      NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
+      NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true",
+    }],
+    ["missing Vercel environment", { NODE_ENV: "production" }],
+    ["empty Vercel environment", { VERCEL_ENV: "", NODE_ENV: "production" }],
+    ["unexpected Vercel environment", { VERCEL_ENV: "Production", NODE_ENV: "production" }],
+    ["development deployment", { VERCEL_ENV: "development", NODE_ENV: "production" }],
+    ["contradictory Preview target", {
+      VERCEL_ENV: "production", VERCEL_TARGET_ENV: "preview", NODE_ENV: "production",
+    }],
+    ["unexpected custom target", {
+      VERCEL_ENV: "production", VERCEL_TARGET_ENV: "staging", NODE_ENV: "production",
+    }],
+    ["contradictory Node environment", { VERCEL_ENV: "production", NODE_ENV: "development" }],
+    ["missing Node environment", { VERCEL_ENV: "production" }],
+    ["empty target signal", {
+      VERCEL_ENV: "production", VERCEL_TARGET_ENV: "", NODE_ENV: "production",
+    }],
+  ];
+
+  for (const [name, environment] of deniedEnvironments) {
+    test(`denies ${name} before any consumer, database or Provider logic`, async () => {
+      const route = loadRoute(environment);
+      const response = await route.post(delivery());
+      expect(response.status).toBe(200);
+      expect(route.calls).toEqual([]);
+      expectDeferred();
+    });
+  }
+
+  for (const target of [undefined, "production"]) {
+    test(`preserves Production delegation and acknowledgement with target ${String(target)}`, async () => {
+      const route = loadRoute({
+        VERCEL_ENV: "production", NODE_ENV: "production", VERCEL_TARGET_ENV: target,
+      });
+      expect((await route.post(delivery())).status).toBe(200);
+      expect(route.calls).toEqual([message]);
+      expect(queueRequests.map(({ method }) => method)).toEqual(["DELETE"]);
+    });
+  }
+
+  test("preserves default Production failure behavior without acknowledgement or custom deferral", async () => {
+    const route = loadRoute({ VERCEL_ENV: "production", NODE_ENV: "production" },
+      new Error("synthetic-business-failure"));
+    expect((await route.post(delivery())).status).toBe(500);
+    expect(route.calls).toEqual([message]);
+    expect(queueRequests).toEqual([]);
+  });
+
+  test("repeated denial defers without acknowledging or changing retention", async () => {
+    const route = loadRoute({ VERCEL_ENV: "preview", NODE_ENV: "production" });
+    for (const deliveryCount of [1, 32, 1_000]) {
+      queueRequests.length = 0;
+      expect((await route.post(delivery(deliveryCount))).status).toBe(200);
+      expectDeferred();
+    }
+    expect(route.calls).toEqual([]);
+  });
+
+  test("checks environment at invocation time rather than route import time", async () => {
+    const environment = { VERCEL_ENV: "production", NODE_ENV: "production" };
+    const route = loadRoute(environment);
+    environment.VERCEL_ENV = "preview";
+    expect((await route.post(delivery())).status).toBe(200);
+    expect(route.calls).toEqual([]);
+    expectDeferred();
   });
 });
