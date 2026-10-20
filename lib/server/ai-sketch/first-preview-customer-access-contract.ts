@@ -1,4 +1,5 @@
 import {
+  createHash,
   createHmac,
   timingSafeEqual,
 } from "node:crypto";
@@ -219,4 +220,48 @@ export function verifyFirstPreviewCustomerAccessProof(
   }
 
   return parsed;
+}
+
+/** Private intake metadata, never a viewing token or paid-generation permit. */
+export type FirstPreviewCustomerAccessBinding = Readonly<{
+  concept_brief_id: string;
+  public_reference: string;
+  proof_version: string;
+  binding_digest: string;
+}>;
+
+const BINDING_DOMAIN =
+  "NOVORA\0first-preview-customer-access-binding\0v1\0sha-256\0";
+
+/** Authenticate first; hash the exact signed UTF-8 token, without reserialization. */
+export function deriveFirstPreviewCustomerAccessBinding(
+  proof: string, signingSecret: string, nowEpochSeconds: number,
+  conceptBriefId: string, publicReference: string,
+): FirstPreviewCustomerAccessBinding | null {
+  const claims = verifyFirstPreviewCustomerAccessProof(proof, signingSecret, nowEpochSeconds);
+  if (!claims || claims.briefId !== conceptBriefId ||
+      claims.publicReference !== publicReference) return null;
+  return Object.freeze({
+    concept_brief_id: claims.briefId,
+    public_reference: claims.publicReference,
+    proof_version: String(claims.v),
+    binding_digest: createHash("sha256").update(BINDING_DOMAIN, "utf8")
+      .update(proof, "utf8").digest("hex"),
+  });
+}
+
+export function matchesFirstPreviewCustomerAccessBinding(
+  expected: FirstPreviewCustomerAccessBinding, candidate: unknown,
+): boolean {
+  if (!isRecord(candidate) || Object.keys(candidate).length !== 4 ||
+      !["concept_brief_id", "public_reference", "proof_version", "binding_digest"]
+        .every(key => Object.hasOwn(candidate, key)) ||
+      candidate.concept_brief_id !== expected.concept_brief_id ||
+      candidate.public_reference !== expected.public_reference ||
+      candidate.proof_version !== expected.proof_version ||
+      typeof candidate.binding_digest !== "string" ||
+      !/^[a-f0-9]{64}$/.test(candidate.binding_digest) ||
+      !/^[a-f0-9]{64}$/.test(expected.binding_digest)) return false;
+  return timingSafeEqual(Buffer.from(expected.binding_digest, "hex"),
+    Buffer.from(candidate.binding_digest, "hex"));
 }

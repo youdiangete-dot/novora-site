@@ -19,7 +19,8 @@ technical coordination; Work executes one exact gate.
    merge, deployment, and cleanup remain separate gates. Read-only
    investigation, local implementation, Vercel verification, Preview request,
    runtime probe, rollback, and other materially distinct operations are also
-   separate gates.
+   separate gates except for the expressly authorized operations within a
+   vertical acceptance package defined below.
 5. When the current instruction expressly defines one bounded
    implementation-and-validation gate, only its named local acceptance checks
    accompany the implementation; it still cannot continue into Build, commit,
@@ -94,6 +95,47 @@ but it stops if identity, scope, evidence, or safety differs.
 4. Read-only wording from an earlier gate cannot override the explicit
    authorization in the current task.
 5. The newest exact task authorization controls the current Work task.
+
+## Vertical Acceptance Package Clarification
+
+A gate is one meaningful deliverable or bounded runtime acceptance outcome,
+not one query, assertion, function, file, or test. Define its exact project and
+runtime identities, acceptance target, risk boundaries, permitted operations,
+correction budget, and stop condition before execution. These principles are
+portable by explicitly changing those bindings; they do not authorize global
+Codex rule changes or changes to another repository.
+
+- Within an expressly approved local engineering package, inspect, minimally
+  correct, run targeted validation, and use bounded corrections continuously
+  without per-file, per-test, or repeated approval. This permits no scope
+  expansion and does not absorb a separate Build or publication gate.
+- For a specifically Owner-approved isolated runtime acceptance package,
+  necessary setup, execution, verification, and mandatory safe restoration
+  belong to the same gate. Before activation, verify target identity,
+  authorization, safety prerequisites, and an independently available emergency
+  disable/revocation path. Missing material safety evidence prevents activation.
+  Restore and verify the safe state on success and failure; after an activated
+  failure, prioritize disable/revocation over diagnosis or retry. A fragile
+  application `finally` block alone is insufficient recovery evidence.
+- One exact authorization covers the expressly approved, scoped, reversible
+  operations necessary to complete that gate. It does not authorize otherwise
+  separate Production, paid Provider, Git publication, merge, or deployment
+  gates. Live SQL, secrets, customer data, paid services, irreversible actions,
+  and material product changes still require exact Owner authorization; infer
+  no permission from adjacency or from approval of another operation.
+- Preserve all valid prior PASS evidence. Apply Evidence Reuse below: revalidate
+  only when material inputs, implementation, environment, or relevant
+  assumptions change or prior execution was not established. Report working
+  customer/business outcomes, eliminated P0/P1 blockers, and completed
+  integration boundaries rather than counts of micro-checks.
+- WIP=1, the existing correction budgets, recovery-chain cap, and STOP remain
+  mandatory. Renaming a blocker does not reset a budget. Do not add agent
+  frameworks, governance projects, milestones, or optional refactoring as
+  prerequisites.
+- This clarification preserves the M1-M6 commercial completion contract,
+  current automatic First Preview visibility policy, Delivery Lock acceptance
+  IDs, P0/P1 requirements, and Production release criteria. It adds no new
+  governance version or authority.
 
 ## Failure Classification And Budgets
 
@@ -275,7 +317,8 @@ Production.
 
 ### Invalid Compound Work
 
-- Investigate a defect and implement the fix when the cause is found.
+- Investigate a defect and implement any fix found without a defined acceptance
+  target, authorized file scope, or bounded correction budget.
 - Implement a change, run Build, commit it, and push the branch.
 - Create a PR, review it, mark it Ready, merge it, and deploy it.
 

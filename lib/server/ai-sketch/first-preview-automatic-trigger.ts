@@ -1,6 +1,12 @@
 import "server-only";
 
 import {
+  createFirstPreviewPaidAdmission,
+  createPaidAdmissionSubject,
+  type FirstPreviewPaidAdmission,
+} from "./first-preview-paid-admission";
+
+import {
   prepareFirstPreviewGenerationInput,
 } from "./first-preview-generation-lifecycle";
 import {
@@ -46,6 +52,7 @@ export type AutomaticFirstPreviewTriggerResult =
       status: "not_enqueued";
       reason:
         | "eligibility_rejected"
+        | "generation_admission_unverified"
         | "queue_message_rejected"
         | "queue_publish_failed";
     }>
@@ -66,6 +73,7 @@ export type AutomaticFirstPreviewTriggerDependencies = Readonly<{
   queueExecutionCapabilityValue?: unknown;
   publisher?: FirstPreviewQueuePublisher;
   createQueueMessage?: typeof createFirstPreviewQueueMessage;
+  paidAdmission?: FirstPreviewPaidAdmission;
 }>;
 
 function hasOwn(value: object, key: string): boolean {
@@ -138,6 +146,22 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
   });
   if (!message.ok) {
     return { status: "not_enqueued", reason: "queue_message_rejected" };
+  }
+
+  const subject = createPaidAdmissionSubject({
+    conceptBriefId: input.conceptBriefId,
+    publicReference: input.publicReference,
+    attemptNumber: 1,
+    parentJobId: null,
+    structured: message.value.generationInput,
+  });
+  try {
+    if (!subject || await (dependencies.paidAdmission ??
+        createFirstPreviewPaidAdmission()).reserve(subject) !== true) {
+      return { status: "not_enqueued", reason: "generation_admission_unverified" };
+    }
+  } catch {
+    return { status: "not_enqueued", reason: "generation_admission_unverified" };
   }
 
   const publishResult = await publishFirstPreviewQueueMessage(

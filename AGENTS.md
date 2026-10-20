@@ -351,6 +351,38 @@ Do not create copied final-completion contracts in other repository files.
   evidence reuse, bounded corrections, and no unnecessary Agent, document,
   test, review, approval, or task expansion.
 
+### Vertical Acceptance Packages
+
+- Organize one task around a meaningful deliverable or bounded runtime
+  acceptance outcome, not each query, assertion, function, file, or test.
+- Execute expressly approved, scoped, reversible operations needed for that
+  same gate without repeated Owner approval. Within an approved local
+  engineering package, inspect, minimally correct, run targeted validation,
+  and use only the bounded correction budget without per-file or per-test
+  confirmation.
+- For a specifically Owner-approved isolated runtime gate, necessary setup,
+  execution, verification, and mandatory safe restoration form one gate.
+  Verify prerequisites and an independent recovery path before activation;
+  fail closed if safety evidence is missing, and restore on success or failure.
+  This does not combine otherwise separate Production, paid Provider, Git
+  publication, merge, or deployment gates.
+- Preserve valid PASS evidence; revalidate only when material inputs,
+  implementation, environment, or relevant assumptions change. Report working
+  customer/business outcomes, eliminated P0/P1 blockers, and completed
+  integration boundaries rather than micro-check counts.
+- Keep WIP=1 and bounded corrections. Do not rename the same blocker to reset
+  budgets or add agent frameworks, governance projects, milestones, or optional
+  refactoring requirements.
+- Live SQL, secrets, Production, customer data, paid services, irreversible
+  actions, and material product changes still need exact Owner authorization.
+  Infer no permission beyond the approved gate. Preserve the M1-M6 commercial
+  contract, automatic First Preview policy, Delivery Lock acceptance IDs,
+  P0/P1 requirements, and Production release criteria.
+- Adapt this method elsewhere only by explicitly binding project identity,
+  acceptance target, risk boundaries, and stop condition; do not automatically
+  modify global Codex rules or another repository. Operational details remain
+  in `docs/novora-one-step-scope-brake-v1.md`.
+
 - Use a new Codex task/thread when the work needs a new branch, a new PR, a
   separate approval boundary, Production-affecting setup, SQL, environment
   changes, provider configuration, or a materially different scope.

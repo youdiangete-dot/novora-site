@@ -1,5 +1,12 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+import type { EnforcedPublicApiRatePolicy } from "./public-api-rate-limit";
+import {
+  prepareFirstPreviewCustomerProof,
+  type FirstPreviewSessionRouteDependencies,
+} from "./ai-sketch/instant-first-preview-feature-flag";
+
 import {
   generateConceptBriefPublicReferencePreview,
   type ConceptBriefSubmissionPayload,
@@ -9,6 +16,14 @@ import {
   getSafeConceptBriefPersistenceErrorCode,
 } from "./concept-brief-persistence-diagnostics";
 import { createSupabaseAdminClientOrNull } from "./supabase";
+import {
+  INITIATION_VERSION,
+  INITIATION_STATES,
+  type InitiationState,
+  isJson,
+  isPrivateAdmissionContext,
+  type PersistInitiationInput,
+} from "./ai-sketch/first-preview-initiation-contract";
 
 type ConceptBriefRow = {
   id: string;
@@ -47,6 +62,9 @@ type ConceptBriefPersistenceSuccess = {
   persisted: true;
   publicReference: string;
   conceptBriefId: string;
+  // Private database receipt only; the Durable Outbox owns atomic initiation.
+  atomicIntent?: Readonly<{ state: InitiationState; created: boolean }>;
+  firstPreviewInitiation?: "operator_hold";
 };
 
 type ConceptBriefPersistenceFailure = {
@@ -67,6 +85,8 @@ type SupabaseErrorLike = {
 };
 
 type PersistenceFailureStage =
+  | "atomic_receipt_rpc"
+  | "atomic_receipt_response"
   | "concept_briefs_insert"
   | "concept_briefs_insert_response"
   | "concept_brief_contacts_insert"
@@ -151,6 +171,174 @@ async function cleanupConceptBriefRow(supabase: SupabaseAdminClient, conceptBrie
       cleanupSucceeded: false,
       cleanupError: error,
     };
+  }
+}
+
+/**
+ * Unconnected source adapter for the candidate's transactional receipt RPC.
+ * A future coordinated caller must supply trusted server-side input and a client
+ * with independently established installed-RPC/ACL capability. There is no env
+ * lookup, capability probe or activation switch. The route requires explicit
+ * trusted atomic dependencies; its default persistence remains legacy.
+ * Context shape checks do not authenticate admission or customer access. Explicit
+ * NULL context is held intake only; absent/malformed non-null context is rejected.
+ * Held Intents have no accepted automatic recovery transition in this candidate.
+ */
+export async function persistConceptBriefSubmissionWithPreviewIntent(
+  input: PersistInitiationInput,
+  rpcClient: Pick<SupabaseAdminClient, "rpc"> | null,
+): Promise<ConceptBriefPersistenceResult> {
+  const failure: ConceptBriefPersistenceFailure = {
+    persisted: false,
+    message: CONCEPT_BRIEF_PERSISTENCE_FAILED_MESSAGE,
+  };
+
+  if (
+    !rpcClient || !isRecord(input) ||
+    typeof input.p_concept_brief_id !== "string" || !UUID_PATTERN.test(input.p_concept_brief_id) ||
+    typeof input.p_public_reference !== "string" || !PUBLIC_REFERENCE_PATTERN.test(input.p_public_reference) ||
+    !isRecord(input.p_brief) || !isJson(input.p_brief) ||
+    !isRecord(input.p_contact) || !isJson(input.p_contact) ||
+    !(input.p_admission_context === null ||
+      isPrivateAdmissionContext(input.p_admission_context, input.p_concept_brief_id, input.p_public_reference))
+  ) {
+    return failure;
+  }
+
+  // Capture the requested identity before awaiting the RPC. Do not generate a
+  // replacement identity/reference or accept another submission's valid receipt.
+  const conceptBriefId = input.p_concept_brief_id;
+  const publicReference = input.p_public_reference;
+  const admissionContext = input.p_admission_context;
+
+  try {
+    const { data, error } = await rpcClient.rpc(
+      "novora_persist_concept_brief_with_preview_intent",
+      {
+        p_concept_brief_id: conceptBriefId,
+        p_public_reference: publicReference,
+        p_brief: input.p_brief,
+        p_contact: input.p_contact,
+        p_admission_context: admissionContext,
+      },
+    );
+
+    if (error) {
+      // Never log RPC payloads, context, or untrusted database error text.
+      logPersistenceFailure("atomic_receipt_rpc", { name: "AtomicReceiptRpcFailed" });
+      return failure;
+    }
+
+    const receipt = isRecord(data) && data.ok === true ? data.value : null;
+    if (
+      !isRecord(receipt) || receipt.persisted !== true ||
+      receipt.concept_brief_id !== conceptBriefId || receipt.public_reference !== publicReference ||
+      receipt.intent_version !== INITIATION_VERSION
+    ) {
+      logPersistenceFailure("atomic_receipt_response", { name: "InvalidAtomicReceipt" });
+      return failure;
+    }
+
+    const intentState = INITIATION_STATES.find(state => state === receipt.intent_state);
+    const intentCreated = receipt.intent_created;
+    if (!intentState || typeof intentCreated !== "boolean" ||
+      (intentCreated && intentState !== "pending" && intentState !== "operator_hold") ||
+      (admissionContext === null && intentState !== "operator_hold" && intentState !== "cancelled")) {
+      logPersistenceFailure("atomic_receipt_response", { name: "InvalidAtomicReceipt" });
+      return failure;
+    }
+
+    // State comes from the database, never from submitted context shape.
+    // Neither a fresh nor a reused receipt authorizes a second direct trigger.
+    const atomicIntent = Object.freeze({ state: intentState, created: intentCreated });
+    return intentState === "operator_hold"
+      ? { persisted: true, publicReference, conceptBriefId, atomicIntent, firstPreviewInitiation: "operator_hold" }
+      : { persisted: true, publicReference, conceptBriefId, atomicIntent };
+  } catch {
+    logPersistenceFailure("atomic_receipt_rpc", { name: "AtomicReceiptRpcFailed" });
+    return failure;
+  }
+  // No split-write fallback, compensating delete, RPC retry, or preview dispatch.
+}
+
+
+/** Trusted construction seam only. Production has no default atomic selection. */
+export type AtomicConceptBriefIntakeDependencies = Readonly<{
+  rpcClient: Pick<SupabaseAdminClient, "rpc"> | null;
+  identitySource?: () => Readonly<{ conceptBriefId: string; publicReference: string }>;
+}>;
+
+/** Limiter metadata must come from the route's genuine enforcement receipts,
+ * never submission JSON. A pending Intent is not paid admission: publication
+ * and dispatch retain their independent admission/spending gates.
+ */
+export function prepareAtomicConceptBriefSubmission(
+  payload: ConceptBriefSubmissionPayload,
+  rateEvidence: EnforcedPublicApiRatePolicy | null,
+  dependencies: AtomicConceptBriefIntakeDependencies,
+  sessionDependencies: FirstPreviewSessionRouteDependencies = {},
+) {
+  try {
+    const selected = dependencies.identitySource?.() ?? {
+      conceptBriefId: randomUUID(),
+      publicReference: generateConceptBriefPublicReferencePreview(),
+    };
+    const identity = Object.freeze({
+      conceptBriefId: selected.conceptBriefId, publicReference: selected.publicReference,
+    });
+    if (!UUID_PATTERN.test(identity.conceptBriefId) ||
+        !PUBLIC_REFERENCE_PATTERN.test(identity.publicReference)) return null;
+    // Detached fixed JSON representation: caller mutation cannot replace intake data.
+    const snapshot = JSON.parse(JSON.stringify(payload)) as ConceptBriefSubmissionPayload;
+    const brief = readBriefRecord(snapshot);
+    const prepared = prepareFirstPreviewCustomerProof(identity, sessionDependencies);
+    const context = prepared && rateEvidence ? Object.freeze({
+      version: INITIATION_VERSION,
+      ip_key: rateEvidence.ip.redisKey, email_key: rateEvidence.email.redisKey,
+      key_version: rateEvidence.key_version, rate_policy_version: rateEvidence.rate_policy_version,
+      access_binding: prepared.binding,
+    }) : null;
+    const admissionContext = context &&
+      rateEvidence?.ip.subject === "ip" && rateEvidence.ip.derivation === "hmac_sha256" &&
+      rateEvidence.email.subject === "email" && rateEvidence.email.derivation === "hmac_sha256" &&
+      isPrivateAdmissionContext(context, identity.conceptBriefId, identity.publicReference)
+      ? context : null;
+    const customerName = readContactString(snapshot, "customerName");
+    const customerEmail = readContactString(snapshot, "customerEmail");
+    if (!customerName || !customerEmail) return null;
+    const candidate = {
+      p_concept_brief_id: identity.conceptBriefId,
+      p_public_reference: identity.publicReference,
+      p_brief: {
+        piece_type: readBriefString(snapshot, brief, "pieceType"),
+        branch: readBriefString(snapshot, brief, "branch"),
+        structure: readBriefString(snapshot, brief, "structure"),
+        sub_structure: readBriefString(snapshot, brief, "subStructure"),
+        design_objective: readBriefString(snapshot, brief, "designObjective") ??
+          readBriefString(snapshot, brief, "emotionalStory") ?? readBriefString(snapshot, brief, "customSymbol"),
+        ai_sketch_instruction: readBriefString(snapshot, brief, "aiSketchInstruction"),
+        brief_payload: snapshot,
+        summary_items: snapshot.summaryItems ?? brief.summaryItems ?? null,
+        api_submission: {
+          submitted_at: new Date().toISOString(), public_reference: identity.publicReference, payload: snapshot,
+        },
+      },
+      p_contact: {
+        customer_name: customerName, customer_email: customerEmail,
+        phone_whatsapp: readString(snapshot.phoneOrWhatsApp) ?? readContactString(snapshot, "customerPhone"),
+        country_region: readString(snapshot.countryOrRegion) ?? readContactString(snapshot, "customerCountry"),
+        contact_note: readContactString(snapshot, "contactNote"),
+      },
+      p_admission_context: admissionContext,
+    };
+    if (!isJson(candidate.p_brief)) return null;
+    const input: PersistInitiationInput = Object.freeze({
+      ...candidate, p_brief: candidate.p_brief as PersistInitiationInput["p_brief"],
+    });
+    // NULL context is held intake without a persisted binding or atomic cookie.
+    return Object.freeze({ input, prepared: admissionContext ? prepared : null });
+  } catch {
+    return null;
   }
 }
 

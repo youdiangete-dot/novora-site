@@ -16,11 +16,15 @@ import {
   createProductionAutomaticFirstPreviewWorkerDependencies,
   reserveAutomaticFirstPreviewPreparedAttempt,
   runAutomaticFirstPreviewWorker,
+  runDormantFirstPreviewInitiationWorker,
+  runDormantFirstPreviewPreparationWorker,
+  type DormantFirstPreviewWorkerDependencies,
   type AutomaticFirstPreviewWorkerDependencies,
   type FirstPreviewPreparedGenerationInput,
 } from "./first-preview-generation-lifecycle";
 import { createFirstPreviewRepository } from "./first-preview-persistence";
 import type { FirstPreviewRepository } from "./first-preview-persistence-contract";
+import { isInitiationWakeup } from "./first-preview-initiation-contract";
 import {
   MOCK_NOVORA_HAND_SKETCH_INSTRUCTION,
   validateNovoraHandSketchInstruction,
@@ -84,6 +88,24 @@ export type FirstPreviewQueueConsumerDependencies = Readonly<{
   runWorker?: typeof runAutomaticFirstPreviewWorker;
   jobIdSource?: () => string;
 }>;
+
+// Deliberately separate from the installed legacy callback. No default runtime,
+// identity, repository, admission authority or Provider is constructed here.
+export async function consumeDormantFirstPreviewInitiationWakeup(
+  value: unknown,
+  dependencies?: DormantFirstPreviewWorkerDependencies,
+): Promise<FirstPreviewQueueConsumerResult> {
+  if (!isInitiationWakeup(value)) {
+    return { status: "acknowledged", disposition: "invalid_message" };
+  }
+  if (value.stage === "initiation") {
+    const result = await runDormantFirstPreviewPreparationWorker(value, dependencies);
+    return { status: "acknowledged", disposition: result.status === "handed_off" ? "completed" : "terminal_failure" };
+  }
+  const result = await runDormantFirstPreviewInitiationWorker(value, dependencies);
+  return { status: "acknowledged", disposition: result.status === "ready" ? "completed"
+    : result.status === "duplicate" ? "duplicate" : "terminal_failure" };
+}
 
 type CloneState = {
   seen: WeakSet<object>;

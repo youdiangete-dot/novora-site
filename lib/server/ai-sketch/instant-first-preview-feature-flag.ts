@@ -4,6 +4,13 @@ import { randomBytes } from "node:crypto";
 
 import {
   FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV,
+  FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_ATTRIBUTES,
+  FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME,
+  createFirstPreviewCustomerAccessProof,
+  deriveFirstPreviewCustomerAccessBinding,
+  matchesFirstPreviewCustomerAccessBinding,
+  verifyFirstPreviewCustomerAccessProof,
+  type FirstPreviewCustomerAccessBinding,
 } from "./first-preview-customer-access-contract";
 import {
   isValidFirstPreviewAssetUuid,
@@ -112,5 +119,71 @@ export function attachFirstPreviewCustomerSessionCookie<
     // issuance is unavailable. The response body and status stay unchanged.
   }
 
+  return response;
+}
+
+/** Private pre-commit material. Never serialize this object or put it in Outbox. */
+export type PreparedFirstPreviewCustomerProof = Readonly<{
+  proof: string;
+  binding: FirstPreviewCustomerAccessBinding;
+}>;
+
+export function prepareFirstPreviewCustomerProof(
+  identity: Readonly<{ conceptBriefId: string; publicReference: string }>,
+  dependencies: FirstPreviewSessionRouteDependencies = {},
+): PreparedFirstPreviewCustomerProof | null {
+  try {
+    const enabled = hasOwn(dependencies, "featureFlagValue")
+      ? dependencies.featureFlagValue : process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
+    const secret = hasOwn(dependencies, "signingSecret")
+      ? dependencies.signingSecret : process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV];
+    if (!isInstantFirstPreviewAgentEnabled(enabled) || !hasUsableSigningSecret(secret)) return null;
+    const now = (dependencies.clock ?? (() => Math.floor(Date.now() / 1_000)))();
+    if (!Number.isSafeInteger(now) || now < 0) return null;
+    const proof = createFirstPreviewCustomerAccessProof({
+      briefId: identity.conceptBriefId, publicReference: identity.publicReference,
+      issuedAt: now,
+      nonce: (dependencies.nonceSource ?? (() => randomBytes(24).toString("base64url")))(),
+    }, secret);
+    if (!proof) return null;
+    const binding = deriveFirstPreviewCustomerAccessBinding(
+      proof, secret, now, identity.conceptBriefId, identity.publicReference,
+    );
+    return binding ? Object.freeze({ proof, binding }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Delivery only: never invoke the legacy session issuer or mint another nonce. */
+export function attachPreparedFirstPreviewCustomerSessionCookie<
+  ResponseType extends FirstPreviewCookieResponse,
+>(
+  response: ResponseType,
+  persistence: PersistedConceptBriefIdentity,
+  prepared: PreparedFirstPreviewCustomerProof | null,
+  dependencies: FirstPreviewSessionRouteDependencies = {},
+): ResponseType {
+  try {
+    if (!prepared || persistence.persisted !== true) return response;
+    const enabled = hasOwn(dependencies, "featureFlagValue")
+      ? dependencies.featureFlagValue : process.env[INSTANT_FIRST_PREVIEW_FEATURE_FLAG_ENV];
+    const secret = hasOwn(dependencies, "signingSecret")
+      ? dependencies.signingSecret : process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV];
+    if (!isInstantFirstPreviewAgentEnabled(enabled) || !hasUsableSigningSecret(secret)) return response;
+    const now = (dependencies.clock ?? (() => Math.floor(Date.now() / 1_000)))();
+    const binding = deriveFirstPreviewCustomerAccessBinding(
+      prepared.proof, secret, now, persistence.conceptBriefId, persistence.publicReference,
+    );
+    if (!binding || !matchesFirstPreviewCustomerAccessBinding(binding, prepared.binding)) return response;
+    const claims = verifyFirstPreviewCustomerAccessProof(prepared.proof, secret, now);
+    if (!claims) return response;
+    response.cookies.set(FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME, prepared.proof, {
+      ...FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_ATTRIBUTES,
+      maxAge: claims.exp - now,
+    });
+  } catch {
+    // Preserve the committed Brief receipt; do not log private proof/context.
+  }
   return response;
 }

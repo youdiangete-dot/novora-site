@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createSyntheticPaidAdmission } from "../fixtures/ai-sketch/synthetic-paid-admission";
 import Module, { createRequire } from "node:module";
 import path from "node:path";
 
@@ -222,6 +223,7 @@ function workerDependencies(
 ): AutomaticFirstPreviewWorkerDependencies {
   return {
     repository: targetRepository,
+    paidAdmission: createSyntheticPaidAdmission().admission,
     createProvider: () => successfulBinding(providerCalls),
     createAssetStore: () => assetStore(storageCalls),
     evaluateTrustedOutput: trustedEvaluator(privacyPassed),
@@ -269,6 +271,7 @@ test.describe("First Preview Queue contract and producer", () => {
     const dependencies = {
       featureFlagValue: "true",
       queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
       publisher: {
         async publish(request: (typeof published)[number]) {
           published.push(request);

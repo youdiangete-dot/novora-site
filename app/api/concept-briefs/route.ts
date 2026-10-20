@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
 
-import { persistConceptBriefSubmission } from "../../../lib/server/concept-brief-persistence";
+import {
+  persistConceptBriefSubmission,
+  persistConceptBriefSubmissionWithPreviewIntent,
+  prepareAtomicConceptBriefSubmission,
+  type AtomicConceptBriefIntakeDependencies,
+} from "../../../lib/server/concept-brief-persistence";
 import {
   type ConceptBriefSubmissionPayload,
   validateConceptBriefSubmission,
 } from "../../../lib/server/concept-brief-validation";
 import {
   checkPublicApiRateLimit,
-  type FixedWindowRateLimitPolicy,
+  readEnforcedPublicApiRatePolicy,
+  type EnforcedPublicApiRatePolicy,
+  CONCEPT_BRIEF_ROUTE_NAME,
+  CONCEPT_BRIEF_IP_RATE_LIMIT,
+  CONCEPT_BRIEF_EMAIL_RATE_LIMIT,
   normalizePublicApiRateLimitEmail,
 } from "../../../lib/server/public-api-rate-limit";
 import {
   attachFirstPreviewCustomerSessionCookie,
+  attachPreparedFirstPreviewCustomerSessionCookie,
+  type PreparedFirstPreviewCustomerProof,
   type FirstPreviewSessionRouteDependencies,
 } from "../../../lib/server/ai-sketch/instant-first-preview-feature-flag";
 import {
@@ -38,28 +49,10 @@ type ConceptBriefResponse = {
   errors?: string[];
 };
 
-const CONCEPT_BRIEF_ROUTE_NAME = "/api/concept-briefs";
-
 // Redis/KV enforcement only activates after separately approved provider/env
 // setup and later Preview/Production verification. Missing provider env stays
 // disabled so current Concept Brief submissions continue to fail open.
 // Paid First Preview initiation requires verified enforcement from both checks.
-
-// MVP defaults: intentionally generous for first beta/manual testing. Revisit
-// after real traffic patterns and provider telemetry are available.
-const CONCEPT_BRIEF_IP_RATE_LIMIT: FixedWindowRateLimitPolicy = {
-  limit: 30,
-  windowSeconds: 10 * 60,
-  keyPrefix: "rl:v1:concept-briefs",
-};
-
-// MVP default: tighter than broad IP volume, but still allows normal correction
-// and retry behavior. Requires NOVORA_INTERNAL_SIGNING_SECRET to avoid raw PII keys.
-const CONCEPT_BRIEF_EMAIL_RATE_LIMIT: FixedWindowRateLimitPolicy = {
-  limit: 5,
-  windowSeconds: 60 * 60,
-  keyPrefix: "rl:v1:concept-briefs",
-};
 
 function jsonResponse(body: ConceptBriefResponse, status: number, headers?: HeadersInit) {
   return NextResponse.json(body, { status, headers });
@@ -94,7 +87,7 @@ function rateLimitResponse(headers?: HeadersInit) {
 }
 
 type FirstPreviewRateLimitEvidence = Readonly<
-  | { status: "within_limit" }
+  | { status: "within_limit"; sourceResult: unknown }
   | { status: "rate_limited"; headers?: HeadersInit }
   | { status: "unverified" }
 >;
@@ -116,7 +109,7 @@ function classifyFirstPreviewRateLimitEvidence(
   const reason = readOwnRateLimitValue(evidence, "reason");
 
   if (allowed === true && mode === "enforced" && reason === "within_limit") {
-    return { status: "within_limit" };
+    return { status: "within_limit", sourceResult: evidence };
   }
 
   if (allowed === false && mode === "enforced" && reason === "rate_limit_exceeded") {
@@ -160,8 +153,14 @@ function writeAutomaticFirstPreviewDiagnostic(
 
 type ConceptBriefPostDependencies = Readonly<{
   checkRateLimit?: typeof checkPublicApiRateLimit;
-  persistSubmission?: typeof persistConceptBriefSubmission;
+  persistSubmission?: (
+    payload: ConceptBriefSubmissionPayload,
+    // Private, source-verified policy/key metadata only; never complete admission.
+    ratePolicyEvidence?: EnforcedPublicApiRatePolicy | null,
+  ) => ReturnType<typeof persistConceptBriefSubmission>;
   sessionDependencies?: FirstPreviewSessionRouteDependencies;
+  // Trusted construction only; never populated from HTTP or environment flags.
+  atomicIntake?: AtomicConceptBriefIntakeDependencies;
   triggerAutomaticPreview?: typeof triggerAutomaticFirstPreviewAfterPersistence;
   triggerDependencies?: AutomaticFirstPreviewTriggerDependencies;
   logAutomaticPreviewDiagnostic?: (
@@ -172,6 +171,7 @@ type ConceptBriefPostDependencies = Readonly<{
 export function createPersistedConceptBriefResponse(
   persistence: PersistedConceptBriefIdentity,
   dependencies: FirstPreviewSessionRouteDependencies = {},
+  atomicProof?: PreparedFirstPreviewCustomerProof | null,
 ) {
   const response = jsonResponse(
     {
@@ -186,6 +186,9 @@ export function createPersistedConceptBriefResponse(
     201,
   );
 
+  if (atomicProof !== undefined) {
+    return attachPreparedFirstPreviewCustomerSessionCookie(response, persistence, atomicProof, dependencies);
+  }
   return attachFirstPreviewCustomerSessionCookie(
     response,
     persistence,
@@ -197,7 +200,10 @@ export function createConceptBriefPostHandler(
   dependencies: ConceptBriefPostDependencies = {},
 ) {
   const checkRateLimit = dependencies.checkRateLimit ?? checkPublicApiRateLimit;
-  const persistSubmission =
+  const atomicSelected = dependencies.atomicIntake !== undefined;
+  const atomicIntake = dependencies.atomicIntake
+    ? Object.freeze({ ...dependencies.atomicIntake }) : null;
+  const persistSubmission: NonNullable<ConceptBriefPostDependencies["persistSubmission"]> =
     dependencies.persistSubmission ?? persistConceptBriefSubmission;
   const triggerAutomaticPreview =
     dependencies.triggerAutomaticPreview ??
@@ -278,7 +284,23 @@ export function createConceptBriefPostHandler(
     }
   }
 
-  const persistence = await persistSubmission(payload as ConceptBriefSubmissionPayload);
+  // Genuine receipts must agree on request, policies and signing-key version.
+  const ratePolicyEvidence = readEnforcedPublicApiRatePolicy({
+    routeName: CONCEPT_BRIEF_ROUTE_NAME, request,
+    ipPolicy: CONCEPT_BRIEF_IP_RATE_LIMIT, emailPolicy: CONCEPT_BRIEF_EMAIL_RATE_LIMIT,
+    ipResult: ipRateLimit.status === "within_limit" ? ipRateLimit.sourceResult : undefined,
+    emailResult: emailRateLimit.status === "within_limit" ? emailRateLimit.sourceResult : undefined,
+  });
+  const atomicPreparation = atomicSelected && atomicIntake
+    ? prepareAtomicConceptBriefSubmission(
+      payload as ConceptBriefSubmissionPayload, ratePolicyEvidence,
+      atomicIntake, dependencies.sessionDependencies,
+    ) : null;
+  const persistence = atomicSelected
+    ? atomicPreparation
+      ? await persistConceptBriefSubmissionWithPreviewIntent(atomicPreparation.input, atomicIntake?.rpcClient ?? null)
+      : { persisted: false as const, message: "Concept Brief persistence is temporarily unavailable." }
+    : await persistSubmission(payload as ConceptBriefSubmissionPayload, ratePolicyEvidence);
 
   if (persistence.persisted === false) {
     return jsonResponse(
@@ -300,7 +322,18 @@ export function createConceptBriefPostHandler(
   const response = createPersistedConceptBriefResponse(
     persistedIdentity,
     dependencies.sessionDependencies,
+    atomicSelected || persistence.atomicIntent !== undefined ||
+      persistence.firstPreviewInitiation === "operator_hold"
+      ? atomicPreparation?.prepared ?? null : undefined,
   );
+
+  // Verified atomic receipts use the Durable Outbox, for both fresh and reused
+  // Intents in every state. Never start a second direct generation path here.
+  // Only the trusted persistence result supplies this marker, never request data.
+  if (persistence.atomicIntent !== undefined ||
+    persistence.firstPreviewInitiation === "operator_hold") {
+    return response;
+  }
 
   if (
     ipRateLimit.status !== "within_limit" ||

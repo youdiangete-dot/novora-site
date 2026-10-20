@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { createSyntheticPaidAdmission } from "../fixtures/ai-sketch/synthetic-paid-admission";
 import Module, { createRequire } from "node:module";
 import path from "node:path";
 
@@ -320,6 +321,7 @@ function workerDependencies(
 ): AutomaticFirstPreviewWorkerDependencies {
   return {
     repository: targetRepository,
+    paidAdmission: createSyntheticPaidAdmission().admission,
     createProvider: () => binding,
     createAssetStore: () => store,
     ...(evaluator ? { evaluateTrustedOutput: evaluator } : {}),
@@ -342,6 +344,61 @@ function conceptBriefRequest() {
     body: JSON.stringify(validSubmissionPayload()),
   });
 }
+
+test.describe("P1A independent paid admission worker boundary", () => {
+  for (const stage of ["reserve", "dispatch"] as const) {
+    test(`unavailable ${stage} prevents the actual Provider call`, async () => {
+      const prepared = await preparedWork();
+      const target = createSyntheticPaidAdmission();
+      const counter = { value: 0 };
+      const dependencies = workerDependencies(prepared.repository, successfulBinding({ callCounter: counter }));
+      if (stage === "reserve") target.state.unavailable = true;
+      const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, {
+        ...dependencies,
+        paidAdmission: {
+          ...target.admission,
+          async dispatch(subject, jobId) {
+            target.state.unavailable = true;
+            return target.admission.dispatch(subject, jobId);
+          },
+        },
+      });
+      expect(result).toEqual({ status: "failed", failureCategory: "budget_blocked" });
+      expect(counter.value).toBe(0);
+    });
+  }
+
+  test("a completed real worker retains conservative aggregate cost when usage is unknown", async () => {
+    const prepared = await preparedWork();
+    const target = createSyntheticPaidAdmission();
+    const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, {
+      ...workerDependencies(prepared.repository, successfulBinding({ usage: null })),
+      paidAdmission: target.admission,
+    });
+    expect(result.status).toBe("ready");
+    expect(Object.values(JSON.parse(target.state.raw).entries)).toEqual([expect.objectContaining({
+      chargeMicros: 100_000, status: "settled", ownerJobId: JOB_1_ID,
+    })]);
+  });
+
+  test("an ambiguous Provider failure retains aggregate charge and concurrency", async () => {
+    const prepared = await preparedWork();
+    const target = createSyntheticPaidAdmission();
+    const binding: OpenAiFirstPreviewProviderBinding = {
+      ...successfulBinding({ usage: null }),
+      adapter: { async generateFirstPreviewImage() {
+        return { ok: false, category: "timeout", retryEligible: false };
+      } },
+    };
+    const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, {
+      ...workerDependencies(prepared.repository, binding), paidAdmission: target.admission,
+    });
+    expect(result.status).toBe("failed");
+    expect(Object.values(JSON.parse(target.state.raw).entries)).toEqual([expect.objectContaining({
+      chargeMicros: 100_000, status: "dispatched", closedAtMs: null,
+    })]);
+  });
+});
 
 test.describe("Goal 2 executable cost contract", () => {
   test("locks the approved reservation, lifetime budget, and actual-cost rules", () => {
@@ -704,7 +761,7 @@ test.describe("Goal 2 structured input compatibility regressions", () => {
       });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) {
+    if (result.ok === false) {
       throw new Error(`Expected structured input success, got ${result.category}`);
     }
     return result.value;
@@ -1083,6 +1140,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       {
         featureFlagValue: "true",
         queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
         publisher: {
           async publish(request) {
             published.push(request);
@@ -1119,6 +1177,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         {
           featureFlagValue,
           queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
           publisher: {
             async publish() {
               publishCalls += 1;
@@ -1147,6 +1206,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       {
         featureFlagValue: "true",
         queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
         publisher: {
           async publish(request) {
             published.push(request);
@@ -1226,6 +1286,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         {
           featureFlagValue: "true",
           queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
           publisher: {
             async publish() {
               publishCalls += 1;
@@ -1252,6 +1313,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         {
           featureFlagValue: "true",
           queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
           publisher: {
             async publish() {
               publishCalls += 1;
@@ -1281,6 +1343,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
         {
           featureFlagValue: "true",
           queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
           createQueueMessage: () => ({ ok: false }),
           publisher: {
             async publish() {
@@ -1306,6 +1369,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       {
         featureFlagValue: "true",
         queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
         publisher: {
           async publish() {
             throw new Error("synthetic Queue failure");
@@ -1769,6 +1833,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       triggerDependencies: {
         featureFlagValue: "true",
         queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
         publisher: {
           async publish() {
             publishCalls += 1;
@@ -1841,6 +1906,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       triggerDependencies: {
         featureFlagValue: "true",
         queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
         publisher: {
           async publish() {
             publishCalls += 1;
@@ -1949,6 +2015,7 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
           triggerDependencies: {
             featureFlagValue: "true",
             queueExecutionCapabilityValue: "true",
+        paidAdmission: createSyntheticPaidAdmission().admission,
             publisher: {
               async publish() {
                 publishCalls += 1;
