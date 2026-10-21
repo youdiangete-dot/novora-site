@@ -1,5 +1,7 @@
 import "server-only";
 
+import { claimBetaDispatch, type BetaAdmissionDependencies } from "./beta-admission";
+
 import { createHash, randomUUID } from "node:crypto";
 
 import { createFirstPreviewCustomerAccessAuthorizer } from "./first-preview-customer-access";
@@ -63,6 +65,7 @@ export type FirstPreviewGenerationWork = Readonly<{
   attemptNumber: AutomaticFirstPreviewAttemptNumber;
   parentJobId: string | null;
   structured: FirstPreviewPreparedGenerationInput;
+  betaAdmission?: true;
 }>;
 
 export function prepareFirstPreviewGenerationInput(
@@ -135,6 +138,7 @@ export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
   trustedOutputEvidenceTimeoutMs?: number;
   attemptTimeoutMs?: number;
   outputIdSource?: () => string;
+  betaAdmissionDependencies?: BetaAdmissionDependencies;
 }>;
 
 const DEFAULT_TRUSTED_OUTPUT_EVIDENCE_TIMEOUT_MS = 10_000;
@@ -600,6 +604,15 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
       false,
       0,
     );
+  }
+
+  const betaAllowed = await claimBetaDispatch({
+    briefId: work.conceptBriefId,
+    fingerprint: `${work.structured.designSpecSha256}:${work.structured.handSketchInstructionSha256}`,
+    betaAdmission: work.betaAdmission,
+  }, dependencies.betaAdmissionDependencies);
+  if (!betaAllowed) {
+    return recordFailure(dependencies.repository, work.jobId, "budget_blocked", false, 0);
   }
 
   const dispatched = await dependencies.repository.recordProviderDispatch(

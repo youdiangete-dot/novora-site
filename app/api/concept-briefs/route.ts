@@ -248,6 +248,7 @@ export function createConceptBriefPostHandler(
   const triggerResult = await triggerAutomaticPreview(
     {
       payload,
+      admissionRequest: request,
       persistenceConfirmed: true,
       customerAccessProofEstablished: Boolean(
         response.cookies.get(FIRST_PREVIEW_CUSTOMER_ACCESS_COOKIE_NAME)?.value,

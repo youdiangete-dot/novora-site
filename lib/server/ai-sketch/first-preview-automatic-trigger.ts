@@ -1,5 +1,7 @@
 import "server-only";
 
+import { reserveBetaAdmission, type BetaAdmissionDependencies } from "./beta-admission";
+
 import {
   prepareFirstPreviewGenerationInput,
 } from "./first-preview-generation-lifecycle";
@@ -46,6 +48,7 @@ export type AutomaticFirstPreviewTriggerResult =
       status: "not_enqueued";
       reason:
         | "eligibility_rejected"
+        | "beta_admission_denied"
         | "queue_message_rejected"
         | "queue_publish_failed";
     }>
@@ -66,6 +69,7 @@ export type AutomaticFirstPreviewTriggerDependencies = Readonly<{
   queueExecutionCapabilityValue?: unknown;
   publisher?: FirstPreviewQueuePublisher;
   createQueueMessage?: typeof createFirstPreviewQueueMessage;
+  betaAdmissionDependencies?: BetaAdmissionDependencies;
 }>;
 
 function hasOwn(value: object, key: string): boolean {
@@ -75,6 +79,7 @@ function hasOwn(value: object, key: string): boolean {
 export async function triggerAutomaticFirstPreviewAfterPersistence(
   input: {
     payload: unknown;
+    admissionRequest?: Request;
     persistenceConfirmed: unknown;
     customerAccessProofEstablished: unknown;
     conceptBriefId: string;
@@ -140,8 +145,17 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
     return { status: "not_enqueued", reason: "queue_message_rejected" };
   }
 
+  const admission = await reserveBetaAdmission({
+    request: input.admissionRequest,
+    briefId: input.conceptBriefId,
+    fingerprint: `${message.value.generationInput.designSpecSha256}:${message.value.generationInput.handSketchInstructionSha256}`,
+  }, dependencies.betaAdmissionDependencies);
+  if (admission === "denied") {
+    return { status: "not_enqueued", reason: "beta_admission_denied" };
+  }
+
   const publishResult = await publishFirstPreviewQueueMessage(
-    message.value,
+    admission === "reserved" ? { ...message.value, betaAdmission: true } : message.value,
     dependencies.publisher ?? productionFirstPreviewQueuePublisher,
   );
 

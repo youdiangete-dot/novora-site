@@ -704,7 +704,7 @@ test.describe("Goal 2 structured input compatibility regressions", () => {
       });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) {
+    if (result.ok === false) {
       throw new Error(`Expected structured input success, got ${result.category}`);
     }
     return result.value;
