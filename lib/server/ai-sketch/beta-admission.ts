@@ -136,8 +136,8 @@ export async function claimBetaDispatch(
 }
 
 // No authority or ledger is created here. Provisioning, approval, durability,
-// current pricing and the conservative complete-experience cost ceiling must
-// be independently verified in a separately approved release gate.
+// current pricing and either verified cost coverage or explicit one-image
+// Owner cost-risk acceptance require a separately approved release gate.
 // One permanent key, no TTL/refund/reset, and one SET after all validation:
 // Redis script errors cannot leave a partly updated quota/spending transaction.
 export const BETA_ADMISSION_SCRIPT = `
@@ -151,12 +151,38 @@ if not ok or type(ledger) ~= 'table' then return 'denied' end
 local a = ledger.authority
 local now = tonumber(redis.call('TIME')[1])
 if type(a) ~= 'table' or ledger.version ~= 1 or a.id ~= ARGV[2] or
-   a.ownerApproved ~= true or a.costCeilingVerified ~= true or a.durabilityVerified ~= true or
+   a.ownerApproved ~= true or a.durabilityVerified ~= true or
    a.currency ~= 'USD' or a.pricingVersion ~= ARGV[3] or
    not integer(a.limitMicros) or a.limitMicros < 1 or
-   not integer(a.experienceCeilingMicros) or a.experienceCeilingMicros < tonumber(ARGV[4]) or
    not integer(a.expiresAt) or a.expiresAt <= now or
    type(ledger.reservations) ~= 'table' then return 'denied' end
+local pilot = a.costAuthorityMode == 'owner_expected_cost_single_attempt_v1'
+local reservationMicros = a.experienceCeilingMicros
+if pilot then
+  local fields = {id=true, ownerApproved=true, durabilityVerified=true, currency=true,
+    pricingVersion=true, limitMicros=true, expiresAt=true, costAuthorityMode=true,
+    ownerCostRiskAccepted=true, costCeilingVerified=true, maximumExperiences=true,
+    maximumImages=true, maximumPaidAttempts=true, automaticPaidRetries=true,
+    attemptReservationMicros=true, expectedCostMicros=true, invitedIdentity=true}
+  for field, _ in pairs(a) do if not fields[field] then return 'denied' end end
+  if a.ownerCostRiskAccepted ~= true or a.costCeilingVerified ~= false or
+     a.maximumExperiences ~= 1 or a.maximumImages ~= 1 or a.maximumPaidAttempts ~= 1 or
+     a.automaticPaidRetries ~= false or a.limitMicros ~= 1000000 or
+     a.attemptReservationMicros ~= 1000000 or a.experienceCeilingMicros ~= nil or
+     not integer(a.expectedCostMicros) or a.expectedCostMicros < 1 or a.expectedCostMicros >= 1000000 or
+     type(a.invitedIdentity) ~= 'string' or string.len(a.invitedIdentity) < 1 or
+     string.len(a.invitedIdentity) > 64 or not string.match(a.invitedIdentity, '^[%w_-]+$') or
+     ARGV[9] ~= '|' .. a.invitedIdentity .. '|' then return 'denied' end
+  reservationMicros = a.attemptReservationMicros
+else
+  if a.costAuthorityMode ~= nil or a.costCeilingVerified ~= true or
+     not integer(reservationMicros) or reservationMicros < tonumber(ARGV[4]) then return 'denied' end
+  for _, field in ipairs({'ownerCostRiskAccepted', 'maximumExperiences', 'maximumImages',
+      'maximumPaidAttempts', 'automaticPaidRetries', 'attemptReservationMicros',
+      'expectedCostMicros', 'invitedIdentity'}) do
+    if a[field] ~= nil then return 'denied' end
+  end
+end
 local day = math.floor(now / 86400)
 local total, count, size = 0, 0, 0
 local duplicate, dispatch = nil, nil
@@ -169,6 +195,12 @@ for k, r in pairs(ledger.reservations) do
      type(r.dispatched) ~= 'boolean' or not integer(r.day) or
      r.day > day or not integer(r.reservedMicros) or r.reservedMicros < 1 or
      k ~= r.requestKey or keys[r.requestKey] or briefs[r.briefId] then return 'denied' end
+  if pilot then
+    if size > 1 or r.identity ~= a.invitedIdentity or r.reservedMicros ~= reservationMicros or
+       r.pilotAuthorityId ~= a.id or r.pilotExpiresAt ~= a.expiresAt or
+       r.pilotExpectedCostMicros ~= a.expectedCostMicros then return 'denied' end
+  elseif r.pilotAuthorityId ~= nil or r.pilotExpiresAt ~= nil or
+         r.pilotExpectedCostMicros ~= nil then return 'denied' end
   keys[r.requestKey], briefs[r.briefId] = true, true
   total = total + r.reservedMicros
   if not integer(total) then return 'denied' end
@@ -178,17 +210,22 @@ for k, r in pairs(ledger.reservations) do
 end
 if total > a.limitMicros then return 'denied' end
 if ARGV[1] == 'reserve' then
+  if pilot and (size ~= 0 or ARGV[5] ~= a.invitedIdentity) then return 'denied' end
   if duplicate then
     if duplicate.identity == ARGV[5] and duplicate.fingerprint == ARGV[8] then return 'duplicate' end
     return 'denied'
   end
   if dispatch or count >= 5 or size >= 10000 or
-     not integer(total + a.experienceCeilingMicros) or
-     total + a.experienceCeilingMicros > a.limitMicros then return 'denied' end
+     not integer(total + reservationMicros) or
+     total + reservationMicros > a.limitMicros then return 'denied' end
   ledger.reservations[ARGV[6]] = {
     identity = ARGV[5], requestKey = ARGV[6], briefId = ARGV[7], fingerprint = ARGV[8],
-    day = day, reservedMicros = a.experienceCeilingMicros, dispatched = false
+    day = day, reservedMicros = reservationMicros, dispatched = false
   }
+  if pilot then
+    local r = ledger.reservations[ARGV[6]]
+    r.pilotAuthorityId, r.pilotExpiresAt, r.pilotExpectedCostMicros = a.id, a.expiresAt, a.expectedCostMicros
+  end
 elseif ARGV[1] == 'dispatch' then
   if not dispatch or dispatch.fingerprint ~= ARGV[8] or dispatch.dispatched or
      not string.find(ARGV[9], '|' .. dispatch.identity .. '|', 1, true) then return 'denied' end

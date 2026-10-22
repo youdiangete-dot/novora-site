@@ -79,7 +79,7 @@ two-direction output or follow-up optimization.
 
 `NOVORA_BETA_SPENDING_AUTHORITY_ID` must identify a separately approved authority
 already provisioned in the durable ledger. The application never creates it.
-No spending amount is supplied or authorized by this task. The ledger schema is:
+The original verified-cost authority schema remains:
 
 ```text
 version: 1
@@ -103,12 +103,82 @@ An experience ceiling must cover image generation and every required external
 cost in that experience, not merely a nominal image estimate. It must be at
 least the existing per-Brief lifetime reservation contract. The existing
 pricing-version string/estimates alone do not verify any current price or hard
-maximum. If a reliable full ceiling cannot be established for this existing
-Provider path, Beta paid generation must remain disabled and the task is
-blocked for release. A boolean in a record is not independent proof of approval,
-pricing or durability; those facts require the separate release evidence.
+maximum. Without either verified cost coverage or the explicit single-image
+risk authority below, Beta paid generation must remain disabled. A boolean in a
+record is not independent proof of approval, pricing or durability; those facts
+require separate release evidence.
+
+## Owner-accepted one-image cost-risk authority
+
+The Owner's M2 one-image pilot decision accepts that one fixed Images API
+request might actually cost more than USD 1. This is an expected-cost
+authorization, **not** a proven Provider billing cap. The alternative mode does
+not enable itself, provision a ledger, grant durability evidence, issue an
+invitation, change a feature flag, or dispatch an image.
+
+Use the existing permanent Redis key and common version, exact authority ID,
+Owner approval, independently evidenced durability, USD currency, exact pricing
+version and future Redis-server-time expiry requirements. The authority must
+contain exactly these fields (placeholders are not an executable funded record):
+
+```text
+id: exact server-configured, separately approved authority identity
+ownerApproved: true only following explicit Owner approval
+durabilityVerified: true only after independent real-store durability evidence
+currency: USD
+pricingVersion: exact FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION
+expiresAt: explicit approved future UTC Unix seconds
+costAuthorityMode: owner_expected_cost_single_attempt_v1
+ownerCostRiskAccepted: true only for the explicit one-image risk approval
+costCeilingVerified: false
+limitMicros: 1000000
+attemptReservationMicros: 1000000
+expectedCostMicros: positive safe integer strictly below 1000000
+invitedIdentity: the only identity in the server invitation roster
+maximumExperiences: 1
+maximumImages: 1
+maximumPaidAttempts: 1
+automaticPaidRetries: false
+```
+
+Do not include `experienceCeilingMicros` or unknown/conflicting fields in this
+mode. The allocation is named `attemptReservationMicros` to avoid representing
+expected spend as verified cost coverage. Never set `costCeilingVerified=true`
+for this risk authorization. Do not copy a durability flag from disposable
+fixtures into a live spending authority. Existing authorities without a mode
+retain the original verified-cost behavior; pilot-only fields are rejected in
+that mode, and unknown modes fail closed.
+
+Exactly one server invitation identity must match `invitedIdentity` on both
+admission and dispatch. Lua reserves the entire USD 1 accounting allocation on
+the first admission and rejects every second reservation, including replay of
+the same request. The permanent record pins the pilot authority ID, expiry,
+expected-cost estimate and identity; editing those fields, substituting another
+authority or downgrading the consumed record to verified mode denies dispatch.
+Old verified reservations cannot be adopted as pilot reservations. Deleting,
+resetting or restoring an earlier ledger to repeat an authority is prohibited;
+arbitrary administrator replacement of the entire ledger is outside the
+application's trust boundary and is not technically prevented by a JSON flag.
+
+The existing Brief/fingerprint binding, atomic single-EVAL/single-SET updates,
+one-time `dispatched` claim and database dispatch marker remain mandatory. The
+unchanged Provider builder fixes `n: 1`; one admitted experience therefore
+permits at most one one-image paid request. An uncertain/failed attempt remains
+consumed. There is no automatic paid retry, refund or second image permission.
+Queue redelivery cannot reacquire the dispatch claim. Existing customer access,
+privacy, moderation, image validity, Storage and readiness checks are unchanged.
 
 ## Offline evidence and remaining release gates
+
+`tests/e2e/beta-pilot-risk-authority.spec.ts` exercises the actual Lua against
+an already available disposable local Redis instance. It requires
+`NOVORA_BETA_LOCAL_REDIS_TEST_PORT` and an existing `redis-cli` executable
+(optionally selected with `NOVORA_BETA_LOCAL_REDIS_CLI`). It only connects to
+`127.0.0.1`, uses retained unique `novora:local-pilot-risk:*` synthetic fixture
+keys, never touches the application authority key, and does not start/install
+infrastructure. Missing runtime prerequisites block the single focused test;
+there is no fake-ledger fallback or automatic retry. Its fixture durability
+booleans are synthetic inputs, never evidence about a live authority.
 
 Focused tests use synthetic credentials, fake shared atomic ledger, fake
 spending and Queue/Provider interfaces, and mocked REST responses. They prove
@@ -119,7 +189,8 @@ customer-access and output-validity contracts are preserved, never bypassed.
 
 Before release: review the exact candidate; validate the real atomic ledger
 implementation in a separately authorized isolated runtime; obtain the exact
-Owner spending approval and verified cost ceiling; verify durable service
+Owner spending approval and either verified cost coverage or explicit one-image
+cost-risk acceptance; verify durable service
 configuration; provision credentials/authority only with separate approval;
 complete the required Build and deployment/controlled acceptance gates. None of
 those gates is executed by this local candidate. Local evidence is not M2
