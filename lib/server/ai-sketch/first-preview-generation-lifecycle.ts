@@ -1,5 +1,7 @@
 import "server-only";
 
+import { claimBetaDispatch, type BetaAdmissionDependencies } from "./beta-admission";
+
 import { createHash, randomUUID } from "node:crypto";
 
 import { createFirstPreviewCustomerAccessAuthorizer } from "./first-preview-customer-access";
@@ -68,6 +70,7 @@ export type FirstPreviewGenerationWork = Readonly<{
   attemptNumber: AutomaticFirstPreviewAttemptNumber;
   parentJobId: string | null;
   structured: FirstPreviewPreparedGenerationInput;
+  betaAdmission?: true;
 }>;
 
 export function prepareFirstPreviewGenerationInput(
@@ -144,6 +147,7 @@ export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
   trustedOutputEvidenceTimeoutMs?: number;
   attemptTimeoutMs?: number;
   outputIdSource?: () => string;
+  betaAdmissionDependencies?: BetaAdmissionDependencies;
 }>;
 
 // Moderation and the (up to 30-second) visual inspection run sequentially.
@@ -590,6 +594,45 @@ function safeReadProviderRequestId(
   }
 }
 
+function emitFirstPreviewUsageEvidence(
+  jobId: string,
+  providerRequestId: string | null,
+  usage: ReturnType<OpenAiFirstPreviewProviderBinding["readValidatedUsage"]>,
+  cost: ReturnType<typeof reconcileFirstPreviewActualCost>,
+): void {
+  try {
+    if (
+      typeof jobId !== "string" || jobId.length !== 36 ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)
+    ) {
+      return;
+    }
+    // Copy only bounded, validated primitives; never serialize the binding or response.
+    const evidence = {
+      evidenceVersion: "novora_first_preview_usage_evidence_v1",
+      jobId,
+      ...(typeof providerRequestId === "string" &&
+      providerRequestId.length >= 1 && providerRequestId.length <= 128 &&
+      !/[^A-Za-z0-9._:-]/.test(providerRequestId)
+        ? { providerRequestId }
+        : {}),
+      pricingAssumptionVersion: FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
+      usageTrusted: cost.usageTrusted,
+      ...(cost.usageTrusted && usage
+        ? {
+            textInputTokens: usage.textInputTokens,
+            imageOutputTokens: usage.imageOutputTokens,
+            usageReconciledCostMicros: cost.actualCostMicros,
+          }
+        : { estimatedCostMicros: cost.actualCostMicros }),
+      billingStatus: "BILLING_PENDING",
+    };
+    console.info(JSON.stringify(evidence));
+  } catch {
+    // Best-effort logging is not durable evidence and must not alter worker execution.
+  }
+}
+
 async function runAutomaticFirstPreviewWorkerUnsafe(
   work: FirstPreviewGenerationWork,
   dependencies: AutomaticFirstPreviewWorkerDependencies,
@@ -629,6 +672,15 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     );
   }
 
+  const betaAllowed = await claimBetaDispatch({
+    briefId: work.conceptBriefId,
+    fingerprint: `${work.structured.designSpecSha256}:${work.structured.handSketchInstructionSha256}`,
+    betaAdmission: work.betaAdmission,
+  }, dependencies.betaAdmissionDependencies);
+  if (!betaAllowed) {
+    return recordFailure(dependencies.repository, work.jobId, "budget_blocked", false, 0);
+  }
+
   const dispatched = await dependencies.repository.recordProviderDispatch(
     work.jobId,
   );
@@ -641,6 +693,7 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   let candidateOutput: FirstPreviewOutputRecord | null = null;
   let inspectionReserved = false;
   let visualEvidence: FirstPreviewVisualPrivacyEvidence | null = null;
+  let usage: ReturnType<typeof safeReadUsage> | undefined;
   const provider: FirstPreviewProvider = {
     async generateFirstPreview(request, context) {
       adapterResult = await binding!.adapter.generateFirstPreviewImage(
@@ -678,9 +731,10 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
       };
       // Preserve image-generation accounting separately from the incremental
       // visual-inspection reservation. No inspection is admitted over this cap.
+      usage = safeReadUsage(binding!);
       const imageCost = reconcileFirstPreviewActualCost({
         dispatched: true,
-        usage: safeReadUsage(binding!),
+        usage,
       });
       if (firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
         trustedEvidenceFailureCategory = "budget_blocked";
@@ -810,11 +864,13 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     },
   );
 
+  if (usage === undefined) usage = safeReadUsage(binding);
   const cost = reconcileFirstPreviewActualCost({
     dispatched: runtime.providerInvoked,
-    usage: safeReadUsage(binding),
+    usage,
   });
   const providerRequestId = safeReadProviderRequestId(binding, adapterResult);
+  emitFirstPreviewUsageEvidence(work.jobId, providerRequestId, usage, cost);
   if (inspectionReserved && (!trustedEvidence || !runtime.gates.ready)) {
     const output = candidateOutput as FirstPreviewOutputRecord | null;
     if (output) {

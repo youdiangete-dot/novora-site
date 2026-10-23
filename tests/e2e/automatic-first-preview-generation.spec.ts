@@ -379,6 +379,288 @@ function conceptBriefRequest() {
   });
 }
 
+test.describe("M2 trusted usage evidence", () => {
+  const originalInfo = console.info;
+  let infoCalls: unknown[][] = [];
+
+  test.beforeEach(() => {
+    infoCalls = [];
+    console.info = (...values: unknown[]) => { infoCalls.push(values); };
+  });
+  test.afterEach(() => { console.info = originalInfo; });
+
+  function events() {
+    return infoCalls.map((values) => {
+      expect(values).toHaveLength(1);
+      expect(typeof values[0]).toBe("string");
+      const event: unknown = JSON.parse(String(values[0]));
+      if (!event || typeof event !== "object" || Array.isArray(event)) {
+        throw new Error("Expected a bounded usage evidence object");
+      }
+      expect(JSON.stringify(event).length).toBeLessThan(800);
+      return event;
+    });
+  }
+
+  function commonEvidence() {
+    return {
+      evidenceVersion: "novora_first_preview_usage_evidence_v1",
+      jobId: JOB_1_ID,
+      providerRequestId: "req_goal2_synthetic_001",
+      pricingAssumptionVersion: modules.cost.FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
+      billingStatus: "BILLING_PENDING",
+    };
+  }
+
+  test("emits one trusted receipt with exact job, request, tokens and cost", async () => {
+    const prepared = await preparedWork();
+    const calls = { value: 0 };
+    const originalBinding = successfulBinding({
+      usage: { textInputTokens: 200, imageOutputTokens: 1000 },
+      callCounter: calls,
+    });
+    let usageReads = 0;
+    const binding = {
+      ...originalBinding,
+      readValidatedUsage: () => { usageReads += 1; return originalBinding.readValidatedUsage(); },
+    };
+
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work, workerDependencies(prepared.repository, binding),
+    )).toEqual({ status: "ready" });
+    expect(events()).toEqual([{
+      ...commonEvidence(), usageTrusted: true,
+      textInputTokens: 200, imageOutputTokens: 1000, usageReconciledCostMicros: 31_000,
+    }]);
+    expect(calls.value).toBe(1);
+    expect(usageReads).toBe(1);
+  });
+
+  test("missing usage emits only a clearly estimated fallback", async () => {
+    const prepared = await preparedWork();
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work, workerDependencies(prepared.repository, successfulBinding({ usage: null })),
+    )).toEqual({ status: "ready" });
+    expect(events()).toEqual([{
+      ...commonEvidence(), usageTrusted: false, estimatedCostMicros: 100_000,
+    }]);
+    expect(events()[0]).not.toHaveProperty("actualCostMicros");
+    expect(events()[0]).not.toHaveProperty("usageReconciledCostMicros");
+    expect(events()[0]).not.toHaveProperty("textInputTokens");
+    expect(events()[0]).not.toHaveProperty("imageOutputTokens");
+  });
+
+  for (const [name, value] of [
+    ["negative", -1], ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+  ] as const) {
+    test(`rejects ${name} usage from the trusted evidence fields`, async () => {
+      const prepared = await preparedWork();
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        prepared.work, workerDependencies(prepared.repository, successfulBinding({
+          usage: { textInputTokens: value, imageOutputTokens: 100 },
+        })),
+      );
+      expect(events()).toEqual([{
+        ...commonEvidence(), usageTrusted: false, estimatedCostMicros: 100_000,
+      }]);
+    });
+  }
+
+  test("missing request ID never invents attribution", async () => {
+    const prepared = await preparedWork();
+    const binding = { ...successfulBinding(), readProviderRequestId: () => null };
+    const generate = binding.adapter.generateFirstPreviewImage;
+    binding.adapter.generateFirstPreviewImage = async (...args) => {
+      const result = await generate(...args);
+      return result.ok === false ? result : { ...result, providerRequestId: null };
+    };
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work, workerDependencies(prepared.repository, binding),
+    )).toEqual({ status: "failed", failureCategory: "lifecycle_conflict" });
+    const { providerRequestId: _unused, ...common } = commonEvidence();
+    expect(events()).toEqual([{
+      ...common, usageTrusted: true,
+      textInputTokens: 100, imageOutputTokens: 100, usageReconciledCostMicros: 3500,
+    }]);
+    expect(events()[0]).not.toHaveProperty("providerRequestId");
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("failed generation without validated usage cannot fabricate trusted cost", async () => {
+    const prepared = await preparedWork();
+    const binding = {
+      ...failedBinding({ ok: false, category: "timeout", retryEligible: false }),
+      readValidatedUsage: () => null,
+    };
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work, workerDependencies(prepared.repository, binding),
+    )).toEqual({ status: "failed", failureCategory: "timeout" });
+    expect(events()).toEqual([{
+      ...commonEvidence(), providerRequestId: "req_goal2_synthetic_failure",
+      usageTrusted: false, estimatedCostMicros: 100_000,
+    }]);
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("usage read failure preserves retry metadata without an automatic retry", async () => {
+    const prepared = await preparedWork();
+    let calls = 0;
+    const binding = {
+      ...failedBinding({ ok: false, category: "rate_limited", retryEligible: true }),
+      readValidatedUsage: () => { throw new Error("SYNTHETIC_PRIVATE_USAGE_ERROR"); },
+    };
+    const generate = binding.adapter.generateFirstPreviewImage;
+    binding.adapter.generateFirstPreviewImage = async (...args) => {
+      calls += 1; return generate(...args);
+    };
+    const dependencies = workerDependencies(prepared.repository, binding);
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, dependencies))
+      .toEqual({ status: "failed", failureCategory: "rate_limited" });
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, dependencies))
+      .toEqual({ status: "duplicate" });
+    expect(calls).toBe(1);
+    expect(events()).toEqual([{
+      ...commonEvidence(), providerRequestId: "req_goal2_synthetic_failure",
+      usageTrusted: false, estimatedCostMicros: 100_000,
+    }]);
+    expect(JSON.stringify(infoCalls)).not.toContain("SYNTHETIC_PRIVATE_USAGE_ERROR");
+    expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed", retryEligible: true, actualCostMicros: 100_000,
+    });
+  });
+
+  test("pre-dispatch failure emits no invented reconciliation receipt", async () => {
+    const prepared = await preparedWork();
+    const dependencies = workerDependencies(prepared.repository, successfulBinding());
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, {
+      ...dependencies, createProvider: () => null,
+    })).toEqual({ status: "failed", failureCategory: "configuration_missing" });
+    expect(events()).toEqual([]);
+  });
+
+  test("serializes only allowlisted primitives and no private binding data", async () => {
+    const prepared = await preparedWork();
+    let serializationCalls = 0;
+    const privateUsage = {
+      textInputTokens: 100, imageOutputTokens: 100,
+      apiKey: "SYNTHETIC_PRIVATE_API_KEY", authorization: "Bearer SYNTHETIC_PRIVATE_AUTH",
+      prompt: "SYNTHETIC_PRIVATE_PROMPT", cookie: "SYNTHETIC_PRIVATE_COOKIE",
+      customerEmail: "synthetic-private@example.invalid",
+      storagePath: "private/synthetic-secret.png",
+      imageBase64: Buffer.from(VALID_PNG).toString("base64"),
+      rawProviderResponse: { internal: "SYNTHETIC_PRIVATE_RESPONSE" },
+      toJSON() { serializationCalls += 1; throw new Error("SYNTHETIC_PRIVATE_SERIALIZATION"); },
+    };
+    const binding = { ...successfulBinding(), readValidatedUsage: () => privateUsage };
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work, workerDependencies(prepared.repository, binding),
+    )).toEqual({ status: "ready" });
+    expect(events()).toEqual([{
+      ...commonEvidence(), usageTrusted: true,
+      textInputTokens: 100, imageOutputTokens: 100, usageReconciledCostMicros: 3500,
+    }]);
+    expect(Object.keys(events()[0]).sort()).toEqual([
+      "billingStatus", "evidenceVersion", "imageOutputTokens", "jobId", "pricingAssumptionVersion",
+      "providerRequestId", "textInputTokens", "usageReconciledCostMicros", "usageTrusted",
+    ]);
+    const serialized = JSON.stringify(infoCalls);
+    for (const privateValue of [
+      "SYNTHETIC_PRIVATE", "synthetic-private@example.invalid", "private/synthetic-secret.png",
+      privateUsage.imageBase64, BRIEF_ID, PUBLIC_REFERENCE, validBrief().designIntent,
+    ]) expect(serialized).not.toContain(privateValue);
+    expect(serializationCalls).toBe(0);
+  });
+
+  for (const [name, requestId] of [
+    ["control character", "req_synthetic\nSYNTHETIC_PRIVATE_ID"],
+    ["trailing newline", "req_synthetic\n"],
+    ["oversized ID", "r".repeat(129)],
+  ] as const) {
+    test(`omits ${name} instead of serializing unsafe attribution`, async () => {
+      const prepared = await preparedWork();
+      const binding = { ...successfulBinding(), readProviderRequestId: () => requestId };
+      const generate = binding.adapter.generateFirstPreviewImage;
+      binding.adapter.generateFirstPreviewImage = async (...args) => {
+        const result = await generate(...args);
+        return result.ok === false ? result : { ...result, providerRequestId: requestId };
+      };
+      await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        prepared.work, workerDependencies(prepared.repository, binding),
+      );
+      expect(events()).toHaveLength(1);
+      expect(events()[0]).not.toHaveProperty("providerRequestId");
+      expect(JSON.stringify(infoCalls)).not.toContain(requestId);
+    });
+  }
+
+  test("records trusted overrun cost while retaining the existing budget block", async () => {
+    const prepared = await preparedWork();
+    const calls = { value: 0 };
+    const stores = { value: 0 };
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      prepared.work, workerDependencies(prepared.repository, successfulBinding({
+        usage: { textInputTokens: 20_001, imageOutputTokens: 0 }, callCounter: calls,
+      }), assetStore(stores)),
+    )).toEqual({ status: "failed", failureCategory: "budget_blocked" });
+    expect(events()).toEqual([{
+      ...commonEvidence(), usageTrusted: true,
+      textInputTokens: 20_001, imageOutputTokens: 0, usageReconciledCostMicros: 100_005,
+    }]);
+    expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
+      status: "failed", retryEligible: false, actualCostMicros: 100_005,
+    });
+    expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+    expect(calls.value).toBe(1);
+    expect(stores.value).toBe(0);
+  });
+
+  test("duplicate Beta workers keep one claim, Provider call and evidence event", async () => {
+    const prepared = await preparedWork();
+    const calls = { value: 0 };
+    let claims = 0;
+    const dependencies = {
+      ...workerDependencies(prepared.repository, successfulBinding({ callCounter: calls })),
+      betaAdmissionDependencies: {
+        environment: {
+          NOVORA_BETA_ADMISSION_ENABLED: "true",
+          NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{
+            identity: "m2_pilot_01", credentialSha256: "a".repeat(64),
+          }]),
+        },
+        ledger: {
+          reserve: async () => "denied" as const,
+          claimDispatch: async () => { claims += 1; return claims === 1; },
+        },
+      },
+    };
+    const work = { ...prepared.work, betaAdmission: true as const };
+    const results = await Promise.all([
+      modules.lifecycle.runAutomaticFirstPreviewWorker(work, dependencies),
+      modules.lifecycle.runAutomaticFirstPreviewWorker(work, dependencies),
+    ]);
+    expect(results.map(result => result.status).sort()).toEqual(["duplicate", "ready"]);
+    expect(claims).toBe(1);
+    expect(calls.value).toBe(1);
+    expect(events()).toHaveLength(1);
+    expect(JSON.stringify(results)).not.toContain("usage_evidence");
+  });
+
+  test("logging failure cannot alter lifecycle or trigger a second Provider call", async () => {
+    const prepared = await preparedWork();
+    const calls = { value: 0 };
+    let logAttempts = 0;
+    console.info = () => { logAttempts += 1; throw new Error("SYNTHETIC_LOG_FAILURE"); };
+    const dependencies = workerDependencies(prepared.repository, successfulBinding({ callCounter: calls }));
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, dependencies))
+      .toEqual({ status: "ready" });
+    expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, dependencies))
+      .toEqual({ status: "duplicate" });
+    expect(calls.value).toBe(1);
+    expect(logAttempts).toBe(1);
+    expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({ status: "succeeded" });
+  });
+});
+
 test.describe("Goal 2 executable cost contract", () => {
   test("locks the approved reservation, lifetime budget, and actual-cost rules", () => {
     expect(modules.cost.FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION).toBe(

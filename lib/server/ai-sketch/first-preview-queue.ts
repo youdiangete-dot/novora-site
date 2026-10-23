@@ -45,6 +45,7 @@ export type FirstPreviewGenerationQueueMessage = Readonly<{
   conceptBriefId: string;
   publicReference: string;
   generationInput: FirstPreviewPreparedGenerationInput;
+  betaAdmission?: true;
 }>;
 
 export type ValidateFirstPreviewQueueMessageResult =
@@ -317,11 +318,13 @@ export function validateFirstPreviewQueueMessage(
     if (
       !isRecord(snapshot) ||
       !hasExactKeys(snapshot, [
+        ...(Object.prototype.hasOwnProperty.call(snapshot, "betaAdmission") ? ["betaAdmission"] : []),
         "conceptBriefId",
         "generationInput",
         "publicReference",
         "schemaVersion",
       ]) ||
+      (Object.prototype.hasOwnProperty.call(snapshot, "betaAdmission") && snapshot.betaAdmission !== true) ||
       snapshot.schemaVersion !== FIRST_PREVIEW_QUEUE_MESSAGE_SCHEMA_VERSION ||
       typeof snapshot.conceptBriefId !== "string" ||
       typeof snapshot.publicReference !== "string" ||
@@ -344,6 +347,7 @@ export function validateFirstPreviewQueueMessage(
         conceptBriefId: snapshot.conceptBriefId,
         publicReference: snapshot.publicReference,
         generationInput,
+        ...(snapshot.betaAdmission === true ? { betaAdmission: true as const } : {}),
       },
     };
   } catch {
@@ -439,7 +443,10 @@ export async function consumeFirstPreviewQueueMessage(
   )(repository);
   const workerResult = await (
     dependencies.runWorker ?? runAutomaticFirstPreviewWorker
-  )(reservation.work, workerDependencies);
+  )({
+    ...reservation.work,
+    ...(validated.value.betaAdmission === true ? { betaAdmission: true as const } : {}),
+  }, workerDependencies);
 
   if (workerResult.status === "ready") {
     return { status: "acknowledged", disposition: "completed" };
