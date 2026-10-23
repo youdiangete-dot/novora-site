@@ -567,6 +567,45 @@ function safeReadProviderRequestId(
   }
 }
 
+function emitFirstPreviewUsageEvidence(
+  jobId: string,
+  providerRequestId: string | null,
+  usage: ReturnType<OpenAiFirstPreviewProviderBinding["readValidatedUsage"]>,
+  cost: ReturnType<typeof reconcileFirstPreviewActualCost>,
+): void {
+  try {
+    if (
+      typeof jobId !== "string" || jobId.length !== 36 ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)
+    ) {
+      return;
+    }
+    // Copy only bounded, validated primitives; never serialize the binding or response.
+    const evidence = {
+      evidenceVersion: "novora_first_preview_usage_evidence_v1",
+      jobId,
+      ...(typeof providerRequestId === "string" &&
+      providerRequestId.length >= 1 && providerRequestId.length <= 128 &&
+      !/[^A-Za-z0-9._:-]/.test(providerRequestId)
+        ? { providerRequestId }
+        : {}),
+      pricingAssumptionVersion: FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
+      usageTrusted: cost.usageTrusted,
+      ...(cost.usageTrusted && usage
+        ? {
+            textInputTokens: usage.textInputTokens,
+            imageOutputTokens: usage.imageOutputTokens,
+            usageReconciledCostMicros: cost.actualCostMicros,
+          }
+        : { estimatedCostMicros: cost.actualCostMicros }),
+      billingStatus: "BILLING_PENDING",
+    };
+    console.info(JSON.stringify(evidence));
+  } catch {
+    // Best-effort logging is not durable evidence and must not alter worker execution.
+  }
+}
+
 async function runAutomaticFirstPreviewWorkerUnsafe(
   work: FirstPreviewGenerationWork,
   dependencies: AutomaticFirstPreviewWorkerDependencies,
@@ -716,11 +755,13 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     },
   );
 
+  const usage = safeReadUsage(binding);
   const cost = reconcileFirstPreviewActualCost({
     dispatched: runtime.providerInvoked,
-    usage: safeReadUsage(binding),
+    usage,
   });
   const providerRequestId = safeReadProviderRequestId(binding, adapterResult);
+  emitFirstPreviewUsageEvidence(work.jobId, providerRequestId, usage, cost);
   if (providerRequestId) {
     const recorded = await dependencies.repository.recordProviderRequest(
       work.jobId,
