@@ -12,6 +12,11 @@ import type {
 import type { OpenAiFirstPreviewProviderBinding } from "../../lib/server/ai-sketch/openai-first-preview-client";
 import type { OpenAiFirstPreviewAdapterResult } from "../../lib/server/ai-sketch/openai-first-preview-provider";
 import { createSyntheticFirstPreviewPng } from "../fixtures/ai-sketch/fake-first-preview-storage-client";
+import {
+  FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+  FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+  FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+} from "../../lib/server/ai-sketch/first-preview-visual-privacy-contract";
 
 const moduleInternals = Module as unknown as {
   _resolveFilename(
@@ -130,9 +135,9 @@ function validMessage() {
 }
 
 function repository() {
-  let tick = 0;
+  let tick = 60;
   return new modules.memory.InMemoryFirstPreviewRepository(
-    () => `2026-08-06T00:00:${String(tick++).padStart(2, "0")}.000Z`,
+    () => new Date(Date.parse("2026-08-06T00:00:00.000Z") + tick++ * 1000).toISOString(),
   );
 }
 
@@ -202,16 +207,30 @@ function assetStore(counter: { value: number }): FirstPreviewGeneratedAssetStore
 function trustedEvaluator(
   privacyPassed = true,
 ): FirstPreviewTrustedOutputEvaluator {
-  return async (input) => ({
+  return async (input, context) => {
+    if (!await context.reserveVisualPrivacyInspection?.()) {
+      throw new Error("Synthetic visual inspection reservation must succeed");
+    }
+    return {
     evidenceVersion:
       modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
     subject: { ...input.subject },
+    visualPrivacyEvidence: {
+      subject: { ...input.subject },
+      inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+      policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+      model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+      result: privacyPassed ? "passed" : "failed",
+      usageTrusted: true,
+      actualCostMicros: 1_000,
+    },
     results: {
       contentSafetyPassed: true,
       privacyPassed,
       outputValidityPassed: true,
     },
-  });
+    };
+  };
 }
 
 function workerDependencies(
@@ -492,7 +511,7 @@ test.describe("First Preview Queue consumer", () => {
     expect(await targetRepository.findJobById(JOB_2_ID)).toBeNull();
   });
 
-  test("terminal automatic-gate failure remains non-ready and never persists an asset", async () => {
+  test("terminal automatic-gate failure remains non-ready after private candidate persistence", async () => {
     const targetRepository = repository();
     const providerCalls = { value: 0 };
     const storageCalls = { value: 0 };
@@ -515,7 +534,25 @@ test.describe("First Preview Queue consumer", () => {
       disposition: "terminal_failure",
     });
     expect(providerCalls.value).toBe(1);
-    expect(storageCalls.value).toBe(0);
+    expect(storageCalls.value).toBe(1);
+    expect(await targetRepository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("crash-consistency Queue duplicate invokes bounded reconciliation without Provider dispatch", async () => {
+    const targetRepository = repository();
+    const original = targetRepository.reconcileInterruptedInspection.bind(targetRepository);
+    const recovered: Array<[string, string]> = [];
+    targetRepository.reconcileInterruptedInspection = async (jobId, conceptBriefId) => {
+      recovered.push([jobId, conceptBriefId]);
+      return original(jobId, conceptBriefId);
+    };
+    const result = await modules.queue.consumeFirstPreviewQueueMessage(validMessage(), {
+      createRepository: () => targetRepository,
+      runWorker: async () => ({ status: "duplicate" }),
+      jobIdSource: () => JOB_1_ID,
+    });
+    expect(result).toEqual({ status: "acknowledged", disposition: "duplicate" });
+    expect(recovered).toEqual([[JOB_1_ID, BRIEF_ID]]);
     expect(await targetRepository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
   });
 });

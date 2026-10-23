@@ -5,6 +5,11 @@ import path from "node:path";
 import type { BetaAdmissionLedger, BetaDispatch, BetaReservation } from "../../lib/server/ai-sketch/beta-admission";
 import type { AutomaticFirstPreviewWorkerDependencies } from "../../lib/server/ai-sketch/first-preview-generation-lifecycle";
 import { createSyntheticFirstPreviewPng } from "../fixtures/ai-sketch/fake-first-preview-storage-client";
+import {
+  FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+  FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+  FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+} from "../../lib/server/ai-sketch/first-preview-visual-privacy-contract";
 
 const internals = Module as unknown as { _resolveFilename: (...args: any[]) => string };
 const original = internals._resolveFilename;
@@ -229,17 +234,17 @@ test("unconfirmed persistence and unsafe structured input never reserve quota or
   expect(unsafe.ledger.reservations.size).toBe(0);
 });
 
-for (const privacyPassed of [true, false]) {
-  test(`admitted Beta uses existing readiness gates: privacy ${privacyPassed ? "passes" : "fails"}`, async () => {
+for (const [privacyPassed, visualPrivacyPassed] of [[true, true], [false, true], [true, false]]) {
+  test(`admitted Beta requires both privacy gates: metadata ${privacyPassed}, visual ${visualPrivacyPassed}`, async () => {
     const harness = routeHarness();
     await harness.post(request());
     const bytes = createSyntheticFirstPreviewPng();
     let tick = 0;
-    const repository = new modules.memory.InMemoryFirstPreviewRepository(
-      () => `2026-08-06T00:00:${String(tick++).padStart(2, "0")}.000Z`,
-    );
+    const clock = () => `2026-08-06T00:00:${String(tick++).padStart(2, "0")}.000Z`;
+    const repository = new modules.memory.InMemoryFirstPreviewRepository(clock);
     let calls = 0;
     let stores = 0;
+    let inspections = 0;
     const dependencies: AutomaticFirstPreviewWorkerDependencies = {
       repository,
       betaAdmissionDependencies: { environment: environment(), ledger: harness.ledger },
@@ -252,21 +257,35 @@ for (const privacyPassed of [true, false]) {
         readValidatedUsage: () => ({ textInputTokens: 100, imageOutputTokens: 100 }),
         readProviderRequestId: () => "synthetic-beta-request",
       }),
-      evaluateTrustedOutput: async input => ({
-        evidenceVersion: modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
-        subject: { ...input.subject },
-        results: { contentSafetyPassed: true, privacyPassed, outputValidityPassed: true },
-      }),
+      evaluateTrustedOutput: async (input, context) => {
+        expect(await context.reserveVisualPrivacyInspection?.()).toBe(true);
+        inspections++;
+        return {
+          evidenceVersion: modules.lifecycle.FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+          subject: { ...input.subject },
+          visualPrivacyEvidence: {
+            subject: { ...input.subject },
+            inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+            policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+            model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+            result: visualPrivacyPassed ? "passed" : "failed",
+            usageTrusted: true,
+            actualCostMicros: 1_000,
+          },
+          results: { contentSafetyPassed: true, privacyPassed, outputValidityPassed: true },
+        };
+      },
       createAssetStore: () => ({
         kind: "supabase",
         async persistValidatedPng(input) {
           stores++;
+          const assetTimestamp = clock();
           return { ok: true, value: { disposition: "created", asset: {
             assetId: `first-preview/${input.conceptBriefId}/${input.jobId}/${input.outputId}.png`,
             assetPersisted: true, bucketName: "novora-ai-sketches", mimeType: "image/png",
             byteSize: input.imageBytes.byteLength, widthPx: 1024, heightPx: 1024,
             contentSha256: createHash("sha256").update(input.imageBytes).digest("hex"),
-            assetCreatedAt: "2026-08-06T00:01:00.000Z", assetValidatedAt: "2026-08-06T00:01:00.000Z",
+            assetCreatedAt: assetTimestamp, assetValidatedAt: assetTimestamp,
           } } };
         },
         async readAuthorizedPng() { return { ok: false, code: "access_denied" }; },
@@ -276,9 +295,12 @@ for (const privacyPassed of [true, false]) {
       createRepository: () => repository, createWorkerDependencies: () => dependencies,
     })));
     expect(calls).toBe(1);
-    expect(stores).toBe(privacyPassed ? 1 : 0);
-    expect(results.some(result => result.disposition === "completed")).toBe(privacyPassed);
-    expect(Boolean(await repository.findCustomerReadyOutput(BRIEF))).toBe(privacyPassed);
+    expect(stores).toBe(1);
+    expect(inspections).toBe(1);
+    expect(harness.ledger.reservations.size).toBe(1);
+    expect([...harness.ledger.reservations.values()][0].dispatched).toBe(true);
+    expect(results.some(result => result.disposition === "completed")).toBe(privacyPassed && visualPrivacyPassed);
+    expect(Boolean(await repository.findCustomerReadyOutput(BRIEF))).toBe(privacyPassed && visualPrivacyPassed);
   });
 }
 

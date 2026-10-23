@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 
 import { InMemoryFirstPreviewRepository } from "../../lib/server/ai-sketch/in-memory-first-preview-repository";
 import {
+  FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+  FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+  FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+} from "../../lib/server/ai-sketch/first-preview-visual-privacy-contract";
+import {
   createFirstPreviewCanonicalIdentity,
   createUnavailableFirstPreviewRepository,
   deriveFirstPreviewIdempotencyKey,
@@ -34,12 +39,27 @@ const PASSING_GATES: FirstPreviewAutomaticGateEvidence = {
   privacyPassed: true,
   customerAccessEligible: true,
   lifecycleEligible: true,
+  visualPrivacyEvidence: {
+    subject: { conceptBriefId: BRIEF_ID, jobId: JOB_1_ID, outputId: OUTPUT_1_ID, contentSha256: CONTENT_SHA256 },
+    inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+    policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+    model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+    result: "passed", usageTrusted: true, actualCostMicros: 1_000,
+  },
+};
+
+const SECOND_OUTPUT_GATES: FirstPreviewAutomaticGateEvidence = {
+  ...PASSING_GATES,
+  visualPrivacyEvidence: {
+    ...PASSING_GATES.visualPrivacyEvidence,
+    subject: { conceptBriefId: BRIEF_ID, jobId: JOB_2_ID, outputId: OUTPUT_2_ID, contentSha256: "d".repeat(64) },
+  },
 };
 
 function createRepository() {
-  let tick = 0;
+  let tick = 20;
   return new InMemoryFirstPreviewRepository(
-    () => `2026-07-20T00:00:${String(tick++).padStart(2, "0")}.000Z`,
+    () => new Date(Date.parse("2026-07-20T00:00:00.000Z") + tick++ * 1000).toISOString(),
   );
 }
 
@@ -87,6 +107,7 @@ async function reserveAndStart(repository: InMemoryFirstPreviewRepository) {
   expect(reservation.ok).toBe(true);
   const started = await repository.startJob(JOB_1_ID);
   expect(started.ok).toBe(true);
+  expect(await repository.recordProviderDispatch(JOB_1_ID)).toMatchObject({ ok: true });
   const providerRequest = await repository.recordProviderRequest(JOB_1_ID, {
     providerRequestId: "fake-provider-request-001",
   });
@@ -96,6 +117,7 @@ async function reserveAndStart(repository: InMemoryFirstPreviewRepository) {
 async function persistAndComplete(repository: InMemoryFirstPreviewRepository) {
   const persisted = await repository.persistOutput(outputInput());
   expect(persisted.ok).toBe(true);
+  expect(await repository.reserveVisualPrivacyInspection(PASSING_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
   const completed = await repository.recordJobSucceeded(JOB_1_ID, {
     actualCostMicros: 41_000,
   });
@@ -423,6 +445,10 @@ test.describe("server-only First Preview persistence foundation", () => {
       ),
     ).toMatchObject({ ok: true });
     expect(
+      await repository.recordProviderDispatch(JOB_2_ID),
+    ).toMatchObject({ ok: true });
+    expect(await repository.reserveVisualPrivacyInspection(SECOND_OUTPUT_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
+    expect(
       await repository.recordJobSucceeded(JOB_2_ID, { actualCostMicros: 41_000 }),
     ).toMatchObject({ ok: true });
     expect(
@@ -430,7 +456,7 @@ test.describe("server-only First Preview persistence foundation", () => {
         outputId: OUTPUT_2_ID,
         jobId: JOB_2_ID,
         conceptBriefId: BRIEF_ID,
-        gates: PASSING_GATES,
+        gates: SECOND_OUTPUT_GATES,
         automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
       }),
     ).toMatchObject({ ok: true });
@@ -554,6 +580,10 @@ test.describe("server-only First Preview persistence foundation", () => {
       ),
     ).toMatchObject({ ok: true });
     expect(
+      await repository.recordProviderDispatch(JOB_2_ID),
+    ).toMatchObject({ ok: true });
+    expect(await repository.reserveVisualPrivacyInspection(SECOND_OUTPUT_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
+    expect(
       await repository.recordJobSucceeded(JOB_2_ID, { actualCostMicros: 41_000 }),
     ).toMatchObject({ ok: true });
     expect(
@@ -576,7 +606,7 @@ test.describe("server-only First Preview persistence foundation", () => {
         outputId: OUTPUT_2_ID,
         jobId: JOB_2_ID,
         conceptBriefId: BRIEF_ID,
-        gates: PASSING_GATES,
+        gates: SECOND_OUTPUT_GATES,
         automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
       }),
     ).toMatchObject({ ok: true });
@@ -783,6 +813,78 @@ test.describe("server-only First Preview persistence foundation", () => {
       },
     });
     expect(await repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("succeeded pending inspection remains private through 1799.999999 seconds and settles at 1800", async () => {
+    let now = "2026-07-20T00:00:05.000Z";
+    const repository = new InMemoryFirstPreviewRepository(() => now);
+    await reserveAndStart(repository);
+    now = "2026-07-20T00:00:20.000Z";
+    await persistAndComplete(repository);
+
+    now = "2026-07-20T00:30:19.999999Z";
+    expect(await repository.reconcileInterruptedInspection(JOB_1_ID, BRIEF_ID)).toMatchObject({
+      ok: true, value: { automaticGateStatus: "pending", readinessStatus: "not_ready" },
+    });
+    expect(repository.snapshot().outputs[0].automaticGateEvidence).toBeNull();
+    expect(await repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+
+    now = "2026-07-20T00:30:20.000000Z";
+    expect(await repository.reconcileInterruptedInspection(JOB_1_ID, BRIEF_ID)).toMatchObject({
+      ok: true,
+      value: {
+        automaticGateStatus: "failed", readinessStatus: "not_ready",
+        automaticGateEvidence: {
+          reason: "inspection_interrupted", billingStatus: "unknown", reservedCostMicros: 30_000,
+        },
+      },
+    });
+    const settled = repository.snapshot().outputs[0];
+    now = "2026-07-20T00:30:21.000Z";
+    expect(await repository.reconcileInterruptedInspection(JOB_1_ID, BRIEF_ID)).toMatchObject({
+      ok: true, value: { automaticGateStatus: "failed" },
+    });
+    expect(repository.snapshot().outputs[0]).toEqual(settled);
+    expect(await repository.reserveVisualPrivacyInspection(PASSING_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: false });
+    expect(await repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+  });
+
+  test("inspection recovery keeps the processing deadline and immediate terminal failure handling", async () => {
+    let now = "2026-07-20T00:00:05.000Z";
+    const processing = new InMemoryFirstPreviewRepository(() => now);
+    await reserveAndStart(processing);
+    now = "2026-07-20T00:00:20.000Z";
+    expect(await processing.persistOutput(outputInput())).toMatchObject({ ok: true });
+    expect(await processing.reserveVisualPrivacyInspection(PASSING_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
+    now = "2026-07-20T00:02:34.000Z";
+    expect(await processing.reconcileInterruptedInspection(JOB_1_ID, BRIEF_ID)).toMatchObject({
+      ok: true, value: { automaticGateStatus: "pending" },
+    });
+    now = "2026-07-20T00:02:36.000Z";
+    expect(await processing.reconcileInterruptedInspection(JOB_1_ID, BRIEF_ID)).toMatchObject({
+      ok: true, value: { automaticGateStatus: "failed" },
+    });
+    expect(await processing.findJobById(JOB_1_ID)).toMatchObject({ status: "timed_out" });
+
+    for (const category of ["unexpected_provider_error", "cancelled", "timeout"] as const) {
+      now = "2026-07-20T00:00:05.000Z";
+      const terminal = new InMemoryFirstPreviewRepository(() => now);
+      await reserveAndStart(terminal);
+      now = "2026-07-20T00:00:20.000Z";
+      expect(await terminal.persistOutput(outputInput())).toMatchObject({ ok: true });
+      expect(await terminal.reserveVisualPrivacyInspection(PASSING_GATES.visualPrivacyEvidence.subject)).toMatchObject({ ok: true });
+      expect(await terminal.recordJobFailure(JOB_1_ID, {
+        category, retryEligible: false, actualCostMicros: 42_000,
+      })).toMatchObject({ ok: true });
+      expect(await terminal.reconcileInterruptedInspection(JOB_1_ID, BRIEF_ID)).toMatchObject({
+        ok: true,
+        value: {
+          automaticGateStatus: "failed", readinessStatus: "not_ready",
+          automaticGateEvidence: { reason: "inspection_interrupted", reservedCostMicros: 30_000 },
+        },
+      });
+      expect(await terminal.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+    }
   });
 
   test("makes an identical output-persistence retry idempotent", async () => {

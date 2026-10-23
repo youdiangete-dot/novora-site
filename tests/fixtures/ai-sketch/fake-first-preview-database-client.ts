@@ -4,6 +4,7 @@ import type {
   FirstPreviewOutputRow,
   FirstPreviewReviewRow,
 } from "../../../lib/server/ai-sketch/supabase-first-preview-repository";
+import type { VisualPrivacySubject } from "../../../lib/server/ai-sketch/first-preview-visual-privacy-contract";
 
 type Operation =
   | "insertJob"
@@ -18,10 +19,13 @@ type Operation =
   | "insertOutput"
   | "findOutputById"
   | "findOutputByJobId"
+  | "findOutputsByConceptBriefId"
+  | "claimOutputAutomaticGate"
   | "findCustomerReadyOutput"
   | "updateOutput"
   | "insertReview"
-  | "findReviewByConceptBriefId";
+  | "findReviewByConceptBriefId"
+  | "relinkProvisionalReview";
 
 const FAKE_ERROR = { code: "FAKE_DATABASE_ERROR" };
 const UNIQUE_ERROR = { code: "23505" };
@@ -51,15 +55,15 @@ export class FakeFirstPreviewDatabaseClient implements FirstPreviewDatabaseClien
         job.id === id ||
         job.idempotency_key === row.idempotency_key ||
         (job.concept_brief_id === row.concept_brief_id &&
-          job.generation_purpose === row.generation_purpose &&
           job.attempt_number === row.attempt_number) ||
         (job.concept_brief_id === row.concept_brief_id &&
           job.generation_purpose === row.generation_purpose &&
           ["queued", "processing"].includes(job.status)),
     );
     if (duplicate) return { data: null, error: UNIQUE_ERROR };
-    const job: FirstPreviewJobRow = {
+    const job = {
       ...(row as FirstPreviewJobRow),
+      terminal_reason: row.terminal_reason ?? null,
       provider_request_id: null,
       actual_cost_micros: null,
       failure_category: null,
@@ -181,6 +185,40 @@ export class FakeFirstPreviewDatabaseClient implements FirstPreviewDatabaseClien
     };
   }
 
+  async findOutputsByConceptBriefId(conceptBriefId: string) {
+    if (this.failed("findOutputsByConceptBriefId")) return { data: null, error: FAKE_ERROR };
+    return {
+      data: [...this.outputs.values()]
+        .filter((output) => output.concept_brief_id === conceptBriefId)
+        .slice(0, 3)
+        .map((output) => structuredClone(output)),
+      error: null,
+    };
+  }
+
+  async claimOutputAutomaticGate(
+    subject: VisualPrivacySubject,
+    expectedStatus: "pending" | null,
+    expectedPolicyVersion: string | null,
+    patch: Record<string, unknown>,
+  ) {
+    if (this.failed("claimOutputAutomaticGate")) return { data: null, error: FAKE_ERROR };
+    this.outputUpdates.push({ subject: { ...subject }, expectedStatus, expectedPolicyVersion, patch: structuredClone(patch) });
+    const output = this.outputs.get(subject.outputId);
+    if (!output || output.job_id !== subject.jobId ||
+      output.concept_brief_id !== subject.conceptBriefId || output.content_sha256 !== subject.contentSha256 ||
+      output.readiness_status !== "not_ready" || output.is_current_customer_preview ||
+      output.asset_validation_status !== "passed" || !output.asset_validated_at ||
+      output.automatic_gate_status !== expectedStatus ||
+      output.automatic_gate_policy_version !== expectedPolicyVersion ||
+      output.automatic_gate_evidence !== null || output.automatic_gate_passed_at !== null) {
+      return { data: null, error: null };
+    }
+    const updated = { ...output, ...structuredClone(patch) } as FirstPreviewOutputRow;
+    this.outputs.set(updated.id, updated);
+    return { data: structuredClone(updated), error: null };
+  }
+
   async findCustomerReadyOutput(conceptBriefId: string) {
     if (this.failed("findCustomerReadyOutput")) return { data: null, error: FAKE_ERROR };
     return {
@@ -226,6 +264,11 @@ export class FakeFirstPreviewDatabaseClient implements FirstPreviewDatabaseClien
           ? row.revision_instruction
           : null,
       created_at: "2026-07-22T00:00:30.000Z",
+      updated_at: "2026-07-22T00:00:30.000Z",
+      approved_for_customer_at: null,
+      approved_by: null,
+      approval_revoked_at: null,
+      revoked_by: null,
     };
     this.reviews.set(conceptBriefId, review);
     return { data: { ...review }, error: null };
@@ -234,6 +277,29 @@ export class FakeFirstPreviewDatabaseClient implements FirstPreviewDatabaseClien
   async findReviewByConceptBriefId(conceptBriefId: string) {
     if (this.failed("findReviewByConceptBriefId")) return { data: null, error: FAKE_ERROR };
     return { data: this.copy(this.reviews.get(conceptBriefId)), error: null };
+  }
+
+  async relinkProvisionalReview(
+    conceptBriefId: string,
+    oldOutputId: string,
+    newOutputId: string,
+    expectedUpdatedAt: string | null,
+  ) {
+    if (this.failed("relinkProvisionalReview")) return { data: null, error: FAKE_ERROR };
+    const review = this.reviews.get(conceptBriefId);
+    if (!review || review.ai_sketch_output_id !== oldOutputId ||
+      review.review_status !== "draft_generated_internal_only" ||
+      review.revision_instruction !== null ||
+      review.approved_for_customer_at != null || review.approved_by != null ||
+      review.approval_revoked_at != null || review.revoked_by != null ||
+      (review.updated_at ?? null) !== expectedUpdatedAt) return { data: null, error: null };
+    const updated: FirstPreviewReviewRow = {
+      ...review,
+      ai_sketch_output_id: newOutputId,
+      updated_at: "2026-07-22T00:00:31.000Z",
+    };
+    this.reviews.set(conceptBriefId, updated);
+    return { data: { ...updated }, error: null };
   }
 
   private failed(operation: Operation): boolean {

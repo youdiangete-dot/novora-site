@@ -10,6 +10,7 @@ import {
   type FirstPreviewTrustedOutputEvaluator,
 } from "./first-preview-generation-lifecycle";
 import { OPENAI_API_KEY_ENV_NAME } from "./openai-first-preview-provider";
+import { createOpenAiFirstPreviewVisualPrivacyInspector } from "./openai-first-preview-visual-privacy";
 
 const OPENAI_MODERATION_URL = "https://api.openai.com/v1/moderations" as const;
 const OPENAI_MODERATION_MODEL = "omni-moderation-latest" as const;
@@ -238,6 +239,7 @@ export function createOpenAiFirstPreviewTrustedOutputEvaluator(
 ): FirstPreviewTrustedOutputEvaluator {
   const environment = options.environment ?? process.env;
   const fetchImplementation = options.fetchImplementation ?? fetch;
+  const inspectVisualPrivacy = createOpenAiFirstPreviewVisualPrivacyInspector({ environment, fetchImplementation });
 
   return async (input, context) => {
     if (
@@ -295,8 +297,17 @@ export function createOpenAiFirstPreviewTrustedOutputEvaluator(
       failClosed();
     }
 
+    if (!context.reserveVisualPrivacyInspection || context.signal.aborted ||
+        !(await context.reserveVisualPrivacyInspection()) || context.signal.aborted) failClosed();
+    const visualPrivacyEvidence = await inspectVisualPrivacy(
+      { subject: input.subject, imageBytes: input.imageBytes },
+      { signal: context.signal },
+    );
+    if (context.signal.aborted) failClosed();
+
     return {
       evidenceVersion: FIRST_PREVIEW_TRUSTED_OUTPUT_EVIDENCE_VERSION,
+      visualPrivacyEvidence,
       subject: {
         conceptBriefId: input.subject.conceptBriefId,
         jobId: input.subject.jobId,
@@ -305,7 +316,7 @@ export function createOpenAiFirstPreviewTrustedOutputEvaluator(
       },
       results: {
         contentSafetyPassed: true,
-        privacyPassed: true,
+        privacyPassed: visualPrivacyEvidence.result === "passed",
         outputValidityPassed: true,
       },
     };
