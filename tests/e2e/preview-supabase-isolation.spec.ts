@@ -86,6 +86,9 @@ function harness(options: Options = {}) {
     },
   });
   const route = load("app/api/admin/preview-supabase-isolation/route.ts", {
+    "../../../../lib/server/preview-isolation-attestation": load(
+      "lib/server/preview-isolation-attestation.ts", { "./supabase": supabase },
+    ),
     "next/headers": {
       async cookies() {
         cookieReads += 1;
