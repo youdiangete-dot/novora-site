@@ -7,6 +7,7 @@ import {
   isValidAdminAccessCookie,
 } from "../../../../lib/server/admin-access";
 import { createSupabaseAdminClientOrNull } from "../../../../lib/server/supabase";
+import { logRequestPreviewIsolationAttestationOnce } from "../../../../lib/server/preview-isolation-attestation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export async function GET(): Promise<Response> {
   try {
     const cookieStore = await cookies();
     if (!isValidAdminAccessCookie(cookieStore.get(ADMIN_ACCESS_COOKIE_NAME)?.value)) {
+      logRequestPreviewIsolationAttestationOnce();
       return result(false, 401);
     }
 

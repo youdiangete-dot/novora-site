@@ -7,10 +7,17 @@ const ISOLATED_ORIGIN = "https://dibpksbbzjczpjusujwk.supabase.co";
 const PREVIEW_BRANCH = "integration/instant-first-preview-agent";
 const PROJECT_ID = "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg";
 
+type CompletedAttestation = Readonly<{
+  completed: true;
+  isolatedBackendVerified: boolean;
+}>;
+
 // A process-local promise also covers concurrent registration and separate
 // bundles loading this helper in the same server instance. Never reset/retry it.
 const instance = globalThis as typeof globalThis & {
   __novoraM2IsolationAttestationV1?: Promise<void>;
+  __novoraM2IsolationAttestationCompletedV1?: CompletedAttestation;
+  __novoraM2RequestAttestationLoggedV1?: boolean;
 };
 
 async function attest(): Promise<void> {
@@ -37,6 +44,12 @@ async function attest(): Promise<void> {
     // Never log backend errors, exceptions, environment values or credentials.
   }
 
+  // Publish only a completed immutable result, before attempting startup logging.
+  instance.__novoraM2IsolationAttestationCompletedV1 = Object.freeze({
+    completed: true,
+    isolatedBackendVerified,
+  });
+
   try {
     console.info(JSON.stringify({ event: EVENT, isolatedBackendVerified }));
   } catch {
@@ -44,8 +57,8 @@ async function attest(): Promise<void> {
   }
 }
 
-export function attestPreviewIsolationOnce(): Promise<void> {
-  if (
+function isAttestationPreviewInstance(): boolean {
+  return !(
     process.env.NEXT_RUNTIME !== "nodejs" ||
     process.env.NODE_ENV !== "production" ||
     process.env.VERCEL !== "1" ||
@@ -53,7 +66,36 @@ export function attestPreviewIsolationOnce(): Promise<void> {
     process.env.VERCEL_GIT_COMMIT_REF !== PREVIEW_BRANCH ||
     process.env.VERCEL_PROJECT_ID !== PROJECT_ID ||
     process.env.NEXT_PHASE === "phase-production-build"
-  ) return Promise.resolve();
+  );
+}
+
+// Pure synchronous read: no env/Secret reads, clients, probes or state changes.
+// Separate bundles in the same instance share globalThis; other instances must
+// report unavailable rather than infer a successful proof.
+export function readCompletedPreviewIsolationAttestation(): CompletedAttestation | undefined {
+  return instance.__novoraM2IsolationAttestationCompletedV1;
+}
+
+export function logRequestPreviewIsolationAttestationOnce(): void {
+  if (!isAttestationPreviewInstance() || instance.__novoraM2RequestAttestationLoggedV1) return;
+
+  // Consume the one attempt synchronously, even if logging throws or re-enters.
+  instance.__novoraM2RequestAttestationLoggedV1 = true;
+  try {
+    const completed = readCompletedPreviewIsolationAttestation();
+    console.info(JSON.stringify({
+      event: "NOVORA_M2_REQUEST_ATTESTATION_V1",
+      attestationAvailable: completed?.completed === true,
+      isolatedBackendVerified: completed?.completed === true &&
+        completed.isolatedBackendVerified === true,
+    }));
+  } catch {
+    // Never alter the 401, reveal errors or retry logging/probing on failure.
+  }
+}
+
+export function attestPreviewIsolationOnce(): Promise<void> {
+  if (!isAttestationPreviewInstance()) return Promise.resolve();
 
   // Assign before executing any asynchronous work, including client creation.
   return instance.__novoraM2IsolationAttestationV1 ??=
