@@ -4,7 +4,8 @@
   "buildCommand": "npx --yes npm@11.13.0 run build",
   "git": {
     "deploymentEnabled": {
-      "codex/m2-protected-runtime-proof-v1": false
+      "codex/m2-protected-runtime-proof-v1": false,
+      "codex/m2-stage-c-r3-runtime-flags": false
     }
   },
   "functions": {
