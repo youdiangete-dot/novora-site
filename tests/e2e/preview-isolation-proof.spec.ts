@@ -16,6 +16,7 @@ const ORIGIN = "https://dibpksbbzjczpjusujwk.supabase.co";
 const KEY = "sb_secret_synthetic_offline_only";
 const PRIVATE = "synthetic-private-error";
 const EVENT = "NOVORA_M2_PROTECTED_RUNTIME_PROOF_V1";
+const FLAGS_EVENT = "NOVORA_M2_PRIVATE_RUNTIME_FLAGS_V1";
 let signing: Awaited<ReturnType<typeof jose.generateKeyPair>>;
 let other: Awaited<ReturnType<typeof jose.generateKeyPair>>;
 let publicJwk: Awaited<ReturnType<typeof jose.exportJWK>>;
@@ -130,7 +131,7 @@ function harness(options: Options = {}) {
   const route = load("app/api/admin/preview-isolation-proof/route.ts", {
     "../../../../lib/server/preview-isolation-proof": helper,
   }) as { GET(request: Request): Promise<Response>; runtime: string; dynamic: string };
-  return { route, requests, logs, timeouts, controllers,
+  return { route, requests, logs, timeouts, controllers, env,
     get clients() { return clients; }, get verifications() { return verifications; } };
 }
 
@@ -158,6 +159,17 @@ function noDatabase(state: ReturnType<typeof harness>) {
   expect(state.requests).toEqual([]);
   expect(state.logs).toEqual([]);
   expect(state.timeouts).toEqual([]);
+}
+
+function proofEvents(state: ReturnType<typeof harness>, isolatedBackendVerified: boolean) {
+  expect(state.logs).toEqual([
+    JSON.stringify({ event: EVENT, isolatedBackendVerified }),
+    JSON.stringify({ event: FLAGS_EVENT, betaAdmissionEnabled: false,
+      agentEnabled: false, queueExecutionEnabled: false, isolatedBackendVerified }),
+  ]);
+  for (const value of [KEY, PRIVATE, ORIGIN, PROJECT, TEAM]) {
+    expect(JSON.stringify(state.logs)).not.toContain(value);
+  }
 }
 
 for (const [name, changes] of [
@@ -257,7 +269,7 @@ for (const issuer of ["https://oidc.vercel.com", "https://oidc.vercel.com/novora
     expect(sent.headers.get("authorization")).toBe(`Bearer ${KEY}`);
     expect(sent.headers.get("apikey")).toBe(KEY);
     expect(sent.headers.get("prefer")).toBeNull();
-    expect(state.logs).toEqual([JSON.stringify({ event: EVENT, isolatedBackendVerified: true })]);
+    proofEvents(state, true);
     expect(JSON.stringify(state.logs)).not.toContain(credential);
     expect(JSON.stringify(state.logs)).not.toContain(PRIVATE);
   });
@@ -275,7 +287,7 @@ for (const [name, env] of [
     await responseContract(await state.route.GET(request(await token())), 503, false);
     expect(state.clients).toBe(0);
     expect(state.requests).toEqual([]);
-    expect(state.logs).toEqual([JSON.stringify({ event: EVENT, isolatedBackendVerified: false })]);
+    proofEvents(state, false);
   });
 }
 
@@ -284,7 +296,7 @@ for (const status of [401, 403, 500, 503, 204, 206]) {
     const state = harness({ status });
     await responseContract(await state.route.GET(request(await token())), 503, false);
     expect(state.requests).toHaveLength(1);
-    expect(state.logs).toEqual([JSON.stringify({ event: EVENT, isolatedBackendVerified: false })]);
+    proofEvents(state, false);
   });
 }
 
@@ -320,5 +332,55 @@ test("logger failure cannot repeat the query or expose details", async () => {
   const state = harness({ loggerThrows: true });
   await responseContract(await state.route.GET(request(await token())), 200, true);
   expect(state.requests).toHaveLength(1);
-  expect(state.logs).toHaveLength(1);
+  proofEvents(state, true);
+});
+
+for (const value of ["true", "false", undefined, "TRUE", " true ", PRIVATE]) {
+  test(`private flags accept only literal true (${String(value)}) without HTTP exposure`, async () => {
+    const state = harness({ env: {
+      NOVORA_BETA_ADMISSION_ENABLED: value,
+      NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: value,
+      NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: value,
+      OPENAI_API_KEY: PRIVATE,
+      NOVORA_BETA_INVITATIONS_JSON: PRIVATE,
+    } });
+    const credential = await token();
+    await responseContract(await state.route.GET(request(credential, { cookie: PRIVATE })), 200, true);
+    expect(state.logs).toEqual([
+      JSON.stringify({ event: EVENT, isolatedBackendVerified: true }),
+      JSON.stringify({ event: FLAGS_EVENT, betaAdmissionEnabled: value === "true",
+        agentEnabled: value === "true", queueExecutionEnabled: value === "true",
+        isolatedBackendVerified: true }),
+    ]);
+    for (const secret of [credential, KEY, PRIVATE, ORIGIN]) {
+      expect(JSON.stringify(state.logs)).not.toContain(secret);
+    }
+    // The offline loader rejects every undeclared dependency; the only outbound
+    // operation is the unchanged Supabase zero-row HEAD, never Queue or Provider.
+    expect(state.requests).toHaveLength(1);
+    expect(state.requests[0].method).toBe("HEAD");
+    expect(state.requests[0].url).toBe(`${ORIGIN}/rest/v1/concept_briefs?select=id&limit=0`);
+  });
+}
+
+test("each authorized request reads its own current process flags and emits one event", async () => {
+  const flags: Record<string, string | undefined> = {
+    NOVORA_BETA_ADMISSION_ENABLED: "true",
+    NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "false",
+    NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: undefined,
+  };
+  const state = harness({ env: flags });
+  await responseContract(await state.route.GET(request(await token())), 200, true);
+  Object.assign(state.env, { NOVORA_BETA_ADMISSION_ENABLED: "false",
+    NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true", NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true" });
+  await responseContract(await state.route.GET(request(await token())), 200, true);
+  const events = state.logs.map(line => JSON.parse(line)).filter(event => event.event === FLAGS_EVENT);
+  expect(events).toEqual([
+    { event: FLAGS_EVENT, betaAdmissionEnabled: true, agentEnabled: false,
+      queueExecutionEnabled: false, isolatedBackendVerified: true },
+    { event: FLAGS_EVENT, betaAdmissionEnabled: false, agentEnabled: true,
+      queueExecutionEnabled: true, isolatedBackendVerified: true },
+  ]);
+  expect(state.logs).toHaveLength(4);
+  expect(state.requests).toHaveLength(2);
 });

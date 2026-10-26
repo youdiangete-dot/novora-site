@@ -92,6 +92,17 @@ export async function getPreviewIsolationProof(request: Request): Promise<Respon
   } catch {
     // Never retry logging or the database operation.
   }
+  try {
+    // Private runtime evidence only; native logs bind this to the deployment
+    // and request. Read literal flags from this process, never from the caller.
+    console.info(JSON.stringify({ event: "NOVORA_M2_PRIVATE_RUNTIME_FLAGS_V1",
+      betaAdmissionEnabled: process.env.NOVORA_BETA_ADMISSION_ENABLED === "true",
+      agentEnabled: process.env.NOVORA_INSTANT_PREVIEW_AGENT_ENABLED === "true",
+      queueExecutionEnabled: process.env.NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED === "true",
+      isolatedBackendVerified }));
+  } catch {
+    // A failed private log must not change the response or repeat any work.
+  }
   return Response.json({ isolatedBackendVerified }, {
     status: isolatedBackendVerified ? 200 : 503, headers: NO_STORE,
   });
