@@ -6,6 +6,24 @@ export const FIRST_PREVIEW_VISUAL_PRIVACY_MODEL = "gpt-4.1-mini-2025-04-14" as c
 export const FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS = 30_000;
 export const FIRST_PREVIEW_VISUAL_PRIVACY_BRIEF_LIMIT_MICROS = 60_000;
 
+// Closed diagnostic vocabulary only. Never persist model/OCR text or errors.
+export const FIRST_PREVIEW_VISUAL_PRIVACY_FAILURE_REASONS = [
+  "invalid_subject", "caller_aborted", "invalid_image", "configuration_missing",
+  "request_budget_exceeded", "http_error", "response_body_invalid", "usage_untrusted",
+  "usage_budget_exceeded", "completion_invalid", "completion_truncated", "completion_filtered",
+  "provider_refusal", "inspection_json_invalid", "inspection_schema_invalid",
+  "inspection_incomplete", "text_not_detected", "text_unreadable", "privacy_risk_detected",
+  "text_evidence_inconsistent", "text_not_allowlisted", "deadline_exceeded",
+  "transport_error", "unexpected_error", "unknown_failure",
+] as const;
+export type FirstPreviewVisualPrivacyFailureReason = typeof FIRST_PREVIEW_VISUAL_PRIVACY_FAILURE_REASONS[number];
+
+export function normalizeVisualPrivacyFailureReason(value: unknown): FirstPreviewVisualPrivacyFailureReason {
+  return typeof value === "string" &&
+    (FIRST_PREVIEW_VISUAL_PRIVACY_FAILURE_REASONS as readonly string[]).includes(value)
+    ? value as FirstPreviewVisualPrivacyFailureReason : "unknown_failure";
+}
+
 export type VisualPrivacySubject = Readonly<{
   conceptBriefId: string;
   jobId: string;
@@ -21,6 +39,8 @@ export type FirstPreviewVisualPrivacyEvidence = Readonly<{
   result: "passed" | "failed";
   usageTrusted: boolean;
   actualCostMicros: number;
+  // Optional for historical evidence; only failed results may carry this field.
+  failureReason?: FirstPreviewVisualPrivacyFailureReason;
 }>;
 
 // An operational disposition is not a visual inspector verdict. A reservation
@@ -56,7 +76,11 @@ export function validateFirstPreviewVisualPrivacyEvidence(
   requirePassed = true,
 ): value is FirstPreviewVisualPrivacyEvidence {
   if (!isVisualPrivacySubject(expectedSubject) || !record(value) ||
-    !exactKeys(value, ["subject", "inspectorVersion", "policyVersion", "model", "result", "usageTrusted", "actualCostMicros"]) ||
+    !exactKeys(value, ["subject", "inspectorVersion", "policyVersion", "model", "result", "usageTrusted", "actualCostMicros",
+      ...(Object.prototype.hasOwnProperty.call(value, "failureReason") ? ["failureReason"] : [])]) ||
+    (Object.prototype.hasOwnProperty.call(value, "failureReason") &&
+      (value.result !== "failed" || typeof value.failureReason !== "string" ||
+        !(FIRST_PREVIEW_VISUAL_PRIVACY_FAILURE_REASONS as readonly string[]).includes(value.failureReason))) ||
     !isVisualPrivacySubject(value.subject) ||
     value.subject.conceptBriefId !== expectedSubject.conceptBriefId ||
     value.subject.jobId !== expectedSubject.jobId ||

@@ -7,6 +7,7 @@ import {
   FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS,
   hasPassedFirstPreviewAutomaticGateEvidence,
   isVisualPrivacySubject,
+  normalizeVisualPrivacyFailureReason,
   validateFirstPreviewInspectionInterruptionEvidence,
   validateFirstPreviewVisualPrivacyEvidence,
   type FirstPreviewVisualPrivacyEvidence,
@@ -91,6 +92,8 @@ function sanitizedVisualEvidence(evidence: FirstPreviewVisualPrivacyEvidence): F
     result: evidence.result,
     usageTrusted: evidence.usageTrusted,
     actualCostMicros: evidence.actualCostMicros,
+    ...(evidence.result === "failed"
+      ? { failureReason: normalizeVisualPrivacyFailureReason(evidence.failureReason) } : {}),
   };
 }
 

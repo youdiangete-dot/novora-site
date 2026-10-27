@@ -295,6 +295,7 @@ test.describe("OpenAI First Preview trusted-output evaluator", () => {
       result: "failed",
       usageTrusted: true,
       actualCostMicros: 640,
+      failureReason: "privacy_risk_detected",
     });
   });
 
