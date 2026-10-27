@@ -15,6 +15,8 @@ import {
   FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
   FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
   FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS,
+  FIRST_PREVIEW_VISUAL_PRIVACY_FAILURE_REASONS,
+  normalizeVisualPrivacyFailureReason,
   validateFirstPreviewVisualPrivacyEvidence,
   type FirstPreviewVisualPrivacyEvidence,
   type VisualPrivacySubject,
@@ -410,6 +412,77 @@ test.describe("First Preview visual privacy exposure and durable dispatch gates"
       automatic_gate_status: "failed", readiness_status: "not_ready", is_current_customer_preview: false,
       automatic_gate_evidence: { visualPrivacyEvidence: { usageTrusted: false, actualCostMicros: 30_000 } },
     });
+  });
+
+  for (const reason of FIRST_PREVIEW_VISUAL_PRIVACY_FAILURE_REASONS) {
+    test(`failed reason ${reason} survives repository reconstruction and never authorizes exposure`, async () => {
+      const { client, repository } = await candidateHarness();
+      expect(await repository.reserveVisualPrivacyInspection(SUBJECT)).toMatchObject({ ok: true });
+      const evidence = visualEvidence(SUBJECT, { result: "failed", failureReason: reason });
+      expect(await repository.recordVisualPrivacyInspectionFailure(SUBJECT, evidence)).toMatchObject({ ok: true });
+      expect(await repository.recordJobFailure(JOB_ID, {
+        category: "privacy_failure", retryEligible: false, actualCostMicros: 1000,
+      })).toMatchObject({ ok: true });
+      // A new repository reads only serialized storage, not the inspector object.
+      const reopenedClient = new FakeFirstPreviewDatabaseClient();
+      reopenedClient.outputs.set(OUTPUT_ID, JSON.parse(JSON.stringify(client.outputs.get(OUTPUT_ID))));
+      reopenedClient.jobs.set(JOB_ID, JSON.parse(JSON.stringify(client.jobs.get(JOB_ID))));
+      const reopened = modules.repository.createSupabaseFirstPreviewRepository(reopenedClient);
+      const reread = await reopened.reconcileInterruptedInspection(JOB_ID, BRIEF_ID);
+      expect(reread.ok).toBe(true);
+      const output = reread.ok ? reread.value : null;
+      expect(output).toMatchObject({
+        readinessStatus: "not_ready", isCurrentCustomerPreview: false, automaticGateStatus: "failed",
+        automaticGateEvidence: { result: "failed", visualPrivacyEvidence: { failureReason: reason, result: "failed" } },
+      });
+      const stored = reopenedClient.outputs.get(OUTPUT_ID)!;
+      expect(Object.keys((stored.automatic_gate_evidence as { visualPrivacyEvidence: object }).visualPrivacyEvidence).sort()).toEqual([
+        "subject", "inspectorVersion", "policyVersion", "model", "result", "usageTrusted", "actualCostMicros", "failureReason",
+      ].sort());
+      expect(await reopened.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+      expect(await reopened.reserveVisualPrivacyInspection(SUBJECT)).toMatchObject({ ok: false });
+      // Even forged ready flags cannot turn failed diagnostic evidence into access.
+      const exposed = await readBothExposureBoundaries(readyOutput({
+        result: "passed", ...passingGates(), visualPrivacyEvidence: evidence,
+      }));
+      expect(exposed.view).toEqual({ state: "unavailable" });
+      expect(exposed.asset).toEqual({ authorized: false });
+    });
+  }
+
+  test("legacy and unknown reason fallbacks persist only a fixed code", async () => {
+    for (const raw of [undefined, null, "private-provider-response user@example.invalid", { imageBytes: "private-image-sentinel" }]) {
+      const { client, repository } = await candidateHarness();
+      expect(await repository.reserveVisualPrivacyInspection(SUBJECT)).toMatchObject({ ok: true });
+      const evidence = visualEvidence(SUBJECT, {
+        result: "failed", ...(raw === undefined ? {} : { failureReason: normalizeVisualPrivacyFailureReason(raw) }),
+      });
+      expect(await repository.recordVisualPrivacyInspectionFailure(SUBJECT, evidence)).toMatchObject({ ok: true });
+      const stored = JSON.stringify(client.outputs.get(OUTPUT_ID)?.automatic_gate_evidence);
+      expect(JSON.parse(stored).visualPrivacyEvidence.failureReason).toBe("unknown_failure");
+      for (const sensitive of ["user@example.invalid", "private-provider-response", "private-image-sentinel", "imageBytes"]) expect(stored).not.toContain(sensitive);
+    }
+  });
+
+  test("unrecognized codes and sensitive extra fields are rejected before any persistence", async () => {
+    for (const injected of [
+      { failureReason: "private-provider-response" },
+      { failureReason: undefined },
+      { visibleText: ["user@example.invalid"] },
+      { imageBytes: "private-image-sentinel" },
+      { providerResponse: { credentials: "private-credential-sentinel" } },
+    ]) {
+      const { client, repository } = await candidateHarness();
+      expect(await repository.reserveVisualPrivacyInspection(SUBJECT)).toMatchObject({ ok: true });
+      const evidence = { ...visualEvidence(SUBJECT, { result: "failed", failureReason: "unknown_failure" }), ...injected };
+      expect(validateFirstPreviewVisualPrivacyEvidence(evidence, SUBJECT, false)).toBe(false);
+      const before = JSON.stringify(client.outputs.get(OUTPUT_ID));
+      expect(await repository.recordVisualPrivacyInspectionFailure(SUBJECT, evidence as FirstPreviewVisualPrivacyEvidence)).toMatchObject({ ok: false });
+      expect(JSON.stringify(client.outputs.get(OUTPUT_ID))).toBe(before);
+    }
+    const contradictory = visualEvidence(SUBJECT, { result: "passed", failureReason: "privacy_risk_detected" });
+    expect(validateFirstPreviewVisualPrivacyEvidence(contradictory, SUBJECT)).toBe(false);
+    expect(validateFirstPreviewVisualPrivacyEvidence(contradictory, SUBJECT, false)).toBe(false);
   });
 
   test("a passed result cannot become ready without a durable pending inspection claim", async () => {

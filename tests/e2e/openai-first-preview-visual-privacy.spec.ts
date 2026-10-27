@@ -150,11 +150,33 @@ function harness(value: unknown = completion(), status = 200) {
 }
 
 let savedFetch: typeof fetch;
+let savedInfo: typeof console.info;
+let diagnostics: Array<Record<string, unknown>>;
 test.beforeEach(() => {
   savedFetch = globalThis.fetch;
+  savedInfo = console.info;
+  diagnostics = [];
+  console.info = (line: string) => { diagnostics.push(JSON.parse(line)); };
   globalThis.fetch = (async () => { throw new Error("Synthetic privacy tests prohibit external requests."); }) as typeof fetch;
 });
-test.afterEach(() => { globalThis.fetch = savedFetch; });
+test.afterEach(() => { globalThis.fetch = savedFetch; console.info = savedInfo; });
+
+function expectDiagnostic(reason: string, result: { result: string; usageTrusted: boolean; actualCostMicros: number; failureReason?: string }): void {
+  expect(diagnostics).toHaveLength(1);
+  expect(Object.keys(diagnostics[0]).sort()).toEqual([
+    "event", "subject", "inspectorVersion", "policyVersion", "model", "result", "reason", "usageTrusted", "actualCostMicros",
+  ].sort());
+  expect(diagnostics[0]).toMatchObject({
+    event: "NOVORA_FIRST_PREVIEW_VISUAL_PRIVACY_DIAGNOSTIC_V1",
+    reason, result: result.result, usageTrusted: result.usageTrusted, actualCostMicros: result.actualCostMicros,
+  });
+  if (result.result === "failed") expect(result.failureReason).toBe(reason);
+  else expect(result).not.toHaveProperty("failureReason");
+  const serialized = JSON.stringify(diagnostics);
+  for (const forbidden of [API_KEY, "visibleText", "providerResponse", "private-network-sentinel", "private-provider-sentinel"]) {
+    expect(serialized).not.toContain(forbidden);
+  }
+}
 
 test.describe("output-bound First Preview visual privacy inspector", () => {
   test("one pinned structured request examines exact PNG and emits only sanitized bound evidence", async () => {
@@ -182,6 +204,8 @@ test.describe("output-bound First Preview visual privacy inspector", () => {
     for (const key of ["tools", "tool_choice", "user", "metadata", "safety_identifier"]) expect(body).not.toHaveProperty(key);
     expect(result).not.toHaveProperty("visibleText");
     expect(result).not.toHaveProperty("providerResponse");
+    expectDiagnostic("passed", result);
+    expect(diagnostics[0].subject).toEqual(input.subject);
   });
 
   for (const sensitive of [
@@ -203,6 +227,8 @@ test.describe("output-bound First Preview visual privacy inspector", () => {
       expect(result.result).toBe("failed");
       expect(requests).toHaveLength(1);
       expect(JSON.stringify(result)).not.toContain(sensitive);
+      expectDiagnostic("text_not_allowlisted", result);
+      expect(JSON.stringify(diagnostics)).not.toContain(sensitive);
     });
   }
 
@@ -358,6 +384,116 @@ test.describe("output-bound First Preview visual privacy inspector", () => {
       expect(result).toMatchObject({ result: "failed", usageTrusted: false, actualCostMicros: 30_000 });
       expect(JSON.stringify(result)).not.toContain("private-network-sentinel");
       expect(calls).toBe(1);
+      expectDiagnostic("transport_error", result);
+      diagnostics = [];
     }
+  });
+
+  test("identical trusted cost does not identify a historical privacy failure", async () => {
+    const risk = observation();
+    (risk.privacyRisks as Record<string, unknown>).customerContact = true;
+    const cases: Array<[unknown, string]> = [
+      [completion(risk), "privacy_risk_detected"],
+      [completion(observation(["a harmless but unapproved jewelry label"])), "text_not_allowlisted"],
+      [completion({ ...observation(), allVisibleTextReadable: false }), "text_unreadable"],
+      [completion({ ...observation(), allVisibleTextDetected: false }), "text_not_detected"],
+      [completion({ ...observation(), inspectionComplete: false }), "inspection_incomplete"],
+      [completion({ ...observation(), noVisibleText: true }), "text_evidence_inconsistent"],
+      [completion({ ...observation(), extra: "private-provider-sentinel" }), "inspection_schema_invalid"],
+    ];
+    for (const [value, reason] of cases) {
+      (value as Record<string, unknown>).usage = { prompt_tokens: 2284, completion_tokens: 230, total_tokens: 2514 };
+      const { inspector, requests } = harness(value);
+      const input = inspectorInput();
+      const result = await inspector(input, { signal: new AbortController().signal });
+      expect(result).toMatchObject({ result: "failed", usageTrusted: true, actualCostMicros: 1282 });
+      expect(validateFirstPreviewVisualPrivacyEvidence(result, input.subject, false)).toBe(true);
+      expect(validateFirstPreviewVisualPrivacyEvidence(result, input.subject)).toBe(false);
+      expectDiagnostic(reason, result);
+      expect(requests).toHaveLength(1);
+      expect(JSON.stringify(diagnostics)).not.toContain("a harmless but unapproved jewelry label");
+      diagnostics = [];
+    }
+  });
+
+  for (const [reason, choice] of [
+    ["completion_truncated", { index: 0, finish_reason: "length", message: { role: "assistant", content: "private-provider-sentinel" } }],
+    ["completion_filtered", { index: 0, finish_reason: "content_filter", message: { role: "assistant", content: null } }],
+    ["provider_refusal", { index: 0, finish_reason: "stop", message: { role: "assistant", refusal: "private-provider-sentinel", content: null } }],
+    ["inspection_json_invalid", { index: 0, finish_reason: "stop", message: { role: "assistant", content: "{private-provider-sentinel" } }],
+    ["completion_invalid", { index: 0, finish_reason: "stop", message: { role: "assistant", content: "private-provider-sentinel", tool_calls: [] } }],
+  ] as const) {
+    test(`distinguishes ${reason} while retaining trusted usage without raw content`, async () => {
+      const { inspector, requests } = harness({ ...completion(), choices: [choice] });
+      const result = await inspector(inspectorInput(), { signal: new AbortController().signal });
+      expect(result).toMatchObject({ result: "failed", usageTrusted: true, actualCostMicros: 640 });
+      expectDiagnostic(reason, result);
+      expect(requests).toHaveLength(1);
+    });
+  }
+
+  test("HTTP, response-body and billing failures remain different sanitized outcomes", async () => {
+    for (const [value, status, reason] of [
+      [{ error: { message: "private-provider-sentinel" } }, 429, "http_error"],
+      [null, 200, "response_body_invalid"],
+      [{ ...completion(), usage: {} }, 200, "usage_untrusted"],
+      [{ ...completion(), usage: { prompt_tokens: 75000, completion_tokens: 100, total_tokens: 75100 } }, 200, "usage_budget_exceeded"],
+    ] as const) {
+      const { inspector, requests } = harness(value, status);
+      const result = await inspector(inspectorInput(), { signal: new AbortController().signal });
+      expect(result.result).toBe("failed");
+      expectDiagnostic(reason, result);
+      expect(requests).toHaveLength(1);
+      diagnostics = [];
+    }
+  });
+
+  test("invalid subjects cannot inject private text into diagnostics", async () => {
+    const { inspector, requests } = harness();
+    const input = inspectorInput();
+    const result = await inspector({ ...input, subject: { ...input.subject, jobId: "private-provider-sentinel" } }, { signal: new AbortController().signal });
+    expectDiagnostic("invalid_subject", result);
+    expect(diagnostics[0].subject).toBeNull();
+    expect(requests).toHaveLength(0);
+  });
+
+  test("a local deadline aborts a hung response once and a late success cannot rewrite it", async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    let complete: ((value: Response) => void) | undefined;
+    let calls = 0;
+    let signal: AbortSignal | null | undefined;
+    globalThis.setTimeout = ((handler, timeout, ...args) =>
+      realSetTimeout(handler, timeout === 30000 ? 0 : timeout, ...args)) as typeof setTimeout;
+    try {
+      const inspector = inspectorModule.createOpenAiFirstPreviewVisualPrivacyInspector({
+        environment: { OPENAI_API_KEY: API_KEY },
+        fetchImplementation: (async (_url, init) => {
+          calls += 1; signal = init?.signal;
+          return await new Promise<Response>((resolve) => { complete = resolve; });
+        }) as typeof fetch,
+      });
+      const result = await inspector(inspectorInput(), { signal: new AbortController().signal });
+      expect(result).toMatchObject({ result: "failed", usageTrusted: false, actualCostMicros: 30000 });
+      expectDiagnostic("deadline_exceeded", result);
+      expect(signal?.aborted).toBe(true);
+      complete?.(new Response(JSON.stringify(completion())));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expectDiagnostic("deadline_exceeded", result);
+      expect(calls).toBe(1);
+    } finally { globalThis.setTimeout = realSetTimeout; }
+  });
+
+  test("caller abort is distinct from deadline and logging failure cannot change evidence", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { inspector, requests } = harness();
+    const failed = await inspector(inspectorInput(), { signal: controller.signal });
+    expectDiagnostic("caller_aborted", failed);
+    expect(requests).toHaveLength(0);
+    console.info = () => { throw new Error("private-network-sentinel"); };
+    const input = inspectorInput();
+    const passed = await inspector(input, { signal: new AbortController().signal });
+    expect(validateFirstPreviewVisualPrivacyEvidence(passed, input.subject)).toBe(true);
+    expect(requests).toHaveLength(1);
   });
 });

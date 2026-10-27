@@ -8,6 +8,8 @@ import {
   FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
   FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS,
   isVisualPrivacySubject,
+  normalizeVisualPrivacyFailureReason,
+  type FirstPreviewVisualPrivacyFailureReason,
   type FirstPreviewVisualPrivacyEvidence,
   type VisualPrivacySubject,
 } from "./first-preview-visual-privacy-contract";
@@ -87,6 +89,15 @@ export type FirstPreviewVisualPrivacyInspector = (
   context: Readonly<{ signal: AbortSignal }>,
 ) => Promise<FirstPreviewVisualPrivacyEvidence>;
 
+// These fixed codes describe private failures; they cannot establish readiness.
+// Do not add model text, image annotations, response bodies or exception messages.
+type InspectionReason = "passed" | FirstPreviewVisualPrivacyFailureReason;
+
+type InspectionOutcome = Readonly<{
+  evidence: FirstPreviewVisualPrivacyEvidence;
+  reason: InspectionReason;
+}>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -135,16 +146,20 @@ function isApprovedVisibleText(value: unknown): boolean {
   return ringSize !== null;
 }
 
-function inspectionPassed(value: unknown): boolean {
+function inspectionFailure(value: unknown): FirstPreviewVisualPrivacyFailureReason | null {
   if (!isRecord(value) || !exactKeys(value, INSPECTION_KEYS) ||
-    value.inspectionComplete !== true || value.allVisibleTextDetected !== true ||
-    value.allVisibleTextReadable !== true || typeof value.noVisibleText !== "boolean" ||
+    typeof value.inspectionComplete !== "boolean" || typeof value.allVisibleTextDetected !== "boolean" ||
+    typeof value.allVisibleTextReadable !== "boolean" || typeof value.noVisibleText !== "boolean" ||
     !isRecord(value.privacyRisks) || !exactKeys(value.privacyRisks, PRIVACY_KEYS) ||
     !PRIVACY_KEYS.every((key) => value.privacyRisks &&
-      (value.privacyRisks as Record<string, unknown>)[key] === false) ||
-    !Array.isArray(value.visibleText) || value.visibleText.length > MAX_VISIBLE_SEGMENTS) return false;
-  if (value.noVisibleText) return value.visibleText.length === 0;
-  return value.visibleText.length > 0 && value.visibleText.every(isApprovedVisibleText);
+      typeof (value.privacyRisks as Record<string, unknown>)[key] === "boolean") ||
+    !Array.isArray(value.visibleText) || value.visibleText.length > MAX_VISIBLE_SEGMENTS) return "inspection_schema_invalid";
+  if (!value.inspectionComplete) return "inspection_incomplete";
+  if (!value.allVisibleTextDetected) return "text_not_detected";
+  if (!value.allVisibleTextReadable) return "text_unreadable";
+  if (PRIVACY_KEYS.some((key) => (value.privacyRisks as Record<string, unknown>)[key])) return "privacy_risk_detected";
+  if (value.noVisibleText !== (value.visibleText.length === 0)) return "text_evidence_inconsistent";
+  return value.visibleText.every(isApprovedVisibleText) ? null : "text_not_allowlisted";
 }
 
 function readUsageCost(value: unknown): number | null {
@@ -169,18 +184,24 @@ function readUsageCost(value: unknown): number | null {
   return Math.ceil(((input as number) * 4 + (output as number) * 16) / 10);
 }
 
-function readInspection(value: unknown): unknown {
+function readInspection(value: unknown): Readonly<{ value?: unknown; reason?: FirstPreviewVisualPrivacyFailureReason }> {
   if (!isRecord(value) || value.model !== FIRST_PREVIEW_VISUAL_PRIVACY_MODEL ||
     value.object !== "chat.completion" || !Array.isArray(value.choices) || value.choices.length !== 1 ||
-    (value.service_tier !== undefined && value.service_tier !== "default")) return null;
+    (value.service_tier !== undefined && value.service_tier !== "default")) return { reason: "completion_invalid" };
   const choice = value.choices[0];
-  if (!isRecord(choice) || choice.index !== 0 || choice.finish_reason !== "stop" ||
+  if (!isRecord(choice) || choice.index !== 0) return { reason: "completion_invalid" };
+  if (choice.finish_reason === "length") return { reason: "completion_truncated" };
+  if (choice.finish_reason === "content_filter") return { reason: "completion_filtered" };
+  if (isRecord(choice.message) && choice.message.refusal !== undefined && choice.message.refusal !== null) {
+    return { reason: "provider_refusal" };
+  }
+  if (choice.finish_reason !== "stop" ||
     !isRecord(choice.message) || choice.message.role !== "assistant" ||
-    (choice.message.refusal !== undefined && choice.message.refusal !== null) ||
     choice.message.tool_calls !== undefined || choice.message.function_call !== undefined ||
     typeof choice.message.content !== "string" || choice.message.content.length === 0 ||
-    choice.message.content.length > 12 * 1024) return null;
-  try { return JSON.parse(choice.message.content) as unknown; } catch { return null; }
+    choice.message.content.length > 12 * 1024) return { reason: "completion_invalid" };
+  try { return { value: JSON.parse(choice.message.content) as unknown }; }
+  catch { return { reason: "inspection_json_invalid" }; }
 }
 
 function isExactSizedPng(bytes: Buffer): boolean {
@@ -230,27 +251,46 @@ export function createOpenAiFirstPreviewVisualPrivacyInspector(options: Readonly
 
   // The lifecycle must durably reserve ONE call before invoking this function.
   // This adapter has no retry loop, no SDK retries and no persisted transcript.
-  return async (input, context) => {
+  const inspect = async (
+    input: Parameters<FirstPreviewVisualPrivacyInspector>[0],
+    context: Parameters<FirstPreviewVisualPrivacyInspector>[1],
+  ): Promise<InspectionOutcome> => {
     let subject: VisualPrivacySubject = {
       conceptBriefId: "", jobId: "", outputId: "", contentSha256: "",
     };
+    const outcome = (
+      reason: InspectionReason,
+      usageTrusted = false,
+      cost = FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS,
+    ): InspectionOutcome => {
+      const failureReason = normalizeVisualPrivacyFailureReason(reason);
+      return {
+        evidence: {
+          ...evidence(subject, reason === "passed" ? "passed" : "failed", usageTrusted, cost),
+          ...(reason === "passed" ? {} : { failureReason }),
+        },
+        reason: reason === "passed" ? "passed" : failureReason,
+      };
+    };
+    const failed = (reason: FirstPreviewVisualPrivacyFailureReason) => outcome(reason);
     try {
-      if (!isVisualPrivacySubject(input.subject)) return evidence(subject);
+      if (!isVisualPrivacySubject(input.subject)) return failed("invalid_subject");
       subject = {
         conceptBriefId: input.subject.conceptBriefId,
         jobId: input.subject.jobId,
         outputId: input.subject.outputId,
         contentSha256: input.subject.contentSha256,
       };
-      if (context.signal.aborted ||
-        !(input.imageBytes instanceof Uint8Array) ||
-        input.imageBytes.byteLength > FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES) return evidence(subject);
+      if (context.signal.aborted) return failed("caller_aborted");
+      if (!(input.imageBytes instanceof Uint8Array) ||
+        input.imageBytes.byteLength > FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES) return failed("invalid_image");
       const bytes = Buffer.from(input.imageBytes);
       if (!isExactSizedPng(bytes) || createHash("sha256").update(bytes).digest("hex") !== subject.contentSha256) {
-        return evidence(subject);
+        return failed("invalid_image");
       }
       const apiKey = readApiKey(environment);
-      if (!apiKey || context.signal.aborted) return evidence(subject);
+      if (!apiKey) return failed("configuration_missing");
+      if (context.signal.aborted) return failed("caller_aborted");
       const request = {
         model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
         n: 1, stream: false, store: false, service_tier: "default",
@@ -270,47 +310,77 @@ export function createOpenAiFirstPreviewVisualPrivacyInspector(options: Readonly
       // allowance for the fixed 1024x1024 PNG bounds application admission.
       const estimatedCost = Math.ceil(((textRequestBytes + 4_096) * 4 + MAX_OUTPUT_TOKENS * 16) / 10);
       if (textRequestBytes > MAX_TEXT_REQUEST_BYTES || estimatedCost > FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS) {
-        return evidence(subject);
+        return failed("request_budget_exceeded");
       }
       const image = request.messages[1].content;
-      if (!Array.isArray(image)) return evidence(subject);
+      if (!Array.isArray(image)) return failed("unexpected_error");
       image[0].image_url.url = `data:image/png;base64,${bytes.toString("base64")}`;
       const body = JSON.stringify(request);
       if (Buffer.byteLength(body, "utf8") > Math.ceil(FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES / 3) * 4 + MAX_TEXT_REQUEST_BYTES) {
-        return evidence(subject);
+        return failed("request_budget_exceeded");
       }
 
       const controller = new AbortController();
-      let settleAbort: (() => void) | undefined;
-      const abortOutcome = new Promise<FirstPreviewVisualPrivacyEvidence>((resolve) => {
-        settleAbort = () => { controller.abort(); resolve(evidence(subject)); };
+      let settleAbort: ((reason: "caller_aborted" | "deadline_exceeded") => void) | undefined;
+      const abortOutcome = new Promise<InspectionOutcome>((resolve) => {
+        settleAbort = (reason) => { resolve(failed(reason)); controller.abort(); };
       });
-      const onAbort = () => settleAbort?.();
+      const onAbort = () => settleAbort?.("caller_aborted");
       context.signal.addEventListener("abort", onAbort, { once: true });
-      const deadline = setTimeout(onAbort, MAX_INSPECTION_MS);
+      const deadline = setTimeout(() => settleAbort?.("deadline_exceeded"), MAX_INSPECTION_MS);
       try {
-        if (context.signal.aborted) { onAbort(); return evidence(subject); }
-        const inspectOnce = async (): Promise<FirstPreviewVisualPrivacyEvidence> => {
+        if (context.signal.aborted) { onAbort(); return failed("caller_aborted"); }
+        const inspectOnce = async (): Promise<InspectionOutcome> => {
           try {
             const response = await fetchImplementation(INSPECTION_URL, {
               method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
               body, signal: controller.signal,
             });
-            if (!response.ok || controller.signal.aborted) return evidence(subject);
+            if (controller.signal.aborted) return failed("caller_aborted");
+            if (!response.ok) {
+              void response.body?.cancel().catch(() => undefined);
+              return failed("http_error");
+            }
             const value = await readBoundedJson(response, controller.signal);
-            if (controller.signal.aborted) return evidence(subject);
+            if (controller.signal.aborted) return failed("caller_aborted");
+            if (value === null) return failed("response_body_invalid");
             const cost = readUsageCost(value);
-            if (cost === null) return evidence(subject);
-            return evidence(subject,
-              cost <= FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS && inspectionPassed(readInspection(value)) ? "passed" : "failed",
-              true, cost);
-          } catch { return evidence(subject); }
+            if (cost === null) return failed("usage_untrusted");
+            const inspection = readInspection(value);
+            const reason = cost > FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS
+              ? "usage_budget_exceeded"
+              : inspection.reason ?? inspectionFailure(inspection.value) ?? "passed";
+            return outcome(reason, true, cost);
+          } catch { return failed("transport_error"); }
         };
         return await Promise.race([inspectOnce(), abortOutcome]);
       } finally {
         clearTimeout(deadline);
         context.signal.removeEventListener("abort", onAbort);
       }
-    } catch { return evidence(subject); }
+    } catch { return failed("unexpected_error"); }
+  };
+
+  return async (input, context) => {
+    // Emit once for the winning outcome, including abort races. A late fetch
+    // cannot emit a second or contradictory verdict. Logging is best effort;
+    // it never authorizes readiness. Failed evidence also carries the fixed
+    // reason through the existing repository JSON evidence persistence path.
+    const outcome = await inspect(input, context);
+    const subject = outcome.evidence.subject;
+    try {
+      console.info(JSON.stringify({
+        event: "NOVORA_FIRST_PREVIEW_VISUAL_PRIVACY_DIAGNOSTIC_V1",
+        subject: isVisualPrivacySubject(subject) ? subject : null,
+        inspectorVersion: FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
+        policyVersion: FIRST_PREVIEW_VISUAL_PRIVACY_POLICY_VERSION,
+        model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL,
+        result: outcome.evidence.result,
+        reason: outcome.reason,
+        usageTrusted: outcome.evidence.usageTrusted,
+        actualCostMicros: outcome.evidence.actualCostMicros,
+      }));
+    } catch { /* Private logging must never change execution or trigger a retry. */ }
+    return outcome.evidence;
   };
 }

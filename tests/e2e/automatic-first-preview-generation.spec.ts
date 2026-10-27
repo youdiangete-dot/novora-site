@@ -93,6 +93,9 @@ const modules = loadWithServerOnlyTestShim(() => ({
   memory: testRequire(
     "../../lib/server/ai-sketch/in-memory-first-preview-repository",
   ) as typeof import("../../lib/server/ai-sketch/in-memory-first-preview-repository"),
+  trustedOutput: testRequire(
+    "../../lib/server/ai-sketch/openai-first-preview-trusted-output",
+  ) as typeof import("../../lib/server/ai-sketch/openai-first-preview-trusted-output"),
   queue: testRequire(
     "../../lib/server/ai-sketch/first-preview-queue",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-queue"),
@@ -1653,6 +1656,63 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
       status: "processing",
       actualCostMicros: 100_000,
     });
+  });
+
+  test("real evaluator diagnostic survives worker failure propagation without leaking provider text", async () => {
+    const originalInfo = console.info;
+    const originalFetch = globalThis.fetch;
+    const events: string[] = [];
+    console.info = (line: string) => { events.push(line); };
+    globalThis.fetch = (async () => { throw new Error("Offline diagnostic test prohibits external requests"); }) as typeof fetch;
+    try {
+      for (const [finishReason, expected] of [["stop", "privacy_risk_detected"], ["length", "completion_truncated"]] as const) {
+        events.length = 0;
+        const prepared = await preparedWork();
+        let calls = 0;
+        const evaluator = modules.trustedOutput.createOpenAiFirstPreviewTrustedOutputEvaluator({
+          environment: { OPENAI_API_KEY: `sk-${"a".repeat(32)}` },
+          fetchImplementation: (async (url) => {
+            calls += 1;
+            return new Response(JSON.stringify(String(url).endsWith("/moderations")
+              ? { results: [{ flagged: false }] }
+              : {
+                model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL, object: "chat.completion", service_tier: "default",
+                choices: [{ index: 0, finish_reason: finishReason, message: {
+                  role: "assistant", content: JSON.stringify({
+                    inspectionComplete: true, allVisibleTextDetected: true, allVisibleTextReadable: true, noVisibleText: false,
+                    privacyRisks: { customerContact: true, internalPrompt: false, reviewerAdminNotes: false, credentials: false, privatePaths: false },
+                    visibleText: ["private-provider-sentinel@example.invalid"],
+                  }),
+                } }],
+                usage: { prompt_tokens: 1200, completion_tokens: 100, total_tokens: 1300 },
+              }));
+          }) as typeof fetch,
+        });
+        expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work,
+          workerDependencies(prepared.repository, successfulBinding(), assetStore(), evaluator),
+        )).toEqual({ status: "failed", failureCategory: "privacy_failure" });
+        expect(calls).toBe(2); // Two injected responses; zero real network requests.
+        const reread = await prepared.repository.reconcileInterruptedInspection(JOB_1_ID, BRIEF_ID);
+        expect(reread.ok).toBe(true);
+        const output = reread.ok ? reread.value : null;
+        expect(output).toMatchObject({
+          automaticGateStatus: "failed", readinessStatus: "not_ready", isCurrentCustomerPreview: false,
+          automaticGateEvidence: { visualPrivacyEvidence: { failureReason: expected, result: "failed" } },
+        });
+        expect(await prepared.repository.findJobById(JOB_1_ID)).toMatchObject({
+          status: "failed", failureCategory: "privacy_failure", retryEligible: false,
+        });
+        expect(await prepared.repository.findCustomerReadyOutput(BRIEF_ID)).toBeNull();
+        const diagnostic = events.map((line) => JSON.parse(line)).filter((event) => event.event === "NOVORA_FIRST_PREVIEW_VISUAL_PRIVACY_DIAGNOSTIC_V1");
+        expect(diagnostic).toHaveLength(1);
+        expect(diagnostic[0]).toMatchObject({ reason: expected, result: "failed", subject: { outputId: OUTPUT_ID } });
+        for (const value of [JSON.stringify(output?.automaticGateEvidence), ...events]) {
+          expect(value).not.toContain("private-provider-sentinel");
+          expect(value).not.toContain("visibleText");
+          expect(value).not.toContain("data:image");
+        }
+      }
+    } finally { console.info = originalInfo; globalThis.fetch = originalFetch; }
   });
 
   test("durably claims dispatch before invoking the Provider adapter", async () => {
