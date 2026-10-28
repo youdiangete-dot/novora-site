@@ -1,6 +1,7 @@
 import "server-only";
 
 import { verifyVercelOidcToken } from "@vercel/oidc";
+import { resolveBetaAdmissionBinding } from "./ai-sketch/beta-admission";
 import { createSupabaseAdminClientOrNull } from "./supabase";
 
 const PROJECT = "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg";
@@ -103,7 +104,15 @@ export async function getPreviewIsolationProof(request: Request): Promise<Respon
   } catch {
     // A failed private log must not change the response or repeat any work.
   }
-  return Response.json({ isolatedBackendVerified }, {
+  const binding = isolatedBackendVerified ? resolveBetaAdmissionBinding(process.env) : null;
+  const m2Binding = binding?.runtimeBinding ? {
+    ledgerKey: binding.ledgerKey,
+    authorityId: binding.authorityId,
+    runtimeBinding: binding.runtimeBinding,
+    deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
+    sourceSha: process.env.VERCEL_GIT_COMMIT_SHA,
+  } : null;
+  return Response.json({ isolatedBackendVerified, ...(m2Binding ? { m2Binding } : {}) }, {
     status: isolatedBackendVerified ? 200 : 503, headers: NO_STORE,
   });
 }

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -127,7 +128,11 @@ function harness(options: Options = {}) {
       } });
     } },
   });
-  const helper = load("lib/server/preview-isolation-proof.ts", { "@vercel/oidc": oidc, "./supabase": supabase });
+  const cost = load("lib/server/ai-sketch/first-preview-cost-contract.ts", {});
+  const beta = load("lib/server/ai-sketch/beta-admission.ts", {
+    "node:crypto": requireTest("node:crypto"), "./first-preview-cost-contract": cost,
+  });
+  const helper = load("lib/server/preview-isolation-proof.ts", { "@vercel/oidc": oidc, "./supabase": supabase, "./ai-sketch/beta-admission": beta });
   const route = load("app/api/admin/preview-isolation-proof/route.ts", {
     "../../../../lib/server/preview-isolation-proof": helper,
   }) as { GET(request: Request): Promise<Response>; runtime: string; dynamic: string };
@@ -383,4 +388,52 @@ test("each authorized request reads its own current process flags and emits one 
   ]);
   expect(state.logs).toHaveLength(4);
   expect(state.requests).toHaveLength(2);
+});
+
+test("only an authorized isolated Preview exposes the derived opaque M2 binding", async () => {
+  const identity = "synthetic_private_invitation";
+  const credentialHash = "b".repeat(64);
+  const authority = "synthetic_private_authority";
+  const sourceSha = "a".repeat(40);
+  const deploymentId = "dpl_synthetic0123456789";
+  const env = {
+    VERCEL_GIT_COMMIT_SHA: sourceSha, VERCEL_DEPLOYMENT_ID: deploymentId,
+    NOVORA_BETA_ADMISSION_ENABLED: "true", NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
+    NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true", NOVORA_BETA_SPENDING_AUTHORITY_ID: authority,
+    NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity, credentialSha256: credentialHash }]),
+  };
+  const expected = createHash("sha256").update([
+    "novora_m2_e2e_preview_v1", PROJECT, BRANCH, sourceSha, deploymentId, authority, identity, credentialHash,
+  ].join("\n")).digest("hex");
+  const state = harness({ env });
+  const response = await state.route.GET(request(await token()));
+  expect(response.status).toBe(200);
+  const body = await response.text();
+  expect(JSON.parse(body)).toEqual({ isolatedBackendVerified: true, m2Binding: {
+    ledgerKey: `novora:beta-admission:m2-e2e:v1:${expected}`,
+    authorityId: `m2e2e_${expected.slice(0, 56)}`,
+    runtimeBinding: expected, deploymentId, sourceSha,
+  } });
+  for (const secret of [identity, credentialHash, authority, KEY, ORIGIN]) {
+    expect(body).not.toContain(secret);
+    expect(JSON.stringify(state.logs)).not.toContain(secret);
+  }
+  expect(state.requests).toHaveLength(1);
+
+  const unauthorized = harness({ env });
+  await responseContract(await unauthorized.route.GET(request()), 401);
+  noDatabase(unauthorized);
+  const production = harness({ env: { ...env, VERCEL_ENV: "production" } });
+  await responseContract(await production.route.GET(request(await token())), 404);
+  noDatabase(production);
+  for (const patch of [
+    { NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "false" },
+    { VERCEL_DEPLOYMENT_ID: "invalid" },
+    { NOVORA_BETA_INVITATIONS_JSON: "invalid" },
+  ]) {
+    const invalid = harness({ env: { ...env, ...patch } });
+    await responseContract(await invalid.route.GET(request(await token())), 200, true);
+  }
+  const failedBackend = harness({ env, status: 503 });
+  await responseContract(await failedBackend.route.GET(request(await token())), 503, false);
 });
