@@ -108,6 +108,13 @@ risk authority below, Beta paid generation must remain disabled. A boolean in a
 record is not independent proof of approval, pricing or durability; those facts
 require separate release evidence.
 
+For the Owner-approved bounded-risk M2 stage, the single-image risk mode below
+may be used with a documented conservative full-experience estimate and
+justified budget reservation rather than an unavailable guaranteed invoice
+cap. This is not verified-cost mode and must not set `costCeilingVerified=true`.
+Reconcile trusted usage before another paid call; uncertainty stops later paid
+calls. Existing aggregate budgets and all other safety gates remain in force.
+
 ## Owner-accepted one-image cost-risk authority
 
 The Owner's M2 one-image pilot decision accepts that one fixed Images API
