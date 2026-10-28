@@ -23,7 +23,7 @@ const modules = (() => {
   try {
     return {
       beta: requireTest("../../lib/server/ai-sketch/beta-admission") as typeof import("../../lib/server/ai-sketch/beta-admission"),
-      route: requireTest("../../app/api/concept-briefs/route") as typeof import("../../app/api/concept-briefs/route"),
+      route: requireTest("../../app/api/concept-briefs/handler") as typeof import("../../app/api/concept-briefs/handler"),
       queue: requireTest("../../lib/server/ai-sketch/first-preview-queue") as typeof import("../../lib/server/ai-sketch/first-preview-queue"),
       lifecycle: requireTest("../../lib/server/ai-sketch/first-preview-generation-lifecycle") as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle"),
       memory: requireTest("../../lib/server/ai-sketch/in-memory-first-preview-repository") as typeof import("../../lib/server/ai-sketch/in-memory-first-preview-repository"),

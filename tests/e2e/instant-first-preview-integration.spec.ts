@@ -107,8 +107,8 @@ const {
 const { createPersistedConceptBriefResponse } = loadWithServerOnlyTestShim(
   () =>
     testRequire(
-      "../../app/api/concept-briefs/route",
-    ) as typeof import("../../app/api/concept-briefs/route"),
+      "../../app/api/concept-briefs/handler",
+    ) as typeof import("../../app/api/concept-briefs/handler"),
 );
 
 const NOW = 1_785_283_200;

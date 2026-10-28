@@ -82,8 +82,8 @@ const modules = loadWithServerOnlyTestShim(() => ({
     "../../lib/server/ai-sketch/first-preview-generation-lifecycle",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle"),
   route: testRequire(
-    "../../app/api/concept-briefs/route",
-  ) as typeof import("../../app/api/concept-briefs/route"),
+    "../../app/api/concept-briefs/handler",
+  ) as typeof import("../../app/api/concept-briefs/handler"),
   trigger: testRequire(
     "../../lib/server/ai-sketch/first-preview-automatic-trigger",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-automatic-trigger"),

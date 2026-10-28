@@ -48,9 +48,12 @@ const testRequire = createRequire(
   ),
 );
 const modules = loadWithServerOnlyTestShim(() => ({
-  route: testRequire(
+  entry: testRequire(
     "../../app/api/concept-briefs/route",
   ) as typeof import("../../app/api/concept-briefs/route"),
+  route: testRequire(
+    "../../app/api/concept-briefs/handler",
+  ) as typeof import("../../app/api/concept-briefs/handler"),
 }));
 
 const PUBLIC_REFERENCE = "NOVORA-CB-20260803-G2R1";
@@ -150,7 +153,7 @@ test.describe("Goal 2 actual Concept Brief POST Queue correction", () => {
   });
 
   test("exports 300 seconds and requires exact independent dual gates", async () => {
-    expect(modules.route.maxDuration).toBe(300);
+    expect(modules.entry.maxDuration).toBe(300);
     for (const queueExecutionCapabilityValue of [
       undefined,
       "",

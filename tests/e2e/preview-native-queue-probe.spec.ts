@@ -50,8 +50,8 @@ const testRequire = createRequire(
 );
 const modules = loadWithServerOnlyTestShim(() => ({
   route: testRequire(
-    "../../app/api/admin/preview-native-queue-probe/route",
-  ) as typeof import("../../app/api/admin/preview-native-queue-probe/route"),
+    "../../app/api/admin/preview-native-queue-probe/handler",
+  ) as typeof import("../../app/api/admin/preview-native-queue-probe/handler"),
   queue: testRequire(
     "../../lib/server/ai-sketch/first-preview-queue",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-queue"),
@@ -65,17 +65,17 @@ const VALID_REQUEST_BODY = {
 type PublishedProbe = Readonly<{
   topic: Parameters<
     NonNullable<
-      import("../../app/api/admin/preview-native-queue-probe/route").PreviewNativeQueueProbeDependencies["publishQueueMessage"]
+      import("../../app/api/admin/preview-native-queue-probe/handler").PreviewNativeQueueProbeDependencies["publishQueueMessage"]
     >
   >[0];
   payload: Parameters<
     NonNullable<
-      import("../../app/api/admin/preview-native-queue-probe/route").PreviewNativeQueueProbeDependencies["publishQueueMessage"]
+      import("../../app/api/admin/preview-native-queue-probe/handler").PreviewNativeQueueProbeDependencies["publishQueueMessage"]
     >
   >[1];
   options: Parameters<
     NonNullable<
-      import("../../app/api/admin/preview-native-queue-probe/route").PreviewNativeQueueProbeDependencies["publishQueueMessage"]
+      import("../../app/api/admin/preview-native-queue-probe/handler").PreviewNativeQueueProbeDependencies["publishQueueMessage"]
     >
   >[2];
 }>;
@@ -292,8 +292,12 @@ test("publisher failures return only a bounded non-secret response", async () =>
 });
 
 test("route has no Provider, repository, Supabase, Storage, email, or consumer invocation surface", () => {
-  const routeSource = readFileSync(
+  const entrySource = readFileSync(
     "app/api/admin/preview-native-queue-probe/route.ts",
+    "utf8",
+  );
+  const routeSource = readFileSync(
+    "app/api/admin/preview-native-queue-probe/handler.ts",
     "utf8",
   );
 
@@ -308,6 +312,9 @@ test("route has no Provider, repository, Supabase, Storage, email, or consumer i
     "email",
     "acknowledge",
   ]) {
+    expect(entrySource.toLowerCase()).not.toContain(
+      forbiddenSurface.toLowerCase(),
+    );
     expect(routeSource.toLowerCase()).not.toContain(
       forbiddenSurface.toLowerCase(),
     );
@@ -315,4 +322,5 @@ test("route has no Provider, repository, Supabase, Storage, email, or consumer i
   expect(routeSource).toContain("ADMIN_ACCESS_COOKIE_NAME");
   expect(routeSource).toContain("isValidAdminAccessCookie");
   expect(routeSource).toContain('from "@vercel/queue"');
+  expect(entrySource).toContain("createPreviewNativeQueueProbePostHandler");
 });
