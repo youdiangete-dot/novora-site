@@ -5,7 +5,9 @@
   "git": {
     "deploymentEnabled": {
       "codex/m2-protected-runtime-proof-v1": false,
-      "codex/m2-stage-c-r3-runtime-flags": false
+      "codex/m2-stage-c-r3-runtime-flags": false,
+      "codex/m2-parallel-stage-rules-v1": false,
+      "integration/instant-first-preview-agent": false
     }
   },
   "functions": {
