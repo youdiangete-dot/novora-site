@@ -6,6 +6,32 @@ This document defines the durable operating rules for Codex work on NOVORA.
 the source of truth for project state. They override chat memory, older local
 notes, detached worktree state, and assumptions from previous conversations.
 
+## M2 Stage-Integrated Parallel Exception
+
+Owner authorization NOVORA_PARALLEL_INTEGRATED_DELIVERY_V1 applies only to M2.
+Its detailed limits are in docs/novora-one-step-scope-brake-v1.md. It becomes
+effective only after normal review, integration merge and exact merge-SHA
+verification; a local candidate is not activation authority. Until then, keep
+one engineering worker.
+
+Once effective, one Dot coordinator may automatically dispatch and retrieve
+at most two genuinely concurrent independent native workers, each with a unique
+ID, separate branch/worktree and explicit disjoint file ownership. Record real
+overlap. An expressly authorized stage may include implementation, targeted
+validation, Build, normal commit/push/PR, bounded review, protected integration
+and safe cleanup, without manual Owner relay or duplicate routine approvals.
+Keep evidence checkpoints and reuse unchanged PASS. All online writes, Git
+integration and deployment remain serialized under one authority; stop parallel
+source writes before integrated conflict resolution and acceptance.
+
+This exception overrides the default single-gate, WIP=1, manual-start and
+stop-after-each-gate workflow only inside the authorized M2 stage. It does not
+reset correction budgets, consumed attempts/costs/windows or deployment limits,
+authorize new high-risk activity, or alter M1-M6/A01-A18, privacy, payment, Beta
+or commercial completion. Respect platform approvals and actual denials; no
+ACL/security/ownership changes, administrative elevation, destructive recovery
+or unbounded retries. Outside M2, the existing atomic defaults below apply.
+
 ## When To Start A New Codex Task
 
 Start a new Codex task or thread when the work needs:
@@ -57,9 +83,10 @@ report that includes:
 
 - App/server/test edits and normal local Git/PR operations require exact,
   bounded current-task authorization.
-- Manually starting the newest exact Codex-ready task authorizes the expressly
-  named low-risk, reversible operations; Work must not request the same
-  authorization again.
+- Outside the effective M2 exception, manually starting the newest exact task
+  authorizes its named low-risk operations. Within it, the coordinator may
+  dispatch the expressly authorized stage steps automatically. Work must not
+  request the same bounded authorization again.
 - Normal path-specific staging, commit, push, PR creation, Draft/Ready
   transition, review-response work, and integration merge may occur only when
   expressly named in the current task.
@@ -82,8 +109,8 @@ Separate plain-language Owner approval remains mandatory before:
 ## Staging, Commit, Push, And PR Rules
 
 - Do not stage, commit, push, create a PR, change Draft/Ready state, perform
-  review-response work, merge, or deploy unless the exact current task names
-  that action.
+  review-response work, merge, or deploy unless the exact current task or
+  effective M2 stage expressly names that action.
 - Do not run `git add .` without explicit approval for that exact command.
 - Prefer path-specific staging after reviewing `git status --short` and
   `git diff`.

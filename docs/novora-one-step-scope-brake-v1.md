@@ -8,9 +8,57 @@
 The One-Step Scope Brake keeps NOVORA MVP closeout work bounded, reviewable,
 safe, and efficient. It applies to the NOVORA web Chat coordination center and
 every Work/Codex task. The Owner supplies product and business intent; Chat owns
-technical coordination; Work executes one exact gate.
+technical coordination; Work executes one exact gate by default. The effective
+M2 exception below governs only its expressly authorized stage and workers.
+
+## M2 Stage-Integrated Parallel Exception
+
+Owner authorization NOVORA_PARALLEL_INTEGRATED_DELIVERY_V1 permits this bounded
+M2-only pilot. It activates only after normal review and merge of the rule
+alignment into integration/instant-first-preview-agent and verification of its
+exact merge SHA. A local candidate, commit or open PR is not effective policy.
+Until activation, only one engineering worker may run.
+
+Within the effective exception:
+
+1. One Dot coordinator owns decisions, acceptance, native dispatch, result
+   retrieval and continuation. At most two independent native engineering
+   workers may overlap. Give each a unique ID, separate branch/worktree and
+   explicit disjoint file ownership. Record their real overlapping activity;
+   two sequential tasks are not parallel execution.
+2. One bounded, expressly authorized M2 stage may include implementation,
+   targeted validation, Build, normal local commits, push, PR, bounded review,
+   protected integration and safe cleanup. Keep identity, file scope, evidence
+   and risk checkpoints. The coordinator may advance authorized internal steps
+   automatically without manual Owner relay; a routine completed checkpoint
+   does not by itself end the approved stage.
+3. All online writes are single-writer and serialized, including push/PR,
+   integration, release, Provider, Queue, Redis, database, Storage and Vercel
+   deployment. Stop parallel source writes before one integration owner
+   resolves actual conflicts and performs required integrated validation and
+   bounded review. Follow branch protections and platform-enforced approvals.
+4. Preserve accepted PASS within its valid scope and existing correction and
+   recovery budgets. No stage bundling, new worker, rename or restart resets
+   prior gate counts, costs, attempts, windows, observation or deployment caps.
+   Mechanical recovery remains bounded and within existing permission; an
+   actual denial requires a supported scoped approval or a precise blocker,
+   never ACL/AV/ownership changes, administrative elevation or a bypass.
+5. Missing authority, identity or integrity drift, unsafe scope expansion,
+   exhausted limits and new material security/cost/Production boundaries stop
+   the affected path. Return a precise result to the coordinator; preserve
+   independent safe work. No uncontrolled retries or hidden recovery chain.
+6. This exception overrides the default WIP=1, one-gate-then-stop,
+   manual-next-task and no-automatic-continuation provisions only for this
+   authorized M2 stage. It does not authorize new high-risk operations or
+   weaken existing approvals. M1-M6, A01-A18, privacy, payment, Beta, automatic
+   First Preview gates and the commercial completion contract are unchanged.
+   Outside this exception, the atomic rules below remain the default.
 
 ## Core One-Question / One-Gate Rules
+
+These are the defaults outside the effective M2 exception above. Its bounded
+stage continuation and two-worker allowance expressly replace items 2-7 where
+applicable, while checkpoints and unchanged safety/scope limits remain.
 
 1. Every Work task answers exactly one acceptance question.
 2. Every Work task crosses exactly one execution gate.
@@ -211,8 +259,10 @@ Behavior:
    technically determined, within the already stated goal, and supported by
    sufficient evidence, Chat may select and provide the next single bounded
    Work instruction without asking the Owner to make a technical choice.
-4. The Owner manually starting that next Work task constitutes its bounded
-   authorization.
+4. Outside the effective M2 exception, the Owner manually starting that next
+   Work task constitutes its bounded authorization. Within it, the coordinator
+   dispatches already authorized internal steps and retrieves results without
+   requiring the Owner to relay or restart routine work.
 5. Chat still stops before a high-risk approval boundary.
 6. Chat does not continue merely because another technical action is possible.
 7. Completion is evaluated against the Owner's stated goal, not against the
@@ -236,13 +286,14 @@ Behavior:
 
 Before issuing a task, confirm that it:
 
-- states one acceptance question and one execution gate;
+- states one acceptance question and one execution gate, or the exact bounded
+  M2 stage outcome and its checkpoints under the effective exception;
 - names exact identity, scope, evidence, budgets, material blockers, and
   excluded later gates;
 - carries all low-risk authorization required for its named operations;
 - identifies any separate high-risk approval boundary in plain language;
-- contains no conditional continuation, uncontrolled retry, or hidden recovery
-  chain;
+- outside the effective M2 exception, contains no conditional continuation;
+  in every case, contains no uncontrolled retry or hidden recovery chain;
 - states what accepted evidence may be reused;
 - returns control to Chat after classification.
 
@@ -274,6 +325,10 @@ implementation, validation, commit, push, PR, or merge task silently authorizes
 Production.
 
 ### Invalid Compound Work
+
+The examples below apply outside the effective M2 exception. A specifically
+authorized M2 stage may combine these operations with its required checkpoints
+and serialized online writes; it may not infer additional authority.
 
 - Investigate a defect and implement the fix when the cause is found.
 - Implement a change, run Build, commit it, and push the branch.
