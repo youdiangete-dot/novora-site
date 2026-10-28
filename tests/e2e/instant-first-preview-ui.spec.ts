@@ -15,7 +15,7 @@ import { NextRequest } from "next/server";
 
 import {
   resolveCustomerPreview,
-} from "../../app/design/preview/[public_reference]/page";
+} from "../../app/design/preview/[public_reference]/resolve-customer-preview";
 import { proxy } from "../../proxy";
 
 const PUBLIC_REFERENCE = "NOVORA-CB-20260731-AB12";

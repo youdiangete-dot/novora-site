@@ -82,8 +82,8 @@ const modules = loadWithServerOnlyTestShim(() => ({
     "../../lib/server/ai-sketch/first-preview-generation-lifecycle",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle"),
   route: testRequire(
-    "../../app/api/concept-briefs/route",
-  ) as typeof import("../../app/api/concept-briefs/route"),
+    "../../app/api/concept-briefs/handler",
+  ) as typeof import("../../app/api/concept-briefs/handler"),
   trigger: testRequire(
     "../../lib/server/ai-sketch/first-preview-automatic-trigger",
   ) as typeof import("../../lib/server/ai-sketch/first-preview-automatic-trigger"),
@@ -946,6 +946,8 @@ test.describe("Goal 2 structured input and native Provider client", () => {
       environment: { OPENAI_API_KEY: `sk-${"a".repeat(32)}` },
       fetchImplementation: async (_url, init) => {
         calls += 1;
+        expect(String(_url)).toBe("https://api.openai.com/v1/images/generations");
+        expect(init?.redirect).toBe("error");
         capturedBody = JSON.parse(String(init?.body));
         capturedAuthorization = new Headers(init?.headers).get("authorization");
         return new Response(

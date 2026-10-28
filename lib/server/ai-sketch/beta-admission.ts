@@ -11,6 +11,8 @@ export const BETA_ADMISSION_ENABLED_ENV = "NOVORA_BETA_ADMISSION_ENABLED";
 export const BETA_INVITATIONS_ENV = "NOVORA_BETA_INVITATIONS_JSON";
 export const BETA_SPENDING_AUTHORITY_ENV = "NOVORA_BETA_SPENDING_AUTHORITY_ID";
 export const BETA_LEDGER_KEY = "novora:beta-admission:v1";
+export const M2_PREVIEW_LEDGER_PREFIX = "novora:beta-admission:m2-e2e:v1:";
+export const M2_PREVIEW_TOTAL_LIMIT_MICROS = 1_000_000;
 export const BETA_DAILY_LIMIT = 5;
 export const BETA_IDENTITY_LIMIT = 10;
 
@@ -235,17 +237,81 @@ redis.call('SET', KEYS[1], cjson.encode(ledger))
 return 'reserved'
 `;
 
+export type BetaAdmissionBinding = Readonly<{
+  ledgerKey: string;
+  authorityId: string;
+  runtimeBinding: string | null;
+}>;
+
+// Server metadata selects a deployment-specific namespace. This never creates
+// authority, verifies a billing ceiling, or enables any runtime feature flag.
+export function resolveBetaAdmissionBinding(environment: Environment): BetaAdmissionBinding | null {
+  const authorityId = environment[BETA_SPENDING_AUTHORITY_ENV];
+  if (!authorityId || !IDENTITY.test(authorityId)) return null;
+  const target = environment.VERCEL_TARGET_ENV;
+  const hosted = environment.VERCEL !== undefined || environment.VERCEL_ENV !== undefined || target !== undefined;
+  if ((!hosted && environment.NODE_ENV !== "production") ||
+    (environment.VERCEL_ENV === "production" && (!target || target === "production"))) {
+    return { ledgerKey: BETA_LEDGER_KEY, authorityId, runtimeBinding: null };
+  }
+  const roster = invitations(environment);
+  if (environment.VERCEL !== "1" || environment.VERCEL_ENV !== "preview" ||
+    (target !== undefined && target !== "preview") || environment.NODE_ENV !== "production" ||
+    environment.NEXT_RUNTIME !== "nodejs" || environment.NEXT_PHASE === "phase-production-build" ||
+    environment.VERCEL_PROJECT_ID !== "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg" ||
+    environment.VERCEL_GIT_COMMIT_REF !== "integration/instant-first-preview-agent" ||
+    !/^[a-f0-9]{40}$/.test(environment.VERCEL_GIT_COMMIT_SHA ?? "") ||
+    !/^dpl_[A-Za-z0-9]{16,80}$/.test(environment.VERCEL_DEPLOYMENT_ID ?? "") ||
+    environment.NOVORA_BETA_ADMISSION_ENABLED !== "true" ||
+    environment.NOVORA_INSTANT_PREVIEW_AGENT_ENABLED !== "true" ||
+    environment.NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED !== "true" ||
+    !roster || roster.length !== 1) return null;
+  const runtimeBinding = createHash("sha256").update([
+    "novora_m2_e2e_preview_v1", environment.VERCEL_PROJECT_ID,
+    environment.VERCEL_GIT_COMMIT_REF, environment.VERCEL_GIT_COMMIT_SHA,
+    environment.VERCEL_DEPLOYMENT_ID, authorityId, roster[0].identity, roster[0].credentialSha256,
+  ].join("\n")).digest("hex");
+  return {
+    ledgerKey: M2_PREVIEW_LEDGER_PREFIX + runtimeBinding,
+    authorityId: "m2e2e_" + runtimeBinding.slice(0, 56),
+    runtimeBinding,
+  };
+}
+
+// These extra checks execute INSIDE the same atomic EVAL, before the unchanged
+// reservation/dispatch script. No GET-then-SET race or risk-mode fallback.
+// A complete USD 1 experience remains consumed after failure or uncertainty.
+export const M2_PREVIEW_ADMISSION_SCRIPT = `
+if type(ARGV[10]) ~= 'string' or string.len(ARGV[10]) ~= 64 or
+   not string.match(ARGV[10], '^[a-f0-9]+$') or
+   KEYS[1] ~= 'novora:beta-admission:m2-e2e:v1:' .. ARGV[10] then return 'denied' end
+local scopedRaw = redis.call('GET', KEYS[1])
+if not scopedRaw or string.len(scopedRaw) > 4000000 then return 'denied' end
+local scopedOk, scoped = pcall(cjson.decode, scopedRaw)
+if not scopedOk or type(scoped) ~= 'table' or type(scoped.authority) ~= 'table' then return 'denied' end
+local scopedAuthority = scoped.authority
+local allowed = {id=true, ownerApproved=true, durabilityVerified=true, currency=true,
+  pricingVersion=true, limitMicros=true, expiresAt=true, costCeilingVerified=true,
+  experienceCeilingMicros=true, runtimeBinding=true}
+for field, _ in pairs(scopedAuthority) do if not allowed[field] then return 'denied' end end
+if scopedAuthority.runtimeBinding ~= ARGV[10] or
+   scopedAuthority.costCeilingVerified ~= true or
+   scopedAuthority.limitMicros ~= 1000000 or scopedAuthority.experienceCeilingMicros ~= 1000000 or
+   type(scopedAuthority.expiresAt) ~= 'number' or
+   scopedAuthority.expiresAt > tonumber(redis.call('TIME')[1]) + 3600 then return 'denied' end
+` + BETA_ADMISSION_SCRIPT;
+
 export function createRedisBetaAdmissionLedger(
   environment: Environment = process.env,
   fetchImplementation: typeof fetch = fetch,
 ): BetaAdmissionLedger | null {
-  const authorityId = environment[BETA_SPENDING_AUTHORITY_ENV];
+  const binding = resolveBetaAdmissionBinding(environment);
   const roster = invitations(environment);
   const url = environment.UPSTASH_REDIS_REST_URL ?? environment.KV_REST_API_URL;
   const credential = environment.UPSTASH_REDIS_REST_URL
     ? environment.UPSTASH_REDIS_REST_TOKEN
     : environment.KV_REST_API_TOKEN;
-  if (!roster || !authorityId || !IDENTITY.test(authorityId) || !url || !credential) return null;
+  if (!roster || !binding || !url || !credential) return null;
   try {
     const endpoint = new URL(url);
     if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
@@ -257,11 +323,12 @@ export function createRedisBetaAdmissionLedger(
       method: "POST",
       headers: { Authorization: `Bearer ${credential}`, "Content-Type": "application/json" },
       body: JSON.stringify([
-        "EVAL", BETA_ADMISSION_SCRIPT, "1", BETA_LEDGER_KEY,
-        operation, authorityId, FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
+        "EVAL", binding.runtimeBinding ? M2_PREVIEW_ADMISSION_SCRIPT : BETA_ADMISSION_SCRIPT, "1", binding.ledgerKey,
+        operation, binding.authorityId, FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
         String(FIRST_PREVIEW_COST_CONTRACT.lifetimeBudgetPerConceptBriefMicros),
         input.identity ?? "", input.requestKey ?? "", input.briefId, input.fingerprint,
         `|${roster!.map(value => value.identity).join("|")}|`,
+        ...(binding.runtimeBinding ? [binding.runtimeBinding] : []),
       ]),
       signal: AbortSignal.timeout(5000),
       redirect: "error",

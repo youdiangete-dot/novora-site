@@ -23,7 +23,7 @@ const modules = (() => {
   try {
     return {
       beta: requireTest("../../lib/server/ai-sketch/beta-admission") as typeof import("../../lib/server/ai-sketch/beta-admission"),
-      route: requireTest("../../app/api/concept-briefs/route") as typeof import("../../app/api/concept-briefs/route"),
+      route: requireTest("../../app/api/concept-briefs/handler") as typeof import("../../app/api/concept-briefs/handler"),
       queue: requireTest("../../lib/server/ai-sketch/first-preview-queue") as typeof import("../../lib/server/ai-sketch/first-preview-queue"),
       lifecycle: requireTest("../../lib/server/ai-sketch/first-preview-generation-lifecycle") as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle"),
       memory: requireTest("../../lib/server/ai-sketch/in-memory-first-preview-repository") as typeof import("../../lib/server/ai-sketch/in-memory-first-preview-repository"),
@@ -387,5 +387,87 @@ test("Redis adapter sends one atomic script, never initializes authority, never 
   let calls = 0;
   const uncertain = modules.beta.createRedisBetaAdmissionLedger(configured, async () => { calls++; throw new Error("uncertain"); })!;
   expect(await reserve(uncertain, "synthetic-uncertain-key")).toBe("denied");
+  expect(calls).toBe(1);
+});
+
+
+function isolatedPreviewEnvironment(): Record<string, string> {
+  return {
+    ...environment(1), VERCEL: "1", VERCEL_ENV: "preview", NODE_ENV: "production",
+    NEXT_RUNTIME: "nodejs", VERCEL_PROJECT_ID: "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg",
+    VERCEL_GIT_COMMIT_REF: "integration/instant-first-preview-agent",
+    VERCEL_GIT_COMMIT_SHA: "a".repeat(40), VERCEL_DEPLOYMENT_ID: "dpl_synthetic0123456789",
+    NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true", NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true",
+    UPSTASH_REDIS_REST_URL: "https://synthetic.invalid", UPSTASH_REDIS_REST_TOKEN: "synthetic-test-only",
+  };
+}
+
+test("isolated Preview binds one namespace to exact deployment, source, project and invitation without changing the old key", () => {
+  const env = isolatedPreviewEnvironment();
+  const bound = modules.beta.resolveBetaAdmissionBinding(env)!;
+  expect(bound).not.toBeNull();
+  expect(bound.ledgerKey).toMatch(/^novora:beta-admission:m2-e2e:v1:[a-f0-9]{64}$/);
+  expect(bound.authorityId).toMatch(/^m2e2e_[a-f0-9]{56}$/);
+  expect(bound.ledgerKey).not.toBe(modules.beta.BETA_LEDGER_KEY);
+  expect(modules.beta.resolveBetaAdmissionBinding({ ...env })).toEqual(bound);
+  for (const patch of [
+    { VERCEL_DEPLOYMENT_ID: "dpl_another01234567890" }, { VERCEL_GIT_COMMIT_SHA: "b".repeat(40) },
+    { NOVORA_BETA_SPENDING_AUTHORITY_ID: "another-authority" },
+    { NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity: "other", credentialSha256: digest(credential(1)) }]) },
+  ]) {
+    const other = modules.beta.resolveBetaAdmissionBinding({ ...env, ...patch })!;
+    expect(other).not.toBeNull();
+    expect(other.ledgerKey).not.toBe(bound.ledgerKey);
+    expect(other.authorityId).not.toBe(bound.authorityId);
+  }
+  expect(modules.beta.resolveBetaAdmissionBinding(environment())).toEqual({
+    ledgerKey: modules.beta.BETA_LEDGER_KEY, authorityId: "synthetic-authority", runtimeBinding: null,
+  });
+  expect(modules.beta.resolveBetaAdmissionBinding({ ...environment(), VERCEL: "1", VERCEL_ENV: "production" }))
+    .toEqual({ ledgerKey: modules.beta.BETA_LEDGER_KEY, authorityId: "synthetic-authority", runtimeBinding: null });
+});
+
+test("missing, contradictory or untrusted Preview binding cannot fall back to the historical ledger", () => {
+  const env = isolatedPreviewEnvironment();
+  const bad: Array<Record<string, string | undefined>> = [
+    { VERCEL: undefined }, { VERCEL: undefined, VERCEL_ENV: undefined, VERCEL_TARGET_ENV: undefined },
+    { VERCEL_ENV: "production", VERCEL_TARGET_ENV: "preview" }, { VERCEL_ENV: "PREVIEW" }, { VERCEL_TARGET_ENV: "production" },
+    { NODE_ENV: "development" }, { NEXT_RUNTIME: "edge" }, { NEXT_PHASE: "phase-production-build" },
+    { VERCEL_PROJECT_ID: "wrong-project" }, { VERCEL_GIT_COMMIT_REF: "codex/unapproved" },
+    { VERCEL_GIT_COMMIT_SHA: "" }, { VERCEL_GIT_COMMIT_SHA: "A".repeat(40) },
+    { VERCEL_DEPLOYMENT_ID: "" }, { VERCEL_DEPLOYMENT_ID: "dpl_short" },
+    { NOVORA_BETA_ADMISSION_ENABLED: "false" }, { NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "false" },
+    { NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "false" },
+    { NOVORA_BETA_SPENDING_AUTHORITY_ID: "" }, { NOVORA_BETA_INVITATIONS_JSON: environment(2).NOVORA_BETA_INVITATIONS_JSON },
+  ];
+  for (const patch of bad) {
+    expect(modules.beta.resolveBetaAdmissionBinding({ ...env, ...patch }), JSON.stringify(patch)).toBeNull();
+    expect(modules.beta.createRedisBetaAdmissionLedger({ ...env, ...patch }), JSON.stringify(patch)).toBeNull();
+  }
+});
+
+test("Preview adapter atomically uses only the bound key and authority; uncertainty is denied without retry", async () => {
+  const env = isolatedPreviewEnvironment();
+  const binding = modules.beta.resolveBetaAdmissionBinding(env)!;
+  const commands: unknown[][] = [];
+  const ledger = modules.beta.createRedisBetaAdmissionLedger(env, async (_url, init) => {
+    expect(init?.redirect).toBe("error");
+    commands.push(JSON.parse(String(init?.body)));
+    return new Response('{"result":"denied"}');
+  })!;
+  expect(await ledger.reserve({ identity: "tester_0", requestKey: digest("one"), briefId: BRIEF, fingerprint })).toBe("denied");
+  expect(await ledger.claimDispatch({ briefId: BRIEF, fingerprint })).toBe(false);
+  expect(commands).toHaveLength(2);
+  for (const command of commands) {
+    expect(command.slice(0, 4)).toEqual(["EVAL", modules.beta.M2_PREVIEW_ADMISSION_SCRIPT, "1", binding.ledgerKey]);
+    expect(command[5]).toBe(binding.authorityId);
+    expect(command[13]).toBe(binding.runtimeBinding);
+    expect(command[3]).not.toBe(modules.beta.BETA_LEDGER_KEY);
+  }
+  // Preserve the previously accepted atomic consume/dispatch implementation.
+  expect(modules.beta.M2_PREVIEW_ADMISSION_SCRIPT.endsWith(modules.beta.BETA_ADMISSION_SCRIPT)).toBe(true);
+  let calls = 0;
+  const uncertain = modules.beta.createRedisBetaAdmissionLedger(env, async () => { calls++; throw Error("synthetic uncertain send"); })!;
+  expect(await modules.beta.reserveBetaAdmission({ request: request(), briefId: BRIEF, fingerprint }, { environment: env, ledger: uncertain })).toBe("denied");
   expect(calls).toBe(1);
 });

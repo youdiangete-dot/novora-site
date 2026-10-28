@@ -346,7 +346,7 @@
   margin: 0.25rem 0;
 }
 
-:global(.commercialPaymentCard) {
+.previewShell :global(.commercialPaymentCard) {
   background: #fffdf9;
   border: 1px solid rgba(183, 161, 126, 0.5);
   border-radius: 18px;
@@ -354,17 +354,17 @@
   padding: 1.35rem;
 }
 
-:global(.commercialPaymentCard h2) {
+.previewShell :global(.commercialPaymentCard h2) {
   color: var(--text);
   margin: 0.4rem 0 0.65rem;
 }
 
-:global(.commercialPaymentCard > p) {
+.previewShell :global(.commercialPaymentCard > p) {
   color: #504a40;
   line-height: 1.65;
 }
 
-:global(.commercialPaymentEyebrow) {
+.previewShell :global(.commercialPaymentEyebrow) {
   color: #405a45 !important;
   font-size: 0.76rem;
   font-weight: 750;
@@ -373,7 +373,7 @@
   text-transform: uppercase;
 }
 
-:global(.commercialPaymentCard button) {
+.previewShell :global(.commercialPaymentCard button) {
   background: #405a45;
   border: 0;
   border-radius: 999px;
@@ -385,28 +385,28 @@
   padding: 0.7rem 1rem;
 }
 
-:global(.commercialPaymentCard button:disabled) {
+.previewShell :global(.commercialPaymentCard button:disabled) {
   cursor: wait;
   opacity: 0.65;
 }
 
-:global(.commercialPaymentSuccess) {
+.previewShell :global(.commercialPaymentSuccess) {
   color: #2f6a3e !important;
   font-weight: 750;
 }
 
-:global(.commercialPaymentError) {
+.previewShell :global(.commercialPaymentError) {
   color: #8b2f2f !important;
 }
 
-:global(.commercialPaymentBoundary) {
+.previewShell :global(.commercialPaymentBoundary) {
   border-left: 3px solid #405a45;
   color: #504a40;
   margin-top: 1rem;
   padding-left: 0.85rem;
 }
 
-:global(.commercialPaymentBoundary p) {
+.previewShell :global(.commercialPaymentBoundary p) {
   line-height: 1.6;
   margin: 0.25rem 0;
 }
@@ -625,7 +625,7 @@
   .confirmationCard,
   .specificationCard,
   .quotationCard,
-  :global(.commercialPaymentCard),
+  .previewShell :global(.commercialPaymentCard),
   .feedbackCard,
   .boundaryCard {
     border-radius: 14px;

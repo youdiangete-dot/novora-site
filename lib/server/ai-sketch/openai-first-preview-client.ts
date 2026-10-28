@@ -140,7 +140,7 @@ export function createOpenAiFirstPreviewProviderBinding(options: {
         requestOptions?: { signal?: AbortSignal },
       ): Promise<unknown> {
         const response = await fetchImplementation(OPENAI_IMAGE_GENERATION_URL, {
-          method: "POST",
+          method: "POST", redirect: "error",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",

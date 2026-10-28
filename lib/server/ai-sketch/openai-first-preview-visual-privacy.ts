@@ -333,7 +333,7 @@ export function createOpenAiFirstPreviewVisualPrivacyInspector(options: Readonly
         const inspectOnce = async (): Promise<InspectionOutcome> => {
           try {
             const response = await fetchImplementation(INSPECTION_URL, {
-              method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              method: "POST", redirect: "error", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
               body, signal: controller.signal,
             });
             if (controller.signal.aborted) return failed("caller_aborted");

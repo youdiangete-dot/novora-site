@@ -24,7 +24,9 @@ const handler = createFirstPreviewCurrentAssetRouteHandler({
   createService: createFirstPreviewGeneratedAssetDeliveryService,
 });
 
-export const GET = handler.get;
+export function GET(request: Request, context: { params: Promise<{ publicReference: string }> }) {
+  return handler.get(request, context);
+}
 export const HEAD = handler.unsupported;
 export const POST = handler.unsupported;
 export const PUT = handler.unsupported;
