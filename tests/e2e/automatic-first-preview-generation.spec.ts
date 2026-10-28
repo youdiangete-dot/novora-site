@@ -946,6 +946,8 @@ test.describe("Goal 2 structured input and native Provider client", () => {
       environment: { OPENAI_API_KEY: `sk-${"a".repeat(32)}` },
       fetchImplementation: async (_url, init) => {
         calls += 1;
+        expect(String(_url)).toBe("https://api.openai.com/v1/images/generations");
+        expect(init?.redirect).toBe("error");
         capturedBody = JSON.parse(String(init?.body));
         capturedAuthorization = new Headers(init?.headers).get("authorization");
         return new Response(

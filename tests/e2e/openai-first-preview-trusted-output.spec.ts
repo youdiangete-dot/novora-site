@@ -222,6 +222,7 @@ test.describe("OpenAI First Preview trusted-output evaluator", () => {
 
     expect(reservations).toBe(1);
     expect(requests).toHaveLength(2);
+    expect(requests.every(request => request.init?.redirect === "error")).toBe(true);
     expect(requests[0].url).toBe("https://api.openai.com/v1/moderations");
     expect(requests[0].init?.method).toBe("POST");
     const body = JSON.parse(String(requests[0].init?.body));

@@ -191,6 +191,7 @@ test.describe("output-bound First Preview visual privacy inspector", () => {
     expect(validateFirstPreviewVisualPrivacyEvidence(result, input.subject)).toBe(true);
     expect(requests).toHaveLength(1);
     expect(requests[0].url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(requests[0].init?.redirect).toBe("error");
     const body = JSON.parse(String(requests[0].init?.body));
     expect(body).toMatchObject({
       model: FIRST_PREVIEW_VISUAL_PRIVACY_MODEL, n: 1, stream: false, store: false,

@@ -276,7 +276,7 @@ export function createOpenAiFirstPreviewTrustedOutputEvaluator(
     } as const;
 
     const response = await fetchImplementation(OPENAI_MODERATION_URL, {
-      method: "POST",
+      method: "POST", redirect: "error",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
