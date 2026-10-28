@@ -1,6 +1,6 @@
 import "server-only";
 
-import { claimBetaDispatch, type BetaAdmissionDependencies } from "./beta-admission";
+import { claimBetaDispatch, resolveBetaAdmissionBinding, type BetaAdmissionDependencies } from "./beta-admission";
 
 import { createHash, randomUUID } from "node:crypto";
 
@@ -672,6 +672,11 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     );
   }
 
+  // Capture the verified deployment binding before the dispatch claim. Later
+  // flag changes must not turn an M2 attempt into a legacy cost path.
+  const admissionBinding = work.betaAdmission === true
+    ? resolveBetaAdmissionBinding(dependencies.betaAdmissionDependencies?.environment ?? process.env)
+    : null;
   const betaAllowed = await claimBetaDispatch({
     briefId: work.conceptBriefId,
     fingerprint: `${work.structured.designSpecSha256}:${work.structured.handSketchInstructionSha256}`,
@@ -736,7 +741,8 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
         dispatched: true,
         usage,
       });
-      if (firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
+      const m2Preview = Boolean(admissionBinding?.runtimeBinding);
+      if ((m2Preview && !imageCost.usageTrusted) || firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
         trustedEvidenceFailureCategory = "budget_blocked";
         return { outcome: "invalid_output" };
       }

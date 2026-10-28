@@ -453,6 +453,41 @@ test.describe("M2 trusted usage evidence", () => {
     expect(events()[0]).not.toHaveProperty("imageOutputTokens");
   });
 
+  test("isolated M2 Preview stops before paid inspection when image usage is unknown", async () => {
+    const prepared = await preparedWork();
+    const stores = { value: 0 };
+    let inspections = 0;
+    const env = {
+      VERCEL: "1", VERCEL_ENV: "preview", NODE_ENV: "production", NEXT_RUNTIME: "nodejs",
+      VERCEL_PROJECT_ID: "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg",
+      VERCEL_GIT_COMMIT_REF: "integration/instant-first-preview-agent",
+      VERCEL_GIT_COMMIT_SHA: "a".repeat(40), VERCEL_DEPLOYMENT_ID: "dpl_synthetic0123456789",
+      NOVORA_BETA_ADMISSION_ENABLED: "true", NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
+      NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true",
+      NOVORA_BETA_SPENDING_AUTHORITY_ID: "synthetic_authority",
+      NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity: "synthetic", credentialSha256: "a".repeat(64) }]),
+    };
+    const originalBinding = successfulBinding({ usage: null });
+    const deps = workerDependencies(prepared.repository, {
+      ...originalBinding,
+      readValidatedUsage: () => {
+        env.NOVORA_INSTANT_PREVIEW_AGENT_ENABLED = "false";
+        env.NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED = "false";
+        return null;
+      },
+    }, assetStore(stores), async () => {
+      inspections++;
+      throw new Error("inspection must not run");
+    });
+    const result = await modules.lifecycle.runAutomaticFirstPreviewWorker(
+      { ...prepared.work, betaAdmission: true },
+      { ...deps, betaAdmissionDependencies: { environment: env, ledger: { reserve: async () => "reserved", claimDispatch: async () => true } } },
+    );
+    expect(result).toEqual({ status: "failed", failureCategory: "budget_blocked" });
+    expect(inspections).toBe(0);
+    expect(stores.value).toBe(0);
+  });
+
   for (const [name, value] of [
     ["negative", -1], ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
   ] as const) {
