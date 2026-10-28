@@ -166,6 +166,7 @@ if pilot then
     ownerCostRiskAccepted=true, costCeilingVerified=true, maximumExperiences=true,
     maximumImages=true, maximumPaidAttempts=true, automaticPaidRetries=true,
     attemptReservationMicros=true, expectedCostMicros=true, invitedIdentity=true}
+  if ARGV[10] then fields.runtimeBinding = true end
   for field, _ in pairs(a) do if not fields[field] then return 'denied' end end
   if a.ownerCostRiskAccepted ~= true or a.costCeilingVerified ~= false or
      a.maximumExperiences ~= 1 or a.maximumImages ~= 1 or a.maximumPaidAttempts ~= 1 or
@@ -292,11 +293,15 @@ if not scopedOk or type(scoped) ~= 'table' or type(scoped.authority) ~= 'table' 
 local scopedAuthority = scoped.authority
 local allowed = {id=true, ownerApproved=true, durabilityVerified=true, currency=true,
   pricingVersion=true, limitMicros=true, expiresAt=true, costCeilingVerified=true,
-  experienceCeilingMicros=true, runtimeBinding=true}
+  experienceCeilingMicros=true, runtimeBinding=true, costAuthorityMode=true,
+  ownerCostRiskAccepted=true, maximumExperiences=true, maximumImages=true,
+  maximumPaidAttempts=true, automaticPaidRetries=true, attemptReservationMicros=true,
+  expectedCostMicros=true, invitedIdentity=true}
 for field, _ in pairs(scopedAuthority) do if not allowed[field] then return 'denied' end end
-if scopedAuthority.runtimeBinding ~= ARGV[10] or
-   scopedAuthority.costCeilingVerified ~= true or
-   scopedAuthority.limitMicros ~= 1000000 or scopedAuthority.experienceCeilingMicros ~= 1000000 or
+local scopedPilot = scopedAuthority.costAuthorityMode == 'owner_expected_cost_single_attempt_v1'
+if scopedAuthority.runtimeBinding ~= ARGV[10] or scopedAuthority.limitMicros ~= 1000000 or
+   (scopedPilot and (scopedAuthority.costCeilingVerified ~= false or scopedAuthority.attemptReservationMicros ~= 1000000)) or
+   (not scopedPilot and (scopedAuthority.costCeilingVerified ~= true or scopedAuthority.experienceCeilingMicros ~= 1000000)) or
    type(scopedAuthority.expiresAt) ~= 'number' or
    scopedAuthority.expiresAt > tonumber(redis.call('TIME')[1]) + 3600 then return 'denied' end
 ` + BETA_ADMISSION_SCRIPT;

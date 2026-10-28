@@ -83,6 +83,37 @@ function run(f: Fixture, ...args: Parameters<typeof command> extends [Fixture, .
   return redis(...command(f, ...args));
 }
 
+test("real local Lua: isolated Preview accepts only the bound one-image risk authority", () => {
+  const configured = process.env.NOVORA_BETA_LOCAL_REDIS_TEST_PORT;
+  if (!configured || !/^\d{1,5}$/.test(configured) || Number(configured) < 1 || Number(configured) > 65535) {
+    throw new Error("BLOCKED: an existing disposable local Redis fixture runtime is required");
+  }
+  port = configured;
+  expect(redis("PING")).toBe("PONG");
+  const binding = digest(randomUUID());
+  const key = `novora:beta-admission:m2-e2e:v1:${binding}`;
+  const authorityId = `m2e2e_${binding.slice(0, 56)}`;
+  const expiresAt = Number(redis("TIME").split(/\r?\n/)[0]) + 1800;
+  const value = { version: 1, authority: { ...pilot(expiresAt, authorityId), runtimeBinding: binding }, reservations: {} };
+  expect(redis("SET", key, JSON.stringify(value), "NX")).toBe("OK");
+  const evalScript = (operation: string, brief: string, suppliedBinding = binding) => redis(
+    "EVAL", modules.beta.M2_PREVIEW_ADMISSION_SCRIPT, "1", key, operation, authorityId,
+    modules.cost.FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
+    String(modules.cost.FIRST_PREVIEW_COST_CONTRACT.lifetimeBudgetPerConceptBriefMicros),
+    IDENTITY, digest("request"), brief, fingerprint, `|${IDENTITY}|`, suppliedBinding,
+  );
+  expect(evalScript("reserve", "brief-a", digest("wrong"))).toBe("denied");
+  expect(evalScript("reserve", "brief-a")).toBe("reserved");
+  expect(evalScript("reserve", "brief-a")).toBe("denied");
+  expect(evalScript("dispatch", "brief-a")).toBe("reserved");
+  expect(evalScript("dispatch", "brief-a")).toBe("denied");
+  const result = JSON.parse(redis("GET", key)) as Ledger;
+  expect(result.authority.costCeilingVerified).toBe(false);
+  expect(Object.values(result.reservations)).toHaveLength(1);
+  expect(Object.values(result.reservations)[0]).toMatchObject({ reservedMicros: 1_000_000, dispatched: true });
+  expect(redis("PTTL", key)).toBe("-1");
+});
+
 test("real local Lua: explicit single-image risk authority", async () => {
   await test.step("require an existing disposable local runtime; never install or start one", () => {
     const configured = process.env.NOVORA_BETA_LOCAL_REDIS_TEST_PORT;
