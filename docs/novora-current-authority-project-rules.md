@@ -177,7 +177,7 @@ AI asset storage must not be made public merely to simplify delivery.
 
 ## 10. One-Step Scope Brake v1.2
 
-The active Scope Brake requires:
+Outside the effective M2 exception below, the active Scope Brake requires:
 
 - exactly one acceptance question per Work task;
 - exactly one execution gate;
@@ -190,7 +190,21 @@ The active Scope Brake requires:
 
 Build, focused validation, TypeScript, staging, commit, push, PR creation, PR
 review, Ready transition, merge, deployment, runtime probe, rollback, and
-cleanup remain separate gates.
+cleanup remain separate gates by default.
+
+Owner authorization NOVORA_PARALLEL_INTEGRATED_DELIVERY_V1 permits an M2-only
+exception, detailed in docs/novora-one-step-scope-brake-v1.md. Only after normal
+review, integration merge and verification of the exact merge SHA may one Dot
+coordinator automatically dispatch/retrieve at most two genuinely concurrent
+native workers with unique IDs, separate branches/worktrees and disjoint file
+ownership. The expressly approved stage may combine local work, validation,
+Build and normal Git/PR/review/integration/cleanup checkpoints without Owner
+relay or stopping after each routine gate. All online writes, Git integration
+and deployment remain serialized under one authority. Outside M2, WIP=1 and
+the atomic defaults remain. Safety, correction limits, prior budgets/windows,
+M1-M6/A01-A18 and all high-risk approval boundaries remain unchanged; a local
+policy candidate does not activate a second worker. Conflicting atomic defaults in
+older operating skills follow this scoped exception only within authorized M2.
 
 ## 11. No-Infinite-Expansion Rule
 
@@ -218,8 +232,9 @@ gets one narrow correction.
 - `out/codex-worktrees/**` is operational worktree storage, not canonical root
   application source.
 - Use path-specific staging; do not use `git add .` by default.
-- Stage, commit, push, PR creation, review, merge, deploy, and cleanup remain
-  distinct execution gates.
+- Stage, commit, push, PR creation, review, merge, deploy and cleanup remain
+  distinct gates outside the effective M2 exception in section 10. Within it,
+  retain explicit checkpoints; online writes and Git integration are serialized.
 - Do not force-push without an explicitly authorized recovery case.
 
 ## 13. Validation And Evidence Reuse

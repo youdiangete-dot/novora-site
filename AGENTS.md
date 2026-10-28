@@ -300,6 +300,11 @@ Do not create copied final-completion contracts in other repository files.
 
 ### One-Step Scope Brake v1.2
 
+The single-gate, WIP=1, manual-start and stop-after-each-gate provisions below
+are defaults outside the effective M2 exception defined in this section and
+docs/novora-one-step-scope-brake-v1.md. The exception changes only authorized
+M2 execution scheduling; all other scope, safety and approval limits remain.
+
 - NOVORA One-Step Scope Brake v1.2 is active and mandatory. Follow
   `docs/novora-one-step-scope-brake-v1.md`.
 - Each Work task must answer exactly one acceptance question, cross exactly one
@@ -373,6 +378,35 @@ Do not create copied final-completion contracts in other repository files.
 - Do not run `git add .` unless the user explicitly approves that exact action.
   Prefer path-specific staging when staging is requested.
 
+### M2 Stage-Integrated Parallel Exception
+
+- Owner authorization: NOVORA_PARALLEL_INTEGRATED_DELIVERY_V1. This M2-only
+  exception becomes effective only after normal review and merge of these rule
+  changes into integration/instant-first-preview-agent, with the exact merge
+  SHA verified. A local candidate or open PR does not activate it; retain one
+  engineering worker until then.
+- Once effective, one Dot coordinator may automatically dispatch and retrieve
+  work from at most two genuinely concurrent native engineering workers. The
+  coordinator is not an engineering worker. Each worker has a unique ID,
+  separate branch/worktree and explicit disjoint file ownership; record actual
+  overlapping activity, never sequential work as parallel.
+- An exactly authorized M2 stage may include local implementation, targeted
+  validation, Build, normal commit/push/PR, bounded review, protected integration
+  and safe cleanup. Preserve evidence checkpoints and accepted PASS reuse;
+  ordinary internal continuation needs no Owner relay or duplicate approval.
+- All online writes, including push/PR, Git integration, Provider, Queue, Redis,
+  database, Storage and deployment operations, remain serialized under one
+  authority. Stop parallel source writes before integrated conflict resolution,
+  required validation, review and delivery; never bypass branch protection.
+- Existing scope/correction/recovery limits and all consumed budgets, windows,
+  attempts and costs carry forward. A real permission denial stops that path;
+  use supported scoped platform approval only, never ACL/security changes,
+  administrative elevation, destructive recovery or unlimited retries.
+- Outside this M2 exception, WIP=1 and the atomic gate defaults remain. M1-M6,
+  A01-A18, privacy, payment, Beta, commercial completion and every separately
+  required high-risk approval are unchanged. Detailed execution conditions are
+  in docs/novora-one-step-scope-brake-v1.md.
+
 ### First Preview Automation Closeout Lock — 85/100 Optional Quality Stop
 
 - Owner-approved on 2026-10-16. Applies to the existing First Preview automation closeout within M2 / A04-A08, without adding milestones or changing the complete commercial M1-M6 contract.
@@ -380,8 +414,8 @@ Do not create copied final-completion contracts in other repository files.
 - The 85/100 threshold applies ONLY to non-blocking quality, optional polish, minor UI details and nonessential implementation improvements. At 85/100 or above, stop optional optimization. Do not invent an unmeasured score or use scoring to override objective evidence.
 - The First Preview automation completion scope is frozen to six required outcomes: truthful atomic customer intake; real automatic image generation; trustworthy spending and failure controls; required automatic safety/privacy/output gates; secure customer access to the correct private preview; and controlled Production acceptance with applicable Owner authority.
 - The closeout execution budget is capped at 30 additional gates counted from the original Owner closeout approval on 2026-10-16, not restarted by this document change or task renaming. Target completion as early as practical, preferably within 2-4 weeks; the eight-week control limit ends on 2026-12-11. Neither limit grants permission to waive mandatory acceptance.
-- Admit only demonstrated P0/P1 blockers against existing acceptance items. Defer P2 improvements, extra agents, new frameworks, speculative refactoring, optional governance work, and unnecessary test or Build repetition. Reuse accepted PASS evidence within its original valid scope.
-- WIP=1. Each task answers one acceptance question and crosses one execution gate. Preserve separate Build, Git, SQL, deployment, Provider and Production authorization boundaries.
+- Admit only demonstrated P0/P1 blockers against existing acceptance items. Defer P2 improvements, agents beyond the effective M2 limit, new frameworks, speculative refactoring, optional governance work, and unnecessary test or Build repetition. Reuse accepted PASS evidence within its original valid scope.
+- Outside the effective M2 exception above, WIP=1 and one question/one gate remain. Within that exception, authorized stage checkpoints and at most two independent workers are permitted; all online writes and Git integration remain serialized. Separate high-risk authorization boundaries still apply.
 - Stop on COMPLETE, NO-GO or OWNER_HOLD. COMPLETE requires all applicable mandatory outcomes and Owner approval. An unresolved mandatory blocker is NO-GO; exhausted budget, missing authority or unresolved scope is OWNER_HOLD. Reaching 85/100, 30 gates or the time limit does not itself establish COMPLETE.
 - This rule supplements but never overrides AGENTS.md S1-S2, One-Step Scope Brake v1.2, Delivery Lock v1, or existing security and commercial requirements.
 - This rule is frozen. Do not create further scoring systems, governance documents, scope extensions, or revised quality thresholds without explicit Owner change authorization.
@@ -475,7 +509,9 @@ approved; prefer path-specific staging.
 - Changes to server validation or persistence require appropriate focused
   validation and a separate Build gate before delivery. A bounded
   implementation-and-validation task may run only the focused checks expressly
-  named in that task; it must not absorb the separate Build gate.
+  named in that task; outside the effective M2 exception it must not absorb
+  the separate Build gate. An authorized M2 stage may include its named Build
+  checkpoint before delivery without repeating unchanged validation.
 - After visual changes, run or request browser verification for the affected
   route when feasible.
 
