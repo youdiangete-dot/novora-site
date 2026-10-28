@@ -239,6 +239,24 @@ gets one narrow correction.
 
 ## 13. Validation And Evidence Reuse
 
+For the Owner-approved M2 stage, inherit valid PASS unless relevant code,
+configuration or binding changed, or an acceptance has not run. Keep a usable
+isolated Preview through acceptance; READY alone does not justify cleanup.
+Clean up at acceptance, a genuine safety stop, or the authorized window expiry.
+
+The Owner accepts bounded estimated-cost risk for this M2 stage: use fixed
+requests, a documented conservative estimate and justified budget reservation,
+bounded call counts, no automatic paid retry or fallback, and trusted usage
+reconciliation before another paid call. An estimate is not a guaranteed or
+Provider-enforced cost cap. Unknown results or cost stop later paid calls.
+Expected total plus reserve must fit the remaining approved M2 and MVP budgets;
+do not actively exceed them, add subscriptions, or change account settings.
+This supersedes an absolute pre-call invoice-cap proof for this approved M2
+stage only; it does not waive other milestones' controls, privacy, customer
+authorization, deduplication, repository protection, secrets, Production or
+mandatory platform approvals. Apply the Owner's five necessity questions
+internally without creating a new task or governance layer.
+
 Use the narrowest validation that proves the current acceptance question. Do
 not repeatedly rerun accepted validation when the relevant source hashes, diff,
 and environment identity are unchanged. Rerun only when material evidence has

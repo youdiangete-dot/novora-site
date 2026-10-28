@@ -409,6 +409,18 @@ M2 execution scheduling; all other scope, safety and approval limits remain.
 
 ### First Preview Automation Closeout Lock — 85/100 Optional Quality Stop
 
+- Owner-approved M2 bounded-cost execution: inherit valid PASS unless relevant
+  code, configuration or binding changed, or an acceptance was never run. Keep
+  an isolated Preview available through the real acceptance; READY alone is not
+  a cleanup trigger. Clean up after acceptance, a genuine safety stop, or the
+  authorized window expiry.
+- For the approved M2 stage, a fixed request, documented conservative estimate,
+  justified reservation and bounded calls may replace an unattainable guaranteed
+  Provider invoice cap. The estimate is not a Provider-enforced limit. Reconcile
+  trusted usage before another paid call; uncertain result or cost stops further
+  paid calls. Respect the approved aggregate budgets, no automatic paid retry
+  or fallback, and all privacy, identity, duplicate, Production and platform
+  approval requirements. Apply the Owner's five necessity questions internally.
 - Owner-approved on 2026-10-16. Applies to the existing First Preview automation closeout within M2 / A04-A08, without adding milestones or changing the complete commercial M1-M6 contract.
 - All applicable mandatory P0/P1 requirements for security, privacy, identity, access authorization, spending limits, idempotency, durable execution, customer-visible correctness, and real end-to-end operation must pass. An optional quality score cannot waive any mandatory requirement.
 - The 85/100 threshold applies ONLY to non-blocking quality, optional polish, minor UI details and nonessential implementation improvements. At 85/100 or above, stop optional optimization. Do not invent an unmeasured score or use scoring to override objective evidence.
