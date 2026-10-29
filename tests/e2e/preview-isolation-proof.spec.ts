@@ -240,7 +240,7 @@ test("unverifiable JWKS fails closed without a Supabase client", async () => {
 
 for (const [name, env] of [
   ["Production", { VERCEL_ENV: "production" }], ["missing env", { VERCEL_ENV: undefined }],
-  ["custom target", { VERCEL_TARGET_ENV: "production" }], ["wrong branch", { VERCEL_GIT_COMMIT_REF: "main" }],
+  ["custom target", { VERCEL_TARGET_ENV: "production" }], ["empty target", { VERCEL_TARGET_ENV: "" }], ["wrong branch", { VERCEL_GIT_COMMIT_REF: "main" }],
   ["missing branch", { VERCEL_GIT_COMMIT_REF: undefined }], ["wrong project", { VERCEL_PROJECT_ID: "prj_other" }],
   ["missing project", { VERCEL_PROJECT_ID: undefined }], ["Edge", { NEXT_RUNTIME: "edge" }],
   ["Build", { NEXT_PHASE: "phase-production-build" }], ["local", { VERCEL: undefined }],
@@ -350,7 +350,15 @@ for (const value of ["true", "false", undefined, "TRUE", " true ", PRIVATE]) {
       NOVORA_BETA_INVITATIONS_JSON: PRIVATE,
     } });
     const credential = await token();
-    await responseContract(await state.route.GET(request(credential, { cookie: PRIVATE })), 200, true);
+    const response = await state.route.GET(request(credential, { cookie: PRIVATE }));
+    if (value === "true") {
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ isolatedBackendVerified: true, m2BindingDiagnostics: {
+        deploymentIdValid: false, sourceShaValid: false, authorityValid: false, invitationValid: false, targetValid: true,
+      } });
+    } else {
+      await responseContract(response, 200, true);
+    }
     expect(state.logs).toEqual([
       JSON.stringify({ event: EVENT, isolatedBackendVerified: true }),
       JSON.stringify({ event: FLAGS_EVENT, betaAdmissionEnabled: value === "true",
@@ -426,14 +434,42 @@ test("only an authorized isolated Preview exposes the derived opaque M2 binding"
   const production = harness({ env: { ...env, VERCEL_ENV: "production" } });
   await responseContract(await production.route.GET(request(await token())), 404);
   noDatabase(production);
-  for (const patch of [
-    { NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "false" },
-    { VERCEL_DEPLOYMENT_ID: "invalid" },
-    { NOVORA_BETA_INVITATIONS_JSON: "invalid" },
-  ]) {
+  for (const patch of [{ NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "false" }]) {
     const invalid = harness({ env: { ...env, ...patch } });
     await responseContract(await invalid.route.GET(request(await token())), 200, true);
   }
   const failedBackend = harness({ env, status: 503 });
   await responseContract(await failedBackend.route.GET(request(await token())), 503, false);
+});
+
+test("authorized isolated proof reports only fixed binding prerequisite booleans", async () => {
+  const env = {
+    VERCEL_GIT_COMMIT_SHA: "a".repeat(40), VERCEL_DEPLOYMENT_ID: "dpl_synthetic0123456789",
+    NOVORA_BETA_ADMISSION_ENABLED: "true", NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
+    NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true", NOVORA_BETA_SPENDING_AUTHORITY_ID: "synthetic_private_authority",
+    NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity: "synthetic_private_invitation", credentialSha256: "b".repeat(64) }]),
+  };
+  const checks = [
+    ["deploymentIdValid", { VERCEL_DEPLOYMENT_ID: "invalid" }],
+    ["sourceShaValid", { VERCEL_GIT_COMMIT_SHA: "invalid" }],
+    ["authorityValid", { NOVORA_BETA_SPENDING_AUTHORITY_ID: "" }],
+    ["invitationValid", { NOVORA_BETA_INVITATIONS_JSON: "invalid" }],
+  ] as const;
+  for (const [failed, patch] of checks) {
+    const state = harness({ env: { ...env, ...patch } });
+    const response = await state.route.GET(request(await token()));
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    const expected = { deploymentIdValid: true, sourceShaValid: true, authorityValid: true, invitationValid: true, targetValid: true, [failed]: false };
+    expect(JSON.parse(body)).toEqual({ isolatedBackendVerified: true, m2BindingDiagnostics: expected });
+    for (const value of [env.NOVORA_BETA_SPENDING_AUTHORITY_ID, env.NOVORA_BETA_INVITATIONS_JSON, "synthetic_private_invitation", "b".repeat(64), KEY, ORIGIN]) {
+      expect(body).not.toContain(value);
+    }
+  }
+  const unauthorized = harness({ env: { ...env, VERCEL_DEPLOYMENT_ID: "invalid" } });
+  await responseContract(await unauthorized.route.GET(request()), 401);
+  noDatabase(unauthorized);
+  const nonPreview = harness({ env: { ...env, VERCEL_TARGET_ENV: "" } });
+  await responseContract(await nonPreview.route.GET(request(await token())), 404);
+  noDatabase(nonPreview);
 });

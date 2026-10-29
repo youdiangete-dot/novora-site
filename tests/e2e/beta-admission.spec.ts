@@ -431,7 +431,7 @@ test("missing, contradictory or untrusted Preview binding cannot fall back to th
   const env = isolatedPreviewEnvironment();
   const bad: Array<Record<string, string | undefined>> = [
     { VERCEL: undefined }, { VERCEL: undefined, VERCEL_ENV: undefined, VERCEL_TARGET_ENV: undefined },
-    { VERCEL_ENV: "production", VERCEL_TARGET_ENV: "preview" }, { VERCEL_ENV: "PREVIEW" }, { VERCEL_TARGET_ENV: "production" },
+    { VERCEL_ENV: "production", VERCEL_TARGET_ENV: "preview" }, { VERCEL_ENV: "PREVIEW" }, { VERCEL_TARGET_ENV: "production" }, { VERCEL_TARGET_ENV: "" },
     { NODE_ENV: "development" }, { NEXT_RUNTIME: "edge" }, { NEXT_PHASE: "phase-production-build" },
     { VERCEL_PROJECT_ID: "wrong-project" }, { VERCEL_GIT_COMMIT_REF: "codex/unapproved" },
     { VERCEL_GIT_COMMIT_SHA: "" }, { VERCEL_GIT_COMMIT_SHA: "A".repeat(40) },
@@ -444,6 +444,7 @@ test("missing, contradictory or untrusted Preview binding cannot fall back to th
     expect(modules.beta.resolveBetaAdmissionBinding({ ...env, ...patch }), JSON.stringify(patch)).toBeNull();
     expect(modules.beta.createRedisBetaAdmissionLedger({ ...env, ...patch }), JSON.stringify(patch)).toBeNull();
   }
+  expect(modules.beta.inspectBetaAdmissionBinding({ ...env, VERCEL_TARGET_ENV: "" }).diagnostics.targetValid).toBe(false);
 });
 
 test("Preview adapter atomically uses only the bound key and authority; uncertainty is denied without retry", async () => {
