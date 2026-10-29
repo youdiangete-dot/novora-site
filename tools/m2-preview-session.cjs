@@ -74,6 +74,8 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     if (!active() || prepared || now() >= lastNewAttempt) return { status: 'DENIED' };
     prepared = true; // one creation attempt, including an uncertain provider result
     try {
+      if (adapters.preflight) await adapters.preflight({ sourceSha: expectedSourceSha, isActive: () => active() && now() < lastNewAttempt });
+      if (!active() || now() >= lastNewAttempt) return { status: 'PREPARATION_FAILED' };
       const v = await adapters.prepare();
       if (!active()) return { status: 'PREPARATION_FAILED' };
       if (!v || typeof v.oidc !== 'string' || !v.oidc) return { status: 'PREPARATION_FAILED' };
@@ -125,7 +127,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       const targetOrigin = origin(d?.url);
       if (!d || d.id !== deploymentId || d.projectId !== PROJECT || d.teamId !== TEAM ||
         d.branch !== BRANCH || (d.sourceSha != null && d.sourceSha !== expectedSourceSha) ||
-        d.target !== 'preview' || d.readyState !== 'READY' || !targetOrigin ||
+        d.target !== 'preview' || d.readyState !== 'READY' || !targetOrigin || d.manifestVerified !== true ||
         (proposed && targetOrigin !== proposed.origin)) return { status: 'READBACK_REJECTED' };
       attached = { id: deploymentId, origin: targetOrigin };
       return { status: d.sourceVerified === true && d.sourceSha === expectedSourceSha ? 'ATTACHED' : 'READONLY_RUNTIME_PROOF_PENDING', deploymentId };
