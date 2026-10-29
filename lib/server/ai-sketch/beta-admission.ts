@@ -265,6 +265,12 @@ export function inspectBetaAdmissionBinding(environment: Environment): Readonly<
   const authorityId = environment[BETA_SPENDING_AUTHORITY_ENV];
   const target = environment.VERCEL_TARGET_ENV;
   const roster = invitations(environment);
+  // Next replaces direct NEXT_RUNTIME reads at compile time. It does not
+  // populate the dynamic process.env object with that value. Use the compiled
+  // runtime only for the actual process environment; injected environments
+  // must continue to provide their own explicit runtime.
+  const runtime = environment === process.env ? process.env.NEXT_RUNTIME : environment.NEXT_RUNTIME;
+  const runtimeConsistent = environment !== process.env || environment.NEXT_RUNTIME === undefined || environment.NEXT_RUNTIME === runtime;
   const diagnostics: BetaBindingDiagnostics = {
     deploymentIdValid: /^dpl_[A-Za-z0-9]{16,80}$/.test(environment.VERCEL_DEPLOYMENT_ID ?? ""),
     sourceShaValid: /^[a-f0-9]{40}$/.test(environment.VERCEL_GIT_COMMIT_SHA ?? ""),
@@ -280,7 +286,7 @@ export function inspectBetaAdmissionBinding(environment: Environment): Readonly<
   }
   if (environment.VERCEL !== "1" || environment.VERCEL_ENV !== "preview" ||
     !diagnostics.targetValid || environment.NODE_ENV !== "production" ||
-    environment.NEXT_RUNTIME !== "nodejs" || environment.NEXT_PHASE === "phase-production-build" ||
+    runtime !== "nodejs" || !runtimeConsistent || environment.NEXT_PHASE === "phase-production-build" ||
     environment.VERCEL_PROJECT_ID !== "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg" ||
     environment.VERCEL_GIT_COMMIT_REF !== "integration/instant-first-preview-agent" ||
     !diagnostics.sourceShaValid || !diagnostics.deploymentIdValid ||
