@@ -89,7 +89,7 @@ test('git source sender uses stdin, requires runtime proof, and never resends an
       if (args.includes('/v13/deployments/' + id + '?withGitRepoInfo=true')) return { status: 0, stdout: JSON.stringify({ ...gitReadback, gitSource: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', ref: 'integration/instant-first-preview-agent', sha } }) };
       if (args.includes('/v9/projects/' + claims.project_id)) return { status: 0, stdout: JSON.stringify(gitProject) };
       throw new Error('UNEXPECTED_PROCESS');
-    }, fetch: async () => ({ ok: true, json: async () => ({ isolatedBackendVerified: true }) }) };
+    }, fetch: async () => ({ status: 200, ok: true, json: async () => ({ isolatedBackendVerified: true }) }) };
   const config = { cwd: 'fixture', cli: 'fixture-cli', sourceMode: 'git_source', invitedIdentity: 'm2_synthetic_fixture', expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters: { revoke: async () => false, cleanup: async () => false } };
   const s = createSender(config, io);
   assert.equal((await s('prepare')).status, 'PREPARED');
@@ -501,7 +501,7 @@ test('stop between source checks prevents the actual deploy call', async () => {
   let deployCalls = 0, branchChecks = 0;
   const sourceBytes = Buffer.from('fixture');
   const blob = require('node:crypto').createHash('sha1').update(`blob ${sourceBytes.length}\0`).update(sourceBytes).digest('hex');
-  const io = { node: 'fixture', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: () => sourceBytes,
+  const io = { node: 'fixture', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: () => sourceBytes, select: async () => [require('node:path').join('fixture', 'fixture.txt')],
     run: (_cmd, args) => {
       if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
       if (args.includes('branch')) { branchChecks++; if (branchChecks === 1) return { status: 0, stdout: 'integration/instant-first-preview-agent' }; started.resolve(); return wait.promise; }
@@ -513,7 +513,7 @@ test('stop between source checks prevents the actual deploy call', async () => {
       throw new Error('UNEXPECTED_FIXTURE_PROCESS');
     }, fetch: () => { throw new Error('UNEXPECTED_FIXTURE_NETWORK'); } };
   const sender = createSender({ cwd: 'fixture', cli: 'fixture', invitedIdentity: 'm2_synthetic_fixture', expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters: { revoke: async () => true, cleanup: async () => true } }, io);
-  await sender('prepare');
+  assert.equal((await sender('prepare')).status, 'PREPARED');
   const deploy = sender('deploy');
   await started.promise;
   assert.equal((await sender('destroy')).status, 'HALTED');
@@ -725,4 +725,95 @@ test('OIDC refresh preparation does not create a fixture after final-hour cutoff
   wait.resolve({ ...claims, iat, nbf: iat, exp: iat + 600 });
   assert.equal((await pending).status, 'PREPARATION_FAILED');
   assert.equal(generated, 0);
+});
+
+test('actual sender proof preserves only fixed failure context and never retries', async () => {
+  const binding = { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` };
+  const good = { isolatedBackendVerified: true, m2Binding: binding };
+  const diagnostics = { deploymentIdValid: true, sourceShaValid: false, authorityValid: true, invitationValid: false, targetValid: true, unknown: fakeBearer, extra: { oidc: fakeOidc } };
+  const cases = [
+    ['TRANSPORT_FAILURE', null, null, true], ['AUTHORIZATION_DENIED', 401], ['AUTHORIZATION_DENIED', 403],
+    ['RATE_LIMITED', 429], ['SERVER_ERROR', 503], ['SERVER_ERROR', 503, { isolatedBackendVerified: false, secret: fakeBearer }], ['HTTP_ERROR', 404], ['HTTP_SCHEMA_FAILURE', undefined],
+    ['JSON_FAILURE', 200, 'bad-json'], ['SCHEMA_FAILURE', 200, []], ['SCHEMA_FAILURE', 200, { ...good, authorized: false }],
+    ['ISOLATION_DENIED', 200, { isolatedBackendVerified: false }],
+    ['MISSING_BINDING', 200, { isolatedBackendVerified: true, m2BindingDiagnostics: diagnostics }],
+    ['DEPLOYMENT_ID_MISMATCH', 200, { ...good, m2Binding: { ...binding, deploymentId: 'wrong' } }],
+    ['SOURCE_SHA_MISMATCH', 200, { ...good, m2Binding: { ...binding, sourceSha: '0'.repeat(40) } }],
+    ['RUNTIME_BINDING_INVALID', 200, { ...good, m2Binding: { ...binding, runtimeBinding: 'bad' } }],
+    ['LEDGER_KEY_MISMATCH', 200, { ...good, m2Binding: { ...binding, ledgerKey: 'wrong' } }],
+    ['AUTHORITY_MISMATCH', 200, { ...good, m2Binding: { ...binding, authorityId: 'wrong' } }],
+    ['HANDOFF_FAILED', 200, good, false, true], [null, 200, good],
+  ];
+  for (const [reason, status, body, transport, handoffError] of cases) {
+    let calls = 0, reads = 0, handed = null;
+    const io = { node: 'fixture', environment: {}, canonical: () => true, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims,
+      run: async (_cmd, args) => {
+        if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
+        if (args.includes('rev-parse')) return { status: 0, stdout: sha };
+        if (args.includes('status')) return { status: 0, stdout: '' };
+        if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
+        if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
+        if (args.includes('/v13/deployments')) return { status: 0, stdout: JSON.stringify(deployment) };
+        if (args.includes('/v13/deployments/' + id + '?withGitRepoInfo=true')) return { status: 0, stdout: JSON.stringify(gitReadback) };
+        if (args.includes('/v9/projects/' + claims.project_id)) return { status: 0, stdout: JSON.stringify(gitProject) };
+        throw new Error('UNEXPECTED_FIXTURE_PROCESS');
+      },
+      fetch: async () => { calls++; if (transport) throw new Error(fakeBearer); return { status, ok: status === 200, json: async () => { reads++; if (body === 'bad-json') throw new Error(fakeOidc); return body ?? { secret: fakeBearer }; } }; },
+    };
+    const sender = createSender({ cwd: 'fixture', cli: 'fixture', sourceMode: 'git_source', invitedIdentity: 'm2_synthetic_fixture', expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters: { revoke: async () => true, cleanup: async () => true, handoffBinding: async (value) => { handed = value; if (handoffError) throw new Error(fakeBearer); } } }, io);
+    const preparation = await sender('prepare');
+    assert.equal(preparation.status, 'PREPARED');
+    assert.equal(Object.hasOwn(preparation, 'credentialSha256'), false);
+    assert.equal((await sender('deploy')).status, 'READBACK_REQUIRED');
+    assert.equal((await sender('attach', id)).status, 'READONLY_RUNTIME_PROOF_PENDING');
+    const input = new PassThrough(), output = new PassThrough();
+    const lines = attachPrivateProtocol(sender, input, output);
+    const received = new Promise((resolve) => output.once('data', (chunk) => resolve(chunk.toString())));
+    input.write('{"op":"proof"}\n');
+    const protocolOutput = await received;
+    const result = JSON.parse(protocolOutput);
+    lines.close(); input.destroy(); output.destroy();
+    assert.equal(result.reason ?? null, reason);
+    assert.equal(result.stage, 'RUNTIME_PROOF');
+    if (Number.isInteger(status)) assert.equal(result.httpStatus, status);
+    if (reason === 'MISSING_BINDING') assert.deepEqual(result.m2BindingDiagnostics, { deploymentIdValid: true, sourceShaValid: false, authorityValid: true, invitationValid: false, targetValid: true });
+    if (status !== 200) assert.equal(reads, status === 503 ? 1 : 0);
+    if (status === 503 && body?.isolatedBackendVerified === false) assert.equal(result.isolationReport, 'REPORTED_FALSE');
+    assert.equal(JSON.stringify(result).includes(fakeBearer), false);
+    assert.equal(JSON.stringify(result).includes(fakeOidc), false);
+    assert.equal(JSON.stringify(result).includes(runtime), false);
+    assert.equal(protocolOutput.includes(binding.ledgerKey), false);
+    assert.equal(protocolOutput.includes(binding.authorityId), false);
+    assert.equal((await sender('proof')).status, 'DENIED');
+    if (reason !== null) {
+      assert.equal((await sender('arm')).status, 'DENIED');
+      assert.equal((await sender('submit', {})).status, 'DENIED');
+      if (!handoffError) assert.equal(handed, null);
+    } else {
+      assert.deepEqual(handed, { ledgerKey: binding.ledgerKey, authorityId: binding.authorityId, runtimeBinding: binding.runtimeBinding, identity: 'm2_synthetic_fixture' });
+      assert.equal(Object.isFrozen(handed), true);
+      const observation = { ...fixtureObservation('m2_synthetic_fixture'), ...handed };
+      assert.equal((await sender('observe_authority', observation)).status, 'OPERATOR_OBSERVATION_RECORDED');
+      assert.equal((await sender('arm')).status, 'ARMED_FROM_OPERATOR_OBSERVATION');
+    }
+    assert.equal(calls, 1);
+    await sender('close');
+  }
+});
+
+test('a pending trusted binding handoff cannot reactivate a stopped or expired session', async () => {
+  for (const ending of ['destroy', 'expiry']) {
+    const started = deferred(), wait = deferred();
+    const h = harness({ handoffBinding: async () => { started.resolve(); await wait.promise; } });
+    await attached(h.s);
+    const proof = h.s.verifyBinding();
+    await started.promise;
+    if (ending === 'destroy') h.s.destroy(); else h.setTime(1060001);
+    wait.resolve();
+    assert.equal((await proof).status, 'DENIED');
+    assert.equal((await h.s.arm()).status, 'DENIED');
+    assert.equal((await h.s.submit({})).status, 'DENIED');
+    assert.equal(h.calls.submit, 0);
+    await h.s.close();
+  }
 });
