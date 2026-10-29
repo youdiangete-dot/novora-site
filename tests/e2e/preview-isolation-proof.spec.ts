@@ -42,6 +42,7 @@ async function token(changes: Record<string, unknown> = {}, wrongKey = false) {
 
 type Options = {
   env?: Record<string, string | undefined>;
+  compiledRuntime?: "nodejs" | "edge";
   status?: number;
   transport?: "throw" | "timeout";
   proof?: unknown;
@@ -89,7 +90,10 @@ function harness(options: Options = {}) {
     const { outputText } = ts.transpileModule(readFileSync(filename, "utf8"), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }, fileName: filename,
     });
-    return evaluate(outputText, filename, dependencies);
+    // Model Next's production DefinePlugin replacement for direct reads only;
+    // it does not add NEXT_RUNTIME to the dynamic process.env object.
+    const compiled = options.compiledRuntime ? outputText.replace(/process\.env\.NEXT_RUNTIME/g, JSON.stringify(options.compiledRuntime)) : outputText;
+    return evaluate(compiled, filename, dependencies);
   }
   // Execute the installed official verifier unchanged. Only its remote key
   // resolver is replaced by controlled local public keys: real jwtVerify,
@@ -440,6 +444,35 @@ test("only an authorized isolated Preview exposes the derived opaque M2 binding"
   }
   const failedBackend = harness({ env, status: 503 });
   await responseContract(await failedBackend.route.GET(request(await token())), 503, false);
+});
+
+test("compiled Node runtime and runtime environment produce a bound proof", async () => {
+  const env = {
+    NEXT_RUNTIME: undefined,
+    VERCEL_GIT_COMMIT_SHA: "a".repeat(40), VERCEL_DEPLOYMENT_ID: "dpl_synthetic0123456789",
+    NOVORA_BETA_ADMISSION_ENABLED: "true", NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
+    NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true", NOVORA_BETA_SPENDING_AUTHORITY_ID: "synthetic_private_authority",
+    NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity: "synthetic_private_invitation", credentialSha256: "b".repeat(64) }]),
+  };
+  const state = harness({ env, compiledRuntime: "nodejs" });
+  const response = await state.route.GET(request(await token()));
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.isolatedBackendVerified).toBe(true);
+  expect(body.m2Binding?.deploymentId).toBe(env.VERCEL_DEPLOYMENT_ID);
+  expect(body.m2Binding?.sourceSha).toBe(env.VERCEL_GIT_COMMIT_SHA);
+  const expected = createHash("sha256").update([
+    "novora_m2_e2e_preview_v1", PROJECT, BRANCH, env.VERCEL_GIT_COMMIT_SHA, env.VERCEL_DEPLOYMENT_ID,
+    env.NOVORA_BETA_SPENDING_AUTHORITY_ID, "synthetic_private_invitation", "b".repeat(64),
+  ].join("\n")).digest("hex");
+  expect(body.m2Binding).toEqual({ deploymentId: env.VERCEL_DEPLOYMENT_ID, sourceSha: env.VERCEL_GIT_COMMIT_SHA,
+    runtimeBinding: expected, ledgerKey: `novora:beta-admission:m2-e2e:v1:${expected}`, authorityId: `m2e2e_${expected.slice(0,56)}` });
+  const contradictory = harness({ env: { ...env, NEXT_RUNTIME: "edge" }, compiledRuntime: "nodejs" });
+  const rejected = await (await contradictory.route.GET(request(await token()))).json();
+  expect(rejected.m2Binding).toBeUndefined();
+  expect(rejected.m2BindingDiagnostics).toEqual({deploymentIdValid:true, sourceShaValid:true, authorityValid:true, invitationValid:true, targetValid:true});
+  const edge = harness({ env, compiledRuntime: "edge" });
+  await responseContract(await edge.route.GET(request(await token())), 404);
 });
 
 test("authorized isolated proof reports only fixed binding prerequisite booleans", async () => {
