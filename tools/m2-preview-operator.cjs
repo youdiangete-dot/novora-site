@@ -28,6 +28,7 @@ function entry(config, verifier) {
     try {
       switch (op) {
         case 'prepare': return await session.prepare();
+        case 'refresh_oidc': return await session.refreshOidc();
         case 'deploy': return await session.deploy();
         case 'attach': return await session.attach(value);
         case 'proof': return await session.verifyBinding();
