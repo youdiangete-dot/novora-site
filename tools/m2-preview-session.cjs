@@ -80,10 +80,10 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       // The adapter must cryptographically verify with the existing Vercel
       // verifier; these claims are checked again, never accepted from input.
       const claims = await adapters.verifyOidc(v.oidc);
-      if (!active() || !validClaims(claims)) return { status: 'PREPARATION_FAILED' };
+      if (!active() || now() >= lastNewAttempt || !validClaims(claims)) return { status: 'PREPARATION_FAILED' };
       const credentialStartedAt = now();
       const credentials = adapters.generate ? await adapters.generate() : v;
-      if (!active() || !validClaims(claims) || !credentials || typeof credentials.bearer !== 'string' || !/^[A-Za-z0-9_-]{43,128}$/.test(credentials.bearer) || !/^[A-Za-z0-9_-]{1,64}$/.test(credentials.identity ?? '') || !/^[A-Za-z0-9_-]{16,128}$/.test(credentials.idempotencyKey ?? '')) return { status: 'PREPARATION_FAILED' };
+      if (!active() || now() >= lastNewAttempt || !validClaims(claims) || !credentials || typeof credentials.bearer !== 'string' || !/^[A-Za-z0-9_-]{43,128}$/.test(credentials.bearer) || !/^[A-Za-z0-9_-]{1,64}$/.test(credentials.identity ?? '') || !/^[A-Za-z0-9_-]{16,128}$/.test(credentials.idempotencyKey ?? '')) return { status: 'PREPARATION_FAILED' };
       secret = credentials.bearer; oidc = v.oidc; oidcExpires = (Math.min(claims.exp, claims.iat + 300) - 10) * 1000; credentialExpires = credentialStartedAt + 3600000; identity = credentials.identity; idem = credentials.idempotencyKey;
       if (!active()) return { status: 'PREPARATION_FAILED' };
       scheduleExpiry();

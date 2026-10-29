@@ -482,3 +482,15 @@ test('OIDC refresh does not authorize new attempts in the final closure hour', a
   assert.equal((await s.prepare()).status, 'DENIED');
   assert.equal(calls, 0);
 });
+
+test('OIDC refresh preparation does not create a fixture after final-hour cutoff', async () => {
+  const cutoff = Date.parse('2026-10-30T02:00:00Z');
+  let time = cutoff - 1000, generated = 0;
+  const wait = deferred(), started = deferred();
+  const s = createSession({ adapters: { prepare: async () => ({ oidc: fakeOidc }), verifyOidc: () => { started.resolve(); return wait.promise; }, generate: async () => { generated++; return {}; } }, expectedSourceSha: sha, deadline: cutoff + 3600000, now: () => time, schedule: () => 1, cancel: () => {} });
+  const pending = s.prepare(); await started.promise; time = cutoff;
+  const iat = Math.floor((cutoff - 1000) / 1000);
+  wait.resolve({ ...claims, iat, nbf: iat, exp: iat + 600 });
+  assert.equal((await pending).status, 'PREPARATION_FAILED');
+  assert.equal(generated, 0);
+});
