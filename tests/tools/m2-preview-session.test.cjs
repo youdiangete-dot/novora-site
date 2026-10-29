@@ -171,7 +171,7 @@ test('private sender wiring holds an uncertain deployment for protected source p
   const sourceUid = require('node:crypto').createHash('sha1').update(sourceBytes).digest('hex');
   const sourceBlob = require('node:crypto').createHash('sha1').update(`blob ${sourceBytes.length}\0`).update(sourceBytes).digest('hex');
   const io = {
-    node: 'fixture-node', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: (filename) => { if (filename.endsWith('.gitignore')) throw new Error('IGNORED_FILE_READ'); return sourceBytes; },
+    node: 'fixture-node', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: (filename) => { if (filename.endsWith('.gitignore') || filename.endsWith('.pnp.cjs')) throw new Error('IGNORED_FILE_READ'); return sourceBytes; },
     run: (_command, args) => {
       if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
       if (args.includes('deploy')) { deployments++; return { status: 0, stdout: deployOutput }; }
@@ -182,7 +182,7 @@ test('private sender wiring holds an uncertain deployment for protected source p
       if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
       if (args.includes('rev-parse')) return { status: 0, stdout: sha };
       if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
-      if (args.includes('ls-tree')) return { status: 0, stdout: `100644 blob ${sourceBlob}\tfixture.txt${'\0'}100644 blob ${'a'.repeat(40)}\t.gitignore\0` };
+      if (args.includes('ls-tree')) return { status: 0, stdout: `100644 blob ${sourceBlob}\tfixture.txt${'\0'}100644 blob ${'a'.repeat(40)}\t.gitignore\0` + `100644 blob ${'a'.repeat(40)}\t.pnp.cjs\0` };
       if (args.includes('status')) return { status: 0, stdout: '' };
       throw new Error('UNEXPECTED_FIXTURE_PROCESS');
     },

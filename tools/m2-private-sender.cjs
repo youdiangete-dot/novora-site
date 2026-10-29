@@ -24,7 +24,7 @@ function canonicalGitDirectory(cwd, lstat = fs.lstatSync) {
 function cliIgnored(name) {
   const fixed = new Set(['.hg', '.git', '.gitmodules', '.svn', '.cache', '.next', '.now', '.vercel', '.npmignore', '.dockerignore', '.gitignore', '.DS_Store', '.lock-wscript', '.env.local', '.venv', 'npm-debug.log', 'config.gypi', 'node_modules', '__pycache__', 'venv', 'CVS']);
   const parts = name.split('/');
-  return parts.some((part, index) => fixed.has(part) || /^\..*\.swp$/.test(part) || /^\.wafpicke-/.test(part) || /^\.env\..+\.local$/.test(part) || (part === '.yarn' && parts[index + 1] === 'cache'));
+  return parts.some((part, index) => fixed.has(part) || /^\..*\.swp$/.test(part) || /^\.wafpicke-/.test(part) || /^\.pnp/.test(part) || /^\.env\..+\.local$/.test(part) || (part === '.yarn' && parts[index + 1] === 'cache'));
 }
 
 // Vercel source-file IDs are raw SHA-1 hashes. Compare the complete uploaded
