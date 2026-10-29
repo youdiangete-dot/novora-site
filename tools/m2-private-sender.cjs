@@ -21,10 +21,14 @@ function buildGitSourceDeployment({ identity, credentialSha256, sourceSha }) {
 }
 
 function verifyGitSourceDeployment(d, p, deploymentId, sourceSha) {
-  if (!d || typeof d !== 'object' || !p || typeof p !== 'object' || !d.gitSource || typeof d.gitSource !== 'object' || !p.link || typeof p.link !== 'object') throw new Error('GIT_SOURCE_SCHEMA');
+  if (!d || typeof d !== 'object' || !p || typeof p !== 'object' || !p.link || typeof p.link !== 'object') throw new Error('GIT_SOURCE_SCHEMA');
   if ((d.id ?? d.uid) !== deploymentId || (d.id && d.uid && d.id !== d.uid)) throw new Error('GIT_DEPLOYMENT_ID');
   if (d.projectId !== project || (d.teamId ?? d.ownerId) !== team || p.id !== project) throw new Error('GIT_PROJECT');
-  if (d.target !== null || d.readyState !== 'READY') throw new Error(d.target !== null ? 'GIT_TARGET' : 'GIT_NOT_READY');
+  if (d.target !== null) throw new Error('GIT_TARGET');
+  if (!['QUEUED', 'INITIALIZING', 'BUILDING', 'READY', 'ERROR', 'CANCELED', 'BLOCKED'].includes(d.readyState)) throw new Error('GIT_STATE');
+  if (!d.gitSource && ['QUEUED', 'INITIALIZING', 'BUILDING'].includes(d.readyState)) return { id: deploymentId, projectId: project, teamId: team, target: 'preview', readyState: d.readyState, url: d.url, sourceEvidence: 'pending_unverified' };
+  if (!d.gitSource && ['ERROR', 'CANCELED', 'BLOCKED'].includes(d.readyState)) return { id: deploymentId, projectId: project, teamId: team, target: 'preview', readyState: d.readyState, url: d.url, sourceEvidence: 'terminal_unverified' };
+  if (!d.gitSource || typeof d.gitSource !== 'object') throw new Error('GIT_SOURCE_SCHEMA');
   const link = p.link, src = d.gitSource;
   const has = (object, field) => Object.hasOwn(object, field);
   const validId = (value) => (typeof value === 'string' && /^[1-9][0-9]*$/.test(value)) || (Number.isSafeInteger(value) && value > 0);
@@ -37,7 +41,7 @@ function verifyGitSourceDeployment(d, p, deploymentId, sourceSha) {
   if ((d.meta?.githubCommitSha != null && d.meta.githubCommitSha !== sourceSha) || (d.meta?.githubCommitRef != null && d.meta.githubCommitRef !== branch) || (d.meta?.githubOrg != null && d.meta.githubOrg !== gitOrg) || (d.meta?.githubRepo != null && d.meta.githubRepo !== gitRepo)) throw new Error('GIT_METADATA_CONFLICT');
   const host = d.url;
   const url = typeof host === 'string' && /^[a-z0-9-]+\.vercel\.app$/.test(host) ? 'https://' + host : host;
-  return { id: deploymentId, url, projectId: project, teamId: team, branch, sourceSha, target: 'preview', readyState: 'READY', sourceEvidence: 'platform_git_source_v1', sourceVerified: false };
+  return { id: deploymentId, url, projectId: project, teamId: team, branch, sourceSha, target: 'preview', readyState: d.readyState, sourceEvidence: 'platform_git_source_v1', sourceVerified: false };
 }
 
 // The CLI reads <checkout>/.git/config directly. A worktree's .git file is
