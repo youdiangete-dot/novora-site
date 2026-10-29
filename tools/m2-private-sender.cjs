@@ -26,9 +26,12 @@ function verifyGitSourceDeployment(d, p, deploymentId, sourceSha) {
   if (d.projectId !== project || (d.teamId ?? d.ownerId) !== team || p.id !== project) throw new Error('GIT_PROJECT');
   if (d.target !== null || d.readyState !== 'READY') throw new Error(d.target !== null ? 'GIT_TARGET' : 'GIT_NOT_READY');
   const link = p.link, src = d.gitSource;
-  const linkId = String(link.repoId ?? ''), sourceId = String(src.repoId ?? '');
-  if (link.type !== 'github' || link.org !== gitOrg || link.repo !== gitRepo || !/^[1-9][0-9]*$/.test(linkId) || sourceId !== linkId || src.type !== 'github') throw new Error('GIT_REPOSITORY');
-  if ((src.org != null && src.org !== gitOrg) || (src.repo != null && src.repo !== gitRepo)) throw new Error('GIT_REPOSITORY');
+  const has = (object, field) => Object.hasOwn(object, field);
+  const validId = (value) => (typeof value === 'string' && /^[1-9][0-9]*$/.test(value)) || (Number.isSafeInteger(value) && value > 0);
+  const hasOrg = has(src, 'org'), hasRepo = has(src, 'repo'), hasId = has(src, 'repoId');
+  if (link.type !== 'github' || link.org !== gitOrg || link.repo !== gitRepo || src.type !== 'github' || has(src, 'owner') || has(src, 'slug')) throw new Error('GIT_REPOSITORY');
+  if (hasOrg !== hasRepo || (hasOrg && (src.org !== gitOrg || src.repo !== gitRepo)) || (!hasOrg && !hasId)) throw new Error('GIT_REPOSITORY');
+  if ((has(link, 'repoId') && !validId(link.repoId)) || (hasId && (!validId(src.repoId) || !validId(link.repoId) || String(src.repoId) !== String(link.repoId)))) throw new Error('GIT_REPOSITORY');
   if (src.ref !== branch) throw new Error('GIT_REF');
   if (src.sha !== sourceSha) throw new Error('GIT_SHA');
   if ((d.meta?.githubCommitSha != null && d.meta.githubCommitSha !== sourceSha) || (d.meta?.githubCommitRef != null && d.meta.githubCommitRef !== branch) || (d.meta?.githubOrg != null && d.meta.githubOrg !== gitOrg) || (d.meta?.githubRepo != null && d.meta.githubRepo !== gitRepo)) throw new Error('GIT_METADATA_CONFLICT');

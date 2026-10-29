@@ -34,6 +34,12 @@ test('git source request pins branch and sha with deployment-only fixture overri
 test('git source platform readback requires provider repository ref sha project and preview', () => {
   const good = verifyGitSourceDeployment(gitReadback, gitProject, id, sha);
   assert.equal(good.sourceEvidence, 'platform_git_source_v1'); assert.equal(good.manifestVerified, undefined); assert.equal(good.sourceVerified, false);
+  const named = { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', ref: 'integration/instant-first-preview-agent', sha };
+  for (const source of [named, { ...named, repoId: 12345 }, { ...gitReadback.gitSource, repoId: '12345' }]) {
+    const result = verifyGitSourceDeployment({ ...gitReadback, gitSource: source }, gitProject, id, sha);
+    assert.equal(result.sourceEvidence, 'platform_git_source_v1'); assert.equal(result.sourceVerified, false);
+  }
+  assert.equal(verifyGitSourceDeployment({ ...gitReadback, gitSource: named }, { ...gitProject, link: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site' } }, id, sha).sourceEvidence, 'platform_git_source_v1');
   const cases = [
     [{ ...gitReadback, gitSource: undefined }, gitProject, 'GIT_SOURCE_SCHEMA'],
     [{ ...gitReadback, id: 'dpl_wrong' }, gitProject, 'GIT_DEPLOYMENT_ID'],
@@ -42,6 +48,14 @@ test('git source platform readback requires provider repository ref sha project 
     [{ ...gitReadback, target: 'production' }, gitProject, 'GIT_TARGET'],
     [{ ...gitReadback, readyState: 'BUILDING' }, gitProject, 'GIT_NOT_READY'],
     [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, repoId: 999 } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repoId: 999 } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, org: 'wrong', repoId: 12345 } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repo: 'wrong' } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repo: undefined } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repoId: null } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { type: 'github', ref: named.ref, sha } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { type: 'github', owner: 'youdiangete-dot', slug: 'novora-site', ref: named.ref, sha } }, gitProject, 'GIT_REPOSITORY'],
+    [gitReadback, { ...gitProject, link: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site' } }, 'GIT_REPOSITORY'],
     [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, type: 'gitlab' } }, gitProject, 'GIT_REPOSITORY'],
     [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, ref: undefined } }, gitProject, 'GIT_REF'],
     [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, ref: 'main' } }, gitProject, 'GIT_REF'],
@@ -69,7 +83,7 @@ test('git source sender uses stdin, requires runtime proof, and never resends an
         assert.equal(args.join(' ').includes(body.env.NOVORA_BETA_INVITATIONS_JSON), false);
         return unknown ? { status: null, stdout: '' } : { status: 0, stdout: JSON.stringify(deployment) };
       }
-      if (args.includes('/v13/deployments/' + id + '?withGitRepoInfo=true')) return { status: 0, stdout: JSON.stringify(gitReadback) };
+      if (args.includes('/v13/deployments/' + id + '?withGitRepoInfo=true')) return { status: 0, stdout: JSON.stringify({ ...gitReadback, gitSource: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', ref: 'integration/instant-first-preview-agent', sha } }) };
       if (args.includes('/v9/projects/' + claims.project_id)) return { status: 0, stdout: JSON.stringify(gitProject) };
       throw new Error('UNEXPECTED_PROCESS');
     }, fetch: async () => ({ ok: true, json: async () => ({ isolatedBackendVerified: true }) }) };
