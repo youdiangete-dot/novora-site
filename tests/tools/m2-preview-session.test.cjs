@@ -8,7 +8,7 @@ require('node:crypto').randomBytes = () => { throw new Error('REAL_RANDOM_FORBID
 global.fetch = () => { throw new Error('REAL_NETWORK_FORBIDDEN'); };
 const { parseDeployment, createSession } = require('../../tools/m2-preview-session.cjs');
 const { createOfflineFixtureOperator } = require('../../tools/m2-preview-operator.cjs');
-const { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestMatches } = require('../../tools/m2-private-sender.cjs');
+const { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestPaths, manifestContentMatches, cliSelection, buildGitSourceDeployment, verifyGitSourceDeployment } = require('../../tools/m2-private-sender.cjs');
 const { PassThrough } = require('node:stream');
 const readline = require('node:readline');
 
@@ -20,6 +20,89 @@ const fakeOidc = 'synthetic-oidc';
 const runtime = 'a'.repeat(64);
 const deployment = { id, url, target: 'preview' };
 const claims = { owner_id: 'team_9VhRPiCaRc62kna4XyNKvPZ7', project_id: 'prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg', environment: 'development', sub: 'owner:novoradesign:project:project-dd34e:environment:development', aud: 'https://vercel.com/novoradesign', iss: 'https://oidc.vercel.com', iat: 1000, nbf: 1000, exp: 1100 };
+const gitProject = { id: claims.project_id, link: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', repoId: 12345 } };
+const gitReadback = { id, url: url.slice(8), projectId: claims.project_id, ownerId: claims.owner_id, target: null, readyState: 'READY', gitSource: { type: 'github', repoId: 12345, ref: 'integration/instant-first-preview-agent', sha }, meta: { githubCommitRef: 'integration/instant-first-preview-agent', githubCommitSha: sha } };
+
+test('git source request pins branch and sha with deployment-only fixture overrides', () => {
+  const body = buildGitSourceDeployment({ identity: 'm2_synthetic_fixture', credentialSha256: 'a'.repeat(64), sourceSha: sha });
+  assert.deepEqual(body.gitSource, { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', ref: 'integration/instant-first-preview-agent', sha });
+  assert.equal(Object.hasOwn(body, 'files'), false); assert.equal(Object.hasOwn(body, 'target'), false);
+  assert.deepEqual(body.env, body.build.env); assert.equal(JSON.parse(body.env.NOVORA_BETA_INVITATIONS_JSON).length, 1);
+  assert.throws(() => buildGitSourceDeployment({ identity: 'bad', credentialSha256: 'a'.repeat(64), sourceSha: sha }), /GIT_REQUEST_INVALID/);
+});
+
+test('git source platform readback requires provider repository ref sha project and preview', () => {
+  const good = verifyGitSourceDeployment(gitReadback, gitProject, id, sha);
+  assert.equal(good.sourceEvidence, 'platform_git_source_v1'); assert.equal(good.manifestVerified, undefined); assert.equal(good.sourceVerified, false);
+  const named = { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', ref: 'integration/instant-first-preview-agent', sha };
+  for (const source of [named, { ...named, repoId: 12345 }, { ...gitReadback.gitSource, repoId: '12345' }]) {
+    const result = verifyGitSourceDeployment({ ...gitReadback, gitSource: source }, gitProject, id, sha);
+    assert.equal(result.sourceEvidence, 'platform_git_source_v1'); assert.equal(result.sourceVerified, false);
+  }
+  assert.equal(verifyGitSourceDeployment({ ...gitReadback, gitSource: named }, { ...gitProject, link: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site' } }, id, sha).sourceEvidence, 'platform_git_source_v1');
+  const cases = [
+    [{ ...gitReadback, gitSource: undefined }, gitProject, 'GIT_SOURCE_SCHEMA'],
+    [{ ...gitReadback, id: 'dpl_wrong' }, gitProject, 'GIT_DEPLOYMENT_ID'],
+    [{ ...gitReadback, projectId: 'wrong' }, gitProject, 'GIT_PROJECT'],
+    [{ ...gitReadback, ownerId: 'wrong' }, gitProject, 'GIT_PROJECT'],
+    [{ ...gitReadback, target: 'production' }, gitProject, 'GIT_TARGET'],
+    [{ ...gitReadback, readyState: 'BUILDING' }, gitProject, 'GIT_NOT_READY'],
+    [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, repoId: 999 } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repoId: 999 } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, org: 'wrong', repoId: 12345 } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repo: 'wrong' } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repo: undefined } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...named, repoId: null } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { type: 'github', ref: named.ref, sha } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { type: 'github', owner: 'youdiangete-dot', slug: 'novora-site', ref: named.ref, sha } }, gitProject, 'GIT_REPOSITORY'],
+    [gitReadback, { ...gitProject, link: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site' } }, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, type: 'gitlab' } }, gitProject, 'GIT_REPOSITORY'],
+    [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, ref: undefined } }, gitProject, 'GIT_REF'],
+    [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, ref: 'main' } }, gitProject, 'GIT_REF'],
+    [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, sha: '0'.repeat(40) } }, gitProject, 'GIT_SHA'],
+    [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, sha: undefined } }, gitProject, 'GIT_SHA'],
+    [{ ...gitReadback, meta: { githubCommitSha: '0'.repeat(40) } }, gitProject, 'GIT_METADATA_CONFLICT'],
+    [gitReadback, { ...gitProject, link: { ...gitProject.link, repo: 'wrong' } }, 'GIT_REPOSITORY'],
+  ];
+  for (const [d, p, reason] of cases) assert.throws(() => verifyGitSourceDeployment(d, p, id, sha), new RegExp(reason));
+});
+
+test('git source sender uses stdin, requires runtime proof, and never resends an unknown deployment', async () => {
+  let sent = 0, unknown = false;
+  const io = { node: 'fixture-node', environment: {}, canonical: () => true,
+    randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims,
+    run: async (_command, args, options) => {
+      if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
+      if (args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (args.includes('status')) return { status: 0, stdout: '' };
+      if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
+      if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
+      if (args.includes('/v13/deployments')) {
+        sent++; assert.equal(args.includes('--input'), true); assert.equal(args.includes('-'), true);
+        const body = JSON.parse(options.input); assert.equal(body.gitSource.sha, sha); assert.equal(Object.hasOwn(body, 'files'), false);
+        assert.equal(args.join(' ').includes(body.env.NOVORA_BETA_INVITATIONS_JSON), false);
+        return unknown ? { status: null, stdout: '' } : { status: 0, stdout: JSON.stringify(deployment) };
+      }
+      if (args.includes('/v13/deployments/' + id + '?withGitRepoInfo=true')) return { status: 0, stdout: JSON.stringify({ ...gitReadback, gitSource: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', ref: 'integration/instant-first-preview-agent', sha } }) };
+      if (args.includes('/v9/projects/' + claims.project_id)) return { status: 0, stdout: JSON.stringify(gitProject) };
+      throw new Error('UNEXPECTED_PROCESS');
+    }, fetch: async () => ({ ok: true, json: async () => ({ isolatedBackendVerified: true }) }) };
+  const config = { cwd: 'fixture', cli: 'fixture-cli', sourceMode: 'git_source', invitedIdentity: 'm2_synthetic_fixture', expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters: { revoke: async () => false, cleanup: async () => false } };
+  const s = createSender(config, io);
+  assert.equal((await s('prepare')).status, 'PREPARED');
+  assert.equal((await s('deploy')).status, 'READBACK_REQUIRED');
+  assert.equal((await s('attach', id)).status, 'READONLY_RUNTIME_PROOF_PENDING');
+  assert.equal((await s('arm')).status, 'DENIED');
+  assert.equal((await s('proof')).status, 'BINDING_REJECTED');
+  assert.equal((await s('arm')).status, 'DENIED');
+  await s('close');
+  unknown = true;
+  const u = createSender(config, io);
+  assert.equal((await u('prepare')).status, 'PREPARED');
+  assert.equal((await u('deploy')).status, 'READBACK_REQUIRED');
+  assert.equal((await u('deploy')).status, 'DENIED');
+  await u('close'); assert.equal(sent, 2);
+});
 test('source provenance rejects a worktree git file and accepts a canonical git directory', () => {
   assert.equal(canonicalGitDirectory('fixture', () => ({ isDirectory: () => false })), false);
   assert.equal(canonicalGitDirectory('fixture', () => ({ isDirectory: () => true })), true);
@@ -27,18 +110,25 @@ test('source provenance rejects a worktree git file and accepts a canonical git 
   assert.throws(() => createSender({ invitedIdentity: 'm2_synthetic_fixture', cwd: 'fixture' }, { canonical: () => false }), /CANONICAL_CHECKOUT_REQUIRED/);
 });
 
-test('source provenance manifest requires exactly the expected uploaded files and hashes', () => {
-  const a = 'a'.repeat(40), b = 'b'.repeat(40);
-  const expected = new Map([['app/route.ts', a], ['vercel.json', b]]);
-  const tree = [{ name: 'src', type: 'directory', children: [{ name: 'app', type: 'directory', children: [{ name: 'route.ts', type: 'file', uid: a }] }, { name: 'vercel.json', type: 'file', uid: b }] }];
-  assert.equal(manifestMatches(expected, tree), true);
-  for (const bad of [
-    [{ name: 'src', type: 'directory', children: [{ name: 'vercel.json', type: 'file', uid: b }] }],
-    [{ name: 'src', type: 'directory', children: [{ name: 'app', type: 'directory', children: [{ name: 'route.ts', type: 'file', uid: b }] }, { name: 'vercel.json', type: 'file', uid: b }] }],
-    [{ name: 'src', type: 'directory', children: [...tree[0].children, { name: 'extra', type: 'file', uid: a }] }],
-    [{ name: 'src', type: 'directory', children: [...tree[0].children, { name: '../escape', type: 'file', uid: a }] }],
-    [{ name: 'src', type: 'directory', children: [...tree[0].children, { name: 'vercel.json', type: 'file', uid: b }] }],
-  ]) assert.equal(manifestMatches(expected, bad), false);
+test('official file trees retain genuine src paths and reject ambiguous or missing entries', () => {
+  const expected = new Map([['src/app.ts', 'digest'], ['root.txt', 'digest']]);
+  const tree = [{ name: 'src', type: 'directory', children: [{ name: 'app.ts', type: 'file', uid: 'opaque-id' }] }, { name: 'root.txt', type: 'file', uid: 'another-id' }];
+  assert.deepEqual([...manifestPaths(expected, tree).keys()], ['src/app.ts', 'root.txt']);
+  assert.deepEqual([...manifestPaths(expected, [{ name: 'src', type: 'directory', children: tree }]).keys()], ['src/app.ts', 'root.txt']);
+  assert.throws(() => manifestPaths(expected, [tree[0]]), /MANIFEST_COUNT/);
+  assert.throws(() => manifestPaths(expected, [...tree, tree[1]]), /MANIFEST_PATH/);
+  assert.throws(() => manifestPaths(expected, [{ name: '../bad', type: 'file', uid: 'id' }]), /MANIFEST_PATH/);
+  assert.throws(() => manifestPaths(expected, [{ name: 'src', type: 'directory', children: null }]), /MANIFEST_SCHEMA/);
+});
+
+test('complete source bytes are compared, independent of opaque identifiers', () => {
+  const crypto = require('node:crypto'), data = Buffer.from('synthetic');
+  const hash = crypto.createHash('sha1').update(data).digest('hex');
+  const expected = new Map([['src/app.ts', hash]]);
+  assert.equal(manifestContentMatches(expected, new Map([['src/app.ts', data]])), true);
+  assert.equal(manifestContentMatches(expected, new Map()), false);
+  assert.equal(manifestContentMatches(expected, new Map([['src/app.ts', Buffer.from('changed')]])), false);
+  assert.equal(manifestContentMatches(expected, new Map([['src/app.ts', data], ['extra', data]])), false);
 });
 
 test('source provenance rejects absent or malformed expected source before a session starts', () => {
@@ -47,9 +137,28 @@ test('source provenance rejects absent or malformed expected source before a ses
   }
 });
 
+test('selected untracked file is rejected before reading its content or creating a token', async () => {
+  const path = require('node:path'); let reads = 0, tokens = 0;
+  const io = { node: 'fixture', environment: {}, canonical: () => true,
+    select: async (cwd) => [path.resolve(cwd, 'ignored-secret-fixture')],
+    file: () => { reads++; throw new Error('MUST_NOT_READ'); }, randomBytes: () => { throw new Error('MUST_NOT_GENERATE'); }, verifyOidc: async () => claims,
+    run: (_command, args) => {
+      if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
+      if (args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (args.includes('status')) return { status: 0, stdout: '' };
+      if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
+      if (args.includes('ls-tree')) return { status: 0, stdout: `100644 blob ${'a'.repeat(40)}\tfixture.txt\0` };
+      if (args.includes('token')) tokens++;
+      throw new Error('UNEXPECTED_FIXTURE_PROCESS');
+    } };
+  const sender = createSender({ cwd: 'fixture', cli: 'fixture', invitedIdentity: 'm2_synthetic_fixture', expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters: { revoke: async () => true, cleanup: async () => true } }, io);
+  assert.deepEqual(await sender('prepare'), { status: 'PREPARATION_FAILED', reason: 'CLI_SELECTION_UNTRACKED' });
+  assert.equal(reads, 0); assert.equal(tokens, 0);
+});
+
 test('source provenance rejects wrong source bytes before token or fixture creation', async () => {
   let tokenCalls = 0, randomCalls = 0;
-  const io = { node: 'fixture', environment: {}, canonical: () => true, file: () => Buffer.from('wrong source'), randomBytes: () => { randomCalls++; return Buffer.alloc(32); }, verifyOidc: async () => claims,
+  const io = { node: 'fixture', environment: {}, canonical: () => true, select: async (cwd) => [require('node:path').resolve(cwd, 'fixture.txt')], file: () => Buffer.from('wrong source'), randomBytes: () => { randomCalls++; return Buffer.alloc(32); }, verifyOidc: async () => claims,
     run: (_cmd, args) => {
       if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
       if (args.includes('rev-parse')) return { status: 0, stdout: sha };
@@ -171,12 +280,12 @@ test('private sender wiring holds an uncertain deployment for protected source p
   const sourceUid = require('node:crypto').createHash('sha1').update(sourceBytes).digest('hex');
   const sourceBlob = require('node:crypto').createHash('sha1').update(`blob ${sourceBytes.length}\0`).update(sourceBytes).digest('hex');
   const io = {
-    node: 'fixture-node', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: (filename) => { if (filename.endsWith('.gitignore') || filename.endsWith('.pnp.cjs')) throw new Error('IGNORED_FILE_READ'); return sourceBytes; },
+    node: 'fixture-node', environment: {}, select: async (cwd) => [require('node:path').resolve(cwd, 'fixture.txt')], randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: (filename) => { if (filename.endsWith('.gitignore') || filename.endsWith('.pnp.cjs')) throw new Error('IGNORED_FILE_READ'); return sourceBytes; },
     run: (_command, args) => {
       if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
       if (args.includes('deploy')) { deployments++; return { status: 0, stdout: deployOutput }; }
       if (args.includes('api')) {
-        if (args.includes('/v6/deployments/' + id + '/files')) return { status: 0, stdout: JSON.stringify([{ name: 'src', type: 'directory', children: [{ name: 'fixture.txt', type: 'file', uid: sourceUid }] }]) };
+        if (args.includes('/v6/deployments/' + id + '/files')) return { status: 0, stdout: JSON.stringify([{ name: 'fixture.txt', type: 'file', uid: sourceUid }]) };
         assert.deepEqual(args.slice(1), ['api', '/v13/deployments/' + id, '--scope', claims.owner_id, '--raw']); return { status: 0, stdout: JSON.stringify(readback) };
       }
       if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
@@ -208,26 +317,11 @@ test('private sender wiring holds an uncertain deployment for protected source p
   assert.equal((await sender('deploy')).reason, 'OUTPUT_PARSE_ERROR');
   assert.equal((await sender('checkpoint')).status, 'ACTIVE');
   assert.equal((await sender('deploy')).status, 'DENIED');
-  assert.equal((await sender('attach', id)).status, 'READONLY_RUNTIME_PROOF_PENDING');
+  assert.deepEqual(await sender('attach', id), { status: 'READBACK_FAILED', reason: 'MANIFEST_CONTENT_UNAVAILABLE' });
   assert.equal((await sender('arm')).status, 'DENIED');
-  assert.equal((await sender('proof')).status, 'BINDING_VERIFIED');
-  assert.equal((await sender('arm')).status, 'AUTHORITY_NOT_OBSERVED');
-  assert.equal((await sender('observe_authority', fixtureObservation(identity))).status, 'OPERATOR_OBSERVATION_RECORDED');
-  assert.equal((await sender('arm')).status, 'ARMED_FROM_OPERATOR_OBSERVATION');
-  assert.equal((await sender('submit', { fixture: true })).status, 'SUBMITTED');
-  assert.equal((await sender('submit', {})).status, 'DENIED');
-  assert.equal((await sender('asset_authorized')).status, 'DELIVERED');
-  assert.equal((await sender('asset_unauthorized')).status, 'DENIED_AS_EXPECTED');
-  assert.deepEqual(await sender('close'), { status: 'CLOSED', revoke: 'CONFIRMED', cleanup: 'CONFIRMED' });
+  assert.deepEqual(await sender('close'), { status: 'CLOSED', revoke: 'NOT_REQUIRED', cleanup: 'UNVERIFIED_TARGET' });
   lines.close(); reader.close(); input.destroy(); output.destroy();
-  assert.equal(deployments, 1); assert.equal(submissions, 1); assert.equal(cleanups, 1);
-  deployOutput = JSON.stringify({ status: 'success', deployment });
-  const wrapped = createSender({ cwd: 'fixture', cli: 'fixture-cli', invitedIdentity: identity, expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters }, io);
-  await wrapped('prepare');
-  assert.deepEqual(await wrapped('deploy'), { status: 'READBACK_REQUIRED', deploymentId: id });
-  readback.meta.githubCommitSha = '0'.repeat(40);
-  assert.equal((await wrapped('attach', id)).status, 'READBACK_REJECTED');
-  assert.equal((await wrapped('close')).cleanup, 'UNVERIFIED_TARGET');
+  assert.equal(deployments, 1); assert.equal(submissions, 0); assert.equal(cleanups, 0);
 });
 
 test('uncertain submission cannot be retried', async () => {
