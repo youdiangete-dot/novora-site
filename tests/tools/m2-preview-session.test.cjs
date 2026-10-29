@@ -336,3 +336,161 @@ test('deadline callback expires an idle session without a reporting command', as
   assert.equal(s.checkpoint().status, 'EXPIRED');
   assert.equal((await s.deploy()).status, 'DENIED');
 });
+
+function refreshFixture(overrides = {}) {
+  let time = 1000000, currentClaims = claims, acquisitions = 0, generations = 0, deployments = 0, submissions = 0, cleanup = 0, submitted, assetRequest;
+  const adapters = {
+    prepare: async () => { acquisitions++; return { oidc: fakeOidc }; },
+    verifyOidc: async () => currentClaims,
+    generate: async () => { generations++; return { bearer: fakeBearer, identity: 'synthetic_identity', idempotencyKey: 'synthetic_idempotency' }; },
+    deploy: async () => { deployments++; return { exitCode: 0, stdout: JSON.stringify(deployment) }; },
+    readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, readyState: 'READY' }),
+    proof: async () => ({ authorized: true, isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } }),
+    submit: async (v) => { submissions++; submitted = v; return { confirmed: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' }; },
+    asset: async (v) => { assetRequest = v; return { status: 200, contentType: 'image/png', bytes: Buffer.from('fixture-image') }; },
+    revoke: async () => true, cleanup: async () => { cleanup++; return true; }, ...overrides,
+  };
+  const config = { adapters, expectedSourceSha: sha, deadline: 5000000, now: () => time, schedule: () => 1, cancel: () => {} };
+  return { s: createSession(config), operator: createOfflineFixtureOperator(config), setTime: (v) => { time = v; }, setClaims: (v) => { currentClaims = v; }, counts: () => ({ acquisitions, generations, deployments, submissions, cleanup }), submitted: () => submitted, assetRequest: () => assetRequest };
+}
+async function readyRefreshFixture(f) {
+  const s = f.s;
+  await s.prepare(); await s.deploy(); await s.attach(id); await s.verifyBinding();
+  const observation = { ...fixtureObservation(), expiresAt: 2000000 };
+  assert.equal(s.observeAuthority(observation).status, 'OPERATOR_OBSERVATION_RECORDED');
+  assert.equal((await s.arm()).status, 'ARMED_FROM_OPERATOR_OBSERVATION');
+}
+
+test('OIDC refresh retains the single approved fixture and counters', async () => {
+  const f = refreshFixture(), s = f.s;
+  await readyRefreshFixture(f);
+  f.setTime(1090000);
+  assert.equal(s.checkpoint().status, 'ACTIVE'); assert.equal(s.checkpoint().oidcReady, false);
+  assert.equal((await s.submit({})).status, 'DENIED');
+  assert.equal(f.counts().cleanup, 0);
+  f.setClaims({ ...claims, iat: 1090, nbf: 1090, exp: 1500 });
+  assert.equal((await s.refreshOidc()).status, 'OIDC_REFRESHED');
+  assert.equal((await s.deploy()).status, 'DENIED');
+  assert.equal((await s.submit({})).status, 'SUBMITTED');
+  assert.equal(f.submitted().bearer, fakeBearer);
+  assert.equal(f.submitted().idempotencyKey, 'synthetic_idempotency');
+  assert.equal((await s.submit({})).status, 'DENIED');
+  assert.deepEqual(f.counts(), { acquisitions: 2, generations: 1, deployments: 1, submissions: 1, cleanup: 0 });
+  f.setTime(1490000);
+  assert.equal((await s.asset(true)).status, 'DENIED');
+  f.setClaims({ ...claims, iat: 1490, nbf: 1490, exp: 1900 });
+  assert.equal((await s.refreshOidc()).status, 'OIDC_REFRESHED');
+  assert.equal((await s.asset(true)).status, 'DELIVERED');
+  assert.equal(f.assetRequest().cookie, 'synthetic-cookie');
+  f.setTime(2000000);
+  assert.equal((await s.refreshOidc()).status, 'DENIED');
+  assert.equal(s.checkpoint().status, 'EXPIRED');
+  await s.close();
+});
+
+test('OIDC refresh is explicit through the operator and does not create a new fixture', async () => {
+  const f = refreshFixture();
+  assert.equal((await f.operator('prepare')).status, 'PREPARED');
+  f.setTime(1090000);
+  assert.equal((await f.operator('checkpoint')).oidcReady, false);
+  f.setClaims({ ...claims, iat: 1090, nbf: 1090, exp: 1500 });
+  assert.equal((await f.operator('refresh_oidc')).status, 'OIDC_REFRESHED');
+  assert.equal((await f.operator('checkpoint')).oidcReady, true);
+  assert.equal(f.counts().generations, 1);
+  await f.operator('close');
+});
+
+test('OIDC refresh rejects cross-project and stale claims without extending deadlines', async () => {
+  const f = refreshFixture(), s = f.s;
+  await s.prepare();
+  f.setTime(1090000);
+  f.setClaims({ ...claims, project_id: 'wrong', iat: 1090, nbf: 1090, exp: 1500 });
+  assert.equal((await s.refreshOidc()).status, 'OIDC_REFRESH_FAILED');
+  f.setClaims({ ...claims, iat: 700, nbf: 700, exp: 1500 });
+  assert.equal((await s.refreshOidc()).status, 'OIDC_REFRESH_FAILED');
+  assert.equal(s.checkpoint().oidcReady, false);
+  assert.equal((await s.deploy()).status, 'DENIED');
+  f.setTime(4600000);
+  assert.equal((await s.refreshOidc()).status, 'DENIED');
+  assert.equal(s.checkpoint().status, 'EXPIRED');
+  assert.equal(f.counts().generations, 1);
+});
+
+test('OIDC refresh cannot extend the 60-minute bearer lifetime', async () => {
+  const f = refreshFixture(); await f.s.prepare();
+  f.setTime(1090000); f.setClaims({ ...claims, iat: 1090, nbf: 1090, exp: 1500 });
+  assert.equal((await f.s.refreshOidc()).status, 'OIDC_REFRESHED');
+  f.setTime(4600000);
+  assert.equal(f.s.checkpoint().status, 'EXPIRED');
+  assert.equal((await f.s.refreshOidc()).status, 'DENIED');
+});
+
+test('OIDC refresh cannot resurrect after stop or independent expiry', async () => {
+  for (const stop of ['destroy', 'expiry']) {
+    const wait = deferred(), started = deferred(); let acquisitions = 0;
+    const f = refreshFixture({ prepare: async () => { acquisitions++; if (acquisitions === 1) return { oidc: fakeOidc }; started.resolve(); return wait.promise; } });
+    await f.s.prepare();
+    const refresh = f.s.refreshOidc(); await started.promise;
+    if (stop === 'destroy') f.s.destroy(); else f.setTime(4600000);
+    wait.resolve({ oidc: fakeOidc });
+    assert.equal((await refresh).status, 'OIDC_REFRESH_FAILED');
+    assert.equal(f.s.checkpoint().status, stop === 'destroy' ? 'HALTED' : 'EXPIRED');
+    assert.equal((await f.s.deploy()).status, 'DENIED');
+    assert.equal(f.counts().generations, 1);
+  }
+});
+
+test('OIDC refresh cannot resurrect after stop during verification', async () => {
+  const wait = deferred(), started = deferred(); let checks = 0;
+  const f = refreshFixture({ verifyOidc: async () => { checks++; if (checks === 1) return claims; started.resolve(); return wait.promise; } });
+  await f.s.prepare();
+  const refresh = f.s.refreshOidc(); await started.promise;
+  f.s.destroy(); wait.resolve(claims);
+  assert.equal((await refresh).status, 'OIDC_REFRESH_FAILED');
+  assert.equal(f.s.checkpoint().status, 'HALTED');
+});
+
+test('OIDC refresh cannot retry an uncertain submission', async () => {
+  let attempts = 0;
+  const f = refreshFixture({ submit: async () => { attempts++; throw new Error('FIXTURE_TIMEOUT'); } });
+  await readyRefreshFixture(f);
+  assert.equal((await f.s.submit({})).status, 'SUBMISSION_UNCONFIRMED');
+  f.setTime(1090000);
+  f.setClaims({ ...claims, iat: 1090, nbf: 1090, exp: 1500 });
+  assert.equal((await f.s.refreshOidc()).status, 'OIDC_REFRESHED');
+  assert.equal((await f.s.submit({})).status, 'DENIED');
+  assert.equal(attempts, 1);
+  await f.s.close();
+});
+
+test('OIDC refresh cannot retry an uncertain deployment', async () => {
+  let attempts = 0;
+  const f = refreshFixture({ deploy: async () => { attempts++; return { exitCode: 0, stdout: 'unparseable' }; } });
+  await f.s.prepare();
+  assert.equal((await f.s.deploy()).reason, 'OUTPUT_PARSE_ERROR');
+  f.setTime(1090000); f.setClaims({ ...claims, iat: 1090, nbf: 1090, exp: 1500 });
+  assert.equal((await f.s.refreshOidc()).status, 'OIDC_REFRESHED');
+  assert.equal((await f.s.deploy()).status, 'DENIED');
+  assert.equal(attempts, 1);
+  await f.s.close();
+});
+
+test('OIDC refresh does not authorize new attempts in the final closure hour', async () => {
+  const now = Date.parse('2026-10-30T02:00:00Z');
+  let calls = 0;
+  const s = createSession({ adapters: { prepare: async () => { calls++; return { oidc: fakeOidc }; } }, expectedSourceSha: sha, deadline: Date.parse('2026-10-30T03:00:00Z'), now: () => now, schedule: () => 1, cancel: () => {} });
+  assert.equal((await s.prepare()).status, 'DENIED');
+  assert.equal(calls, 0);
+});
+
+test('OIDC refresh preparation does not create a fixture after final-hour cutoff', async () => {
+  const cutoff = Date.parse('2026-10-30T02:00:00Z');
+  let time = cutoff - 1000, generated = 0;
+  const wait = deferred(), started = deferred();
+  const s = createSession({ adapters: { prepare: async () => ({ oidc: fakeOidc }), verifyOidc: () => { started.resolve(); return wait.promise; }, generate: async () => { generated++; return {}; } }, expectedSourceSha: sha, deadline: cutoff + 3600000, now: () => time, schedule: () => 1, cancel: () => {} });
+  const pending = s.prepare(); await started.promise; time = cutoff;
+  const iat = Math.floor((cutoff - 1000) / 1000);
+  wait.resolve({ ...claims, iat, nbf: iat, exp: iat + 600 });
+  assert.equal((await pending).status, 'PREPARATION_FAILED');
+  assert.equal(generated, 0);
+});
