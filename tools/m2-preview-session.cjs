@@ -49,7 +49,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
   const lastNewAttempt = Math.min(ownerDeadline, Date.parse('2026-10-30T02:00:00Z'));
   let secret = null, identity = null, digest = null, idem = null, oidc = null, oidcExpires = null, credentialExpires = null, authorityExpires = null;
   let prepared = false, deployAttempted = false, proposed = null, attached = null, binding = null;
-  let readbackAttempts = 0;
+  let readbackAttempts = 0, proofAttempted = false;
   let armed = false, submissionAttempted = false, receipt = null, closed = false, halted = false, expired = false, observation = null;
   let timer = null;
   function cancelTimer() { if (timer !== null) { cancel(timer); timer = null; } }
@@ -97,7 +97,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       if (!active()) return { status: 'PREPARATION_FAILED' };
       scheduleExpiry();
       digest = createHash('sha256').update(secret).digest('hex');
-      return { status: 'PREPARED', identity, credentialSha256: digest };
+      return { status: 'PREPARED', identity };
     } catch (error) {
       const reasons = new Set(['CLI_VERSION_UNSUPPORTED', 'CLI_SELECTION_UNSUPPORTED', 'CLI_SELECTION_FAILED', 'CLI_SELECTION_UNTRACKED', 'CLI_SELECTION_SENSITIVE', 'SOURCE_MISMATCH', 'SOURCE_REMOTE_MISMATCH', 'SOURCE_MANIFEST_FAILED']);
       return reasons.has(error?.message) ? { status: 'PREPARATION_FAILED', reason: error.message } : { status: 'PREPARATION_FAILED' };
@@ -158,15 +158,43 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     }
   }
   async function verifyBinding() {
-    if (!freshOidc() || !attached || binding) return { status: 'DENIED' };
+    if (!freshOidc() || !attached || binding || proofAttempted) return { status: 'DENIED' };
+    proofAttempted = true;
     try {
       const p = await adapters.proof({ origin: attached.origin, oidc, redirect: 'error' });
       if (!freshOidc()) return { status: 'DENIED' };
+      const failures = new Set(['TRANSPORT_FAILURE', 'HTTP_SCHEMA_FAILURE', 'AUTHORIZATION_DENIED', 'RATE_LIMITED', 'SERVER_ERROR', 'HTTP_ERROR', 'JSON_FAILURE', 'SCHEMA_FAILURE']);
+      const httpStatus = Number.isInteger(p?.httpStatus) && p.httpStatus >= 100 && p.httpStatus <= 599 ? p.httpStatus : null;
+      const context = { stage: 'RUNTIME_PROOF', ...(httpStatus !== null ? { httpStatus } : {}) };
+      if (failures.has(p?.failure)) return { status: 'BINDING_FAILED', ...context, reason: p.failure, ...(p.failure === 'SERVER_ERROR' && httpStatus === 503 && p.isolationReport === 'REPORTED_FALSE' ? { isolationReport: 'REPORTED_FALSE' } : {}) };
+      const diagnosticFields = ['deploymentIdValid', 'sourceShaValid', 'authorityValid', 'invitationValid', 'targetValid'];
+      const diagnostics = {};
+      if (p?.m2BindingDiagnostics && typeof p.m2BindingDiagnostics === 'object' && !Array.isArray(p.m2BindingDiagnostics)) {
+        for (const field of diagnosticFields) if (typeof p.m2BindingDiagnostics[field] === 'boolean') diagnostics[field] = p.m2BindingDiagnostics[field];
+      }
+      if (Object.keys(diagnostics).length) context.m2BindingDiagnostics = diagnostics;
       const m = p?.m2Binding;
-      if (p?.authorized !== true || p.isolatedBackendVerified !== true || !m || m.deploymentId !== attached.id || m.sourceSha !== expectedSourceSha || !SHA.test(m.runtimeBinding ?? '') || m.ledgerKey !== `novora:beta-admission:m2-e2e:v1:${m.runtimeBinding}` || m.authorityId !== `m2e2e_${m.runtimeBinding.slice(0, 56)}`) return { status: 'BINDING_REJECTED' };
-      binding = { ledgerKey: m.ledgerKey, authorityId: m.authorityId, runtimeBinding: m.runtimeBinding, identity };
-      return { status: 'BINDING_VERIFIED', binding: { ...binding } };
-    } catch { return { status: 'BINDING_FAILED' }; }
+      let reason = null;
+      if (p?.authorized !== true) reason = 'AUTHORIZATION_DENIED';
+      else if (p.isolatedBackendVerified !== true) reason = 'ISOLATION_DENIED';
+      else if (!m || typeof m !== 'object' || Array.isArray(m)) reason = 'MISSING_BINDING';
+      else if (m.deploymentId !== attached.id) reason = 'DEPLOYMENT_ID_MISMATCH';
+      else if (m.sourceSha !== expectedSourceSha) reason = 'SOURCE_SHA_MISMATCH';
+      else if (typeof m.runtimeBinding !== 'string' || !SHA.test(m.runtimeBinding)) reason = 'RUNTIME_BINDING_INVALID';
+      else if (m.ledgerKey !== `novora:beta-admission:m2-e2e:v1:${m.runtimeBinding}`) reason = 'LEDGER_KEY_MISMATCH';
+      else if (m.authorityId !== `m2e2e_${m.runtimeBinding.slice(0, 56)}`) reason = 'AUTHORITY_MISMATCH';
+      if (reason) return { status: 'BINDING_REJECTED', ...context, reason };
+      const verifiedBinding = { ledgerKey: m.ledgerKey, authorityId: m.authorityId, runtimeBinding: m.runtimeBinding, identity };
+      // This callback is supplied by the trusted private host, never protocol
+      // input. It receives verified data in memory and grants no authority.
+      if (adapters.handoffBinding) {
+        try { await adapters.handoffBinding(Object.freeze({ ...verifiedBinding })); }
+        catch { return { status: 'BINDING_FAILED', ...context, reason: 'HANDOFF_FAILED' }; }
+        if (!freshOidc()) return { status: 'DENIED' };
+      }
+      binding = verifiedBinding;
+      return { status: 'BINDING_VERIFIED', ...context };
+    } catch { return { status: 'BINDING_FAILED', stage: 'RUNTIME_PROOF', reason: 'PROOF_INTERNAL_FAILURE' }; }
   }
   function observationValid(a) {
     return Boolean(binding && a && a.kind === 'operator_console_observation' && Number.isFinite(a.observedAt) && a.observedAt <= now() && a.observedAt >= now() - 60000 && a.authorityId === binding.authorityId && a.ledgerKey === binding.ledgerKey && a.runtimeBinding === binding.runtimeBinding && a.identity === identity && a.ownerApproved === true && a.durabilityVerified === true && a.currency === 'USD' && a.pricingVersion === 'openai-gpt-image-2-2026-04-21-standard-1024x1024-medium-2026-08-03-v1' && Number.isSafeInteger(a.expectedCostMicros) && a.expectedCostMicros > 0 && a.expectedCostMicros < 1000000 && a.revocationReady === true && a.costAuthorityMode === 'owner_expected_cost_single_attempt_v1' && a.ownerCostRiskAccepted === true && a.costCeilingVerified === false && a.limitMicros === 1000000 && a.attemptReservationMicros === 1000000 && a.maximumExperiences === 1 && a.maximumImages === 1 && a.maximumPaidAttempts === 1 && a.automaticPaidRetries === false && Number.isFinite(a.expiresAt) && a.expiresAt > now() && a.expiresAt <= ownerDeadline && a.expiresAt <= now() + 3600000);

@@ -127,6 +127,7 @@ function createSender(config, fixtureIO) {
   if (typeof io.canonical !== 'function' || !io.canonical(config.cwd)) throw new Error('CANONICAL_CHECKOUT_REQUIRED');
   const trusted = config.trustedAdapters || {};
   if (['revoke', 'cleanup'].some((name) => typeof trusted[name] !== 'function')) throw new Error('TRUSTED_ADAPTERS_REQUIRED');
+  if (trusted.handoffBinding != null && typeof trusted.handoffBinding !== 'function') throw new Error('TRUSTED_ADAPTERS_REQUIRED');
   let expectedManifest = null;
   async function verifySource({ sourceSha, isActive }) {
       const currentBranch = await io.run('git', ['branch', '--show-current'], {});
@@ -222,10 +223,36 @@ function createSender(config, fixtureIO) {
     },
     revoke: trusted.revoke,
     cleanup: trusted.cleanup,
+    handoffBinding: trusted.handoffBinding,
     async proof({ origin, oidc }) {
-      const response = await io.fetch(origin + '/api/admin/preview-isolation-proof', { headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + oidc }, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) });
-      if (!response.ok) return {};
-      return { ...(await response.json()), authorized: true };
+      let response;
+      try { response = await io.fetch(origin + '/api/admin/preview-isolation-proof', { headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + oidc }, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) }); }
+      catch { return { failure: 'TRANSPORT_FAILURE' }; }
+      const status = Number.isInteger(response?.status) && response.status >= 100 && response.status <= 599 ? response.status : null;
+      if (status === null) return { failure: 'HTTP_SCHEMA_FAILURE' };
+      if (status !== 200) {
+        const result = { failure: status === 401 || status === 403 ? 'AUTHORIZATION_DENIED' : status === 429 ? 'RATE_LIMITED' : status >= 500 ? 'SERVER_ERROR' : 'HTTP_ERROR', httpStatus: status };
+        // The endpoint's 503 contract can report isolation failure. A platform
+        // 503 can have another shape, so this is reported evidence, not proof.
+        if (status === 503) {
+          try { const body = await response.json(); if (body && typeof body === 'object' && !Array.isArray(body) && body.isolatedBackendVerified === false) result.isolationReport = 'REPORTED_FALSE'; } catch { /* retain the HTTP failure */ }
+        }
+        return result;
+      }
+      let body;
+      try { body = await response.json(); } catch { return { failure: 'JSON_FAILURE', httpStatus: status }; }
+      if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.isolatedBackendVerified !== 'boolean' || (Object.hasOwn(body, 'authorized') && body.authorized !== true)) return { failure: 'SCHEMA_FAILURE', httpStatus: status };
+      // This endpoint emits 200 only after its inbound OIDC authorization check.
+      // Copy only fields needed by the caller, never arbitrary response data.
+      const fields = ['deploymentIdValid', 'sourceShaValid', 'authorityValid', 'invitationValid', 'targetValid'];
+      const diagnostics = {};
+      if (body.m2BindingDiagnostics && typeof body.m2BindingDiagnostics === 'object' && !Array.isArray(body.m2BindingDiagnostics)) {
+        for (const field of fields) if (typeof body.m2BindingDiagnostics[field] === 'boolean') diagnostics[field] = body.m2BindingDiagnostics[field];
+      }
+      const b = body.m2Binding;
+      return { authorized: true, httpStatus: status, isolatedBackendVerified: body.isolatedBackendVerified,
+        ...(b && typeof b === 'object' && !Array.isArray(b) ? { m2Binding: { deploymentId: b.deploymentId, sourceSha: b.sourceSha, runtimeBinding: b.runtimeBinding, ledgerKey: b.ledgerKey, authorityId: b.authorityId } } : {}),
+        ...(Object.keys(diagnostics).length ? { m2BindingDiagnostics: diagnostics } : {}) };
     },
     async submit({ origin, path, bearer, oidc, idempotencyKey, payload }) {
       const response = await io.fetch(origin + path, { method: 'POST', headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + bearer, 'Idempotency-Key': idempotencyKey, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) });
