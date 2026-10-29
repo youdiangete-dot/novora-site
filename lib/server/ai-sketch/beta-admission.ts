@@ -244,39 +244,64 @@ export type BetaAdmissionBinding = Readonly<{
   runtimeBinding: string | null;
 }>;
 
+export type BetaBindingDiagnostics = Readonly<{
+  deploymentIdValid: boolean;
+  sourceShaValid: boolean;
+  authorityValid: boolean;
+  invitationValid: boolean;
+  targetValid: boolean;
+}>;
+
+export function isPreviewTarget(target: string | undefined): boolean {
+  return target === undefined || target === "preview";
+}
+
 // Server metadata selects a deployment-specific namespace. This never creates
 // authority, verifies a billing ceiling, or enables any runtime feature flag.
-export function resolveBetaAdmissionBinding(environment: Environment): BetaAdmissionBinding | null {
+export function inspectBetaAdmissionBinding(environment: Environment): Readonly<{
+  binding: BetaAdmissionBinding | null;
+  diagnostics: BetaBindingDiagnostics;
+}> {
   const authorityId = environment[BETA_SPENDING_AUTHORITY_ENV];
-  if (!authorityId || !IDENTITY.test(authorityId)) return null;
   const target = environment.VERCEL_TARGET_ENV;
+  const roster = invitations(environment);
+  const diagnostics: BetaBindingDiagnostics = {
+    deploymentIdValid: /^dpl_[A-Za-z0-9]{16,80}$/.test(environment.VERCEL_DEPLOYMENT_ID ?? ""),
+    sourceShaValid: /^[a-f0-9]{40}$/.test(environment.VERCEL_GIT_COMMIT_SHA ?? ""),
+    authorityValid: Boolean(authorityId && IDENTITY.test(authorityId)),
+    invitationValid: Boolean(roster && roster.length === 1),
+    targetValid: isPreviewTarget(target),
+  };
+  if (!diagnostics.authorityValid || !authorityId) return { binding: null, diagnostics };
   const hosted = environment.VERCEL !== undefined || environment.VERCEL_ENV !== undefined || target !== undefined;
   if ((!hosted && environment.NODE_ENV !== "production") ||
     (environment.VERCEL_ENV === "production" && (!target || target === "production"))) {
-    return { ledgerKey: BETA_LEDGER_KEY, authorityId, runtimeBinding: null };
+    return { binding: { ledgerKey: BETA_LEDGER_KEY, authorityId, runtimeBinding: null }, diagnostics };
   }
-  const roster = invitations(environment);
   if (environment.VERCEL !== "1" || environment.VERCEL_ENV !== "preview" ||
-    (target !== undefined && target !== "preview") || environment.NODE_ENV !== "production" ||
+    !diagnostics.targetValid || environment.NODE_ENV !== "production" ||
     environment.NEXT_RUNTIME !== "nodejs" || environment.NEXT_PHASE === "phase-production-build" ||
     environment.VERCEL_PROJECT_ID !== "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg" ||
     environment.VERCEL_GIT_COMMIT_REF !== "integration/instant-first-preview-agent" ||
-    !/^[a-f0-9]{40}$/.test(environment.VERCEL_GIT_COMMIT_SHA ?? "") ||
-    !/^dpl_[A-Za-z0-9]{16,80}$/.test(environment.VERCEL_DEPLOYMENT_ID ?? "") ||
+    !diagnostics.sourceShaValid || !diagnostics.deploymentIdValid ||
     environment.NOVORA_BETA_ADMISSION_ENABLED !== "true" ||
     environment.NOVORA_INSTANT_PREVIEW_AGENT_ENABLED !== "true" ||
     environment.NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED !== "true" ||
-    !roster || roster.length !== 1) return null;
+    !diagnostics.invitationValid || !roster) return { binding: null, diagnostics };
   const runtimeBinding = createHash("sha256").update([
     "novora_m2_e2e_preview_v1", environment.VERCEL_PROJECT_ID,
     environment.VERCEL_GIT_COMMIT_REF, environment.VERCEL_GIT_COMMIT_SHA,
     environment.VERCEL_DEPLOYMENT_ID, authorityId, roster[0].identity, roster[0].credentialSha256,
   ].join("\n")).digest("hex");
-  return {
+  return { binding: {
     ledgerKey: M2_PREVIEW_LEDGER_PREFIX + runtimeBinding,
     authorityId: "m2e2e_" + runtimeBinding.slice(0, 56),
     runtimeBinding,
-  };
+  }, diagnostics };
+}
+
+export function resolveBetaAdmissionBinding(environment: Environment): BetaAdmissionBinding | null {
+  return inspectBetaAdmissionBinding(environment).binding;
 }
 
 // These extra checks execute INSIDE the same atomic EVAL, before the unchanged

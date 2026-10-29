@@ -1,7 +1,7 @@
 import "server-only";
 
 import { verifyVercelOidcToken } from "@vercel/oidc";
-import { resolveBetaAdmissionBinding } from "./ai-sketch/beta-admission";
+import { inspectBetaAdmissionBinding, isPreviewTarget } from "./ai-sketch/beta-admission";
 import { createSupabaseAdminClientOrNull } from "./supabase";
 
 const PROJECT = "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg";
@@ -20,7 +20,7 @@ function isAllowedInstance(): boolean {
   return process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NODE_ENV === "production" && process.env.VERCEL === "1" &&
     process.env.VERCEL_ENV === "preview" &&
-    (!process.env.VERCEL_TARGET_ENV || process.env.VERCEL_TARGET_ENV === "preview") &&
+    isPreviewTarget(process.env.VERCEL_TARGET_ENV) &&
     process.env.VERCEL_PROJECT_ID === PROJECT &&
     process.env.VERCEL_GIT_COMMIT_REF === BRANCH &&
     process.env.NEXT_PHASE !== "phase-production-build";
@@ -104,7 +104,8 @@ export async function getPreviewIsolationProof(request: Request): Promise<Respon
   } catch {
     // A failed private log must not change the response or repeat any work.
   }
-  const binding = isolatedBackendVerified ? resolveBetaAdmissionBinding(process.env) : null;
+  const assessment = isolatedBackendVerified ? inspectBetaAdmissionBinding(process.env) : null;
+  const binding = assessment?.binding ?? null;
   const m2Binding = binding?.runtimeBinding ? {
     ledgerKey: binding.ledgerKey,
     authorityId: binding.authorityId,
@@ -112,7 +113,12 @@ export async function getPreviewIsolationProof(request: Request): Promise<Respon
     deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
     sourceSha: process.env.VERCEL_GIT_COMMIT_SHA,
   } : null;
-  return Response.json({ isolatedBackendVerified, ...(m2Binding ? { m2Binding } : {}) }, {
+  const diagnose = isolatedBackendVerified && !m2Binding &&
+    process.env.NOVORA_BETA_ADMISSION_ENABLED === "true" &&
+    process.env.NOVORA_INSTANT_PREVIEW_AGENT_ENABLED === "true" &&
+    process.env.NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED === "true";
+  return Response.json({ isolatedBackendVerified, ...(m2Binding ? { m2Binding } : {}),
+    ...(diagnose && assessment ? { m2BindingDiagnostics: assessment.diagnostics } : {}) }, {
     status: isolatedBackendVerified ? 200 : 503, headers: NO_STORE,
   });
 }
