@@ -37,8 +37,9 @@ function parseDeployment(result) {
   return { ok: true, id: entry.id, origin: targetOrigin };
 }
 
-function createSession({ adapters, expectedSourceSha, deadline, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout }) {
+function createSession({ adapters, expectedSourceSha, deadline, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout, sourceMode = 'cli_upload' }) {
   if (!adapters || !/^[a-f0-9]{40}$/.test(expectedSourceSha ?? '') || !Number.isFinite(deadline)) throw new Error('INVALID_SESSION_CONFIGURATION');
+  if (!['cli_upload', 'git_source'].includes(sourceMode)) throw new Error('INVALID_SESSION_CONFIGURATION');
   const ownerDeadline = Math.min(deadline, Date.parse('2026-10-30T03:00:00Z'));
   const lastNewAttempt = Math.min(ownerDeadline, Date.parse('2026-10-30T02:00:00Z'));
   let secret = null, identity = null, digest = null, idem = null, oidc = null, oidcExpires = null, credentialExpires = null, authorityExpires = null;
@@ -91,7 +92,10 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       scheduleExpiry();
       digest = createHash('sha256').update(secret).digest('hex');
       return { status: 'PREPARED', identity, credentialSha256: digest };
-    } catch { return { status: 'PREPARATION_FAILED' }; }
+    } catch (error) {
+      const reasons = new Set(['CLI_VERSION_UNSUPPORTED', 'CLI_SELECTION_UNSUPPORTED', 'CLI_SELECTION_FAILED', 'CLI_SELECTION_UNTRACKED', 'CLI_SELECTION_SENSITIVE', 'SOURCE_MISMATCH', 'SOURCE_REMOTE_MISMATCH', 'SOURCE_MANIFEST_FAILED']);
+      return reasons.has(error?.message) ? { status: 'PREPARATION_FAILED', reason: error.message } : { status: 'PREPARATION_FAILED' };
+    }
   }
   async function refreshOidc() {
     if (!active() || !prepared || !secret) return { status: 'DENIED' };
@@ -125,13 +129,14 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       const d = await adapters.readDeployment(deploymentId);
       if (!active()) return { status: 'DENIED' };
       const targetOrigin = origin(d?.url);
-      if (!d || d.id !== deploymentId || d.projectId !== PROJECT || d.teamId !== TEAM ||
-        d.branch !== BRANCH || (d.sourceSha != null && d.sourceSha !== expectedSourceSha) ||
-        d.target !== 'preview' || d.readyState !== 'READY' || !targetOrigin || d.manifestVerified !== true ||
-        (proposed && targetOrigin !== proposed.origin)) return { status: 'READBACK_REJECTED' };
+      if (!d || d.id !== deploymentId || d.projectId !== PROJECT || d.teamId !== TEAM || d.branch !== BRANCH || (d.sourceSha != null && d.sourceSha !== expectedSourceSha) || d.target !== 'preview' || d.readyState !== 'READY' || !targetOrigin || (proposed && targetOrigin !== proposed.origin)) return { status: 'READBACK_REJECTED', reason: 'DEPLOYMENT_IDENTITY' };
+      if (sourceMode === 'git_source' ? d.sourceEvidence !== 'platform_git_source_v1' : d.manifestVerified !== true) return { status: 'READBACK_REJECTED', reason: sourceMode === 'git_source' ? 'GIT_SOURCE_EVIDENCE' : 'MANIFEST_CONTENT' };
       attached = { id: deploymentId, origin: targetOrigin };
       return { status: d.sourceVerified === true && d.sourceSha === expectedSourceSha ? 'ATTACHED' : 'READONLY_RUNTIME_PROOF_PENDING', deploymentId };
-    } catch { return { status: 'READBACK_FAILED' }; }
+    } catch (error) {
+      const reasons = new Set(['DEPLOYMENT_TRANSPORT', 'DEPLOYMENT_SCHEMA', 'MANIFEST_TRANSPORT', 'MANIFEST_SCHEMA', 'MANIFEST_PATH', 'MANIFEST_COUNT', 'MANIFEST_CONTENT_UNAVAILABLE', 'GIT_PROJECT_TRANSPORT', 'GIT_SOURCE_SCHEMA', 'GIT_DEPLOYMENT_ID', 'GIT_PROJECT', 'GIT_TARGET', 'GIT_NOT_READY', 'GIT_REPOSITORY', 'GIT_REF', 'GIT_SHA', 'GIT_METADATA_CONFLICT']);
+      return { status: 'READBACK_FAILED', reason: reasons.has(error?.message) ? error.message : 'READBACK_TRANSPORT_OR_SCHEMA' };
+    }
   }
   async function verifyBinding() {
     if (!freshOidc() || !attached || binding) return { status: 'DENIED' };

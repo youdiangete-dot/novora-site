@@ -12,6 +12,30 @@ const { createOperator, createOfflineFixtureOperator } = require('./m2-preview-o
 const project = 'prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg';
 const team = 'team_9VhRPiCaRc62kna4XyNKvPZ7';
 const branch = 'integration/instant-first-preview-agent';
+const gitOrg = 'youdiangete-dot', gitRepo = 'novora-site';
+
+function buildGitSourceDeployment({ identity, credentialSha256, sourceSha }) {
+  if (!/^m2_synthetic_[A-Za-z0-9_-]{1,51}$/.test(identity ?? '') || !/^[a-f0-9]{64}$/.test(credentialSha256 ?? '') || !/^[a-f0-9]{40}$/.test(sourceSha ?? '')) throw new Error('GIT_REQUEST_INVALID');
+  const env = { NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity, credentialSha256 }]), NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: 'true', NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: 'true' };
+  return { name: 'project-dd34e', project, gitSource: { type: 'github', org: gitOrg, repo: gitRepo, ref: branch, sha: sourceSha }, env, build: { env: { ...env } } };
+}
+
+function verifyGitSourceDeployment(d, p, deploymentId, sourceSha) {
+  if (!d || typeof d !== 'object' || !p || typeof p !== 'object' || !d.gitSource || typeof d.gitSource !== 'object' || !p.link || typeof p.link !== 'object') throw new Error('GIT_SOURCE_SCHEMA');
+  if ((d.id ?? d.uid) !== deploymentId || (d.id && d.uid && d.id !== d.uid)) throw new Error('GIT_DEPLOYMENT_ID');
+  if (d.projectId !== project || (d.teamId ?? d.ownerId) !== team || p.id !== project) throw new Error('GIT_PROJECT');
+  if (d.target !== null || d.readyState !== 'READY') throw new Error(d.target !== null ? 'GIT_TARGET' : 'GIT_NOT_READY');
+  const link = p.link, src = d.gitSource;
+  const linkId = String(link.repoId ?? ''), sourceId = String(src.repoId ?? '');
+  if (link.type !== 'github' || link.org !== gitOrg || link.repo !== gitRepo || !/^[1-9][0-9]*$/.test(linkId) || sourceId !== linkId || src.type !== 'github') throw new Error('GIT_REPOSITORY');
+  if ((src.org != null && src.org !== gitOrg) || (src.repo != null && src.repo !== gitRepo)) throw new Error('GIT_REPOSITORY');
+  if (src.ref !== branch) throw new Error('GIT_REF');
+  if (src.sha !== sourceSha) throw new Error('GIT_SHA');
+  if ((d.meta?.githubCommitSha != null && d.meta.githubCommitSha !== sourceSha) || (d.meta?.githubCommitRef != null && d.meta.githubCommitRef !== branch) || (d.meta?.githubOrg != null && d.meta.githubOrg !== gitOrg) || (d.meta?.githubRepo != null && d.meta.githubRepo !== gitRepo)) throw new Error('GIT_METADATA_CONFLICT');
+  const host = d.url;
+  const url = typeof host === 'string' && /^[a-z0-9-]+\.vercel\.app$/.test(host) ? 'https://' + host : host;
+  return { id: deploymentId, url, projectId: project, teamId: team, branch, sourceSha, target: 'preview', readyState: 'READY', sourceEvidence: 'platform_git_source_v1', sourceVerified: false };
+}
 
 // The CLI reads <checkout>/.git/config directly. A worktree's .git file is
 // not a canonical checkout and does not supply that metadata to this CLI.
@@ -19,40 +43,64 @@ function canonicalGitDirectory(cwd, lstat = fs.lstatSync) {
   try { return lstat(path.join(cwd, '.git')).isDirectory(); } catch { return false; }
 }
 
-// Fixed CLI exclusions documented by Vercel; custom ignore files need a
-// separately reviewed manifest policy and therefore fail closed here.
-function cliIgnored(name) {
-  const fixed = new Set(['.hg', '.git', '.gitmodules', '.svn', '.cache', '.next', '.now', '.vercel', '.npmignore', '.dockerignore', '.gitignore', '.DS_Store', '.lock-wscript', '.env.local', '.venv', 'npm-debug.log', 'config.gypi', 'node_modules', '__pycache__', 'venv', 'CVS']);
-  const parts = name.split('/');
-  return parts.some((part, index) => fixed.has(part) || /^\..*\.swp$/.test(part) || /^\.wafpicke-/.test(part) || /^\.pnp/.test(part) || /^\.env\..+\.local$/.test(part) || (part === '.yarn' && parts[index + 1] === 'cache'));
-}
-
-// Vercel source-file IDs are raw SHA-1 hashes. Compare the complete uploaded
-// tree, not a caller-supplied SHA declaration or a few handpicked files.
-function manifestMatches(expected, roots) {
-  if (!(expected instanceof Map) || expected.size === 0 || !Array.isArray(roots)) return false;
-  const seen = new Map();
+// The API returns a top-level array of file-tree entries. A real `src` folder
+// is an ordinary path component, not an assumed transport wrapper.
+function manifestPaths(expected, roots) {
+  if (!(expected instanceof Map) || expected.size === 0 || !Array.isArray(roots)) throw new Error('MANIFEST_SCHEMA');
+  const seen = new Map(), directories = new Set();
   function visit(node, prefix) {
-    if (!node || typeof node !== 'object' || typeof node.name !== 'string') throw new Error('INVALID_MANIFEST');
+    if (!node || typeof node !== 'object' || typeof node.name !== 'string') throw new Error('MANIFEST_SCHEMA');
     const name = node.name;
-    if (!name || name === '.' || name === '..' || /[\\/\0]/.test(name)) throw new Error('INVALID_MANIFEST');
+    if (!name || name === '.' || name === '..' || /[\\/\0]/.test(name)) throw new Error('MANIFEST_PATH');
     const relative = prefix ? `${prefix}/${name}` : name;
-    if (node.type === 'directory') { if (!Array.isArray(node.children)) throw new Error('INVALID_MANIFEST'); for (const child of node.children) visit(child, relative); return; }
-    if (node.type !== 'file' || !/^[a-f0-9]{40}$/.test(node.uid ?? '') || seen.has(relative)) throw new Error('INVALID_MANIFEST');
+    if (seen.has(relative) || directories.has(relative)) throw new Error('MANIFEST_PATH');
+    if (node.type === 'directory') { if (!Array.isArray(node.children)) throw new Error('MANIFEST_SCHEMA'); directories.add(relative); for (const child of node.children) visit(child, relative); return; }
+    if (node.type !== 'file' || typeof node.uid !== 'string' || !node.uid || /[\0]/.test(node.uid)) throw new Error('MANIFEST_SCHEMA');
     seen.set(relative, node.uid);
   }
-  try {
-    if (roots.length !== 1 || roots[0]?.name !== 'src' || roots[0]?.type !== 'directory' || !Array.isArray(roots[0].children)) return false;
-    for (const node of roots[0].children) visit(node, '');
-    return seen.size === expected.size && [...expected].every(([name, hash]) => seen.get(name) === hash);
-  } catch { return false; }
+  for (const node of roots) visit(node, '');
+  if (seen.size !== expected.size) throw new Error('MANIFEST_COUNT');
+  const matches = (map) => [...expected.keys()].every((name) => map.has(name));
+  const direct = matches(seen);
+  const wrapped = roots.length === 1 && roots[0]?.type === 'directory' && roots[0]?.name === 'src'
+    ? new Map([...seen].map(([name, uid]) => [name.startsWith('src/') ? name.slice(4) : '', uid])) : null;
+  const wrapperMatches = wrapped !== null && matches(wrapped);
+  if (direct === wrapperMatches) throw new Error('MANIFEST_PATH');
+  return direct ? seen : wrapped;
+}
+
+// A complete set of independently obtained bytes is required; identifiers
+// alone are not evidence of content. This does not perform or authorize I/O.
+function manifestContentMatches(expected, contents) {
+  if (!(expected instanceof Map) || !(contents instanceof Map) || contents.size !== expected.size) return false;
+  for (const [name, digest] of expected) {
+    const bytes = contents.get(name);
+    if (!Buffer.isBuffer(bytes) || crypto.createHash('sha1').update(bytes).digest('hex') !== digest) return false;
+  }
+  return true;
+}
+
+async function cliSelection(cwd, cli) {
+  // This path is part of the pinned, installed CLI 58.5.1 bundle. No CLI
+  // command, authentication, file hashing, or network request is run here.
+  const root = path.dirname(cli);
+  const version = JSON.parse(fs.readFileSync(path.join(root, '..', 'package.json'), 'utf8')).version;
+  if (version !== '58.5.1') throw new Error('CLI_VERSION_UNSUPPORTED');
+  if (['.vercelignore', '.nowignore', '.vercel/routes.json'].some((name) => fs.existsSync(path.join(cwd, name)))) throw new Error('CLI_SELECTION_UNSUPPORTED');
+  const { pathToFileURL } = require('node:url');
+  const bundle = await import(pathToFileURL(path.join(root, 'chunks', 'chunk-LXRK7KPA.js')).href);
+  const { fileList } = await bundle.require_dist().buildFileTree(cwd, { isDirectory: true }, () => {});
+  return fileList;
 }
 
 function createSender(config, fixtureIO) {
   if (!/^m2_synthetic_[A-Za-z0-9_-]{1,51}$/.test(config.invitedIdentity ?? '')) throw new Error('APPROVED_IDENTITY_REQUIRED');
+  if (config.sourceMode != null && !['cli_upload', 'git_source'].includes(config.sourceMode)) throw new Error('SOURCE_MODE_INVALID');
+  const sourceMode = config.sourceMode ?? 'cli_upload';
   const io = fixtureIO || {
     run: (command, args, options) => new Promise((resolve) => {
-      const child = cp.spawn(command, args, { cwd: config.cwd, windowsHide: true, env: options.env, stdio: ['ignore', 'pipe', 'ignore'] });
+      const child = cp.spawn(command, args, { cwd: config.cwd, windowsHide: true, env: options.env, stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'] });
+      if (options.input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(options.input); }
       let stdout = '', overflow = false;
       const timeout = setTimeout(() => { child.kill(); }, options.timeout ?? 120000);
       child.stdout.setEncoding('utf8');
@@ -66,6 +114,7 @@ function createSender(config, fixtureIO) {
     environment: process.env,
     node: process.execPath,
     canonical: (cwd) => canonicalGitDirectory(cwd),
+    select: (cwd) => cliSelection(cwd, config.cli),
     file: (filename) => { const stat = fs.lstatSync(filename); if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('UNSAFE_SOURCE'); return fs.readFileSync(filename); },
   };
   if (typeof io.canonical !== 'function' || !io.canonical(config.cwd)) throw new Error('CANONICAL_CHECKOUT_REQUIRED');
@@ -83,18 +132,30 @@ function createSender(config, fixtureIO) {
       const remote = await io.run('git', ['remote', 'get-url', 'origin'], {});
       if (!isActive()) throw new Error('SESSION_INACTIVE');
       if (remote.status !== 0 || !/^(?:https:\/\/github\.com\/youdiangete-dot\/novora-site(?:\.git)?|git@github\.com:youdiangete-dot\/novora-site(?:\.git)?)$/.test(remote.stdout.trim())) throw new Error('SOURCE_REMOTE_MISMATCH');
+      if (sourceMode === 'git_source') return;
       const tracked = await io.run('git', ['ls-tree', '-r', '-z', sourceSha], { maxBuffer: 10485760 });
       if (!isActive() || tracked.status !== 0 || typeof tracked.stdout !== 'string' || !tracked.stdout.endsWith('\0')) throw new Error('SOURCE_MANIFEST_FAILED');
       const entries = tracked.stdout.slice(0, -1).split('\0');
       if (entries.length === 0 || entries.length > 20000) throw new Error('SOURCE_MANIFEST_FAILED');
-      const manifest = new Map();
+      const trackedFiles = new Map();
       for (const entry of entries) {
         const parsed = /^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/.exec(entry);
         if (!parsed) throw new Error('SOURCE_MANIFEST_FAILED');
         const [, , gitBlob, name] = parsed;
         if (!name || name.startsWith('/') || name.includes('\\') || name.split('/').some((part) => !part || part === '.' || part === '..')) throw new Error('SOURCE_MANIFEST_FAILED');
-        if (name === '.vercelignore' || name === '.nowignore') throw new Error('CUSTOM_IGNORE_UNSUPPORTED');
-        if (cliIgnored(name)) continue;
+        if (trackedFiles.has(name)) throw new Error('SOURCE_MANIFEST_FAILED');
+        trackedFiles.set(name, gitBlob);
+      }
+      const selected = await io.select(config.cwd);
+      if (!isActive() || !Array.isArray(selected) || !selected.length) throw new Error('CLI_SELECTION_FAILED');
+      const manifest = new Map();
+      for (const filename of selected) {
+        if (typeof filename !== 'string') throw new Error('CLI_SELECTION_FAILED');
+        const name = path.relative(config.cwd, filename).split(path.sep).join('/');
+        if (!name || path.isAbsolute(name) || name.split('/').some((part) => !part || part === '.' || part === '..') || !trackedFiles.has(name) || manifest.has(name)) throw new Error('CLI_SELECTION_UNTRACKED');
+        const base = name.split('/').at(-1).toLowerCase();
+        if ((/^\.env(?:\..*)?$/.test(base) && base !== '.env.example') || ['.npmrc', '.pypirc', '.netrc', 'id_rsa', 'id_ed25519'].includes(base) || /\.(?:pem|p12|pfx|key)$/.test(base)) throw new Error('CLI_SELECTION_SENSITIVE');
+        const gitBlob = trackedFiles.get(name);
         const bytes = io.file(path.join(config.cwd, ...name.split('/')));
         if (!Buffer.isBuffer(bytes) || manifest.has(name)) throw new Error('SOURCE_MANIFEST_FAILED');
         const actualBlob = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
@@ -117,23 +178,40 @@ function createSender(config, fixtureIO) {
     async deploy({ identity, credentialSha256, sourceSha, isActive }) {
       await verifySource({ sourceSha, isActive });
       if (!isActive()) throw new Error('SESSION_INACTIVE');
+      if (sourceMode === 'git_source') {
+        const body = buildGitSourceDeployment({ identity, credentialSha256, sourceSha });
+        const result = await io.run(io.node, [config.cli, 'api', '/v13/deployments', '--method', 'POST', '--input', '-', '--scope', team, '--raw'], { input: JSON.stringify(body), timeout: 180000 });
+        return { exitCode: result.status, stdout: result.stdout };
+      }
       const env = { ...io.environment, NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity, credentialSha256 }]), NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: 'true', NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: 'true' };
       const result = await io.run(io.node, [config.cli, 'deploy', '--project', project, '--scope', team, '--yes', '--no-wait', '--json', '--env', 'NOVORA_BETA_INVITATIONS_JSON', '--env', 'NOVORA_INSTANT_PREVIEW_AGENT_ENABLED', '--env', 'NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED', '--meta', 'githubDeployment=1', '--meta', 'githubCommitRef=' + branch], { env, timeout: 180000 });
       return { exitCode: result.status, stdout: result.stdout };
     },
     async readDeployment(id) {
       if (!/^dpl_[A-Za-z0-9]{16,80}$/.test(id)) throw new Error('INVALID_DEPLOYMENT');
-      const result = await io.run(io.node, [config.cli, 'api', '/v13/deployments/' + id, '--scope', team, '--raw'], { timeout: 30000 });
-      if (result.status !== 0) throw new Error('READBACK_FAILED');
-      const d = JSON.parse(result.stdout);
-      if (!d || typeof d !== 'object' || (d.id && d.uid && d.id !== d.uid)) throw new Error('READBACK_FAILED');
+      const deploymentPath = '/v13/deployments/' + id + (sourceMode === 'git_source' ? '?withGitRepoInfo=true' : '');
+      const result = await io.run(io.node, [config.cli, 'api', deploymentPath, '--scope', team, '--raw'], { timeout: 30000 });
+      if (result.status !== 0) throw new Error('DEPLOYMENT_TRANSPORT');
+      let d; try { d = JSON.parse(result.stdout); } catch { throw new Error('DEPLOYMENT_SCHEMA'); }
+      if (!d || typeof d !== 'object' || (d.id && d.uid && d.id !== d.uid)) throw new Error('DEPLOYMENT_SCHEMA');
+      if (sourceMode === 'git_source') {
+        const r = await io.run(io.node, [config.cli, 'api', '/v9/projects/' + project, '--scope', team, '--raw'], { timeout: 30000 });
+        if (r.status !== 0) throw new Error('GIT_PROJECT_TRANSPORT');
+        let p; try { p = JSON.parse(r.stdout); } catch { throw new Error('GIT_SOURCE_SCHEMA'); }
+        return verifyGitSourceDeployment(d, p, id, config.expectedSourceSha);
+      }
       const host = d.url;
       const url = typeof host === 'string' && /^[a-z0-9-]+\.vercel\.app$/.test(host) ? 'https://' + host : host;
       if (!expectedManifest) throw new Error('SOURCE_MANIFEST_FAILED');
       const files = await io.run(io.node, [config.cli, 'api', '/v6/deployments/' + id + '/files', '--scope', team, '--raw'], { timeout: 30000, maxBuffer: 10485760 });
-      if (files.status !== 0) throw new Error('SOURCE_MANIFEST_FAILED');
-      const uploaded = JSON.parse(files.stdout);
-      return { id: d.id ?? d.uid, url, projectId: d.projectId, teamId: d.teamId ?? d.ownerId, target: d.target === null ? 'preview' : d.target, readyState: d.readyState, branch: d.meta?.githubCommitRef, sourceSha: d.meta?.githubCommitSha, sourceVerified: false, manifestVerified: manifestMatches(expectedManifest, uploaded) };
+      if (files.status !== 0) throw new Error('MANIFEST_TRANSPORT');
+      let uploaded;
+      try { uploaded = JSON.parse(files.stdout); } catch { throw new Error('MANIFEST_SCHEMA'); }
+      manifestPaths(expectedManifest, uploaded);
+      // The documented API treats uid as an opaque identifier, not a digest;
+      // its content-response JSON fields and complete-read budget are not yet
+      // established. Never treat matching identifiers or a sample as proof.
+      throw new Error('MANIFEST_CONTENT_UNAVAILABLE');
     },
     revoke: trusted.revoke,
     cleanup: trusted.cleanup,
@@ -153,7 +231,7 @@ function createSender(config, fixtureIO) {
       return { status: response.status, contentType: response.headers.get('content-type'), ...(response.status === 200 ? { bytes: Buffer.from(await response.arrayBuffer()) } : {}) };
     },
   };
-  const sessionConfig = { adapters, expectedSourceSha: config.expectedSourceSha, deadline: config.deadline, now: config.now };
+  const sessionConfig = { adapters, expectedSourceSha: config.expectedSourceSha, deadline: config.deadline, now: config.now, sourceMode };
   if (fixtureIO) {
     adapters.verifyOidc = fixtureIO.verifyOidc;
     return createOfflineFixtureOperator(sessionConfig);
@@ -174,4 +252,4 @@ function attachPrivateProtocol(sender, input, output) {
   });
   return lines;
 }
-module.exports = { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestMatches };
+module.exports = { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestPaths, manifestContentMatches, cliSelection, buildGitSourceDeployment, verifyGitSourceDeployment };
