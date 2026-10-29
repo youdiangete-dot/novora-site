@@ -8,7 +8,7 @@ require('node:crypto').randomBytes = () => { throw new Error('REAL_RANDOM_FORBID
 global.fetch = () => { throw new Error('REAL_NETWORK_FORBIDDEN'); };
 const { parseDeployment, createSession } = require('../../tools/m2-preview-session.cjs');
 const { createOfflineFixtureOperator } = require('../../tools/m2-preview-operator.cjs');
-const { createSender, attachPrivateProtocol } = require('../../tools/m2-private-sender.cjs');
+const { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestMatches } = require('../../tools/m2-private-sender.cjs');
 const { PassThrough } = require('node:stream');
 const readline = require('node:readline');
 
@@ -20,6 +20,59 @@ const fakeOidc = 'synthetic-oidc';
 const runtime = 'a'.repeat(64);
 const deployment = { id, url, target: 'preview' };
 const claims = { owner_id: 'team_9VhRPiCaRc62kna4XyNKvPZ7', project_id: 'prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg', environment: 'development', sub: 'owner:novoradesign:project:project-dd34e:environment:development', aud: 'https://vercel.com/novoradesign', iss: 'https://oidc.vercel.com', iat: 1000, nbf: 1000, exp: 1100 };
+test('source provenance rejects a worktree git file and accepts a canonical git directory', () => {
+  assert.equal(canonicalGitDirectory('fixture', () => ({ isDirectory: () => false })), false);
+  assert.equal(canonicalGitDirectory('fixture', () => ({ isDirectory: () => true })), true);
+  assert.equal(canonicalGitDirectory('fixture', () => { throw new Error('missing'); }), false);
+  assert.throws(() => createSender({ invitedIdentity: 'm2_synthetic_fixture', cwd: 'fixture' }, { canonical: () => false }), /CANONICAL_CHECKOUT_REQUIRED/);
+});
+
+test('source provenance manifest requires exactly the expected uploaded files and hashes', () => {
+  const a = 'a'.repeat(40), b = 'b'.repeat(40);
+  const expected = new Map([['app/route.ts', a], ['vercel.json', b]]);
+  const tree = [{ name: 'src', type: 'directory', children: [{ name: 'app', type: 'directory', children: [{ name: 'route.ts', type: 'file', uid: a }] }, { name: 'vercel.json', type: 'file', uid: b }] }];
+  assert.equal(manifestMatches(expected, tree), true);
+  for (const bad of [
+    [{ name: 'src', type: 'directory', children: [{ name: 'vercel.json', type: 'file', uid: b }] }],
+    [{ name: 'src', type: 'directory', children: [{ name: 'app', type: 'directory', children: [{ name: 'route.ts', type: 'file', uid: b }] }, { name: 'vercel.json', type: 'file', uid: b }] }],
+    [{ name: 'src', type: 'directory', children: [...tree[0].children, { name: 'extra', type: 'file', uid: a }] }],
+    [{ name: 'src', type: 'directory', children: [...tree[0].children, { name: '../escape', type: 'file', uid: a }] }],
+    [{ name: 'src', type: 'directory', children: [...tree[0].children, { name: 'vercel.json', type: 'file', uid: b }] }],
+  ]) assert.equal(manifestMatches(expected, bad), false);
+});
+
+test('source provenance rejects absent or malformed expected source before a session starts', () => {
+  for (const expectedSourceSha of [undefined, '', 'A'.repeat(40), 'a'.repeat(39)]) {
+    assert.throws(() => createSession({ adapters: {}, expectedSourceSha, deadline: 1060000 }), /INVALID_SESSION_CONFIGURATION/);
+  }
+});
+
+test('source provenance rejects wrong source bytes before token or fixture creation', async () => {
+  let tokenCalls = 0, randomCalls = 0;
+  const io = { node: 'fixture', environment: {}, canonical: () => true, file: () => Buffer.from('wrong source'), randomBytes: () => { randomCalls++; return Buffer.alloc(32); }, verifyOidc: async () => claims,
+    run: (_cmd, args) => {
+      if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
+      if (args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (args.includes('status')) return { status: 0, stdout: '' };
+      if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
+      if (args.includes('ls-tree')) return { status: 0, stdout: `100644 blob ${'a'.repeat(40)}\tfixture.txt\0` };
+      if (args.includes('token')) tokenCalls++;
+      throw new Error('UNEXPECTED_FIXTURE_PROCESS');
+    }, fetch: () => { throw new Error('UNEXPECTED_FIXTURE_NETWORK'); } };
+  const sender = createSender({ cwd: 'fixture', cli: 'fixture', invitedIdentity: 'm2_synthetic_fixture', expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters: { revoke: async () => true, cleanup: async () => true } }, io);
+  assert.equal((await sender('prepare')).status, 'PREPARATION_FAILED');
+  assert.equal(tokenCalls, 0); assert.equal(randomCalls, 0);
+});
+
+test('source provenance rejects missing, malformed and mismatched protected runtime SHA', async () => {
+  for (const runtimeSha of [undefined, 'invalid', '0'.repeat(40)]) {
+    const { s } = harness({ proof: async () => ({ authorized: true, isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: runtimeSha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } }) });
+    await attached(s);
+    assert.equal((await s.verifyBinding()).status, 'BINDING_REJECTED');
+    assert.equal((await s.arm()).status, 'DENIED');
+    await s.close();
+  }
+});
 // This is a synthetic operator observation, never proof of a real ledger.
 function fixtureObservation(identity = 'synthetic_identity') { return { kind: 'operator_console_observation', observedAt: 1000000, authorityId: `m2e2e_${runtime.slice(0, 56)}`, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, runtimeBinding: runtime, identity, ownerApproved: true, durabilityVerified: true, currency: 'USD', pricingVersion: 'openai-gpt-image-2-2026-04-21-standard-1024x1024-medium-2026-08-03-v1', expectedCostMicros: 100000, revocationReady: true, costAuthorityMode: 'owner_expected_cost_single_attempt_v1', ownerCostRiskAccepted: true, costCeilingVerified: false, limitMicros: 1000000, attemptReservationMicros: 1000000, maximumExperiences: 1, maximumImages: 1, maximumPaidAttempts: 1, automaticPaidRetries: false, expiresAt: 1050000 }; }
 function harness(overrides = {}) {
@@ -29,7 +82,7 @@ function harness(overrides = {}) {
     prepare: async () => ({ bearer: fakeBearer, oidc: fakeOidc, identity: 'synthetic_identity', idempotencyKey: 'synthetic_idempotency' }),
     verifyOidc: async () => claims,
     deploy: async () => { calls.deploy++; return { exitCode: 0, stdout: JSON.stringify({ status: 'success', deployment }) }; },
-    readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, readyState: 'READY' }),
+    readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, manifestVerified: true, readyState: 'READY' }),
     proof: async (request) => { assert.equal(request.redirect, 'error'); return { authorized: true, isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } }; },
     submit: async (request) => { calls.submit++; assert.equal(request.redirect, 'error'); return { confirmed: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' }; },
     asset: async (request) => request.cookie ? { status: 200, contentType: 'image/png', bytes: Buffer.from('synthetic-image') } : { status: 404 },
@@ -94,8 +147,8 @@ test('uncertain deployment is never repeated but can attach with verified readba
 });
 
 test('readback fails closed on identity, source, readiness and target mismatches', async () => {
-  for (const mutation of [{ projectId: 'wrong' }, { teamId: 'wrong' }, { branch: 'wrong' }, { sourceSha: '0'.repeat(40) }, { target: 'production' }, { readyState: 'BUILDING' }, { url: 'https://evil.example' }]) {
-    const { s } = harness({ readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, readyState: 'READY', ...mutation }) });
+  for (const mutation of [{ projectId: 'wrong' }, { teamId: 'wrong' }, { branch: 'wrong' }, { sourceSha: '0'.repeat(40) }, { manifestVerified: false }, { manifestVerified: undefined }, { target: 'production' }, { readyState: 'BUILDING' }, { url: 'https://evil.example' }]) {
+    const { s } = harness({ readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, manifestVerified: true, readyState: 'READY', ...mutation }) });
     await s.prepare(); await s.deploy();
     assert.equal((await s.attach(id)).status, 'READBACK_REJECTED');
     assert.equal((await s.close()).cleanup, 'UNVERIFIED_TARGET');
@@ -114,14 +167,22 @@ test('private sender wiring holds an uncertain deployment for protected source p
   const readback = { uid: id, url: url.slice(8), projectId: claims.project_id, teamId: claims.owner_id, meta: { githubCommitRef: 'integration/instant-first-preview-agent' }, target: null, readyState: 'READY' };
   const binding = { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` };
   const response = (status, body, cookies = []) => ({ status, ok: status === 200, json: async () => body, headers: { getSetCookie: () => cookies, get: () => 'image/png' }, arrayBuffer: async () => Buffer.from('fixture-image') });
+  const sourceBytes = Buffer.from('fixed fixture source');
+  const sourceUid = require('node:crypto').createHash('sha1').update(sourceBytes).digest('hex');
+  const sourceBlob = require('node:crypto').createHash('sha1').update(`blob ${sourceBytes.length}\0`).update(sourceBytes).digest('hex');
   const io = {
-    node: 'fixture-node', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims,
+    node: 'fixture-node', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: (filename) => { if (filename.endsWith('.gitignore') || filename.endsWith('.pnp.cjs')) throw new Error('IGNORED_FILE_READ'); return sourceBytes; },
     run: (_command, args) => {
       if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
       if (args.includes('deploy')) { deployments++; return { status: 0, stdout: deployOutput }; }
-      if (args.includes('api')) { assert.deepEqual(args.slice(1), ['api', '/v13/deployments/' + id, '--scope', claims.owner_id, '--raw']); return { status: 0, stdout: JSON.stringify(readback) }; }
+      if (args.includes('api')) {
+        if (args.includes('/v6/deployments/' + id + '/files')) return { status: 0, stdout: JSON.stringify([{ name: 'src', type: 'directory', children: [{ name: 'fixture.txt', type: 'file', uid: sourceUid }] }]) };
+        assert.deepEqual(args.slice(1), ['api', '/v13/deployments/' + id, '--scope', claims.owner_id, '--raw']); return { status: 0, stdout: JSON.stringify(readback) };
+      }
       if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
       if (args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
+      if (args.includes('ls-tree')) return { status: 0, stdout: `100644 blob ${sourceBlob}\tfixture.txt${'\0'}100644 blob ${'a'.repeat(40)}\t.gitignore\0` + `100644 blob ${'a'.repeat(40)}\t.pnp.cjs\0` };
       if (args.includes('status')) return { status: 0, stdout: '' };
       throw new Error('UNEXPECTED_FIXTURE_PROCESS');
     },
@@ -182,7 +243,7 @@ test('uncertain submission cannot be retried', async () => {
 
 test('missing source metadata requires a matching protected runtime proof', async () => {
   const { s } = harness({
-    readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', readyState: 'READY' }),
+    readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', manifestVerified: true, readyState: 'READY' }),
     proof: async () => ({ authorized: true, isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: '0'.repeat(40), runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } }),
   });
   await s.prepare(); await s.deploy();
@@ -272,11 +333,17 @@ test('late fixture credential preparation cannot restore a stopped session', asy
 
 test('stop between source checks prevents the actual deploy call', async () => {
   const wait = deferred(), started = deferred();
-  let deployCalls = 0;
-  const io = { node: 'fixture', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims,
+  let deployCalls = 0, branchChecks = 0;
+  const sourceBytes = Buffer.from('fixture');
+  const blob = require('node:crypto').createHash('sha1').update(`blob ${sourceBytes.length}\0`).update(sourceBytes).digest('hex');
+  const io = { node: 'fixture', environment: {}, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims, canonical: () => true, file: () => sourceBytes,
     run: (_cmd, args) => {
       if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
-      if (args.includes('branch')) { started.resolve(); return wait.promise; }
+      if (args.includes('branch')) { branchChecks++; if (branchChecks === 1) return { status: 0, stdout: 'integration/instant-first-preview-agent' }; started.resolve(); return wait.promise; }
+      if (args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (args.includes('status')) return { status: 0, stdout: '' };
+      if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
+      if (args.includes('ls-tree')) return { status: 0, stdout: `100644 blob ${blob}\tfixture.txt\0` };
       if (args.includes('deploy')) deployCalls++;
       throw new Error('UNEXPECTED_FIXTURE_PROCESS');
     }, fetch: () => { throw new Error('UNEXPECTED_FIXTURE_NETWORK'); } };
@@ -344,7 +411,7 @@ function refreshFixture(overrides = {}) {
     verifyOidc: async () => currentClaims,
     generate: async () => { generations++; return { bearer: fakeBearer, identity: 'synthetic_identity', idempotencyKey: 'synthetic_idempotency' }; },
     deploy: async () => { deployments++; return { exitCode: 0, stdout: JSON.stringify(deployment) }; },
-    readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, readyState: 'READY' }),
+    readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, manifestVerified: true, readyState: 'READY' }),
     proof: async () => ({ authorized: true, isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } }),
     submit: async (v) => { submissions++; submitted = v; return { confirmed: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' }; },
     asset: async (v) => { assetRequest = v; return { status: 200, contentType: 'image/png', bytes: Buffer.from('fixture-image') }; },
