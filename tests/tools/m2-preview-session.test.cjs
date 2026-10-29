@@ -46,7 +46,7 @@ test('git source platform readback requires provider repository ref sha project 
     [{ ...gitReadback, projectId: 'wrong' }, gitProject, 'GIT_PROJECT'],
     [{ ...gitReadback, ownerId: 'wrong' }, gitProject, 'GIT_PROJECT'],
     [{ ...gitReadback, target: 'production' }, gitProject, 'GIT_TARGET'],
-    [{ ...gitReadback, readyState: 'BUILDING' }, gitProject, 'GIT_NOT_READY'],
+    [{ ...gitReadback, readyState: 'NOT_A_STATE' }, gitProject, 'GIT_STATE'],
     [{ ...gitReadback, gitSource: { ...gitReadback.gitSource, repoId: 999 } }, gitProject, 'GIT_REPOSITORY'],
     [{ ...gitReadback, gitSource: { ...named, repoId: 999 } }, gitProject, 'GIT_REPOSITORY'],
     [{ ...gitReadback, gitSource: { ...named, org: 'wrong', repoId: 12345 } }, gitProject, 'GIT_REPOSITORY'],
@@ -65,6 +65,9 @@ test('git source platform readback requires provider repository ref sha project 
     [gitReadback, { ...gitProject, link: { ...gitProject.link, repo: 'wrong' } }, 'GIT_REPOSITORY'],
   ];
   for (const [d, p, reason] of cases) assert.throws(() => verifyGitSourceDeployment(d, p, id, sha), new RegExp(reason));
+  assert.equal(verifyGitSourceDeployment({ ...gitReadback, readyState: 'BUILDING' }, gitProject, id, sha).readyState, 'BUILDING');
+  assert.equal(verifyGitSourceDeployment({ ...gitReadback, readyState: 'QUEUED', gitSource: undefined }, gitProject, id, sha).sourceEvidence, 'pending_unverified');
+  assert.equal(verifyGitSourceDeployment({ ...gitReadback, readyState: 'ERROR', gitSource: undefined }, gitProject, id, sha).sourceEvidence, 'terminal_unverified');
 });
 
 test('git source sender uses stdin, requires runtime proof, and never resends an unknown deployment', async () => {
@@ -102,6 +105,70 @@ test('git source sender uses stdin, requires runtime proof, and never resends an
   assert.equal((await u('deploy')).status, 'READBACK_REQUIRED');
   assert.equal((await u('deploy')).status, 'DENIED');
   await u('close'); assert.equal(sent, 2);
+});
+
+test('git source direct hostname acknowledgement continues through pending, binding, synthetic delivery and cleanup', async () => {
+  let ready = false, cleanup = 0, revoke = 0, sent = 0;
+  const identity = 'm2_synthetic_fixture';
+  const response = (status, body, cookies = []) => ({ status, ok: status === 200, json: async () => body, headers: { getSetCookie: () => cookies, get: () => 'image/png' }, arrayBuffer: async () => Buffer.from('fixture-image') });
+  const io = { node: 'fixture-node', environment: {}, canonical: () => true, randomBytes: (n) => Buffer.alloc(n, 1), verifyOidc: async () => claims,
+    run: async (_command, args) => {
+      if (args.includes('branch')) return { status: 0, stdout: 'integration/instant-first-preview-agent' };
+      if (args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (args.includes('status')) return { status: 0, stdout: '' };
+      if (args.includes('get-url')) return { status: 0, stdout: 'https://github.com/youdiangete-dot/novora-site.git' };
+      if (args.includes('token')) return { status: 0, stdout: JSON.stringify({ token: fakeOidc }) };
+      if (args.includes('/v13/deployments')) { sent++; return { status: 0, stdout: JSON.stringify({ id, url: url.slice(8), target: null, readyState: 'QUEUED' }) }; }
+      if (args.includes('/v13/deployments/' + id + '?withGitRepoInfo=true')) return { status: 0, stdout: JSON.stringify(ready ? { ...gitReadback, gitSource: { type: 'github', org: 'youdiangete-dot', repo: 'novora-site', ref: 'integration/instant-first-preview-agent', sha } } : { ...gitReadback, readyState: 'BUILDING', gitSource: undefined }) };
+      if (args.includes('/v9/projects/' + claims.project_id)) return { status: 0, stdout: JSON.stringify(gitProject) };
+      throw new Error('UNEXPECTED_PROCESS');
+    },
+    fetch: async (address, options) => {
+      assert.equal(options.redirect, 'error');
+      if (address.endsWith('preview-isolation-proof')) return response(200, { isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } });
+      if (address.endsWith('/api/concept-briefs')) return response(201, { persisted: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000' }, ['__Host-novora_first_preview_access=fixture; Secure']);
+      if (address.includes('/api/first-preview-assets/')) return options.headers.Cookie ? response(200, {}) : response(404, {});
+      throw new Error('UNEXPECTED_NETWORK');
+    } };
+  const s = createSender({ cwd: 'fixture', cli: 'fixture-cli', sourceMode: 'git_source', invitedIdentity: identity, expectedSourceSha: sha, deadline: 1060000, now: () => 1000000, trustedAdapters: { revoke: async () => { revoke++; return true; }, cleanup: async () => { cleanup++; return true; } } }, io);
+  assert.equal((await s('prepare')).status, 'PREPARED');
+  assert.equal((await s('deploy')).deploymentId, id);
+  assert.deepEqual(await s('attach', id), { status: 'READBACK_PENDING', state: 'BUILDING', source: 'UNVERIFIED' });
+  assert.equal((await s('checkpoint')).status, 'ACTIVE'); assert.equal(cleanup, 0); assert.equal(sent, 1);
+  ready = true;
+  assert.equal((await s('attach', id)).status, 'READONLY_RUNTIME_PROOF_PENDING');
+  assert.equal((await s('arm')).status, 'DENIED');
+  assert.equal((await s('proof')).status, 'BINDING_VERIFIED');
+  assert.equal((await s('observe_authority', fixtureObservation(identity))).status, 'OPERATOR_OBSERVATION_RECORDED');
+  assert.equal((await s('arm')).status, 'ARMED_FROM_OPERATOR_OBSERVATION');
+  assert.equal((await s('submit', { fixture: true })).status, 'SUBMITTED');
+  assert.equal((await s('asset_authorized')).status, 'DELIVERED');
+  assert.equal((await s('asset_unauthorized')).status, 'DENIED_AS_EXPECTED');
+  assert.deepEqual(await s('close'), { status: 'CLOSED', revoke: 'CONFIRMED', cleanup: 'CONFIRMED' });
+  assert.equal(cleanup, 1); assert.equal(revoke, 1);
+});
+
+test('unsafe create URL preserves only safe deployment identity for authenticated recovery', async () => {
+  const { s, calls } = harness({ deploy: async () => { calls.deploy++; return { exitCode: 0, stdout: JSON.stringify({ id, url: `https://user:${fakeBearer}@evil.invalid`, target: null }) }; } });
+  await s.prepare();
+  const result = await s.deploy();
+  assert.deepEqual(result, { status: 'READBACK_REQUIRED', reason: 'DEPLOYMENT_URL_ERROR', deploymentId: id, wrapper: 'direct', urlCategory: 'schemeful_rejected' });
+  assert.equal(JSON.stringify(result).includes(fakeBearer), false);
+  assert.equal((await s.deploy()).status, 'DENIED');
+  assert.equal((await s.attach(id)).status, 'ATTACHED');
+  await s.close(); assert.equal(calls.deploy, 1);
+});
+
+test('pending and terminal Git states are bounded and do not trigger cleanup', async () => {
+  for (const state of ['QUEUED', 'INITIALIZING', 'BUILDING', 'ERROR', 'CANCELED', 'BLOCKED']) {
+    assert.equal(verifyGitSourceDeployment({ ...gitReadback, readyState: state }, gitProject, id, sha).readyState, state);
+  }
+  const { s, calls } = harness({ readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, manifestVerified: true, readyState: 'BUILDING' }) });
+  await s.prepare(); await s.deploy();
+  for (let i = 0; i < 30; i++) assert.equal((await s.attach(id)).status, 'READBACK_PENDING');
+  assert.equal((await s.attach(id)).status, 'READBACK_LIMIT');
+  assert.equal(s.checkpoint().status, 'ACTIVE'); assert.equal(calls.cleanup, 0);
+  assert.equal((await s.close()).cleanup, 'UNVERIFIED_TARGET');
 });
 test('source provenance rejects a worktree git file and accepts a canonical git directory', () => {
   assert.equal(canonicalGitDirectory('fixture', () => ({ isDirectory: () => false })), false);
@@ -215,13 +282,17 @@ async function armed(s) {
 }
 
 test('accepts both documented CLI shapes and sanitizes failures', () => {
-  for (const value of [deployment, { status: 'success', deployment }]) assert.deepEqual(parseDeployment({ exitCode: 0, stdout: JSON.stringify(value) }), { ok: true, id, origin: url });
+  for (const [value, wrapper] of [[deployment, 'direct'], [{ status: 'success', deployment }, 'envelope']]) assert.deepEqual(parseDeployment({ exitCode: 0, stdout: JSON.stringify(value) }), { ok: true, id, origin: url, wrapper, urlCategory: 'schemeful', state: 'not_reported' });
+  assert.deepEqual(parseDeployment({ exitCode: 0, stdout: JSON.stringify({ ...deployment, url: url.slice(8) }) }), { ok: true, id, origin: url, wrapper: 'direct', urlCategory: 'hostname', state: 'not_reported' });
   const cases = [
     [{ exitCode: 1, stdout: fakeBearer }, 'CLI_ERROR'],
     [{ exitCode: 0, stdout: fakeBearer }, 'OUTPUT_PARSE_ERROR'],
     [{ exitCode: 0, stdout: '{}' }, 'DEPLOYMENT_ID_ERROR'],
+    [{ exitCode: 0, stdout: JSON.stringify({ id: 'dpl_conflicting0123456789', deployment }) }, 'OUTPUT_SHAPE_ERROR'],
+    [{ exitCode: 0, stdout: JSON.stringify({ status: 'failure', deployment }) }, 'OUTPUT_SHAPE_ERROR'],
     ...['http://project-dd34e-x-novoradesign.vercel.app', `${url}?token=${fakeBearer}`, `${url}#x`, 'https://user:pass@project-dd34e-x-novoradesign.vercel.app', 'https://evil.example', `${url}/path`, `${url}:444`].map((bad) => [{ exitCode: 0, stdout: JSON.stringify({ ...deployment, url: bad }) }, 'DEPLOYMENT_URL_ERROR']),
     [{ exitCode: 0, stdout: JSON.stringify({ ...deployment, target: 'production' }) }, 'DEPLOYMENT_TARGET_ERROR'],
+    [{ exitCode: 0, stdout: JSON.stringify({ ...deployment, readyState: 'UNKNOWN_PRIVATE' }) }, 'DEPLOYMENT_STATE_ERROR'],
   ];
   for (const [input, reason] of cases) { const result = parseDeployment(input); assert.equal(result.reason, reason); assert.equal(JSON.stringify(result).includes(fakeBearer), false); }
 });
@@ -256,7 +327,7 @@ test('uncertain deployment is never repeated but can attach with verified readba
 });
 
 test('readback fails closed on identity, source, readiness and target mismatches', async () => {
-  for (const mutation of [{ projectId: 'wrong' }, { teamId: 'wrong' }, { branch: 'wrong' }, { sourceSha: '0'.repeat(40) }, { manifestVerified: false }, { manifestVerified: undefined }, { target: 'production' }, { readyState: 'BUILDING' }, { url: 'https://evil.example' }]) {
+  for (const mutation of [{ projectId: 'wrong' }, { teamId: 'wrong' }, { branch: 'wrong' }, { sourceSha: '0'.repeat(40) }, { manifestVerified: false }, { manifestVerified: undefined }, { target: 'production' }, { readyState: 'NOT_A_STATE' }, { url: 'https://evil.example' }]) {
     const { s } = harness({ readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, manifestVerified: true, readyState: 'READY', ...mutation }) });
     await s.prepare(); await s.deploy();
     assert.equal((await s.attach(id)).status, 'READBACK_REJECTED');

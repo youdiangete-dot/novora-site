@@ -13,7 +13,8 @@ const SHA = /^[a-f0-9]{64}$/;
 function origin(value) {
   if (typeof value !== 'string') return null;
   try {
-    const url = new URL(value);
+    const hostOnly = /^project-dd34e-[a-z0-9-]+-novoradesign\.vercel\.app$/.test(value);
+    const url = new URL(hostOnly ? `https://${value}` : value);
     return url.protocol === 'https:' && !url.username && !url.password &&
       !url.port && url.pathname === '/' && !url.search && !url.hash &&
       /^project-dd34e-[a-z0-9-]+-novoradesign\.vercel\.app$/.test(url.hostname)
@@ -28,13 +29,17 @@ function parseDeployment(result) {
   let value;
   try { value = JSON.parse(result.stdout); } catch { return { ok: false, reason: 'OUTPUT_PARSE_ERROR' }; }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, reason: 'OUTPUT_SHAPE_ERROR' };
-  const entry = value.deployment ?? value;
+  const wrapper = Object.hasOwn(value, 'deployment') ? 'envelope' : 'direct';
+  if (wrapper === 'envelope' && (Object.hasOwn(value, 'id') || (value.status != null && value.status !== 'success'))) return { ok: false, reason: 'OUTPUT_SHAPE_ERROR' };
+  const entry = wrapper === 'envelope' ? value.deployment : value;
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return { ok: false, reason: 'OUTPUT_SHAPE_ERROR' };
   if (!ID.test(entry.id ?? '')) return { ok: false, reason: 'DEPLOYMENT_ID_ERROR', idPresent: typeof entry.id === 'string' };
   const targetOrigin = origin(entry.url);
-  if (!targetOrigin) return { ok: false, reason: 'DEPLOYMENT_URL_ERROR', urlPresent: typeof entry.url === 'string' };
+  if (!targetOrigin) return { ok: false, reason: 'DEPLOYMENT_URL_ERROR', deploymentId: entry.id, wrapper, urlCategory: entry.url == null ? 'missing' : typeof entry.url !== 'string' ? 'non_string' : entry.url.includes('://') ? 'schemeful_rejected' : 'hostname_rejected' };
   if (entry.target !== null && entry.target !== undefined && entry.target !== 'preview') return { ok: false, reason: 'DEPLOYMENT_TARGET_ERROR' };
-  return { ok: true, id: entry.id, origin: targetOrigin };
+  const allowedStates = ['QUEUED', 'INITIALIZING', 'BUILDING', 'READY', 'ERROR', 'CANCELED', 'BLOCKED'];
+  if (entry.readyState != null && !allowedStates.includes(entry.readyState)) return { ok: false, reason: 'DEPLOYMENT_STATE_ERROR', deploymentId: entry.id, wrapper, urlCategory: 'valid' };
+  return { ok: true, id: entry.id, origin: targetOrigin, wrapper, urlCategory: /^https:\/\//i.test(entry.url) ? 'schemeful' : 'hostname', state: entry.readyState ?? 'not_reported' };
 }
 
 function createSession({ adapters, expectedSourceSha, deadline, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout, sourceMode = 'cli_upload' }) {
@@ -44,6 +49,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
   const lastNewAttempt = Math.min(ownerDeadline, Date.parse('2026-10-30T02:00:00Z'));
   let secret = null, identity = null, digest = null, idem = null, oidc = null, oidcExpires = null, credentialExpires = null, authorityExpires = null;
   let prepared = false, deployAttempted = false, proposed = null, attached = null, binding = null;
+  let readbackAttempts = 0;
   let armed = false, submissionAttempted = false, receipt = null, closed = false, halted = false, expired = false, observation = null;
   let timer = null;
   function cancelTimer() { if (timer !== null) { cancel(timer); timer = null; } }
@@ -115,13 +121,18 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     try {
       const result = parseDeployment(await adapters.deploy({ identity, credentialSha256: digest, project: PROJECT, team: TEAM, branch: BRANCH, sourceSha: expectedSourceSha, isActive: () => freshOidc() && now() < lastNewAttempt }));
       if (!active()) return { status: 'READBACK_REQUIRED', reason: 'SESSION_INACTIVE' };
-      if (!result.ok) return { status: 'READBACK_REQUIRED', reason: result.reason, ...(Object.hasOwn(result, 'exitCode') ? { exitCode: result.exitCode } : {}) };
+      if (!result.ok) {
+        if (result.deploymentId) proposed = { id: result.deploymentId, origin: null };
+        return { status: 'READBACK_REQUIRED', reason: result.reason, ...(Object.hasOwn(result, 'exitCode') ? { exitCode: result.exitCode } : {}), ...(result.deploymentId ? { deploymentId: result.deploymentId, wrapper: result.wrapper, urlCategory: result.urlCategory } : {}) };
+      }
       proposed = { id: result.id, origin: result.origin };
-      return { status: 'READBACK_REQUIRED', deploymentId: result.id };
+      return { status: 'READBACK_REQUIRED', deploymentId: result.id, wrapper: result.wrapper, urlCategory: result.urlCategory, state: result.state };
     } catch { return { status: 'READBACK_REQUIRED', reason: 'DEPLOYMENT_OUTCOME_UNKNOWN' }; }
   }
   async function attach(deploymentId) {
     if (!freshOidc() || !secret || !deployAttempted || attached || !ID.test(deploymentId ?? '') || (proposed && deploymentId !== proposed.id)) return { status: 'DENIED' };
+    if (readbackAttempts >= 30) return { status: 'READBACK_LIMIT' };
+    readbackAttempts++;
     try {
       // This adapter must obtain authenticated platform evidence. An absent
       // source SHA requires the protected runtime proof before arming.
@@ -129,12 +140,20 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       const d = await adapters.readDeployment(deploymentId);
       if (!active()) return { status: 'DENIED' };
       const targetOrigin = origin(d?.url);
-      if (!d || d.id !== deploymentId || d.projectId !== PROJECT || d.teamId !== TEAM || d.branch !== BRANCH || (d.sourceSha != null && d.sourceSha !== expectedSourceSha) || d.target !== 'preview' || d.readyState !== 'READY' || !targetOrigin || (proposed && targetOrigin !== proposed.origin)) return { status: 'READBACK_REJECTED', reason: 'DEPLOYMENT_IDENTITY' };
+      const pending = ['QUEUED', 'INITIALIZING', 'BUILDING'].includes(d?.readyState);
+      const terminal = ['ERROR', 'CANCELED', 'BLOCKED'].includes(d?.readyState);
+      if (!d || d.id !== deploymentId || d.projectId !== PROJECT || d.teamId !== TEAM || d.target !== 'preview' || (!targetOrigin && (!(pending || terminal) || d.url != null)) || (proposed?.origin && targetOrigin && targetOrigin !== proposed.origin)) return { status: 'READBACK_REJECTED', reason: 'DEPLOYMENT_IDENTITY' };
+      if (sourceMode === 'git_source' && pending && d.sourceEvidence === 'pending_unverified') return { status: 'READBACK_PENDING', state: d.readyState, source: 'UNVERIFIED' };
+      if (sourceMode === 'git_source' && terminal && d.sourceEvidence === 'terminal_unverified') return { status: 'DEPLOYMENT_TERMINAL', state: d.readyState, source: 'UNVERIFIED' };
+      if (d.branch !== BRANCH || (d.sourceSha != null && d.sourceSha !== expectedSourceSha)) return { status: 'READBACK_REJECTED', reason: 'DEPLOYMENT_IDENTITY' };
       if (sourceMode === 'git_source' ? d.sourceEvidence !== 'platform_git_source_v1' : d.manifestVerified !== true) return { status: 'READBACK_REJECTED', reason: sourceMode === 'git_source' ? 'GIT_SOURCE_EVIDENCE' : 'MANIFEST_CONTENT' };
+      if (['QUEUED', 'INITIALIZING', 'BUILDING'].includes(d.readyState)) return { status: 'READBACK_PENDING', state: d.readyState };
+      if (['ERROR', 'CANCELED', 'BLOCKED'].includes(d.readyState)) return { status: 'DEPLOYMENT_TERMINAL', state: d.readyState };
+      if (d.readyState !== 'READY') return { status: 'READBACK_REJECTED', reason: 'DEPLOYMENT_STATE' };
       attached = { id: deploymentId, origin: targetOrigin };
       return { status: d.sourceVerified === true && d.sourceSha === expectedSourceSha ? 'ATTACHED' : 'READONLY_RUNTIME_PROOF_PENDING', deploymentId };
     } catch (error) {
-      const reasons = new Set(['DEPLOYMENT_TRANSPORT', 'DEPLOYMENT_SCHEMA', 'MANIFEST_TRANSPORT', 'MANIFEST_SCHEMA', 'MANIFEST_PATH', 'MANIFEST_COUNT', 'MANIFEST_CONTENT_UNAVAILABLE', 'GIT_PROJECT_TRANSPORT', 'GIT_SOURCE_SCHEMA', 'GIT_DEPLOYMENT_ID', 'GIT_PROJECT', 'GIT_TARGET', 'GIT_NOT_READY', 'GIT_REPOSITORY', 'GIT_REF', 'GIT_SHA', 'GIT_METADATA_CONFLICT']);
+      const reasons = new Set(['DEPLOYMENT_TRANSPORT', 'DEPLOYMENT_SCHEMA', 'MANIFEST_TRANSPORT', 'MANIFEST_SCHEMA', 'MANIFEST_PATH', 'MANIFEST_COUNT', 'MANIFEST_CONTENT_UNAVAILABLE', 'GIT_PROJECT_TRANSPORT', 'GIT_SOURCE_SCHEMA', 'GIT_DEPLOYMENT_ID', 'GIT_PROJECT', 'GIT_TARGET', 'GIT_STATE', 'GIT_REPOSITORY', 'GIT_REF', 'GIT_SHA', 'GIT_METADATA_CONFLICT']);
       return { status: 'READBACK_FAILED', reason: reasons.has(error?.message) ? error.message : 'READBACK_TRANSPORT_OR_SCHEMA' };
     }
   }
