@@ -51,7 +51,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
   let prepared = false, deployAttempted = false, proposed = null, attached = null, binding = null;
   let readbackAttempts = 0, proofAttempted = false;
   let armed = false, submissionAttempted = false, receipt = null, closed = false, halted = false, expired = false, observation = null;
-  let timer = null, closeResult = null;
+  let timer = null, closeResult = null, submissionSummary = null;
   function cancelTimer() { if (timer !== null) { cancel(timer); timer = null; } }
   function clearSecrets() { secret = null; oidc = null; idem = null; oidcExpires = null; receipt = null; }
   function destroy() { halted = true; cancelTimer(); clearSecrets(); return { status: 'HALTED' }; }
@@ -71,7 +71,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
   scheduleExpiry();
   function checkpoint() {
     const usable = active();
-    return { status: usable ? 'ACTIVE' : closed ? 'CLOSED' : halted ? 'HALTED' : 'EXPIRED', oidcReady: usable && freshOidc(), prepared, deployAttempted, attached: Boolean(attached), bindingVerified: Boolean(binding), armed, submissionAttempted, receiptConfirmed: Boolean(receipt) };
+    return { status: usable ? 'ACTIVE' : closed ? 'CLOSED' : halted ? 'HALTED' : 'EXPIRED', oidcReady: usable && freshOidc(), prepared, deployAttempted, attached: Boolean(attached), bindingVerified: Boolean(binding), armed, submissionAttempted, receiptConfirmed: Boolean(receipt), ...(submissionSummary ? { submissionSummary: { ...submissionSummary } } : {}) };
   }
   function validClaims(claims) {
     const seconds = now() / 1000;
@@ -226,14 +226,28 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
   }
   async function submit(payload) {
     if (!freshOidc() || !armed || submissionAttempted || now() >= lastNewAttempt) return { status: 'DENIED' };
-    submissionAttempted = true; // no replacement even on timeout or exception
+    submissionAttempted = true; // no replacement, including uncertain or local failures
+    let correlationId;
+    try { correlationId = await adapters.newCorrelation(); } catch { /* fixed failure below */ }
+    if (typeof correlationId !== 'string' || !/^[a-f0-9]{32}$/.test(correlationId)) {
+      submissionSummary = { stage: 'CORRELATION_UNAVAILABLE' };
+      return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary };
+    }
+    submissionSummary = { correlationId, stage: 'TRANSPORT_UNKNOWN' };
+    if (!freshOidc()) { submissionSummary.stage = 'SESSION_INACTIVE'; return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary }; }
     try {
       const r = await adapters.submit({ origin: attached.origin, path: '/api/concept-briefs', bearer: secret, oidc, idempotencyKey: idem, payload, redirect: 'error' });
-      if (!freshOidc()) return { status: 'SUBMISSION_UNCONFIRMED' };
-      if (r?.confirmed !== true || !/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(r.publicReference ?? '') || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(r.conceptBriefId ?? '') || typeof r.cookie !== 'string' || !r.cookie) return { status: 'SUBMISSION_UNCONFIRMED' };
+      const validRef = typeof r?.publicReference === 'string' && /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(r?.publicReference ?? '');
+      const validId = typeof r?.conceptBriefId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(r?.conceptBriefId ?? '');
+      const allowed = new Set(['HTTP_ERROR','JSON_INVALID','RESPONSE_INVALID','COOKIE_INVALID','TRANSPORT_ERROR']);
+      const httpStatus = Number.isInteger(r?.httpStatus) && r.httpStatus >= 100 && r.httpStatus <= 599 ? r.httpStatus : undefined;
+      submissionSummary = { correlationId, stage: allowed.has(r?.stage) ? r.stage : 'RECEIPT_INVALID', ...(httpStatus ? { httpStatus } : {}), ...(httpStatus === 201 && validRef ? { publicReference: r.publicReference } : {}), ...(httpStatus === 201 && validId ? { conceptBriefId: r.conceptBriefId } : {}) };
+      if (!freshOidc()) { if (allowed.has(r?.stage)) submissionSummary.responseStage = r.stage; submissionSummary.stage = 'SESSION_INACTIVE'; return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary }; }
+      if (r?.confirmed !== true || httpStatus !== 201 || r?.stage !== undefined || !validRef || !validId || typeof r.cookie !== 'string' || !r.cookie) return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary };
       receipt = { publicReference: r.publicReference, conceptBriefId: r.conceptBriefId, cookie: r.cookie };
-      return { status: 'SUBMITTED', publicReference: receipt.publicReference, conceptBriefId: receipt.conceptBriefId };
-    } catch { return { status: 'SUBMISSION_UNCONFIRMED' }; }
+      submissionSummary.stage = 'CONFIRMED';
+      return { status: 'SUBMITTED', ...submissionSummary };
+    } catch { submissionSummary.stage = 'TRANSPORT_ERROR'; return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary }; }
   }
   async function asset(authorized) {
     if (!freshOidc() || !receipt) return { status: 'DENIED' };

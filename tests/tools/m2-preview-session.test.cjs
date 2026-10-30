@@ -126,7 +126,7 @@ test('git source direct hostname acknowledgement continues through pending, bind
     fetch: async (address, options) => {
       assert.equal(options.redirect, 'error');
       if (address.endsWith('preview-isolation-proof')) return response(200, { isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } });
-      if (address.endsWith('/api/concept-briefs')) return response(201, { persisted: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000' }, ['__Host-novora_first_preview_access=fixture; Secure']);
+      if (address.endsWith('/api/concept-briefs')) return response(201, { persisted: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000' }, ['__Host-novora_first_preview_access=e30.AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE; Secure']);
       if (address.includes('/api/first-preview-assets/')) return options.headers.Cookie ? response(200, {}) : response(404, {});
       throw new Error('UNEXPECTED_NETWORK');
     } };
@@ -255,12 +255,13 @@ function harness(overrides = {}) {
   let time = 1000000;
   const calls = { deploy: 0, submit: 0, revoke: 0, cleanup: 0 };
   const adapters = {
+    newCorrelation: async () => 'a'.repeat(32),
     prepare: async () => ({ bearer: fakeBearer, oidc: fakeOidc, identity: 'synthetic_identity', idempotencyKey: 'synthetic_idempotency' }),
     verifyOidc: async () => claims,
     deploy: async () => { calls.deploy++; return { exitCode: 0, stdout: JSON.stringify({ status: 'success', deployment }) }; },
     readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, manifestVerified: true, readyState: 'READY' }),
     proof: async (request) => { assert.equal(request.redirect, 'error'); return { authorized: true, isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } }; },
-    submit: async (request) => { calls.submit++; assert.equal(request.redirect, 'error'); return { confirmed: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' }; },
+    submit: async (request) => { calls.submit++; assert.equal(request.redirect, 'error'); return { confirmed: true, httpStatus: 201, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' }; },
     asset: async (request) => request.cookie ? { status: 200, contentType: 'image/png', bytes: Buffer.from('synthetic-image') } : { status: 404 },
     revoke: async () => { calls.revoke++; return true; },
     cleanup: async () => { calls.cleanup++; return true; },
@@ -369,7 +370,7 @@ test('private sender wiring holds an uncertain deployment for protected source p
     fetch: async (address, options) => {
       assert.equal(options.redirect, 'error');
       if (address.endsWith('preview-isolation-proof')) return response(200, { isolatedBackendVerified: true, m2Binding: binding });
-      if (address.endsWith('/api/concept-briefs')) { submissions++; return response(201, { persisted: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000' }, ['__Host-novora_first_preview_access=fixture; Secure']); }
+      if (address.endsWith('/api/concept-briefs')) { submissions++; return response(201, { persisted: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000' }, ['__Host-novora_first_preview_access=e30.AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE; Secure']); }
       if (address.includes('/api/first-preview-assets/')) return options.headers.Cookie ? response(200, {}) : response(404, {});
       throw new Error('UNEXPECTED_FIXTURE_NETWORK');
     },
@@ -399,7 +400,7 @@ test('uncertain submission cannot be retried', async () => {
   let attempts = 0;
   const { s } = harness({ submit: async () => { attempts++; throw new Error(fakeBearer); } });
   await armed(s);
-  assert.deepEqual(await s.submit({}), { status: 'SUBMISSION_UNCONFIRMED' });
+  assert.equal((await s.submit({})).status, 'SUBMISSION_UNCONFIRMED');
   assert.equal(s.checkpoint().submissionAttempted, true);
   assert.equal((await s.submit({})).status, 'DENIED');
   assert.equal(attempts, 1);
@@ -537,7 +538,7 @@ test('late proof and submission cannot restore state after stop', async () => {
   await armed(b);
   const submission = b.submit({});
   b.destroy();
-  submitWait.resolve({ confirmed: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' });
+  submitWait.resolve({ confirmed: true, httpStatus: 201, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' });
   assert.equal((await submission).status, 'SUBMISSION_UNCONFIRMED');
   assert.equal(b.checkpoint().receiptConfirmed, false);
   assert.equal((await b.submit({})).status, 'DENIED');
@@ -554,7 +555,7 @@ test('emergency cleanup remains available while a stopped submission is pending'
   assert.equal((await operator('destroy')).status, 'HALTED');
   assert.deepEqual(await operator('close'), { status: 'CLOSED', revoke: 'CONFIRMED', cleanup: 'CONFIRMED' });
   assert.equal(calls.revoke, 1); assert.equal(calls.cleanup, 1);
-  wait.resolve({ confirmed: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' });
+  wait.resolve({ confirmed: true, httpStatus: 201, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' });
   assert.equal((await submission).status, 'SUBMISSION_UNCONFIRMED');
   assert.equal((await operator('checkpoint')).status, 'CLOSED');
 });
@@ -572,13 +573,14 @@ test('deadline callback expires an idle session without a reporting command', as
 function refreshFixture(overrides = {}) {
   let time = 1000000, currentClaims = claims, acquisitions = 0, generations = 0, deployments = 0, submissions = 0, cleanup = 0, submitted, assetRequest;
   const adapters = {
+    newCorrelation: async () => 'a'.repeat(32),
     prepare: async () => { acquisitions++; return { oidc: fakeOidc }; },
     verifyOidc: async () => currentClaims,
     generate: async () => { generations++; return { bearer: fakeBearer, identity: 'synthetic_identity', idempotencyKey: 'synthetic_idempotency' }; },
     deploy: async () => { deployments++; return { exitCode: 0, stdout: JSON.stringify(deployment) }; },
     readDeployment: async () => ({ ...deployment, projectId: claims.project_id, teamId: claims.owner_id, branch: 'integration/instant-first-preview-agent', sourceSha: sha, sourceVerified: true, manifestVerified: true, readyState: 'READY' }),
     proof: async () => ({ authorized: true, isolatedBackendVerified: true, m2Binding: { deploymentId: id, sourceSha: sha, runtimeBinding: runtime, ledgerKey: `novora:beta-admission:m2-e2e:v1:${runtime}`, authorityId: `m2e2e_${runtime.slice(0, 56)}` } }),
-    submit: async (v) => { submissions++; submitted = v; return { confirmed: true, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' }; },
+    submit: async (v) => { submissions++; submitted = v; return { confirmed: true, httpStatus: 201, publicReference: 'NOVORA-CB-20261028-AB12', conceptBriefId: '123e4567-e89b-42d3-a456-426614174000', cookie: 'synthetic-cookie' }; },
     asset: async (v) => { assetRequest = v; return { status: 200, contentType: 'image/png', bytes: Buffer.from('fixture-image') }; },
     revoke: async () => true, cleanup: async () => { cleanup++; return true; }, ...overrides,
   };
@@ -894,4 +896,44 @@ test('repeated and concurrent close preserve actual unconfirmed shutdown result'
   const [a,b]=await Promise.all([h.s.close(),h.s.close()]);
   assert.deepEqual(a,{status:'CLOSED',revoke:'NOT_REQUIRED',cleanup:'UNVERIFIED_TARGET'});
   assert.deepEqual(b,a); assert.deepEqual(await h.s.close(),a);
+});
+
+test('actual sender preserves only safe submission evidence for failure boundaries without replay', async () => {
+  const bait='fixture_secret_never_serialize'; const publicReference='NOVORA-CB-20261028-AB12'; const conceptBriefId='123e4567-e89b-42d3-a456-426614174000';
+  const good={persisted:true,publicReference,conceptBriefId,requestId:bait,unknown:bait};
+  const cookie='__Host-novora_first_preview_access=e30.AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE; Secure';
+  const cases=[
+    ['success',{status:201,body:good,cookies:[cookie]},'SUBMITTED','CONFIRMED'],
+    ['non-json',{status:502,jsonError:true},'SUBMISSION_UNCONFIRMED','JSON_INVALID'],
+    ['http-error',{status:403,body:{...good},cookies:[cookie]},'SUBMISSION_UNCONFIRMED','HTTP_ERROR'],
+    ['transport',{throws:true},'SUBMISSION_UNCONFIRMED','TRANSPORT_ERROR'],
+    ['bad-receipt',{status:201,body:{...good,persisted:false},cookies:[cookie]},'SUBMISSION_UNCONFIRMED','RESPONSE_INVALID'],
+    ['cookie-missing',{status:201,body:good,cookies:[]},'SUBMISSION_UNCONFIRMED','COOKIE_INVALID'],
+    ['cookie-malformed',{status:201,body:good,cookies:['__Host-novora_first_preview_access='+bait+'; Secure']},'SUBMISSION_UNCONFIRMED','COOKIE_INVALID'],
+    ['cookie-duplicate',{status:201,body:good,cookies:[cookie,cookie]},'SUBMISSION_UNCONFIRMED','COOKIE_INVALID'],
+    ['expiry-after-response',{status:201,body:good,cookies:[cookie],expire:true},'SUBMISSION_UNCONFIRMED','SESSION_INACTIVE'],
+    ['expiry-after-non-json',{status:201,jsonError:true,expire:true},'SUBMISSION_UNCONFIRMED','SESSION_INACTIVE'],
+  ];
+  for(const [name,fixture,status,stage] of cases){
+    let time=1000000,submissions=0,correlations=0; const identity='m2_synthetic_fixture';
+    const response=(code,body,cookies=[])=>({status:code,json:async()=>body,headers:{getSetCookie:()=>cookies}});
+    const io={node:'fixture',environment:{},canonical:()=>true,randomBytes:n=>{if(n===16)correlations++;return Buffer.alloc(n,n===16?7:1)},verifyOidc:async()=>claims,
+      run:async(_cmd,args)=>{if(args.includes('branch'))return {status:0,stdout:'integration/instant-first-preview-agent'};if(args.includes('rev-parse'))return {status:0,stdout:sha};if(args.includes('status'))return {status:0,stdout:''};if(args.includes('get-url'))return {status:0,stdout:'https://github.com/youdiangete-dot/novora-site.git'};if(args.includes('token'))return {status:0,stdout:JSON.stringify({token:fakeOidc})};if(args.includes('/v13/deployments'))return {status:0,stdout:JSON.stringify(deployment)};if(args.includes('/v13/deployments/'+id+'?withGitRepoInfo=true'))return {status:0,stdout:JSON.stringify(gitReadback)};if(args.includes('/v9/projects/'+claims.project_id))return {status:0,stdout:JSON.stringify(gitProject)};throw Error('unexpected')},
+      fetch:async(address)=>{if(address.endsWith('preview-isolation-proof'))return response(200,{isolatedBackendVerified:true,m2Binding:{deploymentId:id,sourceSha:sha,runtimeBinding:runtime,ledgerKey:`novora:beta-admission:m2-e2e:v1:${runtime}`,authorityId:`m2e2e_${runtime.slice(0,56)}`}});if(!address.endsWith('/api/concept-briefs'))throw Error('unexpected');submissions++;if(fixture.throws)throw Error(bait);return {status:fixture.status,json:async()=>{if(fixture.expire)time=1060000;if(fixture.jsonError)throw Error(bait);return fixture.body},headers:{getSetCookie:()=>fixture.cookies??[]}}}};
+    const sender=createSender({cwd:'fixture',cli:'fixture',sourceMode:'git_source',invitedIdentity:identity,expectedSourceSha:sha,deadline:1060000,now:()=>time,trustedAdapters:{revoke:async()=>true,cleanup:async()=>true}},io);
+    assert.equal((await sender('prepare')).status,'PREPARED',name);await sender('deploy');assert.equal((await sender('attach',id)).status,'READONLY_RUNTIME_PROOF_PENDING');assert.equal((await sender('proof')).status,'BINDING_VERIFIED');assert.equal((await sender('observe_authority',fixtureObservation(identity))).status,'OPERATOR_OBSERVATION_RECORDED');assert.equal((await sender('arm')).status,'ARMED_FROM_OPERATOR_OBSERVATION');
+    const result=await sender('submit',{fixture:true});assert.equal(result.status,status,name);assert.equal(result.stage,stage,name);if(name==='expiry-after-non-json')assert.equal(result.responseStage,'JSON_INVALID');assert.equal(result.correlationId,'07'.repeat(16),name);assert.equal(submissions,1);assert.equal(correlations,1);if(fixture.status)assert.equal(result.httpStatus,fixture.status);if(['cookie-missing','cookie-malformed','cookie-duplicate','expiry-after-response'].includes(name)){assert.equal(result.publicReference,publicReference);assert.equal(result.conceptBriefId,conceptBriefId)}assert.equal(JSON.stringify(result).includes(bait),false);assert.equal(JSON.stringify(result).includes('AQEBA'),false);assert.equal((await sender('submit',{})).status,'DENIED');await sender('destroy');const checkpoint=await sender('checkpoint');assert.equal(checkpoint.submissionSummary.correlationId,result.correlationId);assert.equal(checkpoint.submissionSummary.stage,stage);if(name==='expiry-after-non-json')assert.equal(checkpoint.submissionSummary.responseStage,'JSON_INVALID');assert.equal(JSON.stringify(checkpoint).includes(bait),false);await sender('close');
+  }
+});
+
+test('local correlation is available before I/O and cannot be reused after uncertainty', async () => {
+  const pending=deferred(),started=deferred();const h=harness({submit:async()=>{started.resolve();return pending.promise}});await armed(h.s);const work=h.s.submit({});await started.promise;const checkpoint=h.s.checkpoint();assert.equal(checkpoint.submissionSummary.correlationId,'a'.repeat(32));assert.equal(checkpoint.submissionSummary.stage,'TRANSPORT_UNKNOWN');h.s.destroy();pending.resolve({confirmed:false,stage:'HTTP_ERROR',httpStatus:503,publicReference:'NOVORA-CB-20261028-AB12'});const result=await work;assert.equal(result.stage,'SESSION_INACTIVE');assert.equal(result.httpStatus,503);assert.equal(h.s.checkpoint().submissionSummary.correlationId,'a'.repeat(32));assert.equal((await h.s.submit({})).status,'DENIED');await h.s.close();
+});
+
+test('invalid local correlation prevents submission and remains nonsecret', async () => {
+  let calls=0;const h=harness({newCorrelation:async()=> 'fixture_secret_not_a_correlation',submit:async()=>{calls++;throw Error('unexpected')}});await armed(h.s);const r=await h.s.submit({});assert.deepEqual(r,{status:'SUBMISSION_UNCONFIRMED',stage:'CORRELATION_UNAVAILABLE'});assert.equal(calls,0);assert.equal((await h.s.submit({})).status,'DENIED');h.s.destroy();assert.equal(h.s.checkpoint().submissionSummary.stage,'CORRELATION_UNAVAILABLE');await h.s.close();
+});
+
+test('caller does not accept contradictory status as success or serialize untrusted fields', async () => {
+  const secret='fixture_secret_never_serialize';const h=harness({submit:async()=>({confirmed:true,httpStatus:503,publicReference:{toString:()=> 'NOVORA-CB-20261028-AB12',secret},conceptBriefId:'123e4567-e89b-42d3-a456-426614174000',cookie:secret,stage:'untrusted '+secret})});await armed(h.s);const r=await h.s.submit({});assert.equal(r.status,'SUBMISSION_UNCONFIRMED');assert.equal(r.stage,'RECEIPT_INVALID');assert.equal(r.httpStatus,503);assert.equal(Object.hasOwn(r,'publicReference'),false);assert.equal(JSON.stringify(r).includes(secret),false);assert.equal((await h.s.submit({})).status,'DENIED');await h.s.close();
 });
