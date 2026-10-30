@@ -12,6 +12,7 @@ import {
 } from "./design-spec";
 import {
   createNovoraHandSketchInstructionFromDesignSpec,
+  NOVORA_FIRST_PREVIEW_PRINTED_LABEL,
   type NovoraHandSketchInstruction,
   validateNovoraHandSketchInstruction,
 } from "./hand-sketch-instruction";
@@ -1505,28 +1506,19 @@ function buildHandSketchInstruction(
   ];
   instruction.annotation_instructions.labels = [
     {
-      label: "Concept preview",
+      label: NOVORA_FIRST_PREVIEW_PRINTED_LABEL,
       target: "sheet footer",
-      instruction: "Concept preview only; not CAD or a production drawing.",
+      instruction: "Print only this exact label outside the jewelry; do not print construction instructions.",
     },
-    {
-      label: "Orientation",
-      target: "center and accent stones",
-      instruction: "Mark the shared table direction and unchanged directional long axis.",
-    },
-    {
-      label: "Structure",
-      target: "setting, shanks, stacking components, and motif",
-      instruction: "Mark relationships and unknown dimensions without inventing tolerances.",
-    },
-    ...(consistency.stacking
-      ? [{
-          label: "Stacking elevation",
-          target: "left-right stacking relationship",
-          instruction: "Mark reasonable clearance and no collision in the front-facing elevation.",
-        }]
-      : []),
   ].slice(0, NOVORA_JEWELRY_DESIGN_SKILLS_LIMITS.maximumAnnotations);
+  instruction.jewelry_rendering_instructions.construction_consistency = [
+    ...instruction.jewelry_rendering_instructions.construction_consistency,
+    "Show the shared table direction and unchanged directional long axis graphically, without printed orientation labels.",
+    "Show structural relationships and preserve unknown dimensions without inventing tolerances or printing free-form annotations.",
+    ...(consistency.stacking
+      ? ["Show reasonable clearance and no collision in the front-facing stacking elevation graphically."]
+      : []),
+  ];
   instruction.composition_instructions.layout = consistency.stacking
     ? "main front view plus front-facing stacking elevation and enlarged structural detail"
     : "main front view plus consistent optional profile and enlarged structural detail";

@@ -12,6 +12,12 @@ export const NOVORA_HAND_SKETCH_INSTRUCTION_VERSION = "novora_hand_sketch_instru
 
 export const NOVORA_SKETCH_SHEET_STYLE = "novora_first_preview_sketch_style_v1";
 
+// Existing privacy-approved literals, kept separate from drawing guidance.
+export const NOVORA_FIRST_PREVIEW_PRINTED_TITLE = "AI concept preview";
+export const NOVORA_FIRST_PREVIEW_PRINTED_LABEL = "Concept preview only";
+export const NOVORA_FIRST_PREVIEW_PRINTED_DISCLAIMER =
+  "Concept preview only - not CAD, quote, order, payment, or production approval.";
+
 export const NOVORA_SKETCH_VIEW_REQUIREMENTS = [
   "main_hero_view",
   "optional_side_profile_view",
@@ -301,7 +307,7 @@ export function createNovoraHandSketchInstructionFromDesignSpec(
         designSpec.sketch_requirements.main_view_plus_optional_detail_views,
       clear_annotations_and_callouts: designSpec.sketch_requirements.clear_annotations,
       subtle_text_only_novora_watermark_or_footer_label: true,
-      concept_preview_label: "NOVORA concept preview",
+      concept_preview_label: NOVORA_FIRST_PREVIEW_PRINTED_TITLE,
       disclaimer_placement: designSpec.sketch_requirements.concept_preview_disclaimer_placement,
       no_cad_drawing_framing: true,
       no_quote_order_or_production_approval_framing:
@@ -386,27 +392,12 @@ export function createNovoraHandSketchInstructionFromDesignSpec(
       motif_must_not_conflict_with_setting_or_wearability: true,
     },
     annotation_instructions: {
-      callout_style: "short callouts only",
+      callout_style: "graphic callouts only; no free-form printed annotations",
       labels: [
         {
-          label: "Concept preview",
+          label: NOVORA_FIRST_PREVIEW_PRINTED_LABEL,
           target: "sheet label",
-          instruction: "label this as a concept preview without approval wording",
-        },
-        {
-          label: "Material direction",
-          target: "metal and finish",
-          instruction: "label material direction without implying exact final specs",
-        },
-        {
-          label: "Stone direction",
-          target: "stones and settings",
-          instruction: "label stone color, shape, and setting direction where visible",
-        },
-        {
-          label: "Motif",
-          target: "decorative motif",
-          instruction: "label important motif elements without crowding the jewelry",
+          instruction: "Print only this exact label outside the jewelry; convey material, stone, and motif directions through the drawing, not additional text.",
         },
       ],
       avoid_pricing_cad_production_or_approval_claims: true,
@@ -424,7 +415,7 @@ export function createNovoraHandSketchInstructionFromDesignSpec(
       keep_disclaimer_and_branding_outside_jewelry: true,
     },
     disclaimer_instructions: {
-      required_label: "Concept preview only - not CAD, quote, order, payment, or production approval.",
+      required_label: NOVORA_FIRST_PREVIEW_PRINTED_DISCLAIMER,
       concept_preview_only: true,
       not_cad: true,
       not_quote: true,
