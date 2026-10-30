@@ -224,6 +224,7 @@ function createSender(config, fixtureIO) {
       const token = JSON.parse(result.stdout).token;
       return { oidc: token };
     },
+    async newCorrelation() { return io.randomBytes(16).toString('hex'); },
     async generate() { return { bearer: io.randomBytes(32).toString('base64url'), identity: config.invitedIdentity, idempotencyKey: io.randomBytes(24).toString('base64url') }; },
     async deploy({ identity, credentialSha256, sourceSha, isActive }) {
       await verifySource({ sourceSha, isActive });
@@ -295,10 +296,28 @@ function createSender(config, fixtureIO) {
         ...(Object.keys(diagnostics).length ? { m2BindingDiagnostics: diagnostics } : {}) };
     },
     async submit({ origin, path, bearer, oidc, idempotencyKey, payload }) {
-      const response = await io.fetch(origin + path, { method: 'POST', headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + bearer, 'Idempotency-Key': idempotencyKey, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) });
-      const body = await response.json();
-      const found = (response.headers.getSetCookie?.() ?? []).find((v) => v.startsWith('__Host-novora_first_preview_access='));
-      return { confirmed: response.status === 201 && body.persisted === true && Boolean(found), publicReference: body.publicReference, conceptBriefId: body.conceptBriefId, cookie: found?.split(';', 1)[0] };
+      let response;
+      try { response = await io.fetch(origin + path, { method: 'POST', headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + bearer, 'Idempotency-Key': idempotencyKey, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) }); }
+      catch { return { stage: 'TRANSPORT_ERROR' }; }
+      const httpStatus = Number.isInteger(response?.status) && response.status >= 100 && response.status <= 599 ? response.status : undefined;
+      if (!httpStatus) return { stage: 'RESPONSE_INVALID' };
+      let body;
+      try { body = await response.json(); } catch { return { stage: 'JSON_INVALID', httpStatus }; }
+      const publicReference = typeof body?.publicReference === 'string' && /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(body?.publicReference ?? '') ? body.publicReference : undefined;
+      const conceptBriefId = typeof body?.conceptBriefId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body?.conceptBriefId ?? '') ? body.conceptBriefId : undefined;
+      const receiptEligible = httpStatus === 201 && body && typeof body === 'object' && !Array.isArray(body) && body.persisted === true;
+      const evidence = { httpStatus, ...(receiptEligible && publicReference ? { publicReference } : {}), ...(receiptEligible && conceptBriefId ? { conceptBriefId } : {}) };
+      if (httpStatus !== 201) return { stage: 'HTTP_ERROR', ...evidence };
+      if (!body || typeof body !== 'object' || Array.isArray(body) || body.persisted !== true || !publicReference || !conceptBriefId) return { stage: 'RESPONSE_INVALID', ...evidence };
+      let matches; try { matches = (response.headers.getSetCookie?.() ?? []).filter((v) => typeof v === 'string' && v.startsWith('__Host-novora_first_preview_access=')); } catch { return { stage: 'COOKIE_INVALID', ...evidence }; }
+      if (matches.length !== 1) return { stage: 'COOKIE_INVALID', ...evidence };
+      const cookie = matches[0].split(';', 1)[0];
+      const prefix = '__Host-novora_first_preview_access=';
+      const proof = typeof cookie === 'string' && cookie.startsWith(prefix) ? cookie.slice(prefix.length) : '';
+      const parts = proof.split('.');
+      const canonical = (v) => /^[A-Za-z0-9_-]+$/.test(v) && Buffer.from(v, 'base64url').toString('base64url') === v;
+      if (proof.length > 1024 || parts.length !== 2 || !canonical(parts[0]) || !canonical(parts[1]) || Buffer.from(parts[1], 'base64url').length !== 32) return { stage: 'COOKIE_INVALID', ...evidence };
+      return { confirmed: true, ...evidence, cookie };
     },
     async asset({ origin, publicReference, cookie, oidc }) {
       const response = await io.fetch(origin + '/api/first-preview-assets/' + encodeURIComponent(publicReference) + '/current', { headers: { 'x-vercel-trusted-oidc-idp-token': oidc, ...(cookie ? { Cookie: cookie } : {}) }, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) });
