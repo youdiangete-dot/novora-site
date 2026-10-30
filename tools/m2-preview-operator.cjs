@@ -34,7 +34,9 @@ function entry(config, verifier) {
         case 'proof': return await session.verifyBinding();
         case 'observe_authority': return session.observeAuthority(value);
         case 'arm': return await session.arm();
+        case 'prepare_submission': return await session.prepareSubmission();
         case 'submit': return await session.submit(value);
+        case 'receipt_status': return await session.receiptStatus();
         case 'asset_authorized': return await session.asset(true);
         case 'asset_unauthorized': return await session.asset(false);
         case 'checkpoint': return session.checkpoint();

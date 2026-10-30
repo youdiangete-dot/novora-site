@@ -306,6 +306,17 @@ export function inspectBetaAdmissionBinding(environment: Environment): Readonly<
   }, diagnostics };
 }
 
+// An isolated receipt is authorized only by the same verified invitation and
+// exact protected Preview binding used by admission. The request ID is never
+// authentication, and ordinary anonymous submissions do not use this path.
+export function authenticateM2ReceiptRequest(request: Request, environment: Environment = process.env): Readonly<{ identity: string; scope: string }> | null {
+  if (betaAdmissionMode(environment) !== "enabled") return null;
+  const binding = inspectBetaAdmissionBinding(environment).binding;
+  if (!binding?.runtimeBinding) return null;
+  const identity = authenticateInvitation(request, environment);
+  return identity ? { identity, scope: binding.runtimeBinding } : null;
+}
+
 export function resolveBetaAdmissionBinding(environment: Environment): BetaAdmissionBinding | null {
   return inspectBetaAdmissionBinding(environment).binding;
 }
