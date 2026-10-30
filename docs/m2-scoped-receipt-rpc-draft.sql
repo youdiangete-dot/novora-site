@@ -18,6 +18,7 @@ create table public.m2_scoped_submission_receipts (
 );
 alter table public.m2_scoped_submission_receipts enable row level security;
 revoke all on table public.m2_scoped_submission_receipts from public, anon, authenticated;
+revoke all privileges on table public.m2_scoped_submission_receipts from service_role;
 grant select,insert,update on table public.m2_scoped_submission_receipts to service_role;
 
 -- The transaction-scoped advisory lock serializes even the initial absent-row case.
