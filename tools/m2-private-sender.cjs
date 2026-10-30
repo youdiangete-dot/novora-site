@@ -149,6 +149,11 @@ function createSender(config, fixtureIO) {
   const io = fixtureIO || {
     run: (command, args, options) => runProcess(command, args, options, config.cwd),
     randomBytes: (n) => crypto.randomBytes(n),
+    writeReceiptId: (filename, id) => {
+      const fd = fs.openSync(filename, 'wx', 0o600);
+      try { fs.writeFileSync(fd, id + '\n', 'utf8'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      return true;
+    },
     fetch: (...args) => fetch(...args),
     environment: process.env,
     node: process.execPath,
@@ -225,6 +230,10 @@ function createSender(config, fixtureIO) {
       return { oidc: token };
     },
     async newCorrelation() { return io.randomBytes(16).toString('hex'); },
+    async persistClientRequestId(id) {
+      if (!config.receiptRecovery || typeof config.receiptIdFile !== 'string' || !path.isAbsolute(config.receiptIdFile) || !/^[a-f0-9]{32}$/.test(id) || typeof io.writeReceiptId !== 'function') return false;
+      return io.writeReceiptId(config.receiptIdFile, id) === true;
+    },
     async generate() { return { bearer: io.randomBytes(32).toString('base64url'), identity: config.invitedIdentity, idempotencyKey: io.randomBytes(24).toString('base64url') }; },
     async deploy({ identity, credentialSha256, sourceSha, isActive }) {
       await verifySource({ sourceSha, isActive });
@@ -295,9 +304,16 @@ function createSender(config, fixtureIO) {
         ...(b && typeof b === 'object' && !Array.isArray(b) ? { m2Binding: { deploymentId: b.deploymentId, sourceSha: b.sourceSha, runtimeBinding: b.runtimeBinding, ledgerKey: b.ledgerKey, authorityId: b.authorityId } } : {}),
         ...(Object.keys(diagnostics).length ? { m2BindingDiagnostics: diagnostics } : {}) };
     },
-    async submit({ origin, path, bearer, oidc, idempotencyKey, payload }) {
+    async readReceipt({ origin, bearer, oidc, clientRequestId }) {
+      if (!/^[a-f0-9]{32}$/.test(clientRequestId)) return null;
+      const response = await io.fetch(origin + '/api/concept-briefs/receipt?id=' + clientRequestId, { headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + bearer }, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) });
+      if (response.status !== 200) return null;
+      const body = await response.json();
+      return { stage: body?.status, reason: body?.reason, publicReference: body?.publicReference, conceptBriefId: body?.conceptBriefId };
+    },
+    async submit({ origin, path, bearer, oidc, idempotencyKey, payload, clientRequestId }) {
       let response;
-      try { response = await io.fetch(origin + path, { method: 'POST', headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + bearer, 'Idempotency-Key': idempotencyKey, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) }); }
+      try { response = await io.fetch(origin + path, { method: 'POST', headers: { 'x-vercel-trusted-oidc-idp-token': oidc, Authorization: 'Bearer ' + bearer, 'Idempotency-Key': idempotencyKey, 'Content-Type': 'application/json', ...(clientRequestId ? { 'X-Novora-Client-Request-Id': clientRequestId } : {}) }, body: JSON.stringify(payload), redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30000) }); }
       catch { return { stage: 'TRANSPORT_ERROR' }; }
       const httpStatus = Number.isInteger(response?.status) && response.status >= 100 && response.status <= 599 ? response.status : undefined;
       if (!httpStatus) return { stage: 'RESPONSE_INVALID' };
@@ -324,7 +340,7 @@ function createSender(config, fixtureIO) {
       return { status: response.status, contentType: response.headers.get('content-type'), ...(response.status === 200 ? { bytes: Buffer.from(await response.arrayBuffer()) } : {}) };
     },
   };
-  const sessionConfig = { adapters, expectedSourceSha: config.expectedSourceSha, deadline: config.deadline, now: config.now, sourceMode };
+  const sessionConfig = { adapters, expectedSourceSha: config.expectedSourceSha, deadline: config.deadline, now: config.now, sourceMode, receiptRecovery: config.receiptRecovery === true };
   if (fixtureIO) {
     adapters.verifyOidc = fixtureIO.verifyOidc;
     return createOfflineFixtureOperator(sessionConfig);

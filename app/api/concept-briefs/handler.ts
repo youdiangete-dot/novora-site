@@ -26,6 +26,9 @@ import {
   type AutomaticFirstPreviewTriggerResult,
 } from "../../../lib/server/ai-sketch/first-preview-automatic-trigger";
 
+import { authenticateM2ReceiptRequest } from "../../../lib/server/ai-sketch/beta-admission";
+import { isClientRequestId, createScopedReceipt, claimScopedPublish, finishScopedPublish } from "../../../lib/server/ai-sketch/m2-scoped-receipt";
+
 type ConceptBriefResponse = {
   ok: boolean;
   mode: "supabase";
@@ -34,6 +37,8 @@ type ConceptBriefResponse = {
   publicReference?: string;
   conceptBriefId?: string;
   errors?: string[];
+  receiptStage?: "accepted" | "admission_denied" | "publish_pending" | "published" | "UNKNOWN";
+  receiptReason?: string | null;
 };
 
 const CONCEPT_BRIEF_ROUTE_NAME = "/api/concept-briefs";
@@ -112,6 +117,7 @@ function writeAutomaticFirstPreviewDiagnostic(
 }
 
 type ConceptBriefPostDependencies = Readonly<{
+  receipt?: Readonly<{ authenticate?: typeof authenticateM2ReceiptRequest; create?: typeof createScopedReceipt; claim?: typeof claimScopedPublish; finish?: typeof finishScopedPublish }>;
   checkRateLimit?: typeof checkPublicApiRateLimit;
   persistSubmission?: typeof persistConceptBriefSubmission;
   sessionDependencies?: FirstPreviewSessionRouteDependencies;
@@ -219,7 +225,23 @@ export function createConceptBriefPostHandler(
     }
   }
 
-  const persistence = await persistSubmission(payload as ConceptBriefSubmissionPayload);
+  const receiptId = request.headers.get("x-novora-client-request-id");
+  let scope: ReturnType<typeof authenticateM2ReceiptRequest> = null;
+  let scopedCreated = false;
+  let persistence: Awaited<ReturnType<typeof persistConceptBriefSubmission>>;
+  if (receiptId !== null) {
+    scope = (dependencies.receipt?.authenticate ?? authenticateM2ReceiptRequest)(request);
+    if (!scope || !isClientRequestId(receiptId)) return jsonResponse({ ok: false, mode: "supabase", persisted: false, message: "Submission unavailable." }, 404);
+    const result = await (dependencies.receipt?.create ?? createScopedReceipt)(scope, receiptId, payload as ConceptBriefSubmissionPayload);
+    if (result.outcome === "conflict") return jsonResponse({ ok: false, mode: "supabase", persisted: false, message: "Submission conflict." }, 409);
+    if (result.outcome === "unavailable") return jsonResponse({ ok: false, mode: "supabase", persisted: false, message: "Submission status unavailable." }, 503);
+    if (result.outcome === "existing") return jsonResponse({ ok: true, mode: "supabase", persisted: true, message: "Submission already recorded.", publicReference: result.receipt.reference, conceptBriefId: result.receipt.briefId, receiptStage: result.receipt.stage, receiptReason: result.receipt.reason }, 200);
+    if (!("receipt" in result)) return jsonResponse({ ok: false, mode: "supabase", persisted: false, message: "Submission status unavailable." }, 503);
+    scopedCreated = true;
+    persistence = { persisted: true, publicReference: result.receipt.reference, conceptBriefId: result.receipt.briefId };
+  } else {
+    persistence = await persistSubmission(payload as ConceptBriefSubmissionPayload);
+  }
 
   if (persistence.persisted === false) {
     return jsonResponse(
@@ -243,7 +265,11 @@ export function createConceptBriefPostHandler(
     dependencies.sessionDependencies,
   );
 
-  const triggerResult = await triggerAutomaticPreview(
+  // Only the transaction's creator may claim publication. A lost claim reply
+  // is uncertain and must not result in another Queue or Provider operation.
+  if (scopedCreated && scope && receiptId && !(await (dependencies.receipt?.claim ?? claimScopedPublish)(scope, receiptId))) return response;
+  let triggerResult: Awaited<ReturnType<typeof triggerAutomaticFirstPreviewAfterPersistence>>;
+  try { triggerResult = await triggerAutomaticPreview(
     {
       payload,
       admissionRequest: request,
@@ -255,7 +281,16 @@ export function createConceptBriefPostHandler(
       publicReference: persistedIdentity.publicReference,
     },
     dependencies.triggerDependencies,
-  );
+  ); } catch (error) {
+    if (!scopedCreated) throw error;
+    if (scope && receiptId) await (dependencies.receipt?.finish ?? finishScopedPublish)(scope, receiptId, "UNKNOWN", "UNKNOWN");
+    return response;
+  }
+  if (scopedCreated && scope && receiptId) {
+    const stage = triggerResult.status === "enqueued" ? "published" : triggerResult.reason === "beta_admission_denied" ? "admission_denied" : "UNKNOWN";
+    const reason = triggerResult.reason === "queue_publish_failed" ? "UNKNOWN" : triggerResult.reason;
+    await (dependencies.receipt?.finish ?? finishScopedPublish)(scope, receiptId, stage, reason);
+  }
 
   logAutomaticPreviewDiagnostic({
     publicReference: persistedIdentity.publicReference,

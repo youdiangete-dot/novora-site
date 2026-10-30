@@ -42,7 +42,7 @@ function parseDeployment(result) {
   return { ok: true, id: entry.id, origin: targetOrigin, wrapper, urlCategory: /^https:\/\//i.test(entry.url) ? 'schemeful' : 'hostname', state: entry.readyState ?? 'not_reported' };
 }
 
-function createSession({ adapters, expectedSourceSha, deadline, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout, sourceMode = 'cli_upload' }) {
+function createSession({ adapters, expectedSourceSha, deadline, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout, sourceMode = 'cli_upload', receiptRecovery = false }) {
   if (!adapters || !/^[a-f0-9]{40}$/.test(expectedSourceSha ?? '') || !Number.isFinite(deadline)) throw new Error('INVALID_SESSION_CONFIGURATION');
   if (!['cli_upload', 'git_source'].includes(sourceMode)) throw new Error('INVALID_SESSION_CONFIGURATION');
   const ownerDeadline = Math.min(deadline, Date.parse('2026-10-30T03:00:00Z'));
@@ -51,7 +51,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
   let prepared = false, deployAttempted = false, proposed = null, attached = null, binding = null;
   let readbackAttempts = 0, proofAttempted = false;
   let armed = false, submissionAttempted = false, receipt = null, closed = false, halted = false, expired = false, observation = null;
-  let timer = null, closeResult = null, submissionSummary = null;
+  let timer = null, closeResult = null, submissionSummary = null, receiptPreparationAttempted = false, preparedClientRequestId = null;
   function cancelTimer() { if (timer !== null) { cancel(timer); timer = null; } }
   function clearSecrets() { secret = null; oidc = null; idem = null; oidcExpires = null; receipt = null; }
   function destroy() { halted = true; cancelTimer(); clearSecrets(); return { status: 'HALTED' }; }
@@ -224,11 +224,22 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     if (!observationValid(observation)) return { status: 'AUTHORITY_NOT_OBSERVED' };
     authorityExpires = observation.expiresAt; armed = true; scheduleExpiry(); return { status: 'ARMED_FROM_OPERATOR_OBSERVATION' };
   }
+  async function prepareSubmission() {
+    if (!receiptRecovery || !freshOidc() || !armed || submissionAttempted || receiptPreparationAttempted || now() >= lastNewAttempt) return { status: 'DENIED' };
+    receiptPreparationAttempted = true;
+    try {
+      const id = await adapters.newCorrelation();
+      if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id) || !freshOidc()) return { status: 'PREPARATION_FAILED' };
+      if (await adapters.persistClientRequestId(id) !== true || !freshOidc()) return { status: 'PREPARATION_FAILED' };
+      preparedClientRequestId = id;
+      return { status: 'SUBMISSION_PREPARED', clientRequestId: id };
+    } catch { return { status: 'PREPARATION_FAILED' }; }
+  }
   async function submit(payload) {
-    if (!freshOidc() || !armed || submissionAttempted || now() >= lastNewAttempt) return { status: 'DENIED' };
+    if (!freshOidc() || !armed || submissionAttempted || now() >= lastNewAttempt || (receiptRecovery && !preparedClientRequestId)) return { status: 'DENIED' };
     submissionAttempted = true; // no replacement, including uncertain or local failures
     let correlationId;
-    try { correlationId = await adapters.newCorrelation(); } catch { /* fixed failure below */ }
+    try { correlationId = receiptRecovery ? preparedClientRequestId : await adapters.newCorrelation(); } catch { /* fixed failure below */ }
     if (typeof correlationId !== 'string' || !/^[a-f0-9]{32}$/.test(correlationId)) {
       submissionSummary = { stage: 'CORRELATION_UNAVAILABLE' };
       return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary };
@@ -236,7 +247,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     submissionSummary = { correlationId, stage: 'TRANSPORT_UNKNOWN' };
     if (!freshOidc()) { submissionSummary.stage = 'SESSION_INACTIVE'; return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary }; }
     try {
-      const r = await adapters.submit({ origin: attached.origin, path: '/api/concept-briefs', bearer: secret, oidc, idempotencyKey: idem, payload, redirect: 'error' });
+      const r = await adapters.submit({ origin: attached.origin, path: '/api/concept-briefs', bearer: secret, oidc, idempotencyKey: idem, payload, redirect: 'error', ...(receiptRecovery ? { clientRequestId: preparedClientRequestId } : {}) });
       const validRef = typeof r?.publicReference === 'string' && /^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(r?.publicReference ?? '');
       const validId = typeof r?.conceptBriefId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(r?.conceptBriefId ?? '');
       const allowed = new Set(['HTTP_ERROR','JSON_INVALID','RESPONSE_INVALID','COOKIE_INVALID','TRANSPORT_ERROR']);
@@ -248,6 +259,17 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       submissionSummary.stage = 'CONFIRMED';
       return { status: 'SUBMITTED', ...submissionSummary };
     } catch { submissionSummary.stage = 'TRANSPORT_ERROR'; return { status: 'SUBMISSION_UNCONFIRMED', ...submissionSummary }; }
+  }
+  async function receiptStatus() {
+    if (!receiptRecovery || !freshOidc() || !armed || !submissionAttempted || !preparedClientRequestId || typeof adapters.readReceipt !== 'function') return { status: 'DENIED' };
+    try {
+      const result = await adapters.readReceipt({ origin: attached.origin, bearer: secret, oidc, clientRequestId: preparedClientRequestId });
+      if (!freshOidc()) return { status: 'RECEIPT_UNAVAILABLE' };
+      const stages = new Set(['accepted', 'admission_denied', 'publish_pending', 'published', 'UNKNOWN']);
+      const reasons = new Set(['feature_disabled', 'queue_execution_disabled', 'eligibility_rejected', 'beta_admission_denied', 'queue_message_rejected', 'structured_input_rejected', 'UNKNOWN', 'enqueued']);
+      if (!result || !stages.has(result.stage) || !(result.reason === null || reasons.has(result.reason)) || typeof result.publicReference !== 'string' || !/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(result.publicReference) || typeof result.conceptBriefId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(result.conceptBriefId)) return { status: 'RECEIPT_UNAVAILABLE' };
+      return { status: 'RECEIPT_FOUND', stage: result.stage, reason: result.reason, publicReference: result.publicReference, conceptBriefId: result.conceptBriefId };
+    } catch { return { status: 'RECEIPT_UNAVAILABLE' }; }
   }
   async function asset(authorized) {
     if (!freshOidc() || !receipt) return { status: 'DENIED' };
@@ -272,7 +294,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     return closeResult;
   }
 
-  return Object.freeze({ prepare, refreshOidc, deploy, attach, verifyBinding, observeAuthority, arm, submit, asset, checkpoint, close, destroy });
+  return Object.freeze({ prepare, refreshOidc, deploy, attach, verifyBinding, observeAuthority, arm, prepareSubmission, submit, receiptStatus, asset, checkpoint, close, destroy });
 }
 
 module.exports = { parseDeployment, createSession };
