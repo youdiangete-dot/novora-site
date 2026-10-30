@@ -47,3 +47,13 @@ role ownership/grants and RLS assumptions, deployed version, backups, retention,
 and the handling of in-flight submissions. Before rollback after traffic, retain
 and reconcile receipt mappings and in-flight outcomes. This evidence does not
 authorize or validate an online migration.
+
+## Coordinator-reported isolated migration and local ACL correction
+
+The following cloud facts were reported by the coordinating task from its connector results; this local task did not query or independently verify cloud state. On project `dibpksbbzjczpjusujwk` (`novora-m2-beta-isolated`), the original draft with SHA-256 `ce8e55a28cbefe42c5f3709062928b35bf026db9b56a43feea8f830bab966495` was applied once successfully. The coordinator reported one new table, four invoker functions and no receipt rows, with RLS and the intended function grants. A subsequent independent ACL read found the default table privileges also gave `service_role` ALL; the original grant-only SQL had not removed those privileges.
+
+The coordinator reports separately applying migration `m2_scoped_receipt_service_role_least_privilege`: `BEGIN; REVOKE ALL PRIVILEGES ON TABLE public.m2_scoped_submission_receipts FROM service_role; GRANT SELECT, INSERT, UPDATE ON TABLE public.m2_scoped_submission_receipts TO service_role; COMMIT;`. Its final independent read reported ACL `service_role=arw`, RLS enabled, zero receipt rows, and no DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN. These are two distinct migrations; the historical original hash is unchanged as evidence. No cloud operation was performed by this local correction task.
+
+The corrected local draft SHA-256 is `696e5d24ae07781f3738ff37e255a838354a173921411f4384b86920934e5eea`. A focused PostgreSQL 17.11 regression in `m2-pg-default-acl.sql` set synthetic default table privileges to ALL for `service_role` and passed six assertions. The original grant-only probe retained DELETE and other excess privileges; the corrected full draft retained SELECT/INSERT/UPDATE, excluded all five excess privileges, and denied PUBLIC/anon/authenticated table access. This local synthetic test does not establish live Supabase compatibility. The synthetic container was stopped with network none and no exposed ports; old synthetic data remain intact.
+
+To reproduce only after appropriate local authorization: use a new empty synthetic database in a disconnected test container with existing synthetic roles `anon`, `authenticated` and `service_role`. Copy the corrected draft to `/tmp/m2-corrected-draft.sql`, copy `m2-pg-default-acl.sql` separately, and execute the latter using psql with `ON_ERROR_STOP=1`. Do not use any live or populated database. Stop and inspect the exact approved test container afterward.
