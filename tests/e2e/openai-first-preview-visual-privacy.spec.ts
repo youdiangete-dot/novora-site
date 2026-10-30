@@ -4,6 +4,12 @@ import path from "node:path";
 import { deflateSync } from "node:zlib";
 
 import { expect, test } from "@playwright/test";
+import { createMockNovoraDesignSpec } from "../../lib/server/ai-sketch/design-spec";
+import { createNovoraHandSketchInstructionFromDesignSpec } from "../../lib/server/ai-sketch/hand-sketch-instruction";
+import { orchestrateFirstPreviewGeneration, type FirstPreviewProviderRequest } from "../../lib/server/ai-sketch/first-preview-runtime";
+import { createOpenAiFirstPreviewProviderAdapter } from "../../lib/server/ai-sketch/openai-first-preview-provider";
+import { FakeFirstPreviewProvider } from "../fixtures/ai-sketch/fake-first-preview-provider";
+import { FakeOpenAiImageClient } from "../fixtures/ai-sketch/fake-openai-image-client";
 
 import {
   FIRST_PREVIEW_VISUAL_PRIVACY_INSPECTOR_VERSION,
@@ -28,6 +34,17 @@ const inspectorModule = (() => {
   try {
     return testRequire("../../lib/server/ai-sketch/openai-first-preview-visual-privacy") as
       typeof import("../../lib/server/ai-sketch/openai-first-preview-visual-privacy");
+  } finally { internals._resolveFilename = originalResolve; }
+})();
+const structuredModule = (() => {
+  internals._resolveFilename = function (request, parent, isMain, options) {
+    return request === "server-only"
+      ? path.join(process.cwd(), "node_modules/next/dist/compiled/server-only/empty.js")
+      : originalResolve.call(this, request, parent, isMain, options);
+  };
+  try {
+    return testRequire("../../lib/server/ai-sketch/first-preview-structured-input") as
+      typeof import("../../lib/server/ai-sketch/first-preview-structured-input");
   } finally { internals._resolveFilename = originalResolve; }
 })();
 
@@ -176,6 +193,81 @@ function expectDiagnostic(reason: string, result: { result: string; usageTrusted
   for (const forbidden of [API_KEY, "visibleText", "providerResponse", "private-network-sentinel", "private-provider-sentinel"]) {
     expect(serialized).not.toContain(forbidden);
   }
+}
+
+async function capturePrintedTextRequest(source: "template" | "structured"): Promise<FirstPreviewProviderRequest> {
+  const publicReference = "NOVORA-CB-20261030-TEST";
+  const structured = structuredModule.buildFirstPreviewStructuredGenerationInput({
+    publicReference,
+    payload: { brief: {
+      pieceType: "ring", structure: "plain band", stoneLogic: "none",
+      designIntent: "A simple continuous band ring with a smooth rounded profile and no stones.",
+      styleDirection: ["minimal"], materialDirection: ["silver"],
+      requestedViews: ["front view", "side profile"],
+      avoid: ["letters", "numbers", "logos", "watermarks", "people", "hands"],
+    } },
+  });
+  expect(structured.ok).toBe(true);
+  if (!structured.ok) throw new Error("Synthetic structured input was rejected.");
+  const designSpec = source === "template" ? createMockNovoraDesignSpec({ publicReference }) : structured.value.designSpec;
+  const instruction = source === "template" ? createNovoraHandSketchInstructionFromDesignSpec(designSpec) : structured.value.handSketchInstruction;
+  const provider = new FakeFirstPreviewProvider("success");
+  await orchestrateFirstPreviewGeneration({
+    persistenceConfirmed: true, conceptBriefId: BRIEF_ID, publicReference,
+    designSpec, handSketchInstruction: instruction, accessControlEligible: true, falseSuccessDetected: false,
+  }, { provider, timeoutMs: 1000 });
+  expect(provider.lastRequest).not.toBeNull();
+  return provider.lastRequest!;
+}
+
+for (const source of ["template", "structured"] as const) {
+  test(`printed text contract: ${source} composed request matches the unchanged privacy validator`, async () => {
+    const request = await capturePrintedTextRequest(source);
+    const client = new FakeOpenAiImageClient("valid_1024_png");
+    const adapter = createOpenAiFirstPreviewProviderAdapter({ client, configuration: { status: "configured", variableName: "OPENAI_API_KEY" } });
+    expect((await adapter.generateFirstPreviewImage(request, { signal: new AbortController().signal })).ok).toBe(true);
+    expect(client.callCount).toBe(1); // Injected fake only; global fetch is prohibited.
+    const prompt = client.lastRequest!.prompt;
+    const lines = prompt.split("\n");
+    const policyIndex = lines.findIndex((line) => line.startsWith("Printed text policy:"));
+    expect(policyIndex).toBeGreaterThanOrEqual(0);
+    const printed = JSON.parse(lines[policyIndex + 1]);
+    const rendered = JSON.parse(lines.at(-1)!);
+    expect(printed).toEqual(["NOVORA", "AI concept preview", "Concept preview only", "Concept preview only - not CAD, quote, order, payment, or production approval."]);
+    expect(rendered.sheet_style.concept_preview_label).toBe(printed[1]);
+    expect(rendered.disclaimer_instructions.required_label).toBe(printed[3]);
+    expect(rendered.annotation_instructions.labels.map((label: { label: string }) => label.label)).toEqual([printed[2]]);
+    expect(prompt).toContain("never text to transcribe into the image");
+    expect(prompt).toContain("Customer text/logo exclusions apply to the jewelry drawing");
+    if (source === "structured") {
+      expect(rendered.jewelry_rendering_instructions.construction_consistency).toContain("Show the shared table direction and unchanged directional long axis graphically, without printed orientation labels.");
+      expect(rendered.jewelry_rendering_instructions.construction_consistency).toContain("Show structural relationships and preserve unknown dimensions without inventing tolerances or printing free-form annotations.");
+    }
+    const { inspector } = harness(completion(observation(printed)));
+    expect((await inspector(inspectorInput(drawnTextPng(printed.join(" "))), { signal: new AbortController().signal })).result).toBe("passed");
+  });
+}
+
+for (const previousLabel of ["NOVORA concept preview", "Concept preview", "Orientation", "Structure"]) {
+  test(`printed text contract: unapproved literal remains rejected: ${previousLabel}`, async () => {
+    const { inspector } = harness(completion(observation([previousLabel])));
+    const result = await inspector(inspectorInput(drawnTextPng(previousLabel)), { signal: new AbortController().signal });
+    expect(result.result).toBe("failed");
+    expectDiagnostic("text_not_allowlisted", result);
+  });
+}
+
+for (const field of ["title", "label", "disclaimer"] as const) {
+  test(`printed text contract: noncanonical ${field} prevents even a fake generation dispatch`, async () => {
+    const request = await capturePrintedTextRequest("structured");
+    if (field === "title") request.handSketchInstruction.sheet_style.concept_preview_label = "NOVORA concept preview";
+    if (field === "label") request.handSketchInstruction.annotation_instructions.labels[0].label = "Orientation";
+    if (field === "disclaimer") request.handSketchInstruction.disclaimer_instructions.required_label = "Concept preview only; not CAD or a production drawing.";
+    const client = new FakeOpenAiImageClient("valid_1024_png");
+    const adapter = createOpenAiFirstPreviewProviderAdapter({ client, configuration: { status: "configured", variableName: "OPENAI_API_KEY" } });
+    expect((await adapter.generateFirstPreviewImage(request, { signal: new AbortController().signal })).ok).toBe(false);
+    expect(client.callCount).toBe(0);
+  });
 }
 
 test.describe("output-bound First Preview visual privacy inspector", () => {

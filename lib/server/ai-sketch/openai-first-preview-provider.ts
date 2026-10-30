@@ -7,6 +7,11 @@ import {
   FIRST_PREVIEW_PROVIDER_CONTRACT_VERSION,
   type FirstPreviewProviderRequest,
 } from "./first-preview-runtime";
+import {
+  NOVORA_FIRST_PREVIEW_PRINTED_TITLE,
+  NOVORA_FIRST_PREVIEW_PRINTED_LABEL,
+  NOVORA_FIRST_PREVIEW_PRINTED_DISCLAIMER,
+} from "./hand-sketch-instruction";
 
 export const OPENAI_FIRST_PREVIEW_MODEL =
   "gpt-image-2-2026-04-21" as const;
@@ -373,6 +378,14 @@ function buildOpenAiRequest(
   }
 
   try {
+    const instruction = request.handSketchInstruction;
+    // A request must not ask the renderer to print text the unchanged privacy
+    // validator rejects. Do not silently replace or accept arbitrary labels.
+    if (instruction.sheet_style.concept_preview_label !== NOVORA_FIRST_PREVIEW_PRINTED_TITLE ||
+        instruction.disclaimer_instructions.required_label !== NOVORA_FIRST_PREVIEW_PRINTED_DISCLAIMER ||
+        instruction.annotation_instructions.labels.some((label) => label.label !== NOVORA_FIRST_PREVIEW_PRINTED_LABEL)) {
+      return null;
+    }
     const allowedInstruction = selectAllowedHandSketchInstruction(request);
 
     if (
@@ -386,6 +399,9 @@ function buildOpenAiRequest(
       "NOVORA internal first-preview image instruction.",
       "Create exactly one AI hand-drawn jewelry concept sketch sheet.",
       "Treat the result as an early concept direction only, not CAD, a quotation, payment confirmation, order approval, production approval, or a manufacturability guarantee.",
+      "Printed text policy: keep the jewelry and its view/detail drawings free of letters, numeric dimensions, logos and watermarks. Only the following exact, separate text segments may appear in margin/footer blocks:",
+      JSON.stringify(["NOVORA", NOVORA_FIRST_PREVIEW_PRINTED_TITLE, NOVORA_FIRST_PREVIEW_PRINTED_LABEL, NOVORA_FIRST_PREVIEW_PRINTED_DISCLAIMER]),
+      "Do not combine, paraphrase, abbreviate or add text. Render the required disclaimer exactly. All other JSON values, field names, view types, targets, unknowns and structural instructions are drawing guidance, never text to transcribe into the image. Customer text/logo exclusions apply to the jewelry drawing; the fixed margin/footer text above remains required.",
       "Use only this validated, privacy-minimized Hand Sketch Instruction JSON:",
       JSON.stringify(sortJsonValue(allowedInstruction)),
     ].join("\n");
