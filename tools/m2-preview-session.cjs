@@ -51,7 +51,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
   let prepared = false, deployAttempted = false, proposed = null, attached = null, binding = null;
   let readbackAttempts = 0, proofAttempted = false;
   let armed = false, submissionAttempted = false, receipt = null, closed = false, halted = false, expired = false, observation = null;
-  let timer = null;
+  let timer = null, closeResult = null;
   function cancelTimer() { if (timer !== null) { cancel(timer); timer = null; } }
   function clearSecrets() { secret = null; oidc = null; idem = null; oidcExpires = null; receipt = null; }
   function destroy() { halted = true; cancelTimer(); clearSecrets(); return { status: 'HALTED' }; }
@@ -100,6 +100,13 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       return { status: 'PREPARED', identity };
     } catch (error) {
       const reasons = new Set(['CLI_VERSION_UNSUPPORTED', 'CLI_SELECTION_UNSUPPORTED', 'CLI_SELECTION_FAILED', 'CLI_SELECTION_UNTRACKED', 'CLI_SELECTION_SENSITIVE', 'SOURCE_MISMATCH', 'SOURCE_REMOTE_MISMATCH', 'SOURCE_MANIFEST_FAILED']);
+      if (error?.message === 'GIT_PROJECT_TRANSPORT') {
+        const d = error.diagnostic, allowed = new Set(['TIMEOUT','STDOUT_LIMIT','STDERR_LIMIT','SPAWN_ERROR','EXIT_NONZERO','SIGNALLED','UNKNOWN']);
+        return { status: 'PREPARATION_FAILED', reason: 'GIT_PROJECT_TRANSPORT', stage: 'GIT_PROJECT_READ', processOutcome: allowed.has(d?.processOutcome) ? d.processOutcome : 'UNKNOWN',
+          ...(Number.isInteger(d?.exitCode) && d.exitCode >= 1 && d.exitCode <= 255 ? { exitCode: d.exitCode } : {}),
+          ...(Number.isInteger(d?.reportedHttpStatus) && d.reportedHttpStatus >= 400 && d.reportedHttpStatus <= 599 ? { reportedHttpStatus: d.reportedHttpStatus } : {}) };
+      }
+      if (['GIT_SOURCE_SCHEMA', 'GIT_PROJECT', 'GIT_REPOSITORY'].includes(error?.message)) return { status: 'PREPARATION_FAILED', reason: error.message };
       return reasons.has(error?.message) ? { status: 'PREPARATION_FAILED', reason: error.message } : { status: 'PREPARATION_FAILED' };
     }
   }
@@ -154,7 +161,12 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       return { status: d.sourceVerified === true && d.sourceSha === expectedSourceSha ? 'ATTACHED' : 'READONLY_RUNTIME_PROOF_PENDING', deploymentId };
     } catch (error) {
       const reasons = new Set(['DEPLOYMENT_TRANSPORT', 'DEPLOYMENT_SCHEMA', 'MANIFEST_TRANSPORT', 'MANIFEST_SCHEMA', 'MANIFEST_PATH', 'MANIFEST_COUNT', 'MANIFEST_CONTENT_UNAVAILABLE', 'GIT_PROJECT_TRANSPORT', 'GIT_SOURCE_SCHEMA', 'GIT_DEPLOYMENT_ID', 'GIT_PROJECT', 'GIT_TARGET', 'GIT_STATE', 'GIT_REPOSITORY', 'GIT_REF', 'GIT_SHA', 'GIT_METADATA_CONFLICT']);
-      return { status: 'READBACK_FAILED', reason: reasons.has(error?.message) ? error.message : 'READBACK_TRANSPORT_OR_SCHEMA' };
+      const reason = reasons.has(error?.message) ? error.message : 'READBACK_TRANSPORT_OR_SCHEMA';
+      if (reason !== 'GIT_PROJECT_TRANSPORT') return { status: 'READBACK_FAILED', reason };
+      const d = error?.diagnostic, allowed = new Set(['TIMEOUT','STDOUT_LIMIT','STDERR_LIMIT','SPAWN_ERROR','EXIT_NONZERO','SIGNALLED','UNKNOWN']);
+      return { status: 'READBACK_FAILED', reason, stage: 'GIT_PROJECT_READ', processOutcome: allowed.has(d?.processOutcome) ? d.processOutcome : 'UNKNOWN',
+        ...(Number.isInteger(d?.exitCode) && d.exitCode >= 1 && d.exitCode <= 255 ? { exitCode: d.exitCode } : {}),
+        ...(Number.isInteger(d?.reportedHttpStatus) && d.reportedHttpStatus >= 400 && d.reportedHttpStatus <= 599 ? { reportedHttpStatus: d.reportedHttpStatus } : {}) };
     }
   }
   async function verifyBinding() {
@@ -233,15 +245,19 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       return { status: 'DELIVERED', sha256: createHash('sha256').update(r.bytes).digest('hex'), bytes: r.bytes.length };
     } catch { return { status: 'ASSET_FAILED' }; }
   }
-  async function close() {
-    if (closed) return { status: 'CLOSED' };
+  function close() {
+    if (closeResult) return closeResult;
     closed = true; cancelTimer(); clearSecrets();
-    let revoke = 'NOT_REQUIRED', cleanup = 'NOT_REQUIRED';
-    try { if (binding) revoke = await adapters.revoke({ ...binding }) === true ? 'CONFIRMED' : 'UNCONFIRMED'; } catch { revoke = 'UNCONFIRMED'; }
-    try { if (attached) cleanup = await adapters.cleanup(attached.id) === true ? 'CONFIRMED' : 'UNCONFIRMED'; } catch { cleanup = 'UNCONFIRMED'; }
-    if (deployAttempted && !attached) cleanup = 'UNVERIFIED_TARGET';
-    return { status: 'CLOSED', revoke, cleanup };
+    closeResult = (async () => {
+      let revoke = 'NOT_REQUIRED', cleanup = 'NOT_REQUIRED';
+      try { if (binding) revoke = await adapters.revoke({ ...binding }) === true ? 'CONFIRMED' : 'UNCONFIRMED'; } catch { revoke = 'UNCONFIRMED'; }
+      try { if (attached) cleanup = await adapters.cleanup(attached.id) === true ? 'CONFIRMED' : 'UNCONFIRMED'; } catch { cleanup = 'UNCONFIRMED'; }
+      if (deployAttempted && !attached) cleanup = 'UNVERIFIED_TARGET';
+      return { status: 'CLOSED', revoke, cleanup };
+    })();
+    return closeResult;
   }
+
   return Object.freeze({ prepare, refreshOidc, deploy, attach, verifyBinding, observeAuthority, arm, submit, asset, checkpoint, close, destroy });
 }
 

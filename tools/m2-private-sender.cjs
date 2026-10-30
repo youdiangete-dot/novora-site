@@ -87,6 +87,48 @@ function manifestContentMatches(expected, contents) {
   return true;
 }
 
+// Retain only bounded, fixed diagnostics. Raw stderr stays inside this call and
+// is never returned, logged or attached to an exception.
+function runProcess(command, args, options, cwd, spawn = cp.spawn) {
+  return new Promise((resolve) => {
+    let child;
+    try { child = spawn(command, args, { cwd, windowsHide: true, env: options.env, stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', options.diagnostic ? 'pipe' : 'ignore'] }); }
+    catch { resolve({ status: null, stdout: '', ...(options.diagnostic ? { failure: { kind: 'SPAWN_ERROR' } } : {}) }); return; }
+    if (options.input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(options.input); }
+    let stdout = '', stderr = '', overflow = false, stderrOverflow = false, timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; child.kill(); }, options.timeout ?? 120000);
+    child.stdout.setEncoding('utf8');
+    const limit = options.maxBuffer ?? 1024 * 1024;
+    child.stdout.on('data', chunk => { if (stdout.length + chunk.length > limit) { overflow = true; child.kill(); } else stdout += chunk; });
+    if (options.diagnostic && child.stderr) {
+      child.stderr.setEncoding('utf8');
+      child.stderr.on('data', chunk => { if (stderr.length + chunk.length > 8192) { stderrOverflow = true; stderr = ''; } else if (!stderrOverflow) stderr += chunk; });
+    }
+    child.on('error', () => { clearTimeout(timeout); resolve({ status: null, stdout: '', ...(options.diagnostic ? { failure: { kind: 'SPAWN_ERROR' } } : {}) }); });
+    child.on('close', (status, signal) => {
+      clearTimeout(timeout);
+      if (!options.diagnostic) { resolve({ status: overflow || timedOut ? null : status, stdout: overflow || timedOut ? '' : stdout }); return; }
+      if (status === 0 && !timedOut && !overflow) { resolve({ status, stdout }); return; }
+      const kind = timedOut ? 'TIMEOUT' : overflow ? 'STDOUT_LIMIT' : stderrOverflow ? 'STDERR_LIMIT' : Number.isInteger(status) ? 'EXIT_NONZERO' : signal ? 'SIGNALLED' : 'UNKNOWN';
+      const failure = { kind, ...(Number.isInteger(status) && status >= 1 && status <= 255 ? { exitCode: status } : {}) };
+      if (!stderrOverflow && stderr) {
+        try { const value = JSON.parse(stderr); const reported = value?.error?.status ?? value?.status; if (Number.isInteger(reported) && reported >= 400 && reported <= 599) failure.reportedHttpStatus = reported; } catch { /* no inferred status from arbitrary text */ }
+      }
+      resolve({ status: overflow || timedOut ? null : status, stdout: '', failure });
+    });
+  });
+}
+
+function projectTransportFailure(result) {
+  const error = new Error('GIT_PROJECT_TRANSPORT');
+  const allowed = new Set(['TIMEOUT','STDOUT_LIMIT','STDERR_LIMIT','SPAWN_ERROR','EXIT_NONZERO','SIGNALLED','UNKNOWN']);
+  const f = result?.failure;
+  error.diagnostic = { stage: 'GIT_PROJECT_READ', processOutcome: allowed.has(f?.kind) ? f.kind : 'UNKNOWN',
+    ...(Number.isInteger(f?.exitCode) && f.exitCode >= 1 && f.exitCode <= 255 ? { exitCode: f.exitCode } : {}),
+    ...(Number.isInteger(f?.reportedHttpStatus) && f.reportedHttpStatus >= 400 && f.reportedHttpStatus <= 599 ? { reportedHttpStatus: f.reportedHttpStatus } : {}) };
+  return error;
+}
+
 async function cliSelection(cwd, cli) {
   // This path is part of the pinned, installed CLI 58.5.1 bundle. No CLI
   // command, authentication, file hashing, or network request is run here.
@@ -105,17 +147,7 @@ function createSender(config, fixtureIO) {
   if (config.sourceMode != null && !['cli_upload', 'git_source'].includes(config.sourceMode)) throw new Error('SOURCE_MODE_INVALID');
   const sourceMode = config.sourceMode ?? 'cli_upload';
   const io = fixtureIO || {
-    run: (command, args, options) => new Promise((resolve) => {
-      const child = cp.spawn(command, args, { cwd: config.cwd, windowsHide: true, env: options.env, stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'] });
-      if (options.input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(options.input); }
-      let stdout = '', overflow = false;
-      const timeout = setTimeout(() => { child.kill(); }, options.timeout ?? 120000);
-      child.stdout.setEncoding('utf8');
-      const limit = options.maxBuffer ?? 1024 * 1024;
-      child.stdout.on('data', (chunk) => { if (stdout.length + chunk.length > limit) { overflow = true; child.kill(); } else stdout += chunk; });
-      child.on('error', () => { clearTimeout(timeout); resolve({ status: null, stdout: '' }); });
-      child.on('close', (status) => { clearTimeout(timeout); resolve({ status: overflow ? null : status, stdout: overflow ? '' : stdout }); });
-    }),
+    run: (command, args, options) => runProcess(command, args, options, config.cwd),
     randomBytes: (n) => crypto.randomBytes(n),
     fetch: (...args) => fetch(...args),
     environment: process.env,
@@ -174,8 +206,18 @@ function createSender(config, fixtureIO) {
       if (!isActive()) throw new Error('SESSION_INACTIVE');
       expectedManifest = manifest;
   }
+  async function readProject() {
+    const r = await io.run(io.node, [config.cli, 'api', '/v9/projects/' + project, '--scope', team, '--raw'], { timeout: 30000, diagnostic: true });
+    if (r.status !== 0) throw projectTransportFailure(r);
+    let p; try { p = JSON.parse(r.stdout); } catch { throw new Error('GIT_SOURCE_SCHEMA'); }
+    if (!p || typeof p !== 'object' || !p.link || typeof p.link !== 'object') throw new Error('GIT_SOURCE_SCHEMA');
+    if (p.id !== project) throw new Error('GIT_PROJECT');
+    const link = p.link;
+    if (link.type !== 'github' || link.org !== gitOrg || link.repo !== gitRepo || (Object.hasOwn(link, 'repoId') && !((typeof link.repoId === 'string' && /^[1-9][0-9]*$/.test(link.repoId)) || (Number.isSafeInteger(link.repoId) && link.repoId > 0)))) throw new Error('GIT_REPOSITORY');
+    return p;
+  }
   const adapters = {
-    preflight: verifySource,
+    async preflight(options) { await verifySource(options); if (sourceMode === 'git_source') { await readProject(); if (!options.isActive()) throw new Error('SESSION_INACTIVE'); } },
     async prepare() {
       const result = await io.run(io.node, [config.cli, 'project', 'token', project, '--format=json', '--scope', team], { timeout: 30000 });
       if (result.status !== 0) throw new Error('OIDC_UNAVAILABLE');
@@ -203,9 +245,7 @@ function createSender(config, fixtureIO) {
       let d; try { d = JSON.parse(result.stdout); } catch { throw new Error('DEPLOYMENT_SCHEMA'); }
       if (!d || typeof d !== 'object' || (d.id && d.uid && d.id !== d.uid)) throw new Error('DEPLOYMENT_SCHEMA');
       if (sourceMode === 'git_source') {
-        const r = await io.run(io.node, [config.cli, 'api', '/v9/projects/' + project, '--scope', team, '--raw'], { timeout: 30000 });
-        if (r.status !== 0) throw new Error('GIT_PROJECT_TRANSPORT');
-        let p; try { p = JSON.parse(r.stdout); } catch { throw new Error('GIT_SOURCE_SCHEMA'); }
+        const p = await readProject();
         return verifyGitSourceDeployment(d, p, id, config.expectedSourceSha);
       }
       const host = d.url;
@@ -286,4 +326,4 @@ function attachPrivateProtocol(sender, input, output) {
   });
   return lines;
 }
-module.exports = { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestPaths, manifestContentMatches, cliSelection, buildGitSourceDeployment, verifyGitSourceDeployment };
+module.exports = { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestPaths, manifestContentMatches, cliSelection, buildGitSourceDeployment, verifyGitSourceDeployment, runProcess };

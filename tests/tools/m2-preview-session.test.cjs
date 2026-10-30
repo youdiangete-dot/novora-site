@@ -8,7 +8,7 @@ require('node:crypto').randomBytes = () => { throw new Error('REAL_RANDOM_FORBID
 global.fetch = () => { throw new Error('REAL_NETWORK_FORBIDDEN'); };
 const { parseDeployment, createSession } = require('../../tools/m2-preview-session.cjs');
 const { createOfflineFixtureOperator } = require('../../tools/m2-preview-operator.cjs');
-const { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestPaths, manifestContentMatches, cliSelection, buildGitSourceDeployment, verifyGitSourceDeployment } = require('../../tools/m2-private-sender.cjs');
+const { createSender, attachPrivateProtocol, canonicalGitDirectory, manifestPaths, manifestContentMatches, cliSelection, buildGitSourceDeployment, verifyGitSourceDeployment, runProcess } = require('../../tools/m2-private-sender.cjs');
 const { PassThrough } = require('node:stream');
 const readline = require('node:readline');
 
@@ -816,4 +816,82 @@ test('a pending trusted binding handoff cannot reactivate a stopped or expired s
     assert.equal(h.calls.submit, 0);
     await h.s.close();
   }
+});
+
+test('project CLI process retains fixed outcomes without retaining stderr or stdout', async () => {
+  const { EventEmitter } = require('node:events');
+  const secret='fixture_never_expose_credential';
+  function fakeSpawn({ status=1, signal=null, stdout='', stderr='', neverClose=false }) {
+    return () => {
+      const child=new EventEmitter(); child.stdout=new EventEmitter(); child.stdout.setEncoding=()=>{};
+      child.stderr=new EventEmitter(); child.stderr.setEncoding=()=>{};
+      child.kill=()=>{ queueMicrotask(()=>child.emit('close',null,'SIGTERM')); };
+      queueMicrotask(()=>{ if(stdout) child.stdout.emit('data',stdout); if(stderr) child.stderr.emit('data',stderr); if(!neverClose) child.emit('close',status,signal); });
+      return child;
+    };
+  }
+  const cases=[
+    [{status:1,stdout:secret,stderr:JSON.stringify({error:{status:403,message:secret}})}, {kind:'EXIT_NONZERO',exitCode:1,reportedHttpStatus:403}],
+    [{status:7,stderr:'unstructured 401 '+secret}, {kind:'EXIT_NONZERO',exitCode:7}],
+    [{status:null,signal:'SIGTERM'}, {kind:'SIGNALLED'}],
+    [{status:1,stderr:secret.repeat(900)}, {kind:'STDERR_LIMIT',exitCode:1}],
+    [{status:1,stdout:'x'.repeat(65)}, {kind:'STDOUT_LIMIT',exitCode:1}],
+  ];
+  for(const [input,expected] of cases){
+    const result=await runProcess('fixture',[],{diagnostic:true,maxBuffer:64,timeout:100},'fixture',fakeSpawn(input));
+    assert.deepEqual(result.failure,expected); assert.equal(result.stdout,''); assert.equal(JSON.stringify(result).includes(secret),false);
+  }
+  const timeout=await runProcess('fixture',[],{diagnostic:true,timeout:5},'fixture',fakeSpawn({neverClose:true}));
+  assert.equal(timeout.failure.kind,'TIMEOUT');
+  const spawn=await runProcess('fixture',[],{diagnostic:true},'fixture',()=>{throw Error(secret)});
+  assert.deepEqual(spawn.failure,{kind:'SPAWN_ERROR'}); assert.equal(JSON.stringify(spawn).includes(secret),false);
+});
+
+test('actual sender carries only safe project read diagnostics through attach', async () => {
+  const secret='fixture_never_expose_credential'; let projectReads=0;
+  const io={node:'fixture',environment:{},canonical:()=>true,randomBytes:n=>Buffer.alloc(n,1),verifyOidc:async()=>claims,
+    run:async(_command,args,options)=>{
+      if(args.includes('branch'))return {status:0,stdout:'integration/instant-first-preview-agent'};
+      if(args.includes('rev-parse'))return {status:0,stdout:sha};
+      if(args.includes('status'))return {status:0,stdout:''};
+      if(args.includes('get-url'))return {status:0,stdout:'https://github.com/youdiangete-dot/novora-site.git'};
+      if(args.includes('token'))return {status:0,stdout:JSON.stringify({token:fakeOidc})};
+      if(args.includes('/v13/deployments'))return {status:0,stdout:JSON.stringify(deployment)};
+      if(args.includes('/v13/deployments/'+id+'?withGitRepoInfo=true'))return {status:0,stdout:JSON.stringify(gitReadback)};
+      if(args.includes('/v9/projects/'+claims.project_id)){projectReads++;assert.equal(options.diagnostic,true);return projectReads === 1 ? {status:0,stdout:JSON.stringify(gitProject)} : {status:1,stdout:secret,failure:{kind:'EXIT_NONZERO',exitCode:1,reportedHttpStatus:403,secret}};}
+      throw Error('UNEXPECTED_FIXTURE_PROCESS');
+    }, fetch:()=>{throw Error('UNEXPECTED_NETWORK');}};
+  const sender=createSender({cwd:'fixture',cli:'fixture',sourceMode:'git_source',invitedIdentity:'m2_synthetic_fixture',expectedSourceSha:sha,deadline:1060000,now:()=>1000000,trustedAdapters:{revoke:async()=>true,cleanup:async()=>true}},io);
+  assert.equal((await sender('prepare')).status,'PREPARED'); assert.equal((await sender('deploy')).status,'READBACK_REQUIRED');
+  const r=await sender('attach',id);
+  assert.deepEqual(r,{status:'READBACK_FAILED',reason:'GIT_PROJECT_TRANSPORT',stage:'GIT_PROJECT_READ',processOutcome:'EXIT_NONZERO',exitCode:1,reportedHttpStatus:403});
+  assert.equal(JSON.stringify(r).includes(secret),false); assert.equal(projectReads,2); assert.equal((await sender('proof')).status,'DENIED');
+  await sender('close');
+});
+
+test('project preflight failure stops before credentials and deployment and preserves redacted reason', async () => {
+  let tokens=0, random=0, deployments=0, projectReads=0;
+  const io={node:'fixture',environment:{},canonical:()=>true,randomBytes:()=>{random++;throw Error('unexpected')},verifyOidc:async()=>claims,
+    run:async(_command,args)=>{
+      if(args.includes('branch'))return {status:0,stdout:'integration/instant-first-preview-agent'};
+      if(args.includes('rev-parse'))return {status:0,stdout:sha};
+      if(args.includes('status'))return {status:0,stdout:''};
+      if(args.includes('get-url'))return {status:0,stdout:'https://github.com/youdiangete-dot/novora-site.git'};
+      if(args.includes('token')){tokens++;throw Error('unexpected')}
+      if(args.includes('/v13/deployments')){deployments++;throw Error('unexpected')}
+      if(args.includes('/v9/projects/'+claims.project_id)){projectReads++;return {status:1,failure:{kind:'EXIT_NONZERO',exitCode:1,reportedHttpStatus:403,raw:'fixture-secret'}}}
+      throw Error('unexpected');
+    }};
+  const sender=createSender({cwd:'fixture',cli:'fixture',sourceMode:'git_source',invitedIdentity:'m2_synthetic_fixture',expectedSourceSha:sha,deadline:1060000,now:()=>1000000,trustedAdapters:{revoke:async()=>true,cleanup:async()=>true}},io);
+  assert.deepEqual(await sender('prepare'),{status:'PREPARATION_FAILED',reason:'GIT_PROJECT_TRANSPORT',stage:'GIT_PROJECT_READ',processOutcome:'EXIT_NONZERO',exitCode:1,reportedHttpStatus:403});
+  assert.equal((await sender('deploy')).status,'DENIED'); assert.deepEqual([projectReads,tokens,random,deployments],[1,0,0,0]);
+  assert.deepEqual(await sender('close'),{status:'CLOSED',revoke:'NOT_REQUIRED',cleanup:'NOT_REQUIRED'});
+});
+
+test('repeated and concurrent close preserve actual unconfirmed shutdown result', async () => {
+  const h = harness();
+  await h.s.prepare(); await h.s.deploy();
+  const [a,b]=await Promise.all([h.s.close(),h.s.close()]);
+  assert.deepEqual(a,{status:'CLOSED',revoke:'NOT_REQUIRED',cleanup:'UNVERIFIED_TARGET'});
+  assert.deepEqual(b,a); assert.deepEqual(await h.s.close(),a);
 });
