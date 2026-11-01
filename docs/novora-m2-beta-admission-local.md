@@ -177,6 +177,98 @@ privacy, moderation, image validity, Storage and readiness checks are unchanged.
 
 ## Offline evidence and remaining release gates
 
+### Separate invitation-trial spending candidate (default OFF)
+
+The one-image M2 mode above remains unchanged. The integration candidate also
+supports `NOVORA_INVITATION_TRIAL_SPENDING_MODE=owner_expected_cost_bounded_trial_v1`
+with `NOVORA_INVITATION_TRIAL_SPENDING_CONFIG` and the explicit stable trial receipt
+namespace. This is Preview-only, not a Production mode or an activation grant.
+No environment, invitation, funded record or payment entitlement is created by
+the code. TEST-01's 5+5 allowance is not authorization for ten paid calls.
+
+The config must contain exactly: `maximumInitialImages`, `maximumRevisions`,
+`limitMicros`, `expectedCostMicros`, `reserveMicros`, `m2CommittedMicros`,
+`mvpCommittedMicros`, and `expiresAt` (UTC Unix seconds). All are integers.
+Both image-kind counts must be positive; the total must be at most ten and
+`limitMicros` must equal that total times the unchanged USD 1 operation allocation.
+The full-experience estimate, including visual privacy, plus justified reserve
+must fit that USD 1 allocation. Committed amounts include historical expenditure,
+unsettled/UNKNOWN allocations and other existing reservations; M2 is included in
+MVP, not added twice. Committed plus this authority must fit USD 10 M2 and USD 200
+project ceilings. These are approved-budget accounting limits, not verified API
+balance or Provider-enforced invoice caps. Unknown billing is never treated as zero.
+
+The minimum declared initial-plus-revision sequence requires two USD 1 occupied
+slots. Actual values, exact roster, expiry and supporting cost evidence still
+require specific Owner approval and reconciliation before activation; this
+paragraph does not approve the example sequence or create a business policy.
+
+The runtime binds project, integration branch, exact SHA, deployment, stable
+receipt namespace, complete validated invitation roster (up to ten), authority
+label and config digest into a NEW `trial-preview:v1` key. Roster order does not
+matter; identity or credential changes do. An absent key denies admission.
+Changing deployment/namespace/credentials creates no funded record and must not
+erase, adopt, refund or omit old occupied allocations. Provisioning/resetting a
+record is outside the runtime trust boundary and is not authorized here.
+
+The authority must exactly match the shared pure contract in
+`tools/invitation-trial-spending-contract.cjs`, with actual Owner, durability and
+risk evidence; `costCeilingVerified` remains false and automatic paid retries false.
+The host must receive an explicit `trialSpending` declaration (namespace, config,
+authorityLabel and approved other invitation hashes). It checks the SAME contract
+before arming; its session remains at most sixty minutes, with the supplied global
+deadline/final closure hour and a private expiry closure margin. The new mode only
+supports the existing Git-source deployment path, using deployment-level config.
+
+One atomic Lua operation reserves an immutable initial/revision slot; a separate
+atomic one-time claim precedes Provider dispatch. All unresolved slots block later
+reservations. Only trusted image PLUS visual-privacy usage and a definite outcome
+can reconcile a dispatched slot. Reconciliation never releases its USD 1 allocation.
+UNKNOWN or interrupted work stays occupied and cannot dispatch again. The worker
+records known completion; a failed/uncertain record acknowledgement is not retried.
+Existing private Storage, source ownership, B entitlement claims and all safety
+gates remain independent. No package grant, manual confirmation or payment seed
+is introduced by this spending candidate.
+
+Local binding/adapter/operator checks alone do not prove new Lua atomicity.
+The independent read-only review of `dfdb83ed2acc237d56b113d6e72f2ecdf1a840ce`
+and its test-only transport follow-up `8a2e9578618e86dab7c6aacad139885fa08386c2`
+found no P0/P1 within the inspected scope. This is not live activation approval.
+
+#### Actual isolated Redis validation (2026-11-01)
+
+The coordinator received B's actual Redis 8.10.1 result for exact source
+`8a2e9578618e86dab7c6aacad139885fa08386c2`: exit 0, one selected test passed
+in 6.2 seconds, no skips. B was the sole container operator. Reported test
+configuration SHA-256:
+`e31c5975999391314587e450e3f6bf744c784bed67b9b1ec18c780d04f875900`.
+This record transcribes that bounded result; it does not claim a second run.
+
+The real Lua admitted one initial reservation/dispatch, accepted known delivery
+then one revision, and retained both USD 1 allocations after revision UNKNOWN.
+Further work was denied. Eight independent reserve processes produced exactly
+one winner; eight dispatch processes produced exactly one winner. An unresolved
+initial dispatch blocked revision, and a revoked authority denied result writes.
+The tested transport used the explicit full disposable container ID, without
+shell interpolation, container discovery or lifecycle operations in the tests.
+
+B stopped the one approved container, independently verified exited/running=false
+with exit 0, removed it normally, then verified exact-ID absence and an empty
+name query. No retained test container or online mutation is implied. Private
+logs, credentials, customer records and generated test artifacts are excluded
+from this documentation and the integration commit.
+
+The integration starts from merged `2983256d551e00f10a52823849603a4d5c555f8b`;
+normal cherry-picks preserve the two original authors and produce the exact
+reviewed/tested tree before this documentation-only record. Build, focused
+unit/operator/generation and targeted TypeScript evidence is reused for those
+identical bytes; this local integration adds no application or Lua correction.
+Payment remains deferred and the spending mode remains default OFF. Actual
+online schema/role compatibility, funded authority/durability/history, exact
+roster and credential lifecycle, protected Preview setup and controlled paid
+acceptance still require their separate exact approval. No deployment, live
+Redis probe, Provider call or payment acceptance occurred in this integration.
+
 `tests/e2e/beta-pilot-risk-authority.spec.ts` exercises the actual Lua against
 an already available disposable local Redis instance. It requires
 `NOVORA_BETA_LOCAL_REDIS_TEST_PORT` and an existing `redis-cli` executable
@@ -187,9 +279,9 @@ infrastructure. Missing runtime prerequisites block the single focused test;
 there is no fake-ledger fallback or automatic retry. Its fixture durability
 booleans are synthetic inputs, never evidence about a live authority.
 
-Focused tests use synthetic credentials, fake shared atomic ledger, fake
+Other focused tests use synthetic credentials, fake shared atomic ledger, fake
 spending and Queue/Provider interfaces, and mocked REST responses. They prove
-local routing and service contracts only. They do not prove Redis Lua runtime
+local routing and service contracts only. Those mocked checks do not prove Redis Lua runtime
 behavior, actual durability, current pricing, spending authorization, real
 invitation delivery or real customer image generation. Existing safety,
 customer-access and output-validity contracts are preserved, never bypassed.

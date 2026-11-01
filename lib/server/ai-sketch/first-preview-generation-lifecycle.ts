@@ -1,6 +1,6 @@
 import "server-only";
 
-import { claimBetaDispatch, resolveBetaAdmissionBinding, type BetaAdmissionDependencies } from "./beta-admission";
+import { claimBetaDispatch, resolveBetaAdmissionBinding, recordTrialSpendingOutcome, type BetaAdmissionDependencies } from "./beta-admission";
 
 import { createHash, randomUUID } from "node:crypto";
 
@@ -914,6 +914,11 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   });
   const providerRequestId = safeReadProviderRequestId(binding, adapterResult);
   emitFirstPreviewUsageEvidence(work.jobId, providerRequestId, usage, cost);
+  if (runtime.providerInvoked && !runtime.gates.ready) {
+    const verdict = visualEvidence as FirstPreviewVisualPrivacyEvidence | null;
+    const known = cost.usageTrusted && providerRequestId !== null && verdict?.usageTrusted === true && verdict.result === "failed";
+    await recordTrialSpendingOutcome(work, known ? "definite_failure" : "unknown", known ? cost.actualCostMicros + verdict!.actualCostMicros : null, dependencies.betaAdmissionDependencies);
+  }
   if (inspectionReserved && (!trustedEvidence || !runtime.gates.ready)) {
     const output = candidateOutput as FirstPreviewOutputRecord | null;
     if (output) {
@@ -1049,6 +1054,11 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     automaticGatePolicyVersion: FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   });
 
+  if (ready.ok) {
+    const visual = trustedEvidence.visualPrivacyEvidence;
+    const known = cost.usageTrusted && visual.usageTrusted === true;
+    await recordTrialSpendingOutcome(work, known ? "delivered" : "unknown", known ? cost.actualCostMicros + visual.actualCostMicros : null, dependencies.betaAdmissionDependencies);
+  }
   return ready.ok
     ? { status: "ready" }
     : { status: "failed", failureCategory: "lifecycle_conflict" };

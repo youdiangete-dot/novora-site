@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { resolveTrialSpending, TRIAL_SPENDING_MODE_ENV, TRIAL_SPENDING_SCRIPT, trialSpendingContract } from "./invitation-trial-spending";
 
 import {
   FIRST_PREVIEW_COST_CONTRACT,
@@ -17,16 +18,25 @@ export const BETA_DAILY_LIMIT = 5;
 export const BETA_IDENTITY_LIMIT = 10;
 
 type Environment = Readonly<Record<string, string | undefined>>;
+type SpendingWork = Readonly<{ conceptBriefId:string; jobId:string; parentJobId:string|null; sourceOutputId?:string; structured: { designSpecSha256:string; handSketchInstructionSha256:string } }>;
+export function revisionSpendingFingerprint(work: SpendingWork): string {
+  return createHash("sha256").update(JSON.stringify(["novora_revision_cost_v1",work.conceptBriefId,work.jobId,work.parentJobId,work.sourceOutputId,
+    work.structured.designSpecSha256,work.structured.handSketchInstructionSha256])).digest("hex");
+}
 type Invitation = Readonly<{ identity: string; credentialSha256: string }>;
 export type BetaReservation = Readonly<{
   identity: string;
   requestKey: string;
   briefId: string;
   fingerprint: string;
+  kind?: "initial" | "revision";
+  sourceBriefId?: string;
 }>;
 export type BetaDispatch = Readonly<{
   briefId: string;
   fingerprint: string;
+  kind?: "initial" | "revision";
+  sourceBriefId?: string;
 }>;
 
 // Implementations must make quota, spending and idempotency ONE durable atomic
@@ -34,11 +44,26 @@ export type BetaDispatch = Readonly<{
 export type BetaAdmissionLedger = Readonly<{
   reserve(input: BetaReservation): Promise<"reserved" | "duplicate" | "denied">;
   claimDispatch(input: BetaDispatch): Promise<boolean>;
+  recordOutcome?(input: BetaDispatch & { outcome: "delivered" | "definite_failure" | "unknown"; usageMicros: number | null }): Promise<boolean>;
 }>;
 export type BetaAdmissionDependencies = Readonly<{
   environment?: Environment;
   ledger?: BetaAdmissionLedger;
 }>;
+export async function recordTrialSpendingOutcome(work: SpendingWork, outcome: "delivered" | "definite_failure" | "unknown", usageMicros: number | null, dependencies: BetaAdmissionDependencies = {}): Promise<boolean> {
+  const environment = dependencies.environment ?? process.env;
+  if (environment[TRIAL_SPENDING_MODE_ENV] === undefined) return true;
+  if (environment[TRIAL_SPENDING_MODE_ENV] !== trialSpendingContract.MODE || betaAdmissionMode(environment) !== "enabled") return false;
+  try {
+    const ledger = dependencies.ledger ?? createRedisBetaAdmissionLedger(environment);
+    return Boolean(ledger?.recordOutcome && await ledger.recordOutcome({
+      briefId: work.sourceOutputId ? work.jobId : work.conceptBriefId, sourceBriefId:work.conceptBriefId,
+      kind:work.sourceOutputId ? "revision" : "initial",
+      fingerprint:work.sourceOutputId ? revisionSpendingFingerprint(work) : `${work.structured.designSpecSha256}:${work.structured.handSketchInstructionSha256}`,
+      outcome,usageMicros,
+    }));
+  } catch { return false; }
+}
 
 export function betaAdmissionMode(environment: Environment = process.env) {
   const value = environment[BETA_ADMISSION_ENABLED_ENV];
@@ -98,6 +123,7 @@ export async function reserveBetaAdmission(
 ): Promise<"legacy" | "reserved" | "denied"> {
   const environment = dependencies.environment ?? process.env;
   const mode = betaAdmissionMode(environment);
+  if (environment[TRIAL_SPENDING_MODE_ENV] !== undefined && mode !== "enabled") return "denied";
   if (mode === "disabled") return "legacy";
   if (mode !== "enabled" || !input.request) return "denied";
   try {
@@ -125,6 +151,7 @@ export async function claimBetaDispatch(
 ): Promise<boolean> {
   const environment = dependencies.environment ?? process.env;
   const mode = betaAdmissionMode(environment);
+  if (environment[TRIAL_SPENDING_MODE_ENV] !== undefined && mode !== "enabled") return false;
   if (mode === "disabled" && input.betaAdmission !== true) return true;
   // Marked work cannot become legacy work when Beta is subsequently disabled.
   if (mode !== "enabled" || input.betaAdmission !== true) return false;
@@ -278,6 +305,11 @@ export function inspectBetaAdmissionBinding(environment: Environment): Readonly<
     invitationValid: Boolean(roster && roster.length === 1),
     targetValid: isPreviewTarget(target),
   };
+  if (environment[TRIAL_SPENDING_MODE_ENV] !== undefined) {
+    const trial = runtimeConsistent ? resolveTrialSpending(environment, roster, runtime) : null;
+    return { binding: trial?.binding ?? null, diagnostics: { ...diagnostics,
+      invitationValid:Boolean(trial && roster && roster.length >= 1 && roster.length <= BETA_IDENTITY_LIMIT) } };
+  }
   if (!diagnostics.authorityValid || !authorityId) return { binding: null, diagnostics };
   const hosted = environment.VERCEL !== undefined || environment.VERCEL_ENV !== undefined || target !== undefined;
   if ((!hosted && environment.NODE_ENV !== "production") ||
@@ -394,6 +426,8 @@ export function createRedisBetaAdmissionLedger(
 ): BetaAdmissionLedger | null {
   const binding = resolveBetaAdmissionBinding(environment);
   const roster = invitations(environment);
+  const runtime = environment === process.env ? process.env.NEXT_RUNTIME : environment.NEXT_RUNTIME;
+  const trial = environment[TRIAL_SPENDING_MODE_ENV] !== undefined ? resolveTrialSpending(environment, roster, runtime) : null;
   const url = environment.UPSTASH_REDIS_REST_URL ?? environment.KV_REST_API_URL;
   const credential = environment.UPSTASH_REDIS_REST_URL
     ? environment.UPSTASH_REDIS_REST_TOKEN
@@ -405,6 +439,26 @@ export function createRedisBetaAdmissionLedger(
       return null;
     }
   } catch { return null; }
+  if (trial) {
+    const expected = trialSpendingContract.authority(trial.selected,trial.binding);
+    async function executeTrial(operation: "reserve" | "dispatch" | "record", input: BetaDispatch & Partial<BetaReservation> & { outcome?: string; usageMicros?: number | null }) {
+      const value = { ...input, kind: input.kind ?? "initial", sourceBriefId: input.sourceBriefId ?? input.briefId };
+      const response = await fetchImplementation(url!, {
+        method: "POST", headers: { Authorization: `Bearer ${credential}`, "Content-Type": "application/json" },
+        body: JSON.stringify(["EVAL",TRIAL_SPENDING_SCRIPT,"1",binding!.ledgerKey,operation,binding!.authorityId,binding!.runtimeBinding,JSON.stringify(expected),JSON.stringify(value)]),
+        signal: AbortSignal.timeout(5000), redirect: "error", cache: "no-store",
+      });
+      if (!response.ok) return "denied";
+      const raw = await response.text(); if (raw.length > 256) return "denied";
+      const result = JSON.parse(raw);
+      return !result.error && ["reserved","duplicate","recorded","denied"].includes(result.result) ? result.result as string : "denied";
+    }
+    return {
+      reserve: async input => { const result = await executeTrial("reserve",input); return result === "reserved" || result === "duplicate" ? result : "denied"; },
+      claimDispatch: async input => await executeTrial("dispatch",input) === "reserved",
+      recordOutcome: async input => await executeTrial("record",input) === "recorded",
+    };
+  }
   async function execute(operation: "reserve" | "dispatch", input: BetaDispatch & Partial<BetaReservation>) {
     const response = await fetchImplementation(url!, {
       method: "POST",

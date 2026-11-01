@@ -3,6 +3,7 @@
 // Private orchestration core. It performs no I/O without injected, trusted
 // adapters. Adapters must keep credentials in memory and never log them.
 const { createHash } = require('node:crypto');
+const trialContract = require('./invitation-trial-spending-contract.cjs');
 
 const PROJECT = 'prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg';
 const TEAM = 'team_9VhRPiCaRc62kna4XyNKvPZ7';
@@ -42,11 +43,14 @@ function parseDeployment(result) {
   return { ok: true, id: entry.id, origin: targetOrigin, wrapper, urlCategory: /^https:\/\//i.test(entry.url) ? 'schemeful' : 'hostname', state: entry.readyState ?? 'not_reported' };
 }
 
-function createSession({ adapters, expectedSourceSha, deadline, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout, sourceMode = 'cli_upload', receiptRecovery = false }) {
+function createSession({ adapters, expectedSourceSha, deadline, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout, sourceMode = 'cli_upload', receiptRecovery = false, trialSpending = null }) {
   if (!adapters || !/^[a-f0-9]{40}$/.test(expectedSourceSha ?? '') || !Number.isFinite(deadline)) throw new Error('INVALID_SESSION_CONFIGURATION');
   if (!['cli_upload', 'git_source'].includes(sourceMode)) throw new Error('INVALID_SESSION_CONFIGURATION');
-  const ownerDeadline = Math.min(deadline, Date.parse('2026-10-30T03:00:00Z'));
-  const lastNewAttempt = Math.min(ownerDeadline, Date.parse('2026-10-30T02:00:00Z'));
+  const trialConfig = trialSpending && trialContract.normalizeConfig(trialSpending.config);
+  if (trialSpending && (!trialConfig || Object.keys(trialSpending).sort().join() !== 'authorityLabel,config,namespace,otherInvitations' || !Array.isArray(trialSpending.otherInvitations) || trialSpending.otherInvitations.length>9)) throw new Error('INVALID_TRIAL_CONFIGURATION');
+  const ownerDeadline = trialConfig ? Math.min(deadline,trialConfig.expiresAt*1000) : Math.min(deadline, Date.parse('2026-10-30T03:00:00Z'));
+  const lastNewAttempt = trialConfig ? Math.min(deadline-3600000,ownerDeadline-60000) : Math.min(ownerDeadline, Date.parse('2026-10-30T02:00:00Z'));
+  let selectedTrial = null;
   let secret = null, identity = null, digest = null, idem = null, oidc = null, oidcExpires = null, credentialExpires = null, authorityExpires = null;
   let prepared = false, deployAttempted = false, proposed = null, attached = null, binding = null;
   let readbackAttempts = 0, proofAttempted = false;
@@ -97,6 +101,10 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       if (!active()) return { status: 'PREPARATION_FAILED' };
       scheduleExpiry();
       digest = createHash('sha256').update(secret).digest('hex');
+      if (trialConfig) {
+        selectedTrial = trialContract.selection(trialSpending.namespace,trialConfig,[...trialSpending.otherInvitations,{identity,credentialSha256:digest}],trialSpending.authorityLabel);
+        if (!selectedTrial || trialConfig.expiresAt*1000>credentialExpires) { clearSecrets(); return {status:'PREPARATION_FAILED'}; }
+      }
       return { status: 'PREPARED', identity };
     } catch (error) {
       const reasons = new Set(['CLI_VERSION_UNSUPPORTED', 'CLI_SELECTION_UNSUPPORTED', 'CLI_SELECTION_FAILED', 'CLI_SELECTION_UNTRACKED', 'CLI_SELECTION_SENSITIVE', 'SOURCE_MISMATCH', 'SOURCE_REMOTE_MISMATCH', 'SOURCE_MANIFEST_FAILED']);
@@ -126,7 +134,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     if (!freshOidc() || !secret || deployAttempted || now() >= lastNewAttempt) return { status: 'DENIED' };
     deployAttempted = true; // never resend if the result is unknown
     try {
-      const result = parseDeployment(await adapters.deploy({ identity, credentialSha256: digest, project: PROJECT, team: TEAM, branch: BRANCH, sourceSha: expectedSourceSha, isActive: () => freshOidc() && now() < lastNewAttempt }));
+      const result = parseDeployment(await adapters.deploy({ identity, credentialSha256: digest, project: PROJECT, team: TEAM, branch: BRANCH, sourceSha: expectedSourceSha, ...(selectedTrial ? {trial:selectedTrial} : {}), isActive: () => freshOidc() && now() < lastNewAttempt }));
       if (!active()) return { status: 'READBACK_REQUIRED', reason: 'SESSION_INACTIVE' };
       if (!result.ok) {
         if (result.deploymentId) proposed = { id: result.deploymentId, origin: null };
@@ -186,6 +194,7 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       }
       if (Object.keys(diagnostics).length) context.m2BindingDiagnostics = diagnostics;
       const m = p?.m2Binding;
+      const expectedTrialBinding = selectedTrial && trialContract.binding(selectedTrial,attached.id,expectedSourceSha);
       let reason = null;
       if (p?.authorized !== true) reason = 'AUTHORIZATION_DENIED';
       else if (p.isolatedBackendVerified !== true) reason = 'ISOLATION_DENIED';
@@ -193,8 +202,9 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
       else if (m.deploymentId !== attached.id) reason = 'DEPLOYMENT_ID_MISMATCH';
       else if (m.sourceSha !== expectedSourceSha) reason = 'SOURCE_SHA_MISMATCH';
       else if (typeof m.runtimeBinding !== 'string' || !SHA.test(m.runtimeBinding)) reason = 'RUNTIME_BINDING_INVALID';
-      else if (m.ledgerKey !== `novora:beta-admission:m2-e2e:v1:${m.runtimeBinding}`) reason = 'LEDGER_KEY_MISMATCH';
-      else if (m.authorityId !== `m2e2e_${m.runtimeBinding.slice(0, 56)}`) reason = 'AUTHORITY_MISMATCH';
+      else if (selectedTrial && m.runtimeBinding !== expectedTrialBinding.runtimeBinding) reason = 'RUNTIME_BINDING_MISMATCH';
+      else if (m.ledgerKey !== (selectedTrial ? expectedTrialBinding.ledgerKey : `novora:beta-admission:m2-e2e:v1:${m.runtimeBinding}`)) reason = 'LEDGER_KEY_MISMATCH';
+      else if (m.authorityId !== (selectedTrial ? expectedTrialBinding.authorityId : `m2e2e_${m.runtimeBinding.slice(0, 56)}`)) reason = 'AUTHORITY_MISMATCH';
       if (reason) return { status: 'BINDING_REJECTED', ...context, reason };
       const verifiedBinding = { ledgerKey: m.ledgerKey, authorityId: m.authorityId, runtimeBinding: m.runtimeBinding, identity };
       // This callback is supplied by the trusted private host, never protocol
@@ -209,11 +219,12 @@ function createSession({ adapters, expectedSourceSha, deadline, now = () => Date
     } catch { return { status: 'BINDING_FAILED', stage: 'RUNTIME_PROOF', reason: 'PROOF_INTERNAL_FAILURE' }; }
   }
   function observationValid(a) {
+    if (selectedTrial) return Boolean(binding && trialContract.observationValid(a,selectedTrial,binding,identity,now(),ownerDeadline));
     return Boolean(binding && a && a.kind === 'operator_console_observation' && Number.isFinite(a.observedAt) && a.observedAt <= now() && a.observedAt >= now() - 60000 && a.authorityId === binding.authorityId && a.ledgerKey === binding.ledgerKey && a.runtimeBinding === binding.runtimeBinding && a.identity === identity && a.ownerApproved === true && a.durabilityVerified === true && a.currency === 'USD' && a.pricingVersion === 'openai-gpt-image-2-2026-04-21-standard-1024x1024-medium-2026-08-03-v1' && Number.isSafeInteger(a.expectedCostMicros) && a.expectedCostMicros > 0 && a.expectedCostMicros < 1000000 && a.revocationReady === true && a.costAuthorityMode === 'owner_expected_cost_single_attempt_v1' && a.ownerCostRiskAccepted === true && a.costCeilingVerified === false && a.limitMicros === 1000000 && a.attemptReservationMicros === 1000000 && a.maximumExperiences === 1 && a.maximumImages === 1 && a.maximumPaidAttempts === 1 && a.automaticPaidRetries === false && Number.isFinite(a.expiresAt) && a.expiresAt > now() && a.expiresAt <= ownerDeadline && a.expiresAt <= now() + 3600000);
   }
   function observeAuthority(value) {
     const fields = ['kind', 'observedAt', 'authorityId', 'ledgerKey', 'runtimeBinding', 'identity', 'ownerApproved', 'durabilityVerified', 'currency', 'pricingVersion', 'expectedCostMicros', 'revocationReady', 'costAuthorityMode', 'ownerCostRiskAccepted', 'costCeilingVerified', 'limitMicros', 'attemptReservationMicros', 'maximumExperiences', 'maximumImages', 'maximumPaidAttempts', 'automaticPaidRetries', 'expiresAt'];
-    if (!active() || armed || submissionAttempted || !value || typeof value !== 'object' || Object.keys(value).some((key) => !fields.includes(key)) || !observationValid(value)) { observation = null; return { status: 'OBSERVATION_REJECTED' }; }
+    if (!active() || armed || submissionAttempted || !value || typeof value !== 'object' || (!selectedTrial && Object.keys(value).some((key) => !fields.includes(key))) || !observationValid(value)) { observation = null; return { status: 'OBSERVATION_REJECTED' }; }
     observation = { ...value };
     return { status: 'OPERATOR_OBSERVATION_RECORDED' };
   }
