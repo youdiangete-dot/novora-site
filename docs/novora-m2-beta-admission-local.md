@@ -230,9 +230,44 @@ Existing private Storage, source ownership, B entitlement claims and all safety
 gates remain independent. No package grant, manual confirmation or payment seed
 is introduced by this spending candidate.
 
-Local binding/adapter/operator checks do not prove new Lua atomicity. An actual
-disposable local Redis run and independent review are required before treating
-this candidate as verified for live activation; no live Redis probe is implied.
+Local binding/adapter/operator checks alone do not prove new Lua atomicity.
+The independent read-only review of `dfdb83ed2acc237d56b113d6e72f2ecdf1a840ce`
+and its test-only transport follow-up `8a2e9578618e86dab7c6aacad139885fa08386c2`
+found no P0/P1 within the inspected scope. This is not live activation approval.
+
+#### Actual isolated Redis validation (2026-11-01)
+
+The coordinator received B's actual Redis 8.10.1 result for exact source
+`8a2e9578618e86dab7c6aacad139885fa08386c2`: exit 0, one selected test passed
+in 6.2 seconds, no skips. B was the sole container operator. Reported test
+configuration SHA-256:
+`e31c5975999391314587e450e3f6bf744c784bed67b9b1ec18c780d04f875900`.
+This record transcribes that bounded result; it does not claim a second run.
+
+The real Lua admitted one initial reservation/dispatch, accepted known delivery
+then one revision, and retained both USD 1 allocations after revision UNKNOWN.
+Further work was denied. Eight independent reserve processes produced exactly
+one winner; eight dispatch processes produced exactly one winner. An unresolved
+initial dispatch blocked revision, and a revoked authority denied result writes.
+The tested transport used the explicit full disposable container ID, without
+shell interpolation, container discovery or lifecycle operations in the tests.
+
+B stopped the one approved container, independently verified exited/running=false
+with exit 0, removed it normally, then verified exact-ID absence and an empty
+name query. No retained test container or online mutation is implied. Private
+logs, credentials, customer records and generated test artifacts are excluded
+from this documentation and the integration commit.
+
+The integration starts from merged `2983256d551e00f10a52823849603a4d5c555f8b`;
+normal cherry-picks preserve the two original authors and produce the exact
+reviewed/tested tree before this documentation-only record. Build, focused
+unit/operator/generation and targeted TypeScript evidence is reused for those
+identical bytes; this local integration adds no application or Lua correction.
+Payment remains deferred and the spending mode remains default OFF. Actual
+online schema/role compatibility, funded authority/durability/history, exact
+roster and credential lifecycle, protected Preview setup and controlled paid
+acceptance still require their separate exact approval. No deployment, live
+Redis probe, Provider call or payment acceptance occurred in this integration.
 
 `tests/e2e/beta-pilot-risk-authority.spec.ts` exercises the actual Lua against
 an already available disposable local Redis instance. It requires
@@ -244,9 +279,9 @@ infrastructure. Missing runtime prerequisites block the single focused test;
 there is no fake-ledger fallback or automatic retry. Its fixture durability
 booleans are synthetic inputs, never evidence about a live authority.
 
-Focused tests use synthetic credentials, fake shared atomic ledger, fake
+Other focused tests use synthetic credentials, fake shared atomic ledger, fake
 spending and Queue/Provider interfaces, and mocked REST responses. They prove
-local routing and service contracts only. They do not prove Redis Lua runtime
+local routing and service contracts only. Those mocked checks do not prove Redis Lua runtime
 behavior, actual durability, current pricing, spending authorization, real
 invitation delivery or real customer image generation. Existing safety,
 customer-access and output-validity contracts are preserved, never bypassed.
