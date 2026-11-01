@@ -838,6 +838,7 @@ export default function DesignBriefPage() {
             </section>
             <div className={styles.actions}>
               <InvitationAccess onChange={updateInvitation} disabled={isSubmitting} />
+              <Link href="/design/packages">TEST-01 image package tests</Link>
               <button
                 className={styles.primaryButton}
                 disabled={isSubmitting || (invitation.state !== 'disabled' && invitation.state !== 'verified')}

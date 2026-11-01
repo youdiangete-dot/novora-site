@@ -106,7 +106,7 @@ export function createTestPackagePaymentApplication(deps: PackagePaymentApplicat
       };
     });
     const confirmation = await service.confirmCapture(request);
-    return confirmation.ok ? { ok: true, state: "confirmed", confirmation } : confirmation;
+    return confirmation.ok === true ? { ok: true, state: "confirmed", confirmation } : confirmation;
   }
 
   async function paymentResult(request: Request, purchase: ExpectedTestPurchase,
@@ -164,7 +164,7 @@ export function createTestPackagePaymentApplication(deps: PackagePaymentApplicat
         if (purchase.provider !== "manual_test") return failure("denied");
         const confirmation = await packageService(purchase, async () => null, admin)
           .confirmManualTest(request, evidence);
-        return confirmation.ok ? { ok: true, state: "confirmed", confirmation } : confirmation;
+        return confirmation.ok === true ? { ok: true, state: "confirmed", confirmation } : confirmation;
       } catch { return failure("unavailable"); }
     },
   });

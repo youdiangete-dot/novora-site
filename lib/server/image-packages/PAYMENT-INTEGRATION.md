@@ -18,11 +18,10 @@ explicit Sandbox configuration/credentials/HTTP, and two server authorities:
   explicit Owner role, returning the stable verifier ID. A generic admin, body
   `owner: true`, amount or paid flag cannot substitute for this callback.
 
-These callbacks remain the parent's route-integration responsibility. They must
-not merely parse a client DTO. A's final invitation identity supplies scope and
-identity; its trusted mapping to B's subject UUID is still required. This module
-does not guess that mapping, create an account, hash an identity into an account,
-or establish a new authentication contract.
+`runtime.ts` now supplies these callbacks using A's existing verified invitation
+and the existing admin cookie. They never parse a client subject, owner or paid
+DTO. `identity.ts` maps the verified owner to a nonsecret subject partition, as
+specified below. This does not create accounts or establish another auth system.
 
 Methods accept an untrusted `purchaseId` **lookup key only**. B must already have
 created a stable TEST-01 purchase under trusted server ownership. No method here
@@ -84,12 +83,70 @@ dependencies:
 node ..\..\node_modules\typescript\bin\tsc --ignoreConfig --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --noUncheckedSideEffectImports false --types node --typeRoots ..\..\node_modules\@types --lib ES2022,DOM lib/server/image-packages/payment-application.ts
 ```
 
-Route/UI and protected admin wiring await A's accepted identity contract and
-coordinator integration. B's candidate SQL, role checks and real two-session race
-verification remain unexecuted here. Actual database schema/credentials/account
-eligibility, OAuth/HTTP construction, real Sandbox testing and deployment remain
-separately authorized gates. Unchanged B/C focused validation is reused; no broad
-suite, Build, Docker, SQL, provider call or online setup is run by this seam task.
+The local customer/admin routes and UI are implemented. Route plus cross-module
+mock checks pass 21/21; mocked Chromium browser checks pass 4/4, including mobile
+UNKNOWN holds and minimal Owner TEST evidence. Project TypeScript and diff checks
+pass. These mocks are not actual Sandbox or deployed proof. B's separate actual
+local database evidence is recorded in its evidence-only commit; this stream
+executes no SQL or Docker and does not repeat B's unchanged suites. Real Sandbox
+account eligibility, approved environment/credential setup and deployment remain
+separate gates. Build remains the coordinator's final relevant check.
+
+## Protected routes, identities and UI
+
+- Customer page `/design/packages`; protected admin page
+  `/admin/test-image-packages`, linked from existing brief surfaces.
+- Customer API `/api/test-image-packages`: GET reads a provider's own balance;
+  POST accepts exactly `{ action, provider }`, where action is create/capture/
+  reconcile and provider is paypal_sandbox/manual_test. No client purchase,
+  subject, owner, order, amount, role or paid assertion establishes authority.
+- Admin API `/api/admin/test-image-packages`: POST accepts only purchaseId,
+  synthetic TEST reference, amountMinor and currency. It requires both the
+  existing validated admin cookie AND a verified invitation matching the exact
+  server Owner scope/identity allowlist. Generic admin access alone cannot grant.
+- Mutations require same Origin and bounded JSON; responses are no-store and
+  vary on Authorization/Cookie. Existing public rate limiting bounds requests.
+  Invitation bearers remain in page memory, never local/sessionStorage or URLs.
+
+`identity.ts` uses RFC UUIDv5 (SHA-1, fixed namespace
+`d4ac13f3-a24e-5ff7-a145-3da2ed113fea`) over UTF-8 canonical JSON arrays:
+
+```text
+["NOVORA/TEST-01/v1", "subject", verifiedScope, verifiedIdentity]
+["NOVORA/TEST-01/v1", "purchase", verifiedScope, verifiedIdentity, provider]
+```
+
+The domain/namespace is not a credential. UUIDs are row identifiers only and
+cannot authorize a request. The source scope/identity always comes from A's
+server invitation verifier, and is rechecked against B's immutable purchase.
+Changing invitation/deployment scope changes the partition; bearer rotation
+retaining that verified identity/scope does not. There is one stable TEST-01
+purchase per owner/provider in this test scope, not a fresh purchase on refresh,
+expiry or UNKNOWN. Scope changes must never be used as an uncertainty reset.
+These test partitions are not registered user accounts or physical orders.
+
+## Configuration prerequisites (server-only, no values configured here)
+
+Default `NOVORA_TEST_IMAGE_PACKAGES_ENABLED` is off. To enable later requires
+reviewed target schema/RPC permissions, the existing Supabase admin helper and
+A's invitation receipt configuration. Manual confirmation also requires the
+existing admin access gate plus `NOVORA_TEST_IMAGE_PACKAGES_OWNER_IDENTITY`,
+`NOVORA_TEST_IMAGE_PACKAGES_OWNER_SCOPE` and
+`NOVORA_TEST_IMAGE_PACKAGES_OWNER_VERIFIER_ID` bound to the real Owner invitation.
+
+Sandbox remains off unless `NOVORA_PAYPAL_SANDBOX_ENABLED` is true and all of
+`NOVORA_PAYPAL_SANDBOX_CLIENT_ID`, `NOVORA_PAYPAL_SANDBOX_CLIENT_SECRET` and
+`NOVORA_PAYPAL_SANDBOX_MERCHANT_ID` are complete and valid. These are server-only;
+none is NEXT_PUBLIC. `transport.ts` constructs no request until invoked, exchanges
+credentials only at the fixed Sandbox OAuth endpoint, refuses redirects/live
+URLs, does not retry or log raw data, and bounds token lifetime/response size.
+UI approval links use only www.sandbox.paypal.com and server-issued order IDs.
+No real credentials, OAuth/payment call, bank details, receipt upload or online
+configuration were used to build or test this code.
+
+Browser checks use `tests/tools/test01-package-browser.config.ts`: isolated
+localhost port 3107, real package/PayPal/generation flags forced off, a synthetic
+admin test key, mocked API responses, and external browser requests blocked.
 
 Reusable integration rule: a verified capture is a payment fact, not a client
 confirmation or an entitlement grant. Return customer-confirmed state only after
