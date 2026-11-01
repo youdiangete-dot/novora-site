@@ -49,6 +49,10 @@ purchases have no jewelry quote, commercial order, CAD or production reference.
   `createImagePackageRepository`; no default client or credential lookup exists.
 - Resolve purchase and subject from the existing protected customer context;
   client IDs are not authority. Keep purchase creation server controlled.
+  Expected purchases now also require `owner: {scope, identity}` and
+  `sandboxMerchantId` (13-character trusted Sandbox merchant ID for PayPal;
+  `null` for manual). Owner/merchant/subject/provider/price are immutable on
+  create replay. No real merchant/account setup was performed.
 - `service.readEntitlement(request)` resolves the same trusted binding and
   returns separate initial/revision remaining counts and active/expired state.
   Unpaid or wrong-subject reads are denied; expired packages show zero usable
@@ -59,10 +63,12 @@ purchases have no jewelry quote, commercial order, CAD or production reference.
   default authorizer or new auth implementation. The only manual evidence is a
   stable `TEST-...` reference, USD amount and currency. Verifier/time are server
   supplied, and replay preserves original verifier/grant/expiry.
-- Use server trusted generation-job UUID as operationId. Reserve before any
-  dispatch. Only `ok: true`, `duplicate: false`, `state: reserved` permits the
-  first dispatch. Duplicate results are state lookups, including after expiry,
-  and must never dispatch again. A crash/timeout holds the reservation.
+- Reserve the trusted generation-job UUID with purchaseId, subjectId and the
+  complete binding below. Validate brief/source ownership against the existing
+  protected journey before reserving; raw body IDs never establish ownership.
+  The existing use row stores the binding and capacity. Reserve never permits
+  dispatch; obtain the separate one-time claim from that same row. A
+  crash/timeout after claiming holds it permanently, with no redispatch.
 - Call `finish` only from authoritative generation/delivery handling. A
   `valid_delivery` requires every privacy/safety/access/output gate and durable
   correct-customer delivery readiness. Customer body flags cannot settle usage.
@@ -81,9 +87,58 @@ revision slots independently, expiring exactly 168 hours after confirmed payment
 purchase creation and confirmation replay never reset expiry. This does not
 authorize ten provider calls, any payment credentials or real money movement.
 
+## Exact Agent A dispatch contract
+
+```ts
+type DispatchBinding = {
+  owner: { scope: string; identity: string }; // authenticated existing context
+  reservationId: string; operationId: string; // independent stable UUIDs
+  kind: "initial" | "revision";
+  briefId: string;
+  sourceOutputId?: string; // required for revision; absent for initial
+};
+service.reserve({ purchaseId, subjectId, ...binding });
+service.claimDispatch(binding): Promise<
+  "claimed" | "already_claimed" | "denied" | "unknown"
+>;
+service.settleDispatch({ ...binding,
+  outcome: "delivered" | "definite_failure" | "unknown",
+  providerCostUsdMicros: number, // cumulative known per-operation cost
+}): Promise<UseResult>;
+```
+
+Only `claimed` authorizes the first provider dispatch. Claim locks the purchase
+and the existing use, checks every immutable field, then sets claimed_at once.
+An UNKNOWN row returns `unknown`; an already claimed/settled/released row returns
+`already_claimed`; a binding mismatch/expired unclaimed use returns `denied`.
+Transport or malformed RPC returns `unknown`. No claimed/UNKNOWN operation can
+be reclaimed after restart or timeout. Settlement requires a prior claim,
+revalidates the exact binding, then calls the existing finish transaction.
+`delivered` maps to `valid_delivery`; a definite no-compliant-delivery result maps
+to `definite_failure`. Cost is retained even on a conflicting late result.
+This module supports package-backed reservations only; it does not debit or
+replace the free invitation ledger.
+
+## Exact Agent C durable store contract
+
+`createDurableSandboxOperationStore(client, { owner, purchaseId })` from
+`lib/server/image-packages/sandbox-store.ts` structurally implements C's
+`SandboxOperationStore` and adds `readPurchase()`. Use the returned trusted
+purchase's amount/currency/merchant/order mapping, never browser values.
+Its deterministic request IDs/fingerprints match C's v1 hashing protocol.
+
+One create and one capture journal entry per purchase can be claimed; no TTL,
+reclaim/reset/delete API exists. Claim transport errors return `held`.
+Completion strips raw provider data and is immutable. Completing a verified
+create result and binding its order ID commit in one SQL transaction. UNKNOWN
+never supplies a new authoritative order mapping or triggers a POST. Capture
+requires the existing server order ID. Completed capture results still go
+through C's read reconciliation; this store grants no entitlement by itself.
+The journal is payment-side-effect idempotency, not a second quota ledger.
+
 ## Evidence and limitations
 
-- `node --test tests/tools/test01-image-packages.test.cjs`: 26/26 passed.
+- `node --test tests/tools/test01-image-packages.test.cjs`: 33/33 passed.
 - `node ../../node_modules/typescript/bin/tsc --noEmit --incremental false --pretty false`: passed.
 - `npm.cmd run build`: passed (Next.js 16.2.12). The nested worktree produces
   the existing multiple-lockfile workspace-root warning; no configuration was
@@ -95,6 +150,8 @@ authorize ten provider calls, any payment credentials or real money movement.
   single-session assertions for grant/replay/capture uniqueness, 5+5 capacity,
   release/UNKNOWN/settlement, preserved cost, expiry and NULL constraints. It
   does not establish two-session concurrency or deployed authorization.
+- `tests/tools/test01-image-packages-db-request.md` and the concurrency fixture
+  specify the exact remaining disposable-DB request. No fixture was executed.
 - Local `docker ps --format '{{.Names}} {{.Image}}'` failed with permission denied
   connecting to `npipe:////./pipe/dockerDesktopLinuxEngine`. No SQL ran, no
   container was inspected/started/modified, no escalation or retry was made.

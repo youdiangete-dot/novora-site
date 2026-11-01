@@ -1,7 +1,8 @@
 import "server-only";
 
 import {
-  TEST_01, isExpectedPurchase, isReference, isUuid, matchesPurchase,
+  TEST_01, isExpectedPurchase, isReference, isUuid, isDispatchBinding, matchesPurchase,
+  type DispatchBinding, type DispatchClaim, type DispatchSettlement,
   type ExpectedTestPurchase, type GrantResult, type ImagePackageRepository,
   type ManualTestEvidence, type PackageFailure, type VerifiedTestPayment,
 } from "./contract";
@@ -31,6 +32,8 @@ export function createTestImagePackageService(deps: Dependencies) {
     if (stored === "unavailable") return stored;
     if (!stored || !isExpectedPurchase(stored) ||
       binding.subjectId !== stored.subjectId || binding.provider !== stored.provider ||
+      binding.owner.scope !== stored.owner.scope || binding.owner.identity !== stored.owner.identity ||
+      binding.sandboxMerchantId !== stored.sandboxMerchantId ||
       binding.packageCode !== stored.packageCode || binding.environment !== stored.environment ||
       binding.amountMinor !== stored.amountMinor || binding.currency !== stored.currency) return null;
     return stored;
@@ -98,9 +101,19 @@ export function createTestImagePackageService(deps: Dependencies) {
       } catch { return failure("unavailable"); }
     },
     async reserve(input: Parameters<ImagePackageRepository["reserve"]>[0]) {
-      if (!input || !isUuid(input.purchaseId) || !isUuid(input.subjectId) ||
-        !isUuid(input.operationId) || !["initial", "revision"].includes(input.kind)) return failure("invalid");
+      if (!isDispatchBinding(input) || !isUuid(input.purchaseId) || !isUuid(input.subjectId)) return failure("invalid");
       try { return await deps.repository.reserve(input); }
+      catch { return failure("unavailable"); }
+    },
+    async claimDispatch(input: DispatchBinding): Promise<DispatchClaim> {
+      if (!isDispatchBinding(input)) return "denied";
+      try { return await deps.repository.claimDispatch(input); }
+      catch { return "unknown"; }
+    },
+    async settleDispatch(input: DispatchSettlement) {
+      if (!isDispatchBinding(input) || !["delivered", "definite_failure", "unknown"].includes(input.outcome) ||
+        !Number.isSafeInteger(input.providerCostUsdMicros) || input.providerCostUsdMicros < 0) return failure("invalid");
+      try { return await deps.repository.settleDispatch(input); }
       catch { return failure("unavailable"); }
     },
     async finish(input: Parameters<ImagePackageRepository["finish"]>[0]) {

@@ -17,6 +17,7 @@ function load(name) {
   const module = { exports: {} };
   new Function('module', 'exports', 'require', js)(module, module.exports, dep => {
     if (dep === 'server-only') return {};
+    if (dep === 'node:crypto') return require('node:crypto');
     if (dep.startsWith('./')) return load(dep.slice(2));
     throw Error(`Unexpected dependency ${dep}`);
   });
@@ -26,6 +27,7 @@ function load(name) {
 const contract = load('contract');
 const { createTestImagePackageService } = load('service');
 const { createImagePackageRepository } = load('repository');
+const { createDurableSandboxOperationStore, sandboxOperationFor } = load('sandbox-store');
 const PURCHASE = '123e4567-e89b-42d3-a456-426614174000';
 const SUBJECT = '223e4567-e89b-42d3-a456-426614174000';
 const OTHER = '323e4567-e89b-42d3-a456-426614174000';
@@ -34,9 +36,12 @@ const NOW = '2026-11-01T08:00:00.000Z';
 const EXPIRES = '2026-11-08T08:00:00.000Z';
 const expected = {
   purchaseId: PURCHASE, subjectId: SUBJECT, provider: 'paypal_sandbox',
+  owner: { scope: 'a'.repeat(64), identity: 'TEST-owner' }, sandboxMerchantId: 'TESTMERCHANT1',
   packageCode: 'TEST-01', environment: 'TEST', amountMinor: 100, currency: 'USD',
 };
-const verified = { ...expected, paymentReference: 'TEST-CAPTURE-1', confirmedAt: NOW };
+const { owner: OWNER, sandboxMerchantId: MERCHANT, ...paymentFields } = expected;
+const dispatch = { owner: OWNER, reservationId: OPERATION, operationId: OPERATION, kind: 'initial', briefId: OTHER };
+const verified = { ...paymentFields, paymentReference: 'TEST-CAPTURE-1', confirmedAt: NOW };
 const granted = { ok: true, duplicate: false, purchaseId: PURCHASE, grantedAt: NOW, expiresAt: EXPIRES };
 const reserved = { ok: true, duplicate: false, operationId: OPERATION, state: 'reserved', providerCostUsdMicros: 0 };
 function fixture(options = {}) {
@@ -51,6 +56,8 @@ function fixture(options = {}) {
     async grantVerifiedPayment(payment, verifier) { calls.push(['grant', payment, verifier]); return options.grantResult ?? granted; },
     async reserve(value) { calls.push(['reserve', value]); return reserved; },
     async finish(value) { calls.push(['finish', value]); return { ...reserved, state: 'unknown' }; },
+    async claimDispatch(value) { calls.push(['claimDispatch',value]); return 'claimed'; },
+    async settleDispatch(value) { calls.push(['settleDispatch',value]); return {...reserved,state:'unknown'}; },
     ...options.repository,
   };
   const service = createTestImagePackageService({
@@ -95,7 +102,9 @@ test('server verifier receives exact stored purchase; browser status is insuffic
 });
 
 test('missing authenticated binding and wrong stored subject fail before verifier', async () => {
-  for (const options of [{ binding: null }, { stored: null }, { stored: { ...expected, subjectId: OTHER } }]) {
+  for (const options of [{ binding: null }, { stored: null }, { stored: { ...expected, subjectId: OTHER } },
+    { stored: {...expected,owner:{...OWNER,scope:'b'.repeat(64)}} },
+    { stored: {...expected,sandboxMerchantId:'OTHERMERCHANT'} }]) {
     const f = fixture(options);
     assert.deepEqual(await f.service.confirmCapture({}), { ok: false, reason: 'denied' });
     assert.equal(f.calls.some(c => ['verify', 'grant'].includes(c[0])), false);
@@ -121,7 +130,7 @@ test('verified capture enters one atomic grant RPC; repeated grant uses reposito
   assert.equal(f.calls.filter(c => c[0] === 'grant').length, 1);
 });
 
-const manual = { ...expected, provider: 'manual_test' };
+const manual = { ...expected, provider: 'manual_test', sandboxMerchantId: null };
 const evidence = { reference: 'TEST-MANUAL-1', amountMinor: 100, currency: 'USD' };
 test('manual requires explicit Owner; generic admin and body owner flag cannot authorize', async () => {
   for (const owner of [null, { role: 'admin', verifierId: 'TEST-admin' }, { role: 'owner', verifierId: '' }]) {
@@ -137,7 +146,7 @@ test('manual TEST evidence shares grant path; verifier and timestamp are server 
     ...evidence, verifierId: 'attacker', confirmedAt: '2099-01-01', rawData: 'never persist',
   })).ok, true);
   assert.deepEqual(f.calls.find(c => c[0] === 'grant'), ['grant', {
-    ...manual, paymentReference: evidence.reference, confirmedAt: NOW,
+    ...paymentFields, provider:'manual_test', paymentReference: evidence.reference, confirmedAt: NOW,
   }, 'TEST-owner']);
 });
 
@@ -160,7 +169,7 @@ test('invalid package cannot create purchase; unavailable storage never reports 
 
 test('only typed reservation kinds and authoritative terminal outcomes are accepted', async () => {
   const f = fixture();
-  const use = { purchaseId: PURCHASE, subjectId: SUBJECT, operationId: OPERATION, kind: 'initial' };
+  const use = { ...dispatch, purchaseId: PURCHASE, subjectId: SUBJECT };
   assert.deepEqual(await f.service.reserve(use), reserved);
   assert.deepEqual(await f.service.reserve({ ...use, kind: 'free' }), { ok: false, reason: 'invalid' });
   for (const cost of [-1, 1.5, NaN, Number.MAX_SAFE_INTEGER + 1]) {
@@ -234,9 +243,117 @@ test('SQL candidate has independent counts, global capture identity, row locks, 
   assert.match(sql, /kind=p_use->>'kind' and state<>'released'\)>=5/);
   assert.match(sql, /greatest\(provider_cost_usd_micros,cost\)/);
   assert.match(sql, /interval '168 hours'/);
-  assert.equal((sql.match(/enable row level security/g) || []).length, 2);
-  assert.equal((sql.match(/security invoker set search_path/g) || []).length, 6);
+  assert.equal((sql.match(/enable row level security/g) || []).length, 3);
+  assert.equal((sql.match(/security invoker set search_path/g) || []).length, 11);
   assert.ok((sql.match(/for update/g) || []).length >= 5);
   assert.match(sql, /from public, anon, authenticated/);
   assert.doesNotMatch(sql, /security definer|commercial_orders|commercial_quotations|delete from|execute format/i);
+});
+
+test('dispatch requires stored owner/reservation/operation/brief/kind/source binding before RPC', async () => {
+  const f = fixture();
+  for (const value of [ {...dispatch,owner:{...OWNER,scope:'bad'}}, {...dispatch,reservationId:'bad'},
+    {...dispatch,briefId:'bad'}, {...dispatch,kind:'revision'}, {...dispatch,sourceOutputId:OTHER} ]) {
+    assert.equal(await f.service.claimDispatch(value),'denied');
+  }
+  assert.equal(f.calls.length,0);
+  assert.equal(await f.service.claimDispatch(dispatch),'claimed');
+  assert.deepEqual(f.calls,[['claimDispatch',dispatch]]);
+});
+
+test('claim RPC preserves UNKNOWN/already-claimed and transport uncertainty never claims', async () => {
+  for (const claim of ['claimed','already_claimed','denied','unknown','invalid']) {
+    const repo = createImagePackageRepository({async rpc(name,args) {
+      assert.equal(name,'novora_test_image_package_claim_dispatch'); assert.deepEqual(args,{p_dispatch:dispatch});
+      return {data:{claim},error:null};
+    }});
+    assert.equal(await repo.claimDispatch(dispatch),claim==='invalid'?'unknown':claim);
+  }
+  const repo = createImagePackageRepository({async rpc(){throw Error('private');}});
+  assert.equal(await repo.claimDispatch(dispatch),'unknown');
+});
+
+test('bound settlement uses existing ledger, and no unsupported outcome or cost reaches it', async () => {
+  const f = fixture();
+  const settlement = {...dispatch,outcome:'unknown',providerCostUsdMicros:2345};
+  assert.equal((await f.service.settleDispatch(settlement)).state,'unknown');
+  assert.deepEqual(f.calls,[['settleDispatch',settlement]]);
+  assert.deepEqual(await f.service.settleDispatch({...settlement,outcome:'retry'}),{ok:false,reason:'invalid'});
+  assert.deepEqual(await f.service.settleDispatch({...settlement,providerCostUsdMicros:-1}),{ok:false,reason:'invalid'});
+});
+
+const sandboxPurchase = {purchaseId:PURCHASE,amountMinor:100,currency:'USD',merchantId:MERCHANT,providerOrderId:null};
+function sandboxFixture(options={}) {
+  let purchase = {...sandboxPurchase,...options.purchase};
+  const calls=[];
+  // This is a fake RPC boundary, NOT database concurrency evidence.
+  const records=new Map();
+  const client={async rpc(name,args) {
+    calls.push([name,args]);
+    if(options.throw) throw Error('private');
+    if(name.endsWith('_sandbox_purchase')) return {data:{ok:true,purchase},error:null};
+    const key=args.p_request_id;
+    if(name.endsWith('_sandbox_claim')) {
+      const old=records.get(key);
+      if(old) return {data:old.result?{claim:'completed',result:old.result}:{claim:'held'},error:null};
+      records.set(key,{fingerprint:args.p_fingerprint});
+      return {data:{claim:'acquired'},error:null};
+    }
+    if(name.endsWith('_sandbox_complete')) {
+      const old=records.get(key);
+      if(!old || (old.result && JSON.stringify(old.result)!==JSON.stringify(args.p_result))) return {data:{ok:false},error:null};
+      old.result=args.p_result;
+      if(args.p_kind==='create' && args.p_result.providerOrderId && args.p_result.state!=='UNKNOWN') purchase={...purchase,providerOrderId:args.p_result.providerOrderId};
+      return {data:{ok:true},error:null};
+    }
+    throw Error('unexpected RPC');
+  }};
+  return {store:createDurableSandboxOperationStore(client,{owner:OWNER,purchaseId:PURCHASE}),calls,records};
+}
+
+test('sandbox deterministic operation identity matches C protocol and wrong fingerprint never reaches claim',async()=>{
+  const crypto=require('node:crypto'); const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
+  const op=sandboxOperationFor(sandboxPurchase,'create');
+  assert.deepEqual(op,{requestId:hash(`NOVORA/paypal-sandbox/v1/${PURCHASE}/create`).slice(0,32),
+    fingerprint:hash(JSON.stringify([`NOVORA/paypal-sandbox/v1/${PURCHASE}/create`,100,'USD',MERCHANT,'']))});
+  const f=sandboxFixture();
+  assert.equal(await f.store.claim({...op,fingerprint:'b'.repeat(64)}),'held');
+  assert.equal(f.calls.some(c=>c[0].endsWith('_sandbox_claim')),false);
+  assert.equal(await f.store.claim(op),'acquired');
+  assert.equal(await f.store.claim(op),'held');
+});
+
+test('sandbox completion strips raw data, persists order mapping, and returns immutable replay',async()=>{
+  const f=sandboxFixture(); const op=sandboxOperationFor(sandboxPurchase,'create');
+  assert.equal(await f.store.claim(op),'acquired');
+  assert.equal(await f.store.complete(op,{state:'CREATED',providerOrderId:'TESTORDER1',raw:'never persist'}),true);
+  const completion=f.calls.find(c=>c[0].endsWith('_sandbox_complete'));
+  assert.deepEqual(completion[1].p_result,{state:'CREATED',providerOrderId:'TESTORDER1'});
+  assert.equal((await f.store.readPurchase()).providerOrderId,'TESTORDER1');
+  assert.deepEqual(await f.store.claim(op),{completed:{state:'CREATED',providerOrderId:'TESTORDER1'}});
+  assert.equal(await f.store.complete(op,{state:'CREATED',providerOrderId:'OTHERORDER1'}),false);
+});
+
+test('sandbox UNKNOWN is completed/held without reset; storage failures cannot acquire',async()=>{
+  const f=sandboxFixture();const op=sandboxOperationFor(sandboxPurchase,'create');
+  assert.equal(await f.store.claim(op),'acquired');
+  assert.equal(await f.store.complete(op,{state:'UNKNOWN',reason:'transport'}),true);
+  assert.deepEqual(await f.store.claim(op),{completed:{state:'UNKNOWN',reason:'transport'}});
+  assert.equal((await f.store.readPurchase()).providerOrderId,null);
+  assert.equal(Object.hasOwn(f.store,'reset'),false);
+  assert.equal(await sandboxFixture({throw:true}).store.claim(op),'held');
+});
+
+test('sandbox capture requires durable order binding and exact verified merchant/amount/purchase',async()=>{
+  const f=sandboxFixture({purchase:{providerOrderId:'TESTORDER1'}});
+  const purchase={...sandboxPurchase,providerOrderId:'TESTORDER1'};
+  const op=sandboxOperationFor(purchase,'capture');
+  assert.equal(await f.store.claim(op),'acquired');
+  const capture={providerKey:'paypal_sandbox',purchaseId:PURCHASE,providerOrderId:'TESTORDER1',providerCaptureId:'TESTCAPTURE1',
+    amountMinor:100,currency:'USD',merchantId:MERCHANT,capturedAt:NOW};
+  for(const change of [{purchaseId:OTHER},{merchantId:'OTHERMERCHANT'},{amountMinor:99},{providerOrderId:'WRONGORDER1'}]) {
+    assert.equal(await f.store.complete(op,{state:'PAID',capture:{...capture,...change}}),false);
+  }
+  assert.equal(await f.store.complete(op,{state:'PAID',capture}),true);
+  assert.equal(await sandboxFixture().store.claim(op),'held');
 });

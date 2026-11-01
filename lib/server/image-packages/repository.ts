@@ -79,6 +79,14 @@ export function createImagePackageRepository(client: ImagePackageRpcClient): Ima
       const result = useResult(await rpc("novora_test_image_package_reserve", { p_use: input }));
       return result.ok && result.operationId !== input.operationId ? unavailable : result;
     },
+    async claimDispatch(input) {
+      const data = await rpc("novora_test_image_package_claim_dispatch", { p_dispatch: input });
+      return ["claimed", "already_claimed", "denied", "unknown"].includes(data?.claim) ? data.claim : "unknown";
+    },
+    async settleDispatch(input) {
+      const result = useResult(await rpc("novora_test_image_package_settle_dispatch", { p_dispatch: input }));
+      return result.ok && result.operationId !== input.operationId ? unavailable : result;
+    },
     async finish(input) {
       const result = useResult(await rpc("novora_test_image_package_finish", { p_use: input }));
       return result.ok && result.operationId !== input.operationId ? unavailable : result;
