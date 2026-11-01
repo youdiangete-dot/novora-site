@@ -31,6 +31,8 @@ export type DispatchBinding = Readonly<{
 export type DispatchClaim = "claimed" | "already_claimed" | "denied" | "unknown";
 export type DispatchSettlement = DispatchBinding & Readonly<{
   outcome: "delivered" | "definite_failure" | "unknown";
+  /** Required for a proven pre-dispatch failure. Fails closed if claim won. */
+  failurePhase?: "before_dispatch";
   providerCostUsdMicros: number;
 }>;
 

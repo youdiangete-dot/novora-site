@@ -103,6 +103,7 @@ service.claimDispatch(binding): Promise<
 >;
 service.settleDispatch({ ...binding,
   outcome: "delivered" | "definite_failure" | "unknown",
+  failurePhase?: "before_dispatch", // only with definite_failure; required for proven enqueue failure
   providerCostUsdMicros: number, // cumulative known per-operation cost
 }): Promise<UseResult>;
 ```
@@ -110,10 +111,16 @@ service.settleDispatch({ ...binding,
 Only `claimed` authorizes the first provider dispatch. Claim locks the purchase
 and the existing use, checks every immutable field, then sets claimed_at once.
 An UNKNOWN row returns `unknown`; an already claimed/settled/released row returns
-`already_claimed`; a binding mismatch/expired unclaimed use returns `denied`.
+`already_claimed`; a binding mismatch/expired or released unclaimed use returns `denied`.
 Transport or malformed RPC returns `unknown`. No claimed/UNKNOWN operation can
-be reclaimed after restart or timeout. Settlement requires a prior claim,
+be reclaimed after restart or timeout. Normal settlement requires a prior claim,
 revalidates the exact binding, then calls the existing finish transaction.
+Proven pre-dispatch failure uses definite_failure + failurePhase=before_dispatch:
+under the same purchase/use locks it releases an unclaimed reservation without
+faking claimed_at. Replay is idempotent, wrong bindings deny, and claim cannot
+later dispatch the released row. If a worker claimed first, the stale pre-dispatch
+release conflicts instead of restoring an in-flight slot. Direct finish still
+denies unclaimed uses. The two race orderings are specified in the DB request.
 `delivered` maps to `valid_delivery`; a definite no-compliant-delivery result maps
 to `definite_failure`. Cost is retained even on a conflicting late result.
 This module supports package-backed reservations only; it does not debit or
@@ -138,7 +145,7 @@ The journal is payment-side-effect idempotency, not a second quota ledger.
 
 ## Evidence and limitations
 
-- `node --test tests/tools/test01-image-packages.test.cjs`: 33/33 passed.
+- `node --test tests/tools/test01-image-packages.test.cjs`: 35/35 passed.
 - `node ../../node_modules/typescript/bin/tsc --noEmit --incremental false --pretty false`: passed.
 - `npm.cmd run build`: passed (Next.js 16.2.12). The nested worktree produces
   the existing multiple-lockfile workspace-root warning; no configuration was

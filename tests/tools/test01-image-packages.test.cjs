@@ -282,6 +282,30 @@ test('bound settlement uses existing ledger, and no unsupported outcome or cost 
   assert.deepEqual(await f.service.settleDispatch({...settlement,providerCostUsdMicros:-1}),{ok:false,reason:'invalid'});
 });
 
+test('proven pre-dispatch failure uses bound settlement without obtaining a dispatch claim',async()=>{
+  const f=fixture({repository:{async settleDispatch(value) {
+    f.calls.push(['settleDispatch',value]); return {...reserved,state:'released'};
+  }}});
+  const input={...dispatch,outcome:'definite_failure',failurePhase:'before_dispatch',providerCostUsdMicros:0};
+  assert.equal((await f.service.settleDispatch(input)).state,'released');
+  assert.deepEqual(f.calls,[['settleDispatch',input]]);
+  for(const change of [{outcome:'unknown'},{outcome:'delivered'},{failurePhase:'maybe'}]) {
+    assert.deepEqual(await f.service.settleDispatch({...input,...change}),{ok:false,reason:'invalid'});
+  }
+});
+
+test('pre-dispatch release RPC preserves duplicate/conflict/denied instead of faking dispatch',async()=>{
+  const input={...dispatch,outcome:'definite_failure',failurePhase:'before_dispatch',providerCostUsdMicros:0};
+  for(const response of [{...reserved,state:'released',duplicate:false},{...reserved,state:'released',duplicate:true},
+    {ok:false,reason:'conflict'},{ok:false,reason:'denied'}]) {
+    const calls=[]; const repo=createImagePackageRepository({async rpc(name,args) {
+      calls.push([name,args]);return{data:response,error:null};
+    }});
+    assert.deepEqual(await repo.settleDispatch(input),response);
+    assert.deepEqual(calls,[['novora_test_image_package_settle_dispatch',{p_dispatch:input}]]);
+  }
+});
+
 const sandboxPurchase = {purchaseId:PURCHASE,amountMinor:100,currency:'USD',merchantId:MERCHANT,providerOrderId:null};
 function sandboxFixture(options={}) {
   let purchase = {...sandboxPurchase,...options.purchase};

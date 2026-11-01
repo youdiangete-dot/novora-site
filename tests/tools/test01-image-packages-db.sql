@@ -40,6 +40,29 @@ begin
   perform public.novora_test_image_package_create(purchase||jsonb_build_object('purchaseId',other_p));
   perform pg_temp.check_test01(public.novora_test_image_package_grant(payment||jsonb_build_object('purchaseId',other_p),'TEST-owner')->>'reason'='conflict','global reference reuse denied');
 
+  -- Proven enqueue failure before dispatch restores the reserved slot without
+  -- manufacturing a claim; direct unbound finish remains denied.
+  result:=public.novora_test_image_package_reserve(use_input);
+  perform pg_temp.check_test01(result->>'state'='reserved','pre-dispatch reserve');
+  result:=public.novora_test_image_package_finish(use_input||'{"outcome":"definite_failure","providerCostUsdMicros":0}');
+  perform pg_temp.check_test01(result->>'reason'='denied','unbound finish still denies pre-dispatch release');
+  result:=public.novora_test_image_package_settle_dispatch(use_input||jsonb_build_object('briefId',p,
+    'outcome','definite_failure','failurePhase','before_dispatch','providerCostUsdMicros',0));
+  perform pg_temp.check_test01(result->>'reason'='denied','wrong brief cannot release before claim');
+  result:=public.novora_test_image_package_settle_dispatch(use_input||jsonb_build_object(
+    'owner',jsonb_build_object('scope',repeat('b',64),'identity','TEST-owner'),
+    'outcome','definite_failure','failurePhase','before_dispatch','providerCostUsdMicros',0));
+  perform pg_temp.check_test01(result->>'reason'='denied','wrong owner cannot release before claim');
+  result:=public.novora_test_image_package_settle_dispatch(use_input||
+    '{"outcome":"definite_failure","failurePhase":"before_dispatch","providerCostUsdMicros":0}');
+  perform pg_temp.check_test01(result->>'state'='released' and result->>'duplicate'='false','pre-dispatch failure restores slot');
+  perform pg_temp.check_test01((select dispatch_claimed_at is null from public.novora_test_image_package_uses
+    where operation_id='423e4567-e89b-42d3-a456-426614174000'),'release did not fake claim');
+  result:=public.novora_test_image_package_settle_dispatch(use_input||
+    '{"outcome":"definite_failure","failurePhase":"before_dispatch","providerCostUsdMicros":0}');
+  perform pg_temp.check_test01(result->>'state'='released' and result->>'duplicate'='true','pre-dispatch release idempotent');
+  perform pg_temp.check_test01(public.novora_test_image_package_claim_dispatch(use_input)->>'claim'='denied','released unclaimed use never dispatches');
+
   foreach kind in array array['initial','revision'] loop
     for i in 1..5 loop
       op := ('50000000-0000-4000-8000-'||lpad((case kind when 'initial' then i else i+10 end)::text,12,'0'))::uuid;
@@ -51,6 +74,8 @@ begin
       perform pg_temp.check_test01(public.novora_test_image_package_reserve(use_input)->>'duplicate'='true','reserve replay');
       perform pg_temp.check_test01(public.novora_test_image_package_claim_dispatch(use_input)->>'claim'='claimed','dispatch claimed');
       perform pg_temp.check_test01(public.novora_test_image_package_claim_dispatch(use_input)->>'claim'='already_claimed','dispatch cannot reclaim');
+      perform pg_temp.check_test01(public.novora_test_image_package_settle_dispatch(use_input||
+        '{"outcome":"definite_failure","failurePhase":"before_dispatch","providerCostUsdMicros":0}')->>'reason'='conflict','claim winner rejects stale pre-dispatch release');
       perform pg_temp.check_test01(public.novora_test_image_package_claim_dispatch(use_input||jsonb_build_object('briefId',p))->>'claim'='denied','brief immutable');
     end loop;
     use_input := use_input||jsonb_build_object('operationId',case kind when 'initial' then

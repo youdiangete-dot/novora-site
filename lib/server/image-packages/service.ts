@@ -112,6 +112,7 @@ export function createTestImagePackageService(deps: Dependencies) {
     },
     async settleDispatch(input: DispatchSettlement) {
       if (!isDispatchBinding(input) || !["delivered", "definite_failure", "unknown"].includes(input.outcome) ||
+        (input.failurePhase !== undefined && (input.failurePhase !== "before_dispatch" || input.outcome !== "definite_failure")) ||
         !Number.isSafeInteger(input.providerCostUsdMicros) || input.providerCostUsdMicros < 0) return failure("invalid");
       try { return await deps.repository.settleDispatch(input); }
       catch { return failure("unavailable"); }

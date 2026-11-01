@@ -47,7 +47,7 @@ create table public.novora_test_image_package_uses (
   provider_cost_usd_micros bigint not null default 0 check (provider_cost_usd_micros between 0 and 9007199254740991),
   created_at timestamptz not null default clock_timestamp(),
   updated_at timestamptz not null default clock_timestamp(),
-  check (state='reserved' or dispatch_claimed_at is not null),
+  check (state='reserved' or dispatch_claimed_at is not null or (state='released' and outcome='definite_failure')),
   check ((state = 'reserved' and outcome is null)
     or (state = 'unknown' and outcome is not null and outcome = 'unknown')
     or (state = 'settled' and outcome is not null and outcome = 'valid_delivery')
@@ -289,21 +289,45 @@ end $$;
 
 create function public.novora_test_image_package_settle_dispatch(p_dispatch jsonb)
 returns jsonb language plpgsql security invoker set search_path = pg_catalog, public as $$
-declare p public.novora_test_image_package_purchases; u public.novora_test_image_package_uses; claim jsonb;
+declare p public.novora_test_image_package_purchases; u public.novora_test_image_package_uses;
+  cost bigint; duplicate boolean;
 begin
-  -- claim_dispatch's validation is reused, but settlement NEVER acquires a
-  -- missing claim: check claimed_at first, then validate the immutable binding.
   select * into u from public.novora_test_image_package_uses where reservation_id=(p_dispatch->>'reservationId')::uuid;
-  if not found or u.dispatch_claimed_at is null then return jsonb_build_object('ok',false,'reason','denied'); end if;
-  claim := public.novora_test_image_package_claim_dispatch(p_dispatch);
-  if claim->>'claim' not in ('already_claimed','unknown') then return jsonb_build_object('ok',false,'reason','denied'); end if;
+  if not found then return jsonb_build_object('ok',false,'reason','denied'); end if;
+  select * into p from public.novora_test_image_package_purchases where purchase_id=u.purchase_id for update;
+  select * into u from public.novora_test_image_package_uses where reservation_id=(p_dispatch->>'reservationId')::uuid for update;
+  if (p_dispatch->'owner'->>'scope') is distinct from p.owner_scope
+    or (p_dispatch->'owner'->>'identity') is distinct from p.owner_identity
+    or (p_dispatch->>'operationId') is distinct from u.operation_id::text
+    or (p_dispatch->>'kind') is distinct from u.kind
+    or (p_dispatch->>'briefId') is distinct from u.brief_id::text
+    or (p_dispatch->>'sourceOutputId') is distinct from u.source_output_id::text then
+    return jsonb_build_object('ok',false,'reason','denied'); end if;
   if (p_dispatch->>'outcome') is null or (p_dispatch->>'outcome') not in ('delivered','definite_failure','unknown') then
     return jsonb_build_object('ok',false,'reason','invalid'); end if;
-  select * into p from public.novora_test_image_package_purchases where purchase_id=u.purchase_id;
+  if (p_dispatch->>'failurePhase') is not null then
+    if (p_dispatch->>'failurePhase')<>'before_dispatch' or (p_dispatch->>'outcome')<>'definite_failure' then
+      return jsonb_build_object('ok',false,'reason','invalid'); end if;
+    -- Release and claim use the SAME purchase/use lock order. A stale enqueue
+    -- failure cannot restore a slot once a worker has acquired dispatch rights.
+    if u.dispatch_claimed_at is not null or u.state not in ('reserved','released') then
+      return jsonb_build_object('ok',false,'reason','conflict'); end if;
+    if (p_dispatch->>'providerCostUsdMicros') is null or (p_dispatch->>'providerCostUsdMicros') !~ '^\d+$' then
+      return jsonb_build_object('ok',false,'reason','invalid'); end if;
+    cost := (p_dispatch->>'providerCostUsdMicros')::bigint;
+    if cost>9007199254740991 then return jsonb_build_object('ok',false,'reason','invalid'); end if;
+    duplicate := u.state='released';
+    update public.novora_test_image_package_uses set state='released',outcome='definite_failure',
+      provider_cost_usd_micros=greatest(provider_cost_usd_micros,cost),updated_at=clock_timestamp()
+      where operation_id=u.operation_id returning * into u;
+    return jsonb_build_object('ok',true,'duplicate',duplicate,'operationId',u.operation_id,
+      'state',u.state,'providerCostUsdMicros',u.provider_cost_usd_micros);
+  end if;
+  if u.dispatch_claimed_at is null then return jsonb_build_object('ok',false,'reason','denied'); end if;
   return public.novora_test_image_package_finish(jsonb_build_object('purchaseId',p.purchase_id,
     'subjectId',p.subject_id,'operationId',u.operation_id,'providerCostUsdMicros',p_dispatch->'providerCostUsdMicros',
     'outcome',case p_dispatch->>'outcome' when 'delivered' then 'valid_delivery' else p_dispatch->>'outcome' end));
-exception when invalid_text_representation then return jsonb_build_object('ok',false,'reason','invalid');
+exception when invalid_text_representation or numeric_value_out_of_range then return jsonb_build_object('ok',false,'reason','invalid');
 end $$;
 
 -- Payment side-effect journal required by C. This is not an entitlement ledger:
