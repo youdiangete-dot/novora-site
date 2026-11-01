@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import InvitationAccess, { type BrowserInvitationState } from '../../../components/InvitationAccess';
+import { submitInvitedConceptBrief } from '../../../lib/client/invitation-submission';
 import styles from './brief.module.css';
 import { useI18n } from '../../../lib/i18n/client';
 import { formatMessage } from '../../../lib/i18n/format';
@@ -216,6 +218,14 @@ export default function DesignBriefPage() {
       persisted: false,
       message: errorCopy.serverReceiptWarning,
     };
+    if (invitation.state === 'verified') {
+      const result = await submitInvitedConceptBrief(payload, invitation.access);
+      return result.state === 'confirmed' ? {
+        ok: true, persisted: true, mode: 'supabase', message: copy.skeletonReceivedFallback,
+        publicReference: result.publicReference, conceptBriefId: result.conceptBriefId,
+      } : fallbackMetadata;
+    }
+    if (invitation.state !== 'disabled') return fallbackMetadata;
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), CONCEPT_BRIEF_SUBMISSION_TIMEOUT_MS);
 
@@ -259,6 +269,8 @@ export default function DesignBriefPage() {
   const [submissionError, setSubmissionError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [invitation, setInvitation] = useState<BrowserInvitationState>({ state: 'checking' });
+  const updateInvitation = useCallback((value: BrowserInvitationState) => setInvitation(value), []);
 
   useEffect(() => {
     try {
@@ -825,9 +837,10 @@ export default function DesignBriefPage() {
               </section>
             </section>
             <div className={styles.actions}>
+              <InvitationAccess onChange={updateInvitation} disabled={isSubmitting} />
               <button
                 className={styles.primaryButton}
-                disabled={isSubmitting}
+                disabled={isSubmitting || (invitation.state !== 'disabled' && invitation.state !== 'verified')}
                 onClick={submitConceptBrief}
                 type="button"
               >

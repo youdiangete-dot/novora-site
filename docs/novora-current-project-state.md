@@ -1,5 +1,58 @@
 # NOVORA Current Project State
 
+## Owner-approved invitation-trial release boundary (2026-11-01)
+
+Owner confirmed on 2026-11-01 that the current intermediate MVP release is:
+invited customer submits a brief, securely views the corresponding safe concept
+image, gives feedback, receives revisions, and confirms the design direction.
+Jewelry quotation, payment, formal order, CAD, and production are handled offline
+for this release. The M1-M6 commercial completion contract and A01-A18 remain the
+later full-commercial target; they are not fulfilled or waived by this boundary.
+
+Digital image packages are also in this test release, including an online
+payment test path and manual collection confirmation, both tied to the same
+package entitlement and usage records. The Taipei partner has a PayPal account
+and a Taiwan bank account. This is not evidence of live merchant API eligibility,
+account ownership verification, configured credentials, or an actual payment.
+Owner subsequently approved TEST-01 for testing: Sandbox USD 1, five initial-image
+and five revision entitlements, valid seven days after confirmed test payment or
+Owner-only protected-admin manual confirmation. This is not live commercial
+pricing and does not trigger ten generations or replace free invitation quotas.
+Definite failure without a compliant delivered image restores the user allowance
+while real API costs remain accounted; UNKNOWN retains the reservation and allows
+only reconciliation. A payment/manual confirmation grants once. The supported
+PayPal test setup still requires account-holder confirmation; historical strategy
+numbers are not active pricing or quota authority. No real charge or funds transfer is authorized by this test
+clarification. Digital package purchases are separate from physical jewelry
+orders.
+
+The customer concept-preview surface retains secure image access, feedback, and
+direction confirmation. It does not activate the later jewelry specification,
+quotation, or payment components; their candidate code remains available for
+the later commercial work. This source change is integration-only until actually
+reviewed, merged and released. Existing r12 isolated delivery PASS is retained;
+feedback/revision release acceptance and Production acceptance are not implied.
+
+Authority: Owner's explicit 2026-11-01 trial-scope and digital-package decisions,
+followed by the approved testing-MVP supplemental package v1. The invitation roster, trial quotas,
+spending controls, privacy gates and credential approval boundaries are unchanged.
+
+Local G2 browser integration uses the existing invitation bearer verifier; the
+bearer stays only in page memory and must be re-entered after refresh. Only a
+random request ID, payload digest and attempt state are kept in sessionStorage.
+An uncertain attempt is read back, never automatically submitted again. Explicit
+owned-receipt reauthentication may issue the existing 30-minute private-image
+cookie; the diagnostic receipt GET still issues no cookie and no image access.
+Neither path enqueues work. Existing issued-cookie expiry semantics are unchanged.
+
+The original M2 receipt scope remains exact-deployment-bound. A reusable trial
+receipt namespace is disabled by default and requires explicit server settings
+NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED=true and a stable 16-64 character
+NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE on the expected project and exact
+Preview/Production target. Its identity scope is separate from spending authority;
+budget admission, dispatch claims and expiry remain independently mandatory.
+No settings or credentials have been provisioned by this local implementation.
+
 ## 1. Purpose
 
 This document is the durable NOVORA project state ledger and the first file to

@@ -317,6 +317,29 @@ export function authenticateM2ReceiptRequest(request: Request, environment: Envi
   return identity ? { identity, scope: binding.runtimeBinding } : null;
 }
 
+// The existing M2 scope stays deployment-bound. A reusable invitation-trial
+// scope must be explicitly configured on the server, never selected by a body,
+// request ID, user email, or client header. No authority/ledger is created here.
+export function authenticateScopedReceiptRequest(request: Request, environment: Environment = process.env): Readonly<{ identity: string; scope: string }> | null {
+  const m2 = authenticateM2ReceiptRequest(request, environment);
+  if (m2) return m2;
+  if (betaAdmissionMode(environment) !== "enabled" ||
+    environment.NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED !== "true") return null;
+  const namespace = environment.NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE;
+  const target = environment.VERCEL_TARGET_ENV ?? environment.VERCEL_ENV;
+  if (!namespace || !/^[a-zA-Z0-9_-]{16,64}$/.test(namespace) ||
+    environment.VERCEL_PROJECT_ID !== "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg" ||
+    (target !== "preview" && target !== "production") ||
+    environment.VERCEL_ENV !== target) return null;
+  const identity = authenticateInvitation(request, environment);
+  if (!identity) return null;
+  const scope = createHash("sha256").update([
+    "novora_invitation_trial_receipt_v1", environment.VERCEL_PROJECT_ID,
+    target, namespace,
+  ].join("\n")).digest("hex");
+  return { identity, scope };
+}
+
 export function resolveBetaAdmissionBinding(environment: Environment): BetaAdmissionBinding | null {
   return inspectBetaAdmissionBinding(environment).binding;
 }

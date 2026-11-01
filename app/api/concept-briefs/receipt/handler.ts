@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authenticateM2ReceiptRequest } from "../../../../lib/server/ai-sketch/beta-admission";
+import { authenticateScopedReceiptRequest as authenticateM2ReceiptRequest } from "../../../../lib/server/ai-sketch/beta-admission";
 import { isClientRequestId, readScopedReceipt } from "../../../../lib/server/ai-sketch/m2-scoped-receipt";
 
 // A nonsecret ID alone is never authority; this route issues no customer cookie.
