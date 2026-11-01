@@ -177,6 +177,63 @@ privacy, moderation, image validity, Storage and readiness checks are unchanged.
 
 ## Offline evidence and remaining release gates
 
+### Separate invitation-trial spending candidate (default OFF)
+
+The one-image M2 mode above remains unchanged. The integration candidate also
+supports `NOVORA_INVITATION_TRIAL_SPENDING_MODE=owner_expected_cost_bounded_trial_v1`
+with `NOVORA_INVITATION_TRIAL_SPENDING_CONFIG` and the explicit stable trial receipt
+namespace. This is Preview-only, not a Production mode or an activation grant.
+No environment, invitation, funded record or payment entitlement is created by
+the code. TEST-01's 5+5 allowance is not authorization for ten paid calls.
+
+The config must contain exactly: `maximumInitialImages`, `maximumRevisions`,
+`limitMicros`, `expectedCostMicros`, `reserveMicros`, `m2CommittedMicros`,
+`mvpCommittedMicros`, and `expiresAt` (UTC Unix seconds). All are integers.
+Both image-kind counts must be positive; the total must be at most ten and
+`limitMicros` must equal that total times the unchanged USD 1 operation allocation.
+The full-experience estimate, including visual privacy, plus justified reserve
+must fit that USD 1 allocation. Committed amounts include historical expenditure,
+unsettled/UNKNOWN allocations and other existing reservations; M2 is included in
+MVP, not added twice. Committed plus this authority must fit USD 10 M2 and USD 200
+project ceilings. These are approved-budget accounting limits, not verified API
+balance or Provider-enforced invoice caps. Unknown billing is never treated as zero.
+
+The minimum declared initial-plus-revision sequence requires two USD 1 occupied
+slots. Actual values, exact roster, expiry and supporting cost evidence still
+require specific Owner approval and reconciliation before activation; this
+paragraph does not approve the example sequence or create a business policy.
+
+The runtime binds project, integration branch, exact SHA, deployment, stable
+receipt namespace, complete validated invitation roster (up to ten), authority
+label and config digest into a NEW `trial-preview:v1` key. Roster order does not
+matter; identity or credential changes do. An absent key denies admission.
+Changing deployment/namespace/credentials creates no funded record and must not
+erase, adopt, refund or omit old occupied allocations. Provisioning/resetting a
+record is outside the runtime trust boundary and is not authorized here.
+
+The authority must exactly match the shared pure contract in
+`tools/invitation-trial-spending-contract.cjs`, with actual Owner, durability and
+risk evidence; `costCeilingVerified` remains false and automatic paid retries false.
+The host must receive an explicit `trialSpending` declaration (namespace, config,
+authorityLabel and approved other invitation hashes). It checks the SAME contract
+before arming; its session remains at most sixty minutes, with the supplied global
+deadline/final closure hour and a private expiry closure margin. The new mode only
+supports the existing Git-source deployment path, using deployment-level config.
+
+One atomic Lua operation reserves an immutable initial/revision slot; a separate
+atomic one-time claim precedes Provider dispatch. All unresolved slots block later
+reservations. Only trusted image PLUS visual-privacy usage and a definite outcome
+can reconcile a dispatched slot. Reconciliation never releases its USD 1 allocation.
+UNKNOWN or interrupted work stays occupied and cannot dispatch again. The worker
+records known completion; a failed/uncertain record acknowledgement is not retried.
+Existing private Storage, source ownership, B entitlement claims and all safety
+gates remain independent. No package grant, manual confirmation or payment seed
+is introduced by this spending candidate.
+
+Local binding/adapter/operator checks do not prove new Lua atomicity. An actual
+disposable local Redis run and independent review are required before treating
+this candidate as verified for live activation; no live Redis probe is implied.
+
 `tests/e2e/beta-pilot-risk-authority.spec.ts` exercises the actual Lua against
 an already available disposable local Redis instance. It requires
 `NOVORA_BETA_LOCAL_REDIS_TEST_PORT` and an existing `redis-cli` executable

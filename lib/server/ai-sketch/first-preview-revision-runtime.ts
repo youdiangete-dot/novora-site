@@ -6,7 +6,7 @@ import { createSupabaseAdminClientOrNull } from "../supabase";
 // not duplicate their identity scheme, ledger, or payment verification logic.
 import { createImagePackageRepository } from "../image-packages/repository";
 import { testPackagePurchase, testPackageSubject } from "../image-packages/identity";
-import { authenticateScopedReceiptRequest, createRedisBetaAdmissionLedger, isScopedReceiptOwnerActive, type BetaAdmissionLedger } from "./beta-admission";
+import { authenticateScopedReceiptRequest, createRedisBetaAdmissionLedger, isScopedReceiptOwnerActive, revisionSpendingFingerprint, type BetaAdmissionLedger } from "./beta-admission";
 import { createFirstPreviewRepository } from "./first-preview-persistence";
 import { buildFirstPreviewStructuredGenerationInput } from "./first-preview-structured-input";
 import { prepareFirstPreviewGenerationInput, createProductionAutomaticFirstPreviewWorkerDependencies, type FirstPreviewGenerationWork } from "./first-preview-generation-lifecycle";
@@ -30,10 +30,7 @@ function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], s
   const bindingFor = (operationId: string, briefId: string, sourceOutputId: string): RevisionDispatchBinding => ({
     owner, operationId, reservationId: operationId, kind: "revision", briefId, sourceOutputId,
   });
-  const fingerprint = (work: FirstPreviewGenerationWork) => createHash("sha256").update(JSON.stringify([
-    "novora_revision_cost_v1", work.conceptBriefId, work.jobId, work.parentJobId, work.sourceOutputId,
-    work.structured.designSpecSha256, work.structured.handSketchInstructionSha256,
-  ])).digest("hex");
+  const fingerprint = revisionSpendingFingerprint;
   return createSourceBoundRevisionService({
     repository, resolveSource: async () => source,
     resolveDispatch: async operationId => {
@@ -53,6 +50,7 @@ function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], s
       // historical API field is named briefId; actual Brief/source are immutable
       // in the fingerprint and the B binding. No ledger/authority is created here.
       const result = await ledger.reserve({ identity: binding.owner.identity, briefId: work.jobId,
+        kind:"revision",sourceBriefId:work.conceptBriefId,
         requestKey: createHash("sha256").update(`${binding.owner.scope}\n${binding.owner.identity}\n${work.jobId}`).digest("hex"), fingerprint: fingerprint(work) });
       return result === "reserved" ? "reserved" : result === "denied" ? "denied" : "unknown";
     },
@@ -61,7 +59,7 @@ function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], s
     // ledger claim run; both must confirm before any Provider request. Uncertain
     // or duplicate claims hold the operation and never authorize another call.
     claimCostReservation: async (work, binding) => Boolean(ledger && isScopedReceiptOwnerActive(binding.owner) &&
-      isFirstPreviewQueueExecutionConfirmed() && await ledger.claimDispatch({ briefId: work.jobId, fingerprint: fingerprint(work) })),
+      isFirstPreviewQueueExecutionConfirmed() && await ledger.claimDispatch({ briefId: work.jobId, sourceBriefId:work.conceptBriefId, kind:"revision",fingerprint: fingerprint(work) })),
     publish: async work => publishRevisionQueueEnvelope({ schemaVersion: REVISION_QUEUE_SCHEMA, owner, work }),
     createWorkerDependencies: createProductionAutomaticFirstPreviewWorkerDependencies,
   });

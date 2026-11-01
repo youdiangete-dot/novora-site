@@ -9,14 +9,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
 const { createOperator, createOfflineFixtureOperator } = require('./m2-preview-operator.cjs');
+const trialContract = require('./invitation-trial-spending-contract.cjs');
 const project = 'prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg';
 const team = 'team_9VhRPiCaRc62kna4XyNKvPZ7';
 const branch = 'integration/instant-first-preview-agent';
 const gitOrg = 'youdiangete-dot', gitRepo = 'novora-site';
 
-function buildGitSourceDeployment({ identity, credentialSha256, sourceSha }) {
+function buildGitSourceDeployment({ identity, credentialSha256, sourceSha, trial }) {
   if (!/^m2_synthetic_[A-Za-z0-9_-]{1,51}$/.test(identity ?? '') || !/^[a-f0-9]{64}$/.test(credentialSha256 ?? '') || !/^[a-f0-9]{40}$/.test(sourceSha ?? '')) throw new Error('GIT_REQUEST_INVALID');
   const env = { NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity, credentialSha256 }]), NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: 'true', NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: 'true' };
+  if (trial) {
+    const selected = trialContract.selection(trial.namespace,trial.config,trial.roster,trial.authorityLabel);
+    if (!selected || !selected.roster.some(item => item.identity===identity && item.credentialSha256===credentialSha256)) throw new Error('TRIAL_REQUEST_INVALID');
+    Object.assign(env,{ NOVORA_BETA_INVITATIONS_JSON:JSON.stringify(selected.roster),NOVORA_BETA_ADMISSION_ENABLED:'true',
+      NOVORA_BETA_SPENDING_AUTHORITY_ID:selected.authorityLabel,NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED:'true',
+      NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE:selected.namespace,NOVORA_INVITATION_TRIAL_SPENDING_MODE:trialContract.MODE,
+      NOVORA_INVITATION_TRIAL_SPENDING_CONFIG:JSON.stringify(selected.config) });
+  }
   return { name: 'project-dd34e', project, gitSource: { type: 'github', org: gitOrg, repo: gitRepo, ref: branch, sha: sourceSha }, env, build: { env: { ...env } } };
 }
 
@@ -146,6 +155,7 @@ function createSender(config, fixtureIO) {
   if (!/^m2_synthetic_[A-Za-z0-9_-]{1,51}$/.test(config.invitedIdentity ?? '')) throw new Error('APPROVED_IDENTITY_REQUIRED');
   if (config.sourceMode != null && !['cli_upload', 'git_source'].includes(config.sourceMode)) throw new Error('SOURCE_MODE_INVALID');
   const sourceMode = config.sourceMode ?? 'cli_upload';
+  if (config.trialSpending && sourceMode !== 'git_source') throw new Error('TRIAL_REQUIRES_GIT_SOURCE');
   const io = fixtureIO || {
     run: (command, args, options) => runProcess(command, args, options, config.cwd),
     randomBytes: (n) => crypto.randomBytes(n),
@@ -235,14 +245,15 @@ function createSender(config, fixtureIO) {
       return io.writeReceiptId(config.receiptIdFile, id) === true;
     },
     async generate() { return { bearer: io.randomBytes(32).toString('base64url'), identity: config.invitedIdentity, idempotencyKey: io.randomBytes(24).toString('base64url') }; },
-    async deploy({ identity, credentialSha256, sourceSha, isActive }) {
+    async deploy({ identity, credentialSha256, sourceSha, trial, isActive }) {
       await verifySource({ sourceSha, isActive });
       if (!isActive()) throw new Error('SESSION_INACTIVE');
       if (sourceMode === 'git_source') {
-        const body = buildGitSourceDeployment({ identity, credentialSha256, sourceSha });
+        const body = buildGitSourceDeployment({ identity, credentialSha256, sourceSha,trial });
         const result = await io.run(io.node, [config.cli, 'api', '/v13/deployments', '--method', 'POST', '--input', '-', '--scope', team, '--raw'], { input: JSON.stringify(body), timeout: 180000 });
         return { exitCode: result.status, stdout: result.stdout };
       }
+      if (trial) throw new Error('TRIAL_REQUIRES_GIT_SOURCE');
       const env = { ...io.environment, NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([{ identity, credentialSha256 }]), NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: 'true', NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: 'true' };
       const result = await io.run(io.node, [config.cli, 'deploy', '--project', project, '--scope', team, '--yes', '--no-wait', '--json', '--env', 'NOVORA_BETA_INVITATIONS_JSON', '--env', 'NOVORA_INSTANT_PREVIEW_AGENT_ENABLED', '--env', 'NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED', '--meta', 'githubDeployment=1', '--meta', 'githubCommitRef=' + branch], { env, timeout: 180000 });
       return { exitCode: result.status, stdout: result.stdout };
@@ -340,7 +351,7 @@ function createSender(config, fixtureIO) {
       return { status: response.status, contentType: response.headers.get('content-type'), ...(response.status === 200 ? { bytes: Buffer.from(await response.arrayBuffer()) } : {}) };
     },
   };
-  const sessionConfig = { adapters, expectedSourceSha: config.expectedSourceSha, deadline: config.deadline, now: config.now, sourceMode, receiptRecovery: config.receiptRecovery === true };
+  const sessionConfig = { adapters, expectedSourceSha: config.expectedSourceSha, deadline: config.deadline, now: config.now, sourceMode, receiptRecovery: config.receiptRecovery === true,trialSpending:config.trialSpending??null };
   if (fixtureIO) {
     adapters.verifyOidc = fixtureIO.verifyOidc;
     return createOfflineFixtureOperator(sessionConfig);
