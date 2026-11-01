@@ -33,15 +33,8 @@ const moduleInternals = Module as unknown as {
     options?: unknown,
   ): string;
 };
-const serverOnlyTestShim = path.join(
-  process.cwd(),
-  "node_modules",
-  "next",
-  "dist",
-  "compiled",
-  "server-only",
-  "empty.js",
-);
+const serverOnlyTestShim = createRequire(path.join(process.cwd(), "package.json"))
+  .resolve("next/dist/compiled/server-only/empty.js");
 
 function loadWithServerOnlyTestShim<T>(load: () => T): T {
   const original = moduleInternals._resolveFilename;
@@ -268,6 +261,31 @@ function jobRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function revisedHistory(count = 3) {
+  const jobs: ReturnType<typeof jobRow>[] = [];
+  const outputs: ReturnType<typeof outputRow>[] = [];
+  for (let index = 1; index <= count; index++) {
+    const jobId = `323e4567-e89b-42d3-a456-${String(index).padStart(12, "0")}`;
+    const outputId = `423e4567-e89b-42d3-a456-${String(index).padStart(12, "0")}`;
+    const time = NOW - 600 + index * 10;
+    jobs.push(jobRow({ id: jobId, attempt_number: index,
+      parent_job_id: jobs.at(-1)?.id ?? null,
+      parent_generation_purpose: index === 1 ? null : "first_preview",
+      parent_attempt_number: index === 1 ? null : index - 1,
+      source_output_id: outputs.at(-1)?.id ?? null,
+      design_spec_hash: index.toString(16).padStart(64, "0"),
+      created_at: epochIso(time), started_at: epochIso(time + 1),
+      deadline_at: epochIso(time + 8), completed_at: epochIso(time + 3), updated_at: epochIso(time + 6),
+    }));
+    outputs.push(outputRow({ id: outputId, job_id: jobId,
+      asset_created_at: epochIso(time + 1), asset_validated_at: epochIso(time + 2),
+      created_at: epochIso(time + 2), automatic_gate_passed_at: epochIso(time + 4),
+      first_preview_ready_at: epochIso(time + 5), is_current_customer_preview: index === count,
+    }));
+  }
+  return { jobs, outputs };
+}
+
 class FakeViewDatabase implements FirstPreviewCustomerViewDatabaseClient {
   briefs: unknown[] = [
     { id: BRIEF_ID, public_reference: PUBLIC_REFERENCE },
@@ -323,6 +341,83 @@ class FakeViewDatabase implements FirstPreviewCustomerViewDatabaseClient {
     return this.result("job", this.jobs);
   }
 }
+
+class RevisionViewDatabase extends FakeViewDatabase {
+  async findExtendedLineageCandidates(conceptBriefId: string) {
+    expect(conceptBriefId).toBe(BRIEF_ID);
+    return { jobs: this.jobs, outputs: this.outputs, error: null };
+  }
+}
+
+test.describe("revision source lineage and current private preview", () => {
+  test("reads only the current safe revision after multiple linked revisions", async () => {
+    const database = new RevisionViewDatabase();
+    Object.assign(database, revisedHistory());
+    const result = await reader(database)({ publicReference: PUBLIC_REFERENCE });
+    expect(result).toEqual({ state: "ready", assetRequest: { publicReference: PUBLIC_REFERENCE, outputId: (database.outputs.at(-1) as { id: string }).id } });
+    expect(JSON.stringify(result)).not.toMatch(/object_path|automatic_gate|source_output|provider|reviewer/);
+  });
+
+  test("rejects cross-brief, broken source, gap, duplicate-current and privacy tampering", async () => {
+    for (const mutate of [
+      (data: ReturnType<typeof revisedHistory>) => { data.outputs[0].concept_brief_id = OTHER_BRIEF_ID; },
+      (data: ReturnType<typeof revisedHistory>) => { data.jobs[1].source_output_id = OTHER_OUTPUT_ID; },
+      (data: ReturnType<typeof revisedHistory>) => { data.jobs[1].parent_job_id = data.jobs[2].id; },
+      (data: ReturnType<typeof revisedHistory>) => { data.jobs[2].attempt_number = 4; },
+      (data: ReturnType<typeof revisedHistory>) => { data.outputs[0].is_current_customer_preview = true; },
+      (data: ReturnType<typeof revisedHistory>) => { data.outputs[2].automatic_gate_evidence.privacyPassed = false; },
+    ]) {
+      const data = revisedHistory(); mutate(data);
+      const database = new RevisionViewDatabase(); Object.assign(database, data);
+      expect(await reader(database)({ publicReference: PUBLIC_REFERENCE })).toEqual({ state: "unavailable" });
+    }
+  });
+
+  test("another Brief proof cannot read this revision or invoke extended history", async () => {
+    const database = new RevisionViewDatabase(); Object.assign(database, revisedHistory());
+    expect(await reader(database, { cookieValue: proof({ briefId: OTHER_BRIEF_ID }) })({ publicReference: PUBLIC_REFERENCE })).toEqual({ state: "unavailable" });
+    expect(database.requests).toHaveLength(1);
+  });
+
+  test("history overflow fails closed instead of accepting a truncated lineage", async () => {
+    const database = new RevisionViewDatabase(); Object.assign(database, revisedHistory(65));
+    expect(await reader(database)({ publicReference: PUBLIC_REFERENCE })).toEqual({ state: "unavailable" });
+  });
+
+  test("a queued revision retains the previous current safe image without publishing its pending output", async () => {
+    const database = new RevisionViewDatabase(); const data = revisedHistory(2);
+    data.outputs.pop(); data.outputs[0].is_current_customer_preview = true;
+    Object.assign(data.jobs[1], { status: "queued", started_at: null, deadline_at: null, completed_at: null });
+    Object.assign(database, data);
+    expect(await reader(database)({ publicReference: PUBLIC_REFERENCE })).toEqual({ state: "ready", assetRequest: { publicReference: PUBLIC_REFERENCE, outputId: data.outputs[0].id } });
+  });
+
+  test("direct revised-image authorization requires the same current lineage and never authorizes the old image", async () => {
+    const database = new RevisionViewDatabase(); const data = revisedHistory(); Object.assign(database, data);
+    const lastOutput = data.outputs.at(-1)!;
+    const lastJob = data.jobs.at(-1)!;
+    let valid = true, lineageChecks = 0;
+    const assetDatabase = {
+      findBriefCandidates: async () => ({ data: database.briefs, error: null }),
+      findOutputCandidates: async (id: string) => ({ data: data.outputs.filter(output => output.id === id), error: null }),
+      findJobCandidates: async (id: string) => ({ data: data.jobs.filter(job => job.id === id), error: null }),
+      verifyCurrentRevisionLineage: async (lookup: { conceptBriefId: string; publicReference: string; outputId: string }) => {
+        lineageChecks++;
+        expect(lookup).toMatchObject({ conceptBriefId: BRIEF_ID, publicReference: PUBLIC_REFERENCE, outputId: lastOutput.id });
+        const result = await reader(database)({ publicReference: PUBLIC_REFERENCE });
+        return valid && result.state === "ready" && result.assetRequest.outputId === lookup.outputId;
+      },
+    };
+    const authorizer = createSupabaseFirstPreviewCustomerAccessAuthorizer(assetDatabase, SECRET, { clock: () => NOW });
+    const request = { publicReference: PUBLIC_REFERENCE, outputId: lastOutput.id, accessProof: proof() };
+    expect((await authorizer.authorize(request)).authorized).toBe(true);
+    expect(lineageChecks).toBe(1);
+    valid = false;
+    expect((await authorizer.authorize(request)).authorized).toBe(false);
+    expect((await authorizer.authorize({ ...request, outputId: data.outputs[0].id })).authorized).toBe(false);
+    expect(lastJob.source_output_id).toBe(data.outputs[1].id);
+  });
+});
 
 function reader(
   database: FakeViewDatabase,

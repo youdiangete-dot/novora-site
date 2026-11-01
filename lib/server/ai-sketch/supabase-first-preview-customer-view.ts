@@ -14,6 +14,7 @@ import {
   FIRST_PREVIEW_ASSET_BUCKET,
   FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
   FIRST_PREVIEW_POST_SUCCESS_PENDING_MAX_AGE_SECONDS,
+  FIRST_PREVIEW_MAX_ATTEMPT_NUMBER,
   type FirstPreviewRepository,
 } from "./first-preview-persistence-contract";
 import type {
@@ -22,6 +23,8 @@ import type {
 } from "./first-preview-customer-view";
 
 export const FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT = 3 as const;
+// Bounded parser/read work, not a generation entitlement. Overflow fails closed.
+export const FIRST_PREVIEW_CUSTOMER_VIEW_HISTORY_LIMIT = 64 as const;
 
 type DatabaseError = Readonly<{ kind: "unavailable" }>;
 type CandidateResult = Promise<
@@ -41,6 +44,11 @@ export interface FirstPreviewCustomerViewDatabaseClient {
     conceptBriefId: string,
     limit: typeof FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT,
   ): CandidateResult;
+  findExtendedLineageCandidates?(conceptBriefId: string): Promise<Readonly<{
+    outputs: readonly unknown[] | null;
+    jobs: readonly unknown[] | null;
+    error: DatabaseError | null;
+  }>>;
 }
 
 const BRIEF_COLUMNS = "id, public_reference";
@@ -111,6 +119,23 @@ export function createFirstPreviewCustomerViewDatabaseClient(
   supabase: SupabaseClient,
 ): FirstPreviewCustomerViewDatabaseClient {
   return {
+    async findExtendedLineageCandidates(conceptBriefId) {
+      try {
+        const [outputs, jobs] = await Promise.all([
+          supabase.from("ai_sketch_outputs").select(OUTPUT_COLUMNS)
+            .eq("concept_brief_id", conceptBriefId).order("created_at", { ascending: true })
+            .limit(FIRST_PREVIEW_CUSTOMER_VIEW_HISTORY_LIMIT + 1),
+          supabase.from("ai_sketch_jobs").select(JOB_COLUMNS)
+            .eq("concept_brief_id", conceptBriefId).eq("generation_purpose", "first_preview")
+            .order("attempt_number", { ascending: true }).limit(FIRST_PREVIEW_CUSTOMER_VIEW_HISTORY_LIMIT + 1),
+        ]);
+        if (outputs.error || jobs.error || !Array.isArray(outputs.data) || !Array.isArray(jobs.data) ||
+          outputs.data.length > FIRST_PREVIEW_CUSTOMER_VIEW_HISTORY_LIMIT || jobs.data.length > FIRST_PREVIEW_CUSTOMER_VIEW_HISTORY_LIMIT) {
+          return { outputs: null, jobs: null, error: { kind: "unavailable" } };
+        }
+        return { outputs: outputs.data, jobs: jobs.data, error: null };
+      } catch { return { outputs: null, jobs: null, error: { kind: "unavailable" } }; }
+    },
     async findBriefCandidates(publicReference, limit) {
       try {
         const { data, error } = await supabase
@@ -315,7 +340,8 @@ function isValidReadyOutput(
 type SafeJob = Readonly<{
   id: string;
   parentJobId: string | null;
-  attemptNumber: 1 | 2;
+  attemptNumber: number;
+  sourceOutputId: string | null;
   status:
     | "queued"
     | "processing"
@@ -338,6 +364,7 @@ type SafeJob = Readonly<{
 type SafeOutput = Readonly<{
   id: string;
   jobId: string;
+  isCurrentCustomerPreview: boolean;
   readinessStatus: "not_ready" | "first_preview_ready" | "revoked";
   assetValidationStatus: null | "pending" | "passed" | "failed";
   automaticGateStatus: null | "pending" | "passed" | "failed";
@@ -375,9 +402,10 @@ function mapSafeJob(value: unknown, conceptBriefId: string): SafeJob | null {
     !isValidFirstPreviewAssetUuid(value.id) ||
     value.concept_brief_id !== conceptBriefId ||
     value.generation_purpose !== "first_preview" ||
-    (value.attempt_number !== 1 && value.attempt_number !== 2) ||
+    !Number.isSafeInteger(value.attempt_number) || Number(value.attempt_number) < 1 ||
+    Number(value.attempt_number) > FIRST_PREVIEW_MAX_ATTEMPT_NUMBER ||
     value.lineage_identity !== "first-preview:v1" ||
-    value.source_output_id !== null ||
+    (value.source_output_id !== null && (typeof value.source_output_id !== "string" || !isValidFirstPreviewAssetUuid(value.source_output_id))) ||
     !hasNonblankString(value.design_spec_version) ||
     typeof value.design_spec_hash !== "string" ||
     !/^[0-9a-f]{64}$/.test(value.design_spec_hash) ||
@@ -429,14 +457,15 @@ function mapSafeJob(value: unknown, conceptBriefId: string): SafeJob | null {
     typeof value.parent_job_id === "string" ? value.parent_job_id : null;
   const validLineage =
     (value.attempt_number === 1 &&
+      value.source_output_id === null &&
       value.parent_job_id === null &&
       value.parent_generation_purpose === null &&
       value.parent_attempt_number === null) ||
-    (value.attempt_number === 2 &&
+    (Number(value.attempt_number) >= 2 &&
       parentJobId !== null &&
       isValidFirstPreviewAssetUuid(parentJobId) &&
       value.parent_generation_purpose === "first_preview" &&
-      value.parent_attempt_number === 1);
+      value.parent_attempt_number === Number(value.attempt_number) - 1);
   if (!validLineage) return null;
 
   const hasNoTerminalTimestamp = hasNullValues(value, [
@@ -516,7 +545,8 @@ function mapSafeJob(value: unknown, conceptBriefId: string): SafeJob | null {
   return {
     id: value.id,
     parentJobId,
-    attemptNumber: value.attempt_number,
+    sourceOutputId: value.source_output_id as string | null,
+    attemptNumber: Number(value.attempt_number),
     status: value.status as SafeJob["status"],
     retryEligible: value.retry_eligible as boolean | null,
     createdAt,
@@ -643,18 +673,19 @@ function mapSafeOutput(
       readyAt <= revokedAt;
   } else {
     validReadiness =
-      value.is_current_customer_preview === true &&
+      typeof value.is_current_customer_preview === "boolean" &&
       value.readiness_revoked_at === null &&
       readyAt !== null &&
       gatePassedAt !== null &&
       gatePassedAt <= readyAt &&
-      isValidReadyOutput(value, conceptBriefId);
+      isValidReadyOutput({ ...value, is_current_customer_preview: true }, conceptBriefId);
   }
   if (!validReadiness) return null;
 
   return {
     id: value.id,
     jobId: value.job_id,
+    isCurrentCustomerPreview: value.is_current_customer_preview,
     readinessStatus: value.readiness_status as SafeOutput["readinessStatus"],
     assetValidationStatus:
       value.asset_validation_status as SafeOutput["assetValidationStatus"],
@@ -690,28 +721,37 @@ function hasValidCandidateLineage(
   ) {
     return false;
   }
-  if (orderedJobs.length === 2) {
-    const [first, second] = orderedJobs;
+  for (let index = 1; index < orderedJobs.length; index++) {
+    const first = orderedJobs[index - 1], second = orderedJobs[index];
     if (
-      second.attemptNumber !== 2 ||
+      second.attemptNumber !== first.attemptNumber + 1 ||
       second.parentJobId !== first.id ||
-      second.designSpecVersion !== first.designSpecVersion ||
-      second.designSpecHash !== first.designSpecHash ||
-      second.handSketchInstructionVersion !==
-        first.handSketchInstructionVersion ||
-      second.handSketchInstructionHash !==
-        first.handSketchInstructionHash ||
-      first.status !== "failed" ||
-      first.retryEligible !== true ||
-      first.failedAt === null ||
-      second.createdAt < first.failedAt ||
-      (second.startedAt !== null &&
-        (second.startedAt < second.createdAt ||
-          second.startedAt < first.failedAt))
-    ) {
-      return false;
+      (second.startedAt !== null && second.startedAt < second.createdAt)
+    ) return false;
+    if (second.sourceOutputId === null) {
+      // A bounded retry is a different operation from a customer revision.
+      if ((first.attemptNumber !== 1 && first.sourceOutputId === null) ||
+        outputs.some(output => output.jobId === first.id) ||
+        second.designSpecVersion !== first.designSpecVersion ||
+        second.designSpecHash !== first.designSpecHash ||
+        second.handSketchInstructionVersion !== first.handSketchInstructionVersion ||
+        second.handSketchInstructionHash !== first.handSketchInstructionHash ||
+        first.status !== "failed" || first.retryEligible !== true || first.failedAt === null ||
+        second.createdAt < first.failedAt ||
+        (second.startedAt !== null && second.startedAt < first.failedAt)) return false;
+    } else {
+      const source = outputs.find(output => output.id === second.sourceOutputId);
+      if (first.status !== "succeeded" || first.completedAt === null ||
+        !source || source.jobId !== first.id || source.readyAt === null ||
+        source.assetValidationStatus !== "passed" || source.automaticGateStatus !== "passed" ||
+        second.createdAt < first.completedAt || second.createdAt < source.readyAt) return false;
     }
   }
+
+  // Historical ready outputs are evidence, never alternative customer assets.
+  // A noncurrent ready row must actually be the source of a successor revision.
+  if (outputs.some(output => output.readinessStatus === "first_preview_ready" &&
+    !output.isCurrentCustomerPreview && !jobs.some(job => job.sourceOutputId === output.id))) return false;
 
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
   if (outputs.some((output) => !jobsById.has(output.jobId))) return false;
@@ -821,7 +861,7 @@ export class SupabaseFirstPreviewCustomerViewStateSource
         return unavailable();
       }
 
-      const [outputResult, jobResult] = await Promise.all([
+      let [outputResult, jobResult] = await Promise.all([
         this.database.findOutputCandidates(
           lookup.conceptBriefId,
           FIRST_PREVIEW_CUSTOMER_VIEW_CANDIDATE_LIMIT,
@@ -835,11 +875,20 @@ export class SupabaseFirstPreviewCustomerViewStateSource
         outputResult.error ||
         jobResult.error ||
         !outputResult.data ||
-        !jobResult.data ||
-        outputResult.data.length > 2 ||
-        jobResult.data.length > 2
+        !jobResult.data
       ) {
         return unavailable();
+      }
+
+      const hasRevision = jobResult.data.some(row => isRecord(row) && row.source_output_id !== null);
+      if (hasRevision || outputResult.data.length > 2 || jobResult.data.length > 2) {
+        if (!this.database.findExtendedLineageCandidates) return unavailable();
+        const extended = await this.database.findExtendedLineageCandidates(lookup.conceptBriefId);
+        if (extended.error || !extended.outputs || !extended.jobs ||
+          extended.outputs.length > FIRST_PREVIEW_CUSTOMER_VIEW_HISTORY_LIMIT ||
+          extended.jobs.length > FIRST_PREVIEW_CUSTOMER_VIEW_HISTORY_LIMIT) return unavailable();
+        outputResult = { data: extended.outputs, error: null };
+        jobResult = { data: extended.jobs, error: null };
       }
 
       const outputs = outputResult.data.map((output) =>
@@ -895,11 +944,10 @@ export class SupabaseFirstPreviewCustomerViewStateSource
       }
 
       const readyCandidates = safeOutputs.filter(
-        (output) => output.readinessStatus === "first_preview_ready",
+        (output) => output.readinessStatus === "first_preview_ready" && output.isCurrentCustomerPreview,
       );
       if (readyCandidates.length > 1) return unavailable();
       if (readyCandidates.length === 1) {
-        if (safeOutputs.length !== 1) return unavailable();
         const ready = readyCandidates[0];
         const job = safeJobs.find((candidate) => candidate.id === ready.jobId);
         if (
