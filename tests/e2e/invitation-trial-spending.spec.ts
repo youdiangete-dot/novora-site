@@ -1,6 +1,7 @@
 import { test,expect } from "@playwright/test";
 import { createHash,randomUUID } from "node:crypto";
-import { execFileSync,execFile } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { createLocalRedisTestTransport } from "../tools/local-redis-test-transport.cjs";
 import Module,{createRequire} from "node:module";
 import path from "node:path";
 import {readFileSync} from "node:fs";
@@ -80,9 +81,9 @@ test("old single/verified Lua declarations remain byte-for-byte unchanged from t
 });
 
 test("actual local Redis Lua admits initial then reconciled revision, consumes UNKNOWN, and rejects another dispatch",async()=>{
- const port=process.env.NOVORA_BETA_LOCAL_REDIS_TEST_PORT,cli=process.env.NOVORA_BETA_LOCAL_REDIS_CLI;
- test.skip(!port||!cli,"No existing disposable local Redis/CLI configured; actual Lua/concurrency not claimed.");
- const redis=(...args:string[])=>execFileSync(cli!,["--raw","-h","127.0.0.1","-p",port!,...args],{encoding:"utf8",timeout:5000,windowsHide:true,env:{...process.env,REDISCLI_AUTH:"",REDISCLI_USER:""}}).trimEnd();
+ const transport=createLocalRedisTestTransport();
+ test.skip(!transport,"No existing disposable local Redis/CLI configured; actual Lua/concurrency not claimed.");
+ const redis=(...args:string[])=>transport!.run(...args);
  expect(redis("PING")).toBe("PONG");
  const now=Number(redis("TIME").split(/\r?\n/)[0]);
  const s=c.selection("synthetic_stable_namespace",{...config,expiresAt:now+3500},roster,"synthetic_authority"),b=c.binding(s,"dpl_synthetic"+randomUUID().replaceAll("-",""),"c".repeat(40));
@@ -103,7 +104,7 @@ test("actual local Redis Lua admits initial then reconciled revision, consumes U
  const raceBinding=c.binding(s,"dpl_race"+randomUUID().replaceAll("-",""),"c".repeat(40)),raceAuthority=c.authority(s,raceBinding);
  expect(redis("SET",raceBinding.ledgerKey,JSON.stringify({version:1,authority:raceAuthority,reservations:{}}),"NX")).toBe("OK");
  const args=(op:string,v:unknown)=>["EVAL",trial.TRIAL_SPENDING_SCRIPT,"1",raceBinding.ledgerKey,op,raceBinding.authorityId,raceBinding.runtimeBinding,JSON.stringify(raceAuthority),JSON.stringify(v)];
- const asyncCall=(op:string,v:unknown)=>new Promise<string>((resolve,reject)=>execFile(cli!,["--raw","-h","127.0.0.1","-p",port!,...args(op,v)],{encoding:"utf8",timeout:5000,windowsHide:true,env:{...process.env,REDISCLI_AUTH:"",REDISCLI_USER:""}},(error,stdout)=>error?reject(error):resolve(stdout.trimEnd())));
+ const asyncCall=(op:string,v:unknown)=>transport!.runAsync(...args(op,v)) as Promise<string>;
  const contenders=Array.from({length:8},(_,i)=>{const id=randomUUID();return {...initial,requestKey:hash(`race-${i}`),briefId:id,sourceBriefId:id};});
  const admitted=await Promise.all(contenders.map(value=>asyncCall("reserve",value)));
  expect(admitted.filter(result=>result==="reserved")).toHaveLength(1);
