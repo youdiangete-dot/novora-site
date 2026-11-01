@@ -54,6 +54,7 @@ test("UNKNOWN holds disable replacement checkout and mobile form stays within vi
   await expect(page.getByRole("button", { name: "Start Sandbox checkout" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Check payment status" })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: "test-results/test01-package-mobile.png", fullPage: true });
 });
 test("unconfigured Sandbox is clearly unavailable without a payment mutation", async ({ page }) => {

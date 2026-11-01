@@ -119,8 +119,10 @@ separate gates. Build remains the coordinator's final relevant check.
 The domain/namespace is not a credential. UUIDs are row identifiers only and
 cannot authorize a request. The source scope/identity always comes from A's
 server invitation verifier, and is rechecked against B's immutable purchase.
-Changing invitation/deployment scope changes the partition; bearer rotation
-retaining that verified identity/scope does not. There is one stable TEST-01
+With explicit trial mode enabled, deployment SHA/ID and spending-authority changes
+do not change the trial scope. Changing its namespace/target or invitation
+identity changes the partition; bearer rotation retaining that identity/scope
+does not. There is one stable TEST-01
 purchase per owner/provider in this test scope, not a fresh purchase on refresh,
 expiry or UNKNOWN. Scope changes must never be used as an uncertainty reset.
 These test partitions are not registered user accounts or physical orders.
@@ -147,6 +149,40 @@ configuration were used to build or test this code.
 Browser checks use `tests/tools/test01-package-browser.config.ts`: isolated
 localhost port 3107, real package/PayPal/generation flags forced off, a synthetic
 admin test key, mocked API responses, and external browser requests blocked.
+
+## Final combined local checks
+
+Owner deferred collection/payment on 2026-11-01 until the Taipei partner can
+cooperate on Monday 2026-11-02. Preserve the implemented code and mock evidence;
+package and Sandbox flags stay false/unconfigured in any candidate deployment.
+Account setup, credentials, actual Sandbox checks and further payment feature
+implementation are paused pending an explicit resumption. No payment gate is PASS.
+
+Application source includes the fixed A revision HTTP/runtime/Queue wiring and
+B's exact terminal-failure read. Combined Next.js 16.2.12 production Build and its
+TypeScript pass with real package/PayPal/Queue/generation gates forced off.
+The existing nested-lockfile and local Queue-region warnings remain non-blocking;
+no unrelated configuration was changed to suppress them.
+
+Focused package/route/seam checks pass 22/22, including stable trial identity
+with missing/invalid/unfunded cost authority. The six selected combined checks
+cover revision HTTP, Queue redelivery, uncertain funded claim, UNKNOWN new-op
+denial, stable scope, and refresh/current-direction confirmation. The first run
+passed five; the browser case lacked its synthetic feedback signing fixture and
+therefore correctly did not render that control. Adding only the synthetic test
+configuration made that single rerun pass. These six are one result set, not
+seven independent passes. Earlier A/B and package-browser evidence is reused.
+
+Runner output now uses separate ignored out directories so future runs do not
+clear test-results. The earlier synthetic mobile screenshot was inadvertently
+cleaned by the runner default and is regenerated from the same fixed mock case;
+it is a new visual artifact, not claimed to preserve the original image bytes.
+No screenshots, generated Next files or test result artifacts are staged.
+
+The split, non-authorizing setup request is
+`docs/novora-test01-g4-isolated-setup-draft.md`. The combined local checks do not
+prove online schema/role bindings, real PostgREST terminal reads, real Sandbox
+eligibility/payment, image delivery, or deployed G2 acceptance.
 
 Reusable integration rule: a verified capture is a payment fact, not a client
 confirmation or an entitlement grant. Return customer-confirmed state only after

@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "../e2e", testMatch: "test01-package-browser.spec.ts", timeout: 45000,
-  workers: 1, reporter: "list", use: { baseURL: "http://127.0.0.1:3107", trace: "off" },
+  workers: 1, reporter: "list", outputDir: "../../out/test01-package-browser-results",
+  use: { baseURL: "http://127.0.0.1:3107", trace: "off" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "node ../../node_modules/next/dist/bin/next dev --webpack --hostname 127.0.0.1 --port 3107",

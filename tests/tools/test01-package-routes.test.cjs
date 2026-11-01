@@ -173,3 +173,35 @@ test('Sandbox transport is injected, credential-private and cannot address live 
   await assert.rejects(()=>transport.http({url:'https://api-m.paypal.com/v2/checkout/orders',method:'POST',headers:{},signal:new AbortController().signal,redirect:'error'}));
   assert.equal(calls.length,1);
 });
+
+test('stable trial identity does not bypass missing, invalid or unfunded spending authority',async()=>{
+  const fundedEnvironment={...environment,NOVORA_BETA_INVITATIONS_JSON:JSON.stringify([{identity:'TEST-customer',credentialSha256:hash(token)}]),
+    VERCEL:'1',NODE_ENV:'production',NEXT_RUNTIME:'nodejs',VERCEL_GIT_COMMIT_REF:'integration/instant-first-preview-agent',
+    VERCEL_GIT_COMMIT_SHA:'a'.repeat(40),VERCEL_DEPLOYMENT_ID:'dpl_TESTintegrationDeployment123',
+    NOVORA_INSTANT_PREVIEW_AGENT_ENABLED:'true',NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED:'true',
+    UPSTASH_REDIS_REST_URL:'https://test-redis.example.invalid',UPSTASH_REDIS_REST_TOKEN:'TEST-fake-redis-token'};
+  const stable=beta.authenticateScopedReceiptRequest(request(),fundedEnvironment);
+  assert.ok(stable);assert.equal(beta.isScopedReceiptOwnerActive(stable,fundedEnvironment),true);
+  let network=0;
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async()=>{network++;throw Error('Real network forbidden');};
+  try {
+    for(const authority of [undefined,'invalid authority with spaces']) {
+      const env={...fundedEnvironment,NOVORA_BETA_SPENDING_AUTHORITY_ID:authority};
+      assert.deepEqual(beta.authenticateScopedReceiptRequest(request(),env),stable);
+      assert.equal(beta.createRedisBetaAdmissionLedger(env,globalThis.fetch),null);
+      const req=request();req.headers.set('idempotency-key','d'.repeat(32));
+      assert.equal(await beta.reserveBetaAdmission({request:req,briefId:'123e4567-e89b-42d3-a456-426614174000',fingerprint:'e'.repeat(64)},
+        {environment:env}),'denied');
+    }
+    assert.equal(network,0);
+    let fundingReads=0;
+    const env={...fundedEnvironment,NOVORA_BETA_SPENDING_AUTHORITY_ID:'TEST-funded-authority'};
+    const ledger=beta.createRedisBetaAdmissionLedger(env,async()=>{
+      fundingReads++;return Response.json({result:'denied'}); // durable authority absent/invalid; synthetic RPC only
+    });
+    assert.ok(ledger);assert.deepEqual(beta.authenticateScopedReceiptRequest(request(),env),stable);
+    assert.equal(await ledger.reserve({identity:stable.identity,briefId:'123e4567-e89b-42d3-a456-426614174000',requestKey:'d'.repeat(64),fingerprint:'e'.repeat(64)}),'denied');
+    assert.equal(fundingReads,1);assert.equal(network,0);
+  } finally {globalThis.fetch=originalFetch;}
+});
