@@ -86,6 +86,7 @@ const JOB_COLUMNS = [
   "parent_generation_purpose",
   "parent_attempt_number",
   "source_output_id",
+  "prompt_payload",
   "design_spec_version",
   "design_spec_hash",
   "hand_sketch_instruction_version",
@@ -355,6 +356,8 @@ type SafeJob = Readonly<{
   deadlineAt: bigint | null;
   completedAt: bigint | null;
   failedAt: bigint | null;
+  terminalAt: bigint | null;
+  revisionParentOutcome: "definite_failure" | null;
   designSpecVersion: string;
   designSpecHash: string;
   handSketchInstructionVersion: string;
@@ -554,6 +557,8 @@ function mapSafeJob(value: unknown, conceptBriefId: string): SafeJob | null {
     deadlineAt,
     completedAt,
     failedAt,
+    terminalAt: failedAt ?? cancelledAt ?? timedOutAt,
+    revisionParentOutcome: isRecord(value.prompt_payload) && value.prompt_payload.revisionParentOutcome === "definite_failure" ? "definite_failure" : null,
     designSpecVersion: value.design_spec_version,
     designSpecHash: value.design_spec_hash,
     handSketchInstructionVersion: value.hand_sketch_instruction_version,
@@ -741,10 +746,15 @@ function hasValidCandidateLineage(
         (second.startedAt !== null && second.startedAt < first.failedAt)) return false;
     } else {
       const source = outputs.find(output => output.id === second.sourceOutputId);
-      if (first.status !== "succeeded" || first.completedAt === null ||
-        !source || source.jobId !== first.id || source.readyAt === null ||
+      const sourceJob = jobs.find(job => job.id === source?.jobId);
+      const continuation = second.revisionParentOutcome === "definite_failure" &&
+        ["failed", "cancelled", "timed_out"].includes(first.status) && first.terminalAt !== null &&
+        first.sourceOutputId === source?.id && first.terminalAt <= second.createdAt;
+      if (!sourceJob || sourceJob.status !== "succeeded" || sourceJob.completedAt === null ||
+        !((first.status === "succeeded" && source?.jobId === first.id) || continuation) ||
+        !source || source.readyAt === null || sourceJob.attemptNumber > first.attemptNumber ||
         source.assetValidationStatus !== "passed" || source.automaticGateStatus !== "passed" ||
-        second.createdAt < first.completedAt || second.createdAt < source.readyAt) return false;
+        second.createdAt < sourceJob.completedAt || second.createdAt < source.readyAt) return false;
     }
   }
 

@@ -130,6 +130,7 @@ export type FirstPreviewJobRecord = Readonly<{
   parentJobId: string | null;
   sourceOutputId: string | null;
   revisionDirectives?: readonly RevisionDirective[];
+  revisionParentOutcome?: "definite_failure";
   designSpecVersion: string;
   designSpecSha256: string;
   handSketchInstructionVersion: string;
@@ -229,6 +230,8 @@ export type ReserveFirstPreviewJobInput = Readonly<{
   parentJobId: string | null;
   sourceOutputId: string | null;
   revisionDirectives?: readonly RevisionDirective[];
+  /** Server-verified prior outcome, never copied from a request body. */
+  revisionParentOutcome?: "definite_failure";
   designSpecVersion: string;
   designSpecSha256: string;
   handSketchInstructionVersion: string;
@@ -381,6 +384,7 @@ export interface FirstPreviewRepository {
   findJobByIdempotencyKey(idempotencyKey: string): Promise<FirstPreviewJobRecord | null>;
 
   findJobById(jobId: string): Promise<FirstPreviewJobRecord | null>;
+  findLatestJobForBrief?(conceptBriefId: string): Promise<FirstPreviewJobRecord | null>;
   findOutputByJobId?(jobId: string, conceptBriefId: string): Promise<FirstPreviewOutputRecord | null>;
 
   findCustomerReadyOutput(conceptBriefId: string): Promise<FirstPreviewOutputRecord | null>;
@@ -410,6 +414,7 @@ export function isValidFirstPreviewReservationIdentity(
     (input.parentJobId === null || UUID_PATTERN.test(input.parentJobId)) &&
     (input.sourceOutputId === null || UUID_PATTERN.test(input.sourceOutputId)) &&
     (input.revisionDirectives === undefined || readRevisionDirectives(input.revisionDirectives) !== null) &&
+    (input.revisionParentOutcome === undefined || (input.revisionParentOutcome === "definite_failure" && input.sourceOutputId !== null)) &&
     isTrimmedSystemIdentifier(input.designSpecVersion) &&
     SHA256_PATTERN.test(input.designSpecSha256) &&
     isTrimmedSystemIdentifier(input.handSketchInstructionVersion) &&

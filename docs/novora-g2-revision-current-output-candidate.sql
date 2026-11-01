@@ -5,6 +5,32 @@ BEGIN;
 SET LOCAL lock_timeout = '2s';
 SET LOCAL statement_timeout = '30s';
 
+-- The reviewed M3 FK couples the source to the immediately preceding job.
+-- A definitively failed revision consumes a sequence number while the earlier
+-- safe image remains current. Keep the Brief FK; validate ancestry in the RPC.
+-- Live preflight must confirm these exact existing M3/Core objects first.
+ALTER TABLE ONLY public.ai_sketch_jobs DROP CONSTRAINT ai_sketch_jobs_source_output_lineage_fkey;
+ALTER TABLE ONLY public.ai_sketch_jobs ADD CONSTRAINT ai_sketch_jobs_source_output_lineage_fkey
+  FOREIGN KEY (source_output_id, concept_brief_id)
+  REFERENCES public.ai_sketch_outputs (id, concept_brief_id);
+
+ALTER TABLE ONLY public.ai_sketch_jobs DROP CONSTRAINT ai_sketch_jobs_mvp_core_identity_check;
+ALTER TABLE ONLY public.ai_sketch_jobs ADD CONSTRAINT ai_sketch_jobs_mvp_core_identity_check CHECK ((
+  (status IS NOT DISTINCT FROM 'draft' AND num_nonnulls(generation_purpose,idempotency_key,attempt_number,
+    lineage_identity,parent_job_id,parent_generation_purpose,parent_attempt_number,source_output_id,
+    design_spec_version,design_spec_hash,hand_sketch_instruction_version,hand_sketch_instruction_hash)=0)
+  OR (status IS DISTINCT FROM 'draft' AND generation_purpose IS NOT DISTINCT FROM 'first_preview'
+    AND attempt_number BETWEEN 1 AND 32767 AND (attempt_number<=2 OR source_output_id IS NOT NULL)
+    AND idempotency_key ~ '^[0-9a-f]{64}$'
+    AND lineage_identity IS NOT DISTINCT FROM 'first-preview:v1'
+    AND design_spec_version IS NOT NULL AND btrim(design_spec_version) <> '' AND design_spec_hash ~ '^[0-9a-f]{64}$'
+    AND hand_sketch_instruction_version IS NOT NULL AND btrim(hand_sketch_instruction_version) <> ''
+    AND hand_sketch_instruction_hash ~ '^[0-9a-f]{64}$'
+    AND ((attempt_number=1 AND parent_job_id IS NULL AND parent_generation_purpose IS NULL
+      AND parent_attempt_number IS NULL AND source_output_id IS NULL)
+      OR (attempt_number>=2 AND parent_job_id IS NOT NULL AND parent_generation_purpose IS NOT DISTINCT FROM 'first_preview'
+        AND parent_attempt_number IS NOT DISTINCT FROM attempt_number-1)))) IS TRUE);
+
 CREATE FUNCTION public.novora_promote_revision_output(
   p_brief_id uuid, p_job_id uuid, p_output_id uuid, p_source_output_id uuid,
   p_content_sha256 text, p_policy_version text, p_gate_evidence jsonb,
@@ -16,6 +42,7 @@ DECLARE
   candidate public.ai_sketch_outputs%ROWTYPE;
   job public.ai_sketch_jobs%ROWTYPE;
   parent public.ai_sketch_jobs%ROWTYPE;
+  source_job public.ai_sketch_jobs%ROWTYPE;
   review public.ai_sketch_reviews%ROWTYPE;
 BEGIN
   IF jsonb_typeof(p_gate_evidence) IS DISTINCT FROM 'object' OR
@@ -35,12 +62,19 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'REVISION_PROMOTION_REJECTED' USING ERRCODE = '22023'; END IF;
   SELECT * INTO parent FROM public.ai_sketch_jobs WHERE id = job.parent_job_id AND concept_brief_id = p_brief_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'REVISION_PROMOTION_REJECTED' USING ERRCODE = '22023'; END IF;
+  SELECT * INTO source_job FROM public.ai_sketch_jobs WHERE id = source.job_id AND concept_brief_id = p_brief_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'REVISION_PROMOTION_REJECTED' USING ERRCODE = '22023'; END IF;
   SELECT * INTO review FROM public.ai_sketch_reviews WHERE concept_brief_id = p_brief_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'REVISION_PROMOTION_REJECTED' USING ERRCODE = '22023'; END IF;
 
   IF (p_output_id <> p_source_output_id AND
-      job.source_output_id = source.id AND job.parent_job_id = source.job_id AND
-      job.attempt_number = parent.attempt_number + 1 AND parent.status = 'succeeded' AND
+      job.source_output_id = source.id AND source_job.status = 'succeeded' AND
+      source_job.attempt_number <= parent.attempt_number AND
+      ((parent.status = 'succeeded' AND job.parent_job_id = source.job_id) OR
+        (parent.status IN ('failed','cancelled','timed_out') AND parent.source_output_id=source.id AND
+          job.prompt_payload->>'revisionParentOutcome'='definite_failure' AND
+          coalesce(parent.failed_at,parent.cancelled_at,parent.timed_out_at) <= job.created_at)) AND
+      job.attempt_number = parent.attempt_number + 1 AND
       job.status = 'succeeded' AND job.generation_purpose = 'first_preview' AND
       job.lineage_identity = 'first-preview:v1' AND candidate.job_id = job.id AND
       candidate.content_sha256 = p_content_sha256 AND
@@ -57,7 +91,7 @@ BEGIN
       source.readiness_status = 'first_preview_ready' AND source.is_current_customer_preview AND
       source.readiness_revoked_at IS NULL AND source.automatic_gate_status = 'passed' AND
       source.automatic_gate_policy_version = p_policy_version AND
-      source.first_preview_ready_at <= job.created_at AND parent.completed_at <= job.created_at AND
+      source.first_preview_ready_at <= job.created_at AND source_job.completed_at <= job.created_at AND
       review.ai_sketch_output_id = source.id AND review.review_status = 'needs_revision' AND
       length(btrim(review.revision_instruction)) BETWEEN 1 AND 2000 AND
       job.started_at <= job.completed_at AND candidate.asset_validated_at <= job.completed_at AND

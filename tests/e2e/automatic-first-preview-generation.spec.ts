@@ -172,7 +172,7 @@ async function revisionFixture(options: { claim?: "claimed" | "already_claimed" 
   const initial = (await repo.findCustomerReadyOutput(BRIEF_ID))!;
   const requests = new Map<symbol, string>();
   const bindings = new Map<string, import("../../lib/server/ai-sketch/first-preview-revision").RevisionDispatchBinding>();
-  const settlements: Array<{ outcome: string; providerCostUsdMicros: number }> = [];
+  const settlements: Array<{ operationId: string; outcome: string; providerCostUsdMicros: number }> = [];
   let work: FirstPreviewGenerationWork | null = null;
   const service = modules.revision.createSourceBoundRevisionService({
     repository: repo,
@@ -182,6 +182,7 @@ async function revisionFixture(options: { claim?: "claimed" | "already_claimed" 
       conceptBriefId: BRIEF_ID, publicReference: PUBLIC_REFERENCE, sourceOutputId: requests.get(request as symbol)!, originalInput: prepared.work.structured,
     }) : null,
     resolveDispatch: async id => bindings.get(id) ?? null,
+    isDefiniteFailure: async binding => settlements.some(item => item.operationId === binding.operationId && item.outcome === "definite_failure"),
     entitlements: {
       reserve: async input => { bindings.set(input.operationId, input); return { ok: true, duplicate: false, state: "reserved" }; },
       claimDispatch: async () => { claims++; return options.claim ?? "claimed"; },
@@ -253,6 +254,28 @@ test.describe("source-bound paid revision execution", () => {
     expect((await fixture.repo.findCustomerReadyOutput(BRIEF_ID))?.id).toBe(fixture.initial.id);
     expect(fixture.settlements.at(-1)).toMatchObject({ outcome: "definite_failure" });
     expect(fixture.settlements.at(-1)!.providerCostUsdMicros).toBeGreaterThan(0);
+  });
+
+  test("an explicitly requested new operation follows a durably released failed revision without losing its safe source", async () => {
+    const options = { privacyFailure: true };
+    const fixture = await revisionFixture(options);
+    await fixture.service.prepare(await fixture.request(), JOB_2_ID);
+    expect((await fixture.service.execute(fixture.work())).status).toBe("definite_failure");
+    options.privacyFailure = false;
+    const next = "823e4567-e89b-42d3-a456-426614174000";
+    expect((await fixture.service.prepare(await fixture.request("wider_band"), next)).status).toBe("accepted");
+    expect(await fixture.repo.findJobById(next)).toMatchObject({ parentJobId: JOB_2_ID, attemptNumber: 3, sourceOutputId: fixture.initial.id, revisionParentOutcome: "definite_failure" });
+    expect((await fixture.repo.findCustomerReadyOutput(BRIEF_ID))?.id).toBe(fixture.initial.id);
+    expect((await fixture.service.execute(fixture.work())).status).toBe("delivered");
+    expect(fixture.stats()).toEqual({ calls: 3, claims: 2, publications: 2 });
+  });
+
+  test("an UNKNOWN dispatch outcome cannot authorize another revision operation", async () => {
+    const fixture = await revisionFixture({ claim: "unknown" });
+    await fixture.service.prepare(await fixture.request(), JOB_2_ID);
+    expect((await fixture.service.execute(fixture.work())).status).toBe("unknown");
+    expect((await fixture.service.prepare(await fixture.request(), "823e4567-e89b-42d3-a456-426614174000")).status).toBe("denied");
+    expect(fixture.stats()).toEqual({ calls: 1, claims: 1, publications: 1 });
   });
 
   for (const claim of ["already_claimed", "unknown", "denied"] as const) test(`${claim} does not dispatch or replace the current image`, async () => {

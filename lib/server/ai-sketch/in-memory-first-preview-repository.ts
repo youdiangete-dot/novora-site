@@ -160,6 +160,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         existing.parentJobId === input.parentJobId &&
         existing.sourceOutputId === input.sourceOutputId &&
         JSON.stringify(existing.revisionDirectives ?? null) === JSON.stringify(input.revisionDirectives ?? null) &&
+        existing.revisionParentOutcome === input.revisionParentOutcome &&
         existing.designSpecVersion === input.designSpecVersion &&
         existing.designSpecSha256 === input.designSpecSha256 &&
         existing.handSketchInstructionVersion ===
@@ -214,7 +215,9 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
           return failure("retry_not_eligible");
         }
       } else {
-        if (parent.status !== "succeeded") {
+        const continuation = input.revisionParentOutcome === "definite_failure" &&
+          ["failed", "cancelled", "timed_out"].includes(parent.status) && parent.sourceOutputId === input.sourceOutputId;
+        if (parent.status !== "succeeded" && !continuation) {
           return failure("revision_not_eligible");
         }
         const output = this.outputsById.get(input.sourceOutputId);
@@ -223,11 +226,13 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         }
         if (
           output.id !== input.sourceOutputId ||
-          output.jobId !== parent.id ||
+          (output.jobId !== parent.id && !continuation) ||
           output.conceptBriefId !== input.conceptBriefId
         ) {
           return failure("linkage_mismatch");
         }
+        const sourceJob = this.jobsById.get(output.jobId);
+        if (!sourceJob || sourceJob.status !== "succeeded" || sourceJob.conceptBriefId !== input.conceptBriefId || sourceJob.attemptNumber > parent.attemptNumber) return failure("linkage_mismatch");
         if (
           output.readinessStatus !== "first_preview_ready" ||
           output.isCurrentCustomerPreview !== true
@@ -262,6 +267,7 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       parentJobId: input.parentJobId,
       sourceOutputId: input.sourceOutputId,
       ...(input.revisionDirectives ? { revisionDirectives: [...input.revisionDirectives] } : {}),
+      ...(input.revisionParentOutcome ? { revisionParentOutcome: input.revisionParentOutcome } : {}),
       designSpecVersion: input.designSpecVersion,
       designSpecSha256: input.designSpecSha256,
       handSketchInstructionVersion: input.handSketchInstructionVersion,
@@ -695,9 +701,12 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         candidate.isCurrentCustomerPreview,
     );
     const source = job.sourceOutputId ? this.outputsById.get(job.sourceOutputId) : null;
+    const parent = job.parentJobId ? this.jobsById.get(job.parentJobId) : null;
+    const continuation = job.revisionParentOutcome === "definite_failure" && parent &&
+      ["failed", "cancelled", "timed_out"].includes(parent.status) && parent.sourceOutputId === job.sourceOutputId;
     const sourceReview = this.reviewsByConceptBriefId.get(input.conceptBriefId);
     if (job.sourceOutputId && (!source || source.conceptBriefId !== input.conceptBriefId ||
-      source.jobId !== job.parentJobId || source.readinessStatus !== "first_preview_ready" ||
+      (source.jobId !== job.parentJobId && !continuation) || source.readinessStatus !== "first_preview_ready" ||
       !source.isCurrentCustomerPreview || current.length !== 1 || current[0].id !== source.id ||
       sourceReview?.outputId !== source.id || sourceReview.reviewStatus !== "needs_revision" ||
       !sourceReview.revisionInstruction)) {
@@ -763,6 +772,12 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     const id = this.outputIdByJobId.get(jobId);
     const output = id ? this.outputsById.get(id) : null;
     return output?.conceptBriefId === conceptBriefId ? copyOutput(output) : null;
+  }
+
+  async findLatestJobForBrief(conceptBriefId: string): Promise<FirstPreviewJobRecord | null> {
+    const job = [...this.jobsById.values()].filter(value => value.conceptBriefId === conceptBriefId)
+      .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
+    return job ? copyJob(job) : null;
   }
 
   async revokeOutput(

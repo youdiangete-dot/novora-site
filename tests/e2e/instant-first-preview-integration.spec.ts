@@ -350,6 +350,20 @@ class RevisionViewDatabase extends FakeViewDatabase {
 }
 
 test.describe("revision source lineage and current private preview", () => {
+  test("a released failed parent preserves the earlier safe source in a later current revision", async () => {
+    for (const verified of [true, false]) {
+      const data = revisedHistory();
+      Object.assign(data.jobs[1], { status: "failed", completed_at: null, failed_at: data.jobs[1].updated_at,
+        failure_category: "privacy_failure", retry_eligible: false, terminal_reason: "privacy_failure" });
+      Object.assign(data.jobs[2], { source_output_id: data.outputs[0].id,
+        prompt_payload: verified ? { revisionParentOutcome: "definite_failure" } : {} });
+      data.outputs.splice(1, 1);
+      const database = new RevisionViewDatabase(); Object.assign(database, data);
+      expect(await reader(database)({ publicReference: PUBLIC_REFERENCE })).toEqual(verified
+        ? { state: "ready", assetRequest: { publicReference: PUBLIC_REFERENCE, outputId: data.outputs[1].id } }
+        : { state: "unavailable" });
+    }
+  });
   test("reads only the current safe revision after multiple linked revisions", async () => {
     const database = new RevisionViewDatabase();
     Object.assign(database, revisedHistory());

@@ -410,11 +410,16 @@ async function hasExactRevisionSource(repository: FirstPreviewRepository, work: 
     repository.findJobById(work.jobId), repository.findJobById(work.parentJobId),
     repository.findCustomerReadyOutput(work.conceptBriefId), repository.findReviewByConceptBriefId(work.conceptBriefId),
   ]);
-  return Boolean(job && parent && source && review &&
+  const sourceJob = source ? await repository.findJobById(source.jobId) : null;
+  const continuation = job?.revisionParentOutcome === "definite_failure" && parent &&
+    ["failed", "cancelled", "timed_out"].includes(parent.status) && parent.sourceOutputId === source?.id;
+  return Boolean(job && parent && source && sourceJob && review &&
     job.sourceOutputId === work.sourceOutputId && job.parentJobId === parent.id &&
     job.attemptNumber === work.attemptNumber && parent.attemptNumber + 1 === work.attemptNumber &&
     job.conceptBriefId === work.conceptBriefId && parent.conceptBriefId === work.conceptBriefId &&
-    parent.status === "succeeded" && source.id === work.sourceOutputId && source.jobId === parent.id &&
+    sourceJob.status === "succeeded" && sourceJob.conceptBriefId === work.conceptBriefId &&
+    sourceJob.attemptNumber <= parent.attemptNumber &&
+    ((parent.status === "succeeded" && source.jobId === parent.id) || continuation) && source.id === work.sourceOutputId &&
     source.isCurrentCustomerPreview && source.readinessStatus === "first_preview_ready" &&
     review.outputId === source.id && review.reviewStatus === "needs_revision" && review.revisionInstruction &&
     job.designSpecSha256 === work.structured.designSpecSha256 &&

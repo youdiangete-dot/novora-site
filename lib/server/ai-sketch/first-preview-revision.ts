@@ -29,6 +29,9 @@ type Dependencies = Readonly<{
   // the existing protected admin acting for that owner. Never echo body IDs.
   resolveSource(request: unknown): Promise<RevisionSource | null>;
   resolveDispatch(operationId: string): Promise<RevisionDispatchBinding | null>;
+  // Read the exact immutable binding's durable released outcome. A failed job
+  // alone (including an UNKNOWN dispatch) never authorizes a new operation.
+  isDefiniteFailure?(binding: RevisionDispatchBinding): Promise<boolean>;
   entitlements: Readonly<{
     reserve(input: RevisionDispatchBinding & { purchaseId: string; subjectId: string }): Promise<UseResult>;
     claimDispatch(input: RevisionDispatchBinding): Promise<Claim>;
@@ -87,15 +90,29 @@ export function createSourceBoundRevisionService(deps: Dependencies) {
         if (!current || current.id !== source.sourceOutputId || current.readinessStatus !== "first_preview_ready" || !current.isCurrentCustomerPreview ||
           !review || review.outputId !== current.id || review.reviewStatus !== "needs_revision") return reject("denied");
         const requested = parseRevisionDirectives(review.revisionInstruction);
-        const parent = await deps.repository.findJobById(current.jobId);
-        if (!requested || !parent || parent.status !== "succeeded" || (parent.sourceOutputId && !parent.revisionDirectives)) return reject("denied");
-        const previous = parent.revisionDirectives ?? [];
+        const sourceJob = await deps.repository.findJobById(current.jobId);
+        if (!requested || !sourceJob || sourceJob.status !== "succeeded" || (sourceJob.sourceOutputId && !sourceJob.revisionDirectives) ||
+          !hasPassedFirstPreviewAutomaticGateEvidence(current.automaticGateEvidence, { conceptBriefId: current.conceptBriefId, jobId: current.jobId, outputId: current.id, contentSha256: current.contentSha256 })) return reject("denied");
+        const parent = deps.repository.findLatestJobForBrief
+          ? await deps.repository.findLatestJobForBrief(source.conceptBriefId) : sourceJob;
+        if (!parent) return reject("unavailable");
+        let continuation = false;
+        if (parent.id !== sourceJob.id) {
+          const prior = await deps.resolveDispatch(parent.id);
+          if (!["failed", "cancelled", "timed_out"].includes(parent.status) || parent.sourceOutputId !== current.id ||
+            !prior || prior.operationId !== parent.id || prior.reservationId !== parent.id || prior.kind !== "revision" ||
+            prior.briefId !== source.conceptBriefId || prior.sourceOutputId !== current.id ||
+            prior.owner.scope !== source.owner.scope || prior.owner.identity !== source.owner.identity ||
+            await deps.isDefiniteFailure?.(prior) !== true) return reject("denied");
+          continuation = true;
+        }
+        const previous = sourceJob.revisionDirectives ?? [];
         const prepared = buildRevisedPreparedInput(source.originalInput, previous, requested, source.publicReference, source.conceptBriefId);
         if (!prepared) return reject("denied");
         const merged = Object.keys(REVISION_DIRECTIVES).filter(code => prepared.designSpec.jewelry_structure.construction_consistency_notes.includes(REVISION_DIRECTIVES[code as RevisionDirective])) as RevisionDirective[];
         const reserved = await deps.repository.reserveJob({ jobId: operationId, conceptBriefId: source.conceptBriefId,
           parentJobId: parent.id, sourceOutputId: current.id, attemptNumber: parent.attemptNumber + 1,
-          revisionDirectives: merged, designSpecVersion: prepared.designSpec.spec_version, designSpecSha256: prepared.designSpecSha256,
+          revisionDirectives: merged, ...(continuation ? { revisionParentOutcome: "definite_failure" as const } : {}), designSpecVersion: prepared.designSpec.spec_version, designSpecSha256: prepared.designSpecSha256,
           handSketchInstructionVersion: prepared.handSketchInstruction.instruction_version, handSketchInstructionSha256: prepared.handSketchInstructionSha256,
           estimatedCostMicros: FIRST_PREVIEW_COST_CONTRACT.estimatedCostMicros, costCurrency: "USD", pricingAssumptionVersion: FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION });
         if (!reserved.ok) return reject("unavailable");

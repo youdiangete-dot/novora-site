@@ -129,6 +129,7 @@ type RowPatch = Record<string, unknown>;
 export interface FirstPreviewDatabaseClient {
   insertJob(row: RowPatch): DatabaseResult<FirstPreviewJobRow>;
   findJobById(id: string): DatabaseResult<FirstPreviewJobRow>;
+  findLatestJobForBrief?(conceptBriefId: string): DatabaseResult<FirstPreviewJobRow>;
   findJobByIdempotencyKey(key: string): DatabaseResult<FirstPreviewJobRow>;
   findJobByAttempt(
     conceptBriefId: string,
@@ -327,6 +328,10 @@ export function createFirstPreviewDatabaseClient(
         p_passed_at: patch.automatic_gate_passed_at,
       });
       return { data: result.data as FirstPreviewOutputRow | null, error: result.error };
+    },
+    async findLatestJobForBrief(conceptBriefId) {
+      return supabase.from("ai_sketch_jobs").select(JOB_COLUMNS).eq("concept_brief_id", conceptBriefId)
+        .eq("generation_purpose", "first_preview").order("attempt_number", { ascending: false }).limit(1).maybeSingle();
     },
     async findCustomerReadyOutput(conceptBriefId) {
       return supabase
@@ -547,6 +552,8 @@ function mapJob(row: FirstPreviewJobRow | null): FirstPreviewJobRecord | null {
     lineageIdentity: FIRST_PREVIEW_LINEAGE_IDENTITY,
     parentJobId: row.parent_job_id,
     sourceOutputId: row.source_output_id,
+    ...(row.prompt_payload && typeof row.prompt_payload === "object" && "revisionParentOutcome" in row.prompt_payload &&
+      row.prompt_payload.revisionParentOutcome === "definite_failure" ? { revisionParentOutcome: "definite_failure" as const } : {}),
     ...(row.prompt_payload && typeof row.prompt_payload === "object" &&
       "revisionDirectives" in row.prompt_payload && readRevisionDirectives(row.prompt_payload.revisionDirectives)
       ? { revisionDirectives: readRevisionDirectives(row.prompt_payload.revisionDirectives)! } : {}),
@@ -640,6 +647,7 @@ function identityMatches(job: FirstPreviewJobRecord, input: ReserveFirstPreviewJ
     job.attemptNumber === input.attemptNumber && job.parentJobId === input.parentJobId &&
     job.sourceOutputId === input.sourceOutputId &&
     JSON.stringify(job.revisionDirectives ?? null) === JSON.stringify(input.revisionDirectives ?? null) &&
+    job.revisionParentOutcome === input.revisionParentOutcome &&
     job.designSpecVersion === input.designSpecVersion &&
     job.designSpecSha256 === input.designSpecSha256 &&
     job.handSketchInstructionVersion === input.handSketchInstructionVersion &&
@@ -708,7 +716,9 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
           return failure("retry_not_eligible");
         }
       } else {
-        if (parent.status !== "succeeded") {
+        const continuation = input.revisionParentOutcome === "definite_failure" &&
+          ["failed", "cancelled", "timed_out"].includes(parent.status) && parent.sourceOutputId === input.sourceOutputId;
+        if (parent.status !== "succeeded" && !continuation) {
           return failure("revision_not_eligible");
         }
 
@@ -719,11 +729,15 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
         if (!output) return failure("output_not_found");
         if (
           output.id !== input.sourceOutputId ||
-          output.jobId !== parent.id ||
+          (output.jobId !== parent.id && !continuation) ||
           output.conceptBriefId !== input.conceptBriefId
         ) {
           return failure("linkage_mismatch");
         }
+        const sourceJobResult = output.jobId === parent.id ? { data: parentResult.data, error: null }
+          : await this.database.findJobById(output.jobId);
+        const sourceJob = sourceJobResult.error ? null : mapJob(sourceJobResult.data);
+        if (!sourceJob || sourceJob.status !== "succeeded" || sourceJob.conceptBriefId !== input.conceptBriefId || sourceJob.attemptNumber > parent.attemptNumber) return failure("linkage_mismatch");
         if (
           output.readinessStatus !== "first_preview_ready" ||
           output.isCurrentCustomerPreview !== true
@@ -754,7 +768,8 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
       concept_brief_id: input.conceptBriefId,
       status: "queued",
       prompt_version: input.handSketchInstructionVersion,
-      prompt_payload: input.revisionDirectives ? { revisionDirectives: [...input.revisionDirectives] } : {},
+      prompt_payload: { ...(input.revisionDirectives ? { revisionDirectives: [...input.revisionDirectives] } : {}),
+        ...(input.revisionParentOutcome ? { revisionParentOutcome: input.revisionParentOutcome } : {}) },
       model_name: FIRST_PREVIEW_PROVIDER_PROFILE.modelName,
       generation_purpose: "first_preview",
       idempotency_key: key,
@@ -1259,6 +1274,13 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     const result = await this.database.findOutputByJobId(jobId);
     const output = result.error ? null : mapOutput(result.data);
     return output?.conceptBriefId === conceptBriefId ? output : null;
+  }
+
+  async findLatestJobForBrief(conceptBriefId: string): Promise<FirstPreviewJobRecord | null> {
+    if (!this.database.findLatestJobForBrief) return null;
+    const result = await this.database.findLatestJobForBrief(conceptBriefId);
+    const job = result.error ? null : mapJob(result.data);
+    return job?.conceptBriefId === conceptBriefId ? job : null;
   }
 
   async revokeOutput(input: RevokeFirstPreviewOutputInput): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
