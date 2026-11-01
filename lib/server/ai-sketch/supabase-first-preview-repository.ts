@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readRevisionDirectives } from "../../first-preview-revision-directives";
 
 import { FIRST_PREVIEW_COST_CONTRACT } from "./first-preview-cost-contract";
 import {
@@ -62,6 +63,7 @@ export type FirstPreviewJobRow = {
   parent_generation_purpose: string | null;
   parent_attempt_number: number | null;
   source_output_id: string | null;
+  prompt_payload?: unknown;
   design_spec_version: string | null;
   design_spec_hash: string | null;
   hand_sketch_instruction_version: string | null;
@@ -159,6 +161,7 @@ export interface FirstPreviewDatabaseClient {
     expectedPolicyVersion: string | null,
     patch: RowPatch,
   ): DatabaseResult<FirstPreviewOutputRow>;
+  promoteRevisionOutput?(subject: VisualPrivacySubject, sourceOutputId: string, patch: RowPatch): DatabaseResult<FirstPreviewOutputRow>;
   findCustomerReadyOutput(conceptBriefId: string): DatabaseResult<FirstPreviewOutputRow>;
   updateOutput(
     identity: { id: string; jobId: string; conceptBriefId: string },
@@ -176,6 +179,7 @@ export interface FirstPreviewDatabaseClient {
 }
 
 const JOB_COLUMNS = [
+  "prompt_payload",
   "id", "concept_brief_id", "status", "generation_purpose", "idempotency_key",
   "attempt_number", "lineage_identity", "parent_job_id", "parent_generation_purpose",
   "parent_attempt_number", "source_output_id", "design_spec_version", "design_spec_hash",
@@ -312,6 +316,17 @@ export function createFirstPreviewDatabaseClient(
         ? query.is("automatic_gate_policy_version", null)
         : query.eq("automatic_gate_policy_version", expectedPolicyVersion);
       return query.select(OUTPUT_COLUMNS).maybeSingle();
+    },
+    async promoteRevisionOutput(subject, sourceOutputId, patch) {
+      const result = await supabase.rpc("novora_promote_revision_output", {
+        p_brief_id: subject.conceptBriefId, p_job_id: subject.jobId,
+        p_output_id: subject.outputId, p_source_output_id: sourceOutputId,
+        p_content_sha256: subject.contentSha256,
+        p_policy_version: patch.automatic_gate_policy_version,
+        p_gate_evidence: patch.automatic_gate_evidence,
+        p_passed_at: patch.automatic_gate_passed_at,
+      });
+      return { data: result.data as FirstPreviewOutputRow | null, error: result.error };
     },
     async findCustomerReadyOutput(conceptBriefId) {
       return supabase
@@ -532,6 +547,9 @@ function mapJob(row: FirstPreviewJobRow | null): FirstPreviewJobRecord | null {
     lineageIdentity: FIRST_PREVIEW_LINEAGE_IDENTITY,
     parentJobId: row.parent_job_id,
     sourceOutputId: row.source_output_id,
+    ...(row.prompt_payload && typeof row.prompt_payload === "object" &&
+      "revisionDirectives" in row.prompt_payload && readRevisionDirectives(row.prompt_payload.revisionDirectives)
+      ? { revisionDirectives: readRevisionDirectives(row.prompt_payload.revisionDirectives)! } : {}),
     designSpecVersion: row.design_spec_version!,
     designSpecSha256: row.design_spec_hash!,
     handSketchInstructionVersion: row.hand_sketch_instruction_version!,
@@ -621,6 +639,7 @@ function identityMatches(job: FirstPreviewJobRecord, input: ReserveFirstPreviewJ
   return job.conceptBriefId === input.conceptBriefId &&
     job.attemptNumber === input.attemptNumber && job.parentJobId === input.parentJobId &&
     job.sourceOutputId === input.sourceOutputId &&
+    JSON.stringify(job.revisionDirectives ?? null) === JSON.stringify(input.revisionDirectives ?? null) &&
     job.designSpecVersion === input.designSpecVersion &&
     job.designSpecSha256 === input.designSpecSha256 &&
     job.handSketchInstructionVersion === input.handSketchInstructionVersion &&
@@ -735,7 +754,7 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
       concept_brief_id: input.conceptBriefId,
       status: "queued",
       prompt_version: input.handSketchInstructionVersion,
-      prompt_payload: {},
+      prompt_payload: input.revisionDirectives ? { revisionDirectives: [...input.revisionDirectives] } : {},
       model_name: FIRST_PREVIEW_PROVIDER_PROFILE.modelName,
       generation_purpose: "first_preview",
       idempotency_key: key,
@@ -1024,12 +1043,16 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     const job = mapJob(jobResult.data);
     const now = this.clock();
     if (!job || job.conceptBriefId !== subject.conceptBriefId || job.status !== "processing" ||
-      (job.attemptNumber !== 1 && job.attemptNumber !== 2) || job.actualCostMicros === null ||
+      (!job.sourceOutputId && job.attemptNumber !== 1 && job.attemptNumber !== 2) || job.actualCostMicros === null ||
       !isNonblank(job.providerRequestId) || !isIsoTimestamp(job.deadlineAt) ||
       !isIsoTimestamp(now) || Date.parse(job.deadlineAt) <= Date.parse(now)) {
       return failure("job_not_active");
     }
-    const rows = await this.database.findOutputsByConceptBriefId(subject.conceptBriefId);
+    // A paid revision is a separately reserved operation, not another free
+    // first-preview retry. Its one inspection uses only its own CAS-protected
+    // output. The original first-preview/retry aggregate ceiling is unchanged.
+    const rows = job.sourceOutputId ? { data: [outputResult.data!], error: null }
+      : await this.database.findOutputsByConceptBriefId(subject.conceptBriefId);
     if (rows.error || !rows.data) return failure("repository_unavailable");
     if (rows.data.length > 2) return failure("automatic_gates_not_passed");
     let accountedCost = FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS;
@@ -1208,9 +1231,7 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     const passedAt = this.clock();
     if (!isIsoTimestamp(passedAt) || Date.parse(passedAt) > Date.parse(job.deadlineAt) ||
       Date.parse(passedAt) < Date.parse(job.completedAt)) return failure("job_not_active");
-    const updated = await this.database.claimOutputAutomaticGate(
-      visualSubject(output), "pending", FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION,
-      {
+    const patch = {
         automatic_gate_status: "passed",
         automatic_gate_evidence: sanitizedGateEvidence(input.gates),
         automatic_gate_policy_version: input.automaticGatePolicyVersion,
@@ -1219,8 +1240,11 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
         first_preview_ready_at: passedAt,
         readiness_revoked_at: null,
         is_current_customer_preview: true,
-      },
-    );
+      };
+    if (job.sourceOutputId !== null && !this.database.promoteRevisionOutput) return failure("repository_unavailable");
+    const updated = job.sourceOutputId !== null
+      ? await this.database.promoteRevisionOutput!(visualSubject(output), job.sourceOutputId, patch)
+      : await this.database.claimOutputAutomaticGate(visualSubject(output), "pending", FIRST_PREVIEW_AUTOMATIC_GATE_POLICY_VERSION, patch);
     if (updated.error) return isUniqueConflict(updated.error)
       ? failure("attempt_identity_conflict") : failure("repository_unavailable");
     const ready = mapOutput(updated.data);
@@ -1229,6 +1253,12 @@ export class SupabaseFirstPreviewRepository implements FirstPreviewRepository {
     // ready Output; an authorized admin read/write can repair the link later.
     await this.ensureReadyReviewLink(ready.id, ready.conceptBriefId);
     return { ok: true, value: ready };
+  }
+
+  async findOutputByJobId(jobId: string, conceptBriefId: string): Promise<FirstPreviewOutputRecord | null> {
+    const result = await this.database.findOutputByJobId(jobId);
+    const output = result.error ? null : mapOutput(result.data);
+    return output?.conceptBriefId === conceptBriefId ? output : null;
   }
 
   async revokeOutput(input: RevokeFirstPreviewOutputInput): Promise<FirstPreviewRepositoryResult<FirstPreviewOutputRecord>> {
