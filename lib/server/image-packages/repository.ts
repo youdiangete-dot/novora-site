@@ -1,7 +1,7 @@
 import "server-only";
 
 import {
-  isExpectedPurchase, isInstant, isUuid,
+  isExpectedPurchase, isInstant, isUuid, isDispatchBinding,
   type ExpectedTestPurchase, type EntitlementResult, type GrantResult, type ImagePackageRepository,
   type PackageFailure, type UseResult,
 } from "./contract";
@@ -9,6 +9,14 @@ import {
 /** Inject an already authorized server client. No default client/env lookup. */
 export interface ImagePackageRpcClient {
   rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
+}
+export interface ImagePackageSelectQuery {
+  eq(column: string, value: unknown): ImagePackageSelectQuery;
+  is(column: string, value: null): ImagePackageSelectQuery;
+  maybeSingle(): PromiseLike<{ data: unknown; error: unknown }>;
+}
+export interface ImagePackageSelectClient {
+  from(table: string): { select(columns: string): ImagePackageSelectQuery };
 }
 
 const unavailable: PackageFailure = { ok: false, reason: "unavailable" };
@@ -19,7 +27,8 @@ function failure(data: any): PackageFailure | null {
     ? { ok: false, reason: data.reason } : null;
 }
 
-export function createImagePackageRepository(client: ImagePackageRpcClient): ImagePackageRepository {
+export function createImagePackageRepository(client: ImagePackageRpcClient,
+  readClient?: ImagePackageSelectClient): ImagePackageRepository {
   async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
     try {
       const result = await client.rpc(name, args);
@@ -86,6 +95,32 @@ export function createImagePackageRepository(client: ImagePackageRpcClient): Ima
     async settleDispatch(input) {
       const result = useResult(await rpc("novora_test_image_package_settle_dispatch", { p_dispatch: input }));
       return result.ok && result.operationId !== input.operationId ? unavailable : result;
+    },
+    async isDefiniteFailure(input) {
+      if (!isDispatchBinding(input)) return false;
+      // Existing service-role SELECT only. A real Supabase client can supply
+      // both ports; RPC-only test clients fail closed without a read port.
+      const reads = readClient ?? (typeof (client as any)?.from === "function"
+        ? client as unknown as ImagePackageSelectClient : null);
+      if (!reads) return false;
+      try {
+        let query = reads.from("novora_test_image_package_uses").select(
+          "reservation_id,operation_id,kind,brief_id,source_output_id,state,outcome," +
+          "purchase:novora_test_image_package_purchases!inner(owner_scope,owner_identity)",
+        ).eq("reservation_id", input.reservationId).eq("operation_id", input.operationId)
+          .eq("kind", input.kind).eq("brief_id", input.briefId)
+          .eq("purchase.owner_scope", input.owner.scope).eq("purchase.owner_identity", input.owner.identity);
+        query = input.kind === "revision" ? query.eq("source_output_id", input.sourceOutputId)
+          : query.is("source_output_id", null);
+        const { data, error } = await query.maybeSingle();
+        const row = data as any;
+        return !error && !!row && !Array.isArray(row) &&
+          row.reservation_id === input.reservationId && row.operation_id === input.operationId &&
+          row.kind === input.kind && row.brief_id === input.briefId &&
+          row.source_output_id === (input.sourceOutputId ?? null) &&
+          row.purchase?.owner_scope === input.owner.scope && row.purchase?.owner_identity === input.owner.identity &&
+          row.state === "released" && ["definite_failure", "no_compliant_delivery"].includes(row.outcome);
+      } catch { return false; }
     },
     async finish(input) {
       const result = useResult(await rpc("novora_test_image_package_finish", { p_use: input }));

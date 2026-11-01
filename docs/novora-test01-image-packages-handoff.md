@@ -107,6 +107,7 @@ service.settleDispatch({ ...binding,
   failurePhase?: "before_dispatch", // only with definite_failure; required for proven enqueue failure
   providerCostUsdMicros: number, // cumulative known per-operation cost
 }): Promise<UseResult>;
+service.isDefiniteFailure(binding): Promise<boolean>;
 ```
 
 Only `claimed` authorizes the first provider dispatch. Claim locks the purchase
@@ -127,6 +128,18 @@ to `definite_failure`. Cost is retained even on a conflicting late result.
 This module supports package-backed reservations only; it does not debit or
 replace the free invitation ledger.
 
+`isDefiniteFailure` is read-only reconciliation, never a mutation used to discover
+status. It SELECTs the existing use joined to its purchase, filtering and
+rechecking owner scope/identity, reservationId, operationId, kind, briefId and
+sourceOutputId (initial requires SQL NULL). Only state=released with persisted
+outcome=definite_failure or no_compliant_delivery returns true. UNKNOWN, reserved,
+settled/delivered, absent/mismatched rows, missing read client, query errors and
+exceptions return false. It never calls reserve/settle/finish or a write RPC.
+`createImagePackageRepository(rpcClient, selectClient?)` accepts a separate read
+port; a real Supabase client can supply both and its `.from` is reused by default.
+The service forwards the exact same `DispatchBinding` signature. This provides
+A's package-backed failed-parent continuation check without a new SQL function.
+
 ## Exact Agent C durable store contract
 
 `createDurableSandboxOperationStore(client, { owner, purchaseId })` from
@@ -146,7 +159,7 @@ The journal is payment-side-effect idempotency, not a second quota ledger.
 
 ## Evidence and limitations
 
-- `node --test tests/tools/test01-image-packages.test.cjs`: 35/35 passed.
+- `node --test tests/tools/test01-image-packages.test.cjs`: 39/39 passed.
 - `node ../../node_modules/typescript/bin/tsc --noEmit --incremental false --pretty false`: passed.
 - `npm.cmd run build`: passed (Next.js 16.2.12). The nested worktree produces
   the existing multiple-lockfile workspace-root warning; no configuration was
@@ -159,6 +172,11 @@ The journal is payment-side-effect idempotency, not a second quota ledger.
   tests. Candidate hash/source did not change. See
   `tests/tools/test01-image-packages-db-results.md` for exact target/digest,
   observed results, stopped-container retention and acceptance limits.
+- The same container later passed A's exact 92f3133 revision candidate and was
+  independently stopped and removed. See `tests/tools/test01-revision-db-results.md`
+  for exact hashes, expected losing-session 22023, timing adjustment and cleanup.
+  The added read-only failure adapter has focused fake-client proof; its actual
+  PostgREST/HTTP integration was not established by those SQL tests.
 - `tests/tools/test01-image-packages-db-request.md` and the concurrency fixture
   preserve the reviewed disposable-DB request and fixtures used in that run.
 - Local `docker ps --format '{{.Names}} {{.Image}}'` failed with permission denied

@@ -105,6 +105,13 @@ after coordinator schedules A or cancels it. No other container, image or volume
 was changed. Tmpfs data must not be assumed retained after stop; restarting this
 same container for coordinated A tests requires reinitializing synthetic data.
 
+Subsequent stage completion: the coordinator supplied A's exact 92f3133 fixture;
+the SAME container was restarted, passed revision verification, then stopped,
+independently verified not running, removed and independently confirmed absent.
+The retention text above records the intermediate checkpoint, not a currently
+retained container. Exact A hashes/results/final cleanup are in
+`test01-revision-db-results.md`. No second container was created.
+
 The earlier sandbox-only read failed with `permission denied while trying to
 connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`.
 That action had not executed. The later exact Owner grant and per-command host

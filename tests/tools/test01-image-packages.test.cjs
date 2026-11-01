@@ -58,6 +58,7 @@ function fixture(options = {}) {
     async finish(value) { calls.push(['finish', value]); return { ...reserved, state: 'unknown' }; },
     async claimDispatch(value) { calls.push(['claimDispatch',value]); return 'claimed'; },
     async settleDispatch(value) { calls.push(['settleDispatch',value]); return {...reserved,state:'unknown'}; },
+    async isDefiniteFailure(value) { calls.push(['isDefiniteFailure',value]); return true; },
     ...options.repository,
   };
   const service = createTestImagePackageService({
@@ -304,6 +305,58 @@ test('pre-dispatch release RPC preserves duplicate/conflict/denied instead of fa
     assert.deepEqual(await repo.settleDispatch(input),response);
     assert.deepEqual(calls,[['novora_test_image_package_settle_dispatch',{p_dispatch:input}]]);
   }
+});
+
+function failureReadFixture(change={},options={}) {
+  const calls=[];
+  const row={reservation_id:dispatch.reservationId,operation_id:dispatch.operationId,kind:dispatch.kind,
+    brief_id:dispatch.briefId,source_output_id:null,state:'released',outcome:'definite_failure',
+    purchase:{owner_scope:OWNER.scope,owner_identity:OWNER.identity},...change};
+  const query={eq(column,value){calls.push(['eq',column,value]);return this;},
+    is(column,value){calls.push(['is',column,value]);return this;},
+    async maybeSingle(){calls.push(['maybeSingle']);if(options.throw)throw Error('private');
+      return{data:options.noRow?null:row,error:options.error?{message:'private'}:null};}};
+  const reads={from(table){calls.push(['from',table]);return{select(columns){calls.push(['select',columns]);return query;}};}};
+  const repo=createImagePackageRepository({async rpc(){throw Error('read must never invoke RPC');}},reads);
+  return{repo,calls};
+}
+
+test('definite-failure read filters and rechecks every immutable binding using SELECT only',async()=>{
+  const f=failureReadFixture();assert.equal(await f.repo.isDefiniteFailure(dispatch),true);
+  assert.deepEqual(f.calls,[['from','novora_test_image_package_uses'],['select',
+    'reservation_id,operation_id,kind,brief_id,source_output_id,state,outcome,purchase:novora_test_image_package_purchases!inner(owner_scope,owner_identity)'],
+    ['eq','reservation_id',OPERATION],['eq','operation_id',OPERATION],['eq','kind','initial'],['eq','brief_id',OTHER],
+    ['eq','purchase.owner_scope',OWNER.scope],['eq','purchase.owner_identity',OWNER.identity],['is','source_output_id',null],['maybeSingle']]);
+});
+
+test('only known released failure outcomes qualify; UNKNOWN/reserved/delivered and errors deny',async()=>{
+  assert.equal(await failureReadFixture({outcome:'no_compliant_delivery'}).repo.isDefiniteFailure(dispatch),true);
+  for(const change of [{state:'unknown',outcome:'unknown'},{state:'reserved',outcome:null},
+    {state:'settled',outcome:'valid_delivery'},{outcome:'unknown'},{outcome:'failed'},{outcome:null}]) {
+    assert.equal(await failureReadFixture(change).repo.isDefiniteFailure(dispatch),false);
+  }
+  for(const options of [{noRow:true},{error:true},{throw:true}])
+    assert.equal(await failureReadFixture({},options).repo.isDefiniteFailure(dispatch),false);
+  assert.equal(await createImagePackageRepository({async rpc(){throw Error('must not query');}}).isDefiniteFailure(dispatch),false);
+});
+
+test('failure read rejects mismatched owner, reservation, operation, kind, brief and source',async()=>{
+  for(const change of [{reservation_id:OTHER},{operation_id:OTHER},{kind:'revision'},{brief_id:PURCHASE},
+    {source_output_id:OTHER},{purchase:{owner_scope:'b'.repeat(64),owner_identity:OWNER.identity}},
+    {purchase:{owner_scope:OWNER.scope,owner_identity:'OTHER'}},{purchase:null}]) {
+    assert.equal(await failureReadFixture(change).repo.isDefiniteFailure(dispatch),false);
+  }
+  const revision={...dispatch,kind:'revision',sourceOutputId:PURCHASE};
+  const f=failureReadFixture({kind:'revision',source_output_id:PURCHASE});
+  assert.equal(await f.repo.isDefiniteFailure(revision),true);
+  assert.ok(f.calls.some(c=>c[0]==='eq'&&c[1]==='source_output_id'&&c[2]===PURCHASE));
+});
+
+test('service failure reconciliation is read-only and fails closed on invalid or unavailable evidence',async()=>{
+  const f=fixture(); assert.equal(await f.service.isDefiniteFailure(dispatch),true);
+  assert.deepEqual(f.calls,[['isDefiniteFailure',dispatch]]);
+  assert.equal(await f.service.isDefiniteFailure({...dispatch,briefId:'bad'}),false);
+  assert.equal(await fixture({repository:{async isDefiniteFailure(){throw Error('private');}}}).service.isDefiniteFailure(dispatch),false);
 });
 
 const sandboxPurchase = {purchaseId:PURCHASE,amountMinor:100,currency:'USD',merchantId:MERCHANT,providerOrderId:null};

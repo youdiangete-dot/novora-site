@@ -117,6 +117,11 @@ export function createTestImagePackageService(deps: Dependencies) {
       try { return await deps.repository.settleDispatch(input); }
       catch { return failure("unavailable"); }
     },
+    async isDefiniteFailure(input: DispatchBinding): Promise<boolean> {
+      if (!isDispatchBinding(input)) return false;
+      try { return await deps.repository.isDefiniteFailure(input) === true; }
+      catch { return false; }
+    },
     async finish(input: Parameters<ImagePackageRepository["finish"]>[0]) {
       if (!input || !isUuid(input.purchaseId) || !isUuid(input.subjectId) || !isUuid(input.operationId) ||
         !["valid_delivery", "definite_failure", "no_compliant_delivery", "unknown"].includes(input.outcome) ||

@@ -107,6 +107,8 @@ export interface ImagePackageRepository {
   readEntitlement(purchaseId: string, subjectId: string): Promise<EntitlementResult>;
   claimDispatch(input: DispatchBinding): Promise<DispatchClaim>;
   settleDispatch(input: DispatchSettlement): Promise<UseResult>;
+  /** Read-only terminal outcome check for exact persisted immutable binding. */
+  isDefiniteFailure(input: DispatchBinding): Promise<boolean>;
   /** Must lock the purchase, recheck ALL expected fields and grant once in ONE
    * transaction. A read followed by a separate insert/update is insufficient. */
   grantVerifiedPayment(
