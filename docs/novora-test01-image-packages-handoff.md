@@ -80,7 +80,8 @@ purchases have no jewelry quote, commercial order, CAD or production reference.
   retained monotonically with `greatest`, never added again on replay. Releasing
   entitlement is not a provider refund and does not erase actual cost.
 - Review schema/roles/subject binding and separately obtain exact online SQL
-  permission before applying the SQL candidate. No real DB test has passed.
+  permission before applying the SQL candidate online. B's isolated local DB
+  proof is recorded below; it does not authorize or prove an online migration.
 
 Free invitation quotas are unchanged. TEST-01 grants five initial slots and five
 revision slots independently, expiring exactly 168 hours after confirmed payment;
@@ -153,15 +154,17 @@ The journal is payment-side-effect idempotency, not a second quota ledger.
   was performed by this check.
 - Unit/contract tests exercise real service and RPC adapter with synthetic
   dependency injection. SQL-text checks are static checks only, not SQL proof.
-- `tests/tools/test01-image-packages-db.sql` supplies unexecuted synthetic
-  single-session assertions for grant/replay/capture uniqueness, 5+5 capacity,
-  release/UNKNOWN/settlement, preserved cost, expiry and NULL constraints. It
-  does not establish two-session concurrency or deployed authorization.
+- The approved isolated PostgreSQL 17.11 run passed the actual single-session,
+  six two-session lock races, UNKNOWN persistence and real-role/default-grant
+  tests. Candidate hash/source did not change. See
+  `tests/tools/test01-image-packages-db-results.md` for exact target/digest,
+  observed results, stopped-container retention and acceptance limits.
 - `tests/tools/test01-image-packages-db-request.md` and the concurrency fixture
-  specify the exact remaining disposable-DB request. No fixture was executed.
+  preserve the reviewed disposable-DB request and fixtures used in that run.
 - Local `docker ps --format '{{.Names}} {{.Image}}'` failed with permission denied
-  connecting to `npipe:////./pipe/dockerDesktopLinuxEngine`. No SQL ran, no
-  container was inspected/started/modified, no escalation or retry was made.
+  connecting to `npipe:////./pipe/dockerDesktopLinuxEngine` before the stage was
+  approved. The later explicit Owner grant and supported per-command host review
+  authorized the isolated run; the original `docker ps` was not retried.
 - No browser route/UI was edited, so browser/HTTP payment/admin proof is pending
   coordinator integration; no paid generation or online verification was run.
 
