@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 
 import {
   ADMIN_ACCESS_COOKIE_NAME,
@@ -130,6 +131,7 @@ export default async function AdminBriefsPage({ searchParams }: AdminBriefsPageP
             Protected review queue for real Supabase concept brief submissions. Admin review status and internal notes
             are loaded from Supabase when admin_notes persistence is available.
           </p>
+          <p><Link href="/admin/test-image-packages">Owner TEST-01 manual confirmation</Link></p>
         </section>
 
         <section className={styles.notice} aria-label="Protected admin warning">

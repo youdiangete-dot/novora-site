@@ -67,8 +67,9 @@ export type FirstPreviewGenerationWork = Readonly<{
   jobId: string;
   conceptBriefId: string;
   publicReference: string;
-  attemptNumber: AutomaticFirstPreviewAttemptNumber;
+  attemptNumber: number;
   parentJobId: string | null;
+  sourceOutputId?: string;
   structured: FirstPreviewPreparedGenerationInput;
   betaAdmission?: true;
 }>;
@@ -148,6 +149,13 @@ export type AutomaticFirstPreviewWorkerDependencies = Readonly<{
   attemptTimeoutMs?: number;
   outputIdSource?: () => string;
   betaAdmissionDependencies?: BetaAdmissionDependencies;
+  /** Paid revisions are distinct authorized operations. The server composition
+   * must verify their funded cost reservation AND use B's durable claim. Never
+   * replace this with a customer boolean or a paid-package balance alone. */
+  revisionAdmission?: Readonly<{
+    verifyReservation(work: FirstPreviewGenerationWork): Promise<boolean>;
+    claimDispatch(work: FirstPreviewGenerationWork): Promise<"claimed" | "already_claimed" | "denied" | "unknown">;
+  }>;
 }>;
 
 // Moderation and the (up to 30-second) visual inspection run sequentially.
@@ -396,6 +404,28 @@ async function readAttemptBudget(
   }).allowed;
 }
 
+async function hasExactRevisionSource(repository: FirstPreviewRepository, work: FirstPreviewGenerationWork): Promise<boolean> {
+  if (!work.sourceOutputId || !work.parentJobId) return false;
+  const [job, parent, source, review] = await Promise.all([
+    repository.findJobById(work.jobId), repository.findJobById(work.parentJobId),
+    repository.findCustomerReadyOutput(work.conceptBriefId), repository.findReviewByConceptBriefId(work.conceptBriefId),
+  ]);
+  const sourceJob = source ? await repository.findJobById(source.jobId) : null;
+  const continuation = job?.revisionParentOutcome === "definite_failure" && parent &&
+    ["failed", "cancelled", "timed_out"].includes(parent.status) && parent.sourceOutputId === source?.id;
+  return Boolean(job && parent && source && sourceJob && review &&
+    job.sourceOutputId === work.sourceOutputId && job.parentJobId === parent.id &&
+    job.attemptNumber === work.attemptNumber && parent.attemptNumber + 1 === work.attemptNumber &&
+    job.conceptBriefId === work.conceptBriefId && parent.conceptBriefId === work.conceptBriefId &&
+    sourceJob.status === "succeeded" && sourceJob.conceptBriefId === work.conceptBriefId &&
+    sourceJob.attemptNumber <= parent.attemptNumber &&
+    ((parent.status === "succeeded" && source.jobId === parent.id) || continuation) && source.id === work.sourceOutputId &&
+    source.isCurrentCustomerPreview && source.readinessStatus === "first_preview_ready" &&
+    review.outputId === source.id && review.reviewStatus === "needs_revision" && review.revisionInstruction &&
+    job.designSpecSha256 === work.structured.designSpecSha256 &&
+    job.handSketchInstructionSha256 === work.structured.handSketchInstructionSha256);
+}
+
 function isAttemptNumber(
   value: unknown,
 ): value is AutomaticFirstPreviewAttemptNumber {
@@ -640,7 +670,12 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   const started = await dependencies.repository.startJob(work.jobId);
   if (!started.ok) return { status: "duplicate" };
 
-  if (!(await readAttemptBudget(dependencies.repository, work))) {
+  const revision = work.sourceOutputId !== undefined;
+  const funded = revision
+    ? Boolean(dependencies.revisionAdmission && await hasExactRevisionSource(dependencies.repository, work) &&
+      await dependencies.revisionAdmission.verifyReservation(work) === true)
+    : await readAttemptBudget(dependencies.repository, work);
+  if (!funded) {
     return recordFailure(
       dependencies.repository,
       work.jobId,
@@ -674,14 +709,16 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
 
   // Capture the verified deployment binding before the dispatch claim. Later
   // flag changes must not turn an M2 attempt into a legacy cost path.
-  const admissionBinding = work.betaAdmission === true
+  const admissionBinding = !revision && work.betaAdmission === true
     ? resolveBetaAdmissionBinding(dependencies.betaAdmissionDependencies?.environment ?? process.env)
     : null;
-  const betaAllowed = await claimBetaDispatch({
+  const betaAllowed = revision
+    ? await dependencies.revisionAdmission!.claimDispatch(work) === "claimed"
+    : await claimBetaDispatch({
     briefId: work.conceptBriefId,
     fingerprint: `${work.structured.designSpecSha256}:${work.structured.handSketchInstructionSha256}`,
     betaAdmission: work.betaAdmission,
-  }, dependencies.betaAdmissionDependencies);
+    }, dependencies.betaAdmissionDependencies);
   if (!betaAllowed) {
     return recordFailure(dependencies.repository, work.jobId, "budget_blocked", false, 0);
   }
@@ -742,7 +779,7 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
         usage,
       });
       const m2Preview = Boolean(admissionBinding?.runtimeBinding);
-      if ((m2Preview && !imageCost.usageTrusted) || firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
+      if (((m2Preview || revision) && !imageCost.usageTrusted) || firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
         trustedEvidenceFailureCategory = "budget_blocked";
         return { outcome: "invalid_output" };
       }

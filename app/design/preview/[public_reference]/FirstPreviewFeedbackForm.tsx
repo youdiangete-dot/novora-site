@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 
 import styles from "./preview.module.css";
 import { useI18n } from '../../../../lib/i18n/client';
+import FirstPreviewRevisionRequest from "./FirstPreviewRevisionRequest";
 
 export default function FirstPreviewFeedbackForm({
   feedbackBinding,
@@ -46,7 +47,7 @@ export default function FirstPreviewFeedbackForm({
   }
 
   return (
-    <section className={styles.feedbackCard} aria-labelledby="first-preview-feedback-heading">
+    <><section className={styles.feedbackCard} aria-labelledby="first-preview-feedback-heading">
       <p className={styles.feedbackEyebrow}>{copy.fb005}</p>
       <h2 id="first-preview-feedback-heading">{copy.fb006}</h2>
       <p>{copy.fb007}</p>
@@ -72,6 +73,6 @@ export default function FirstPreviewFeedbackForm({
           {state === "error" ? <p className={styles.feedbackError} role="alert">{message}</p> : null}
         </form>
       )}
-    </section>
+    </section><FirstPreviewRevisionRequest publicReference={publicReference} feedbackBinding={feedbackBinding} /></>
   );
 }

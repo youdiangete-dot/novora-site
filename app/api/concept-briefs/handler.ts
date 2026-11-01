@@ -26,7 +26,7 @@ import {
   type AutomaticFirstPreviewTriggerResult,
 } from "../../../lib/server/ai-sketch/first-preview-automatic-trigger";
 
-import { authenticateM2ReceiptRequest } from "../../../lib/server/ai-sketch/beta-admission";
+import { authenticateScopedReceiptRequest as authenticateM2ReceiptRequest } from "../../../lib/server/ai-sketch/beta-admission";
 import { isClientRequestId, createScopedReceipt, claimScopedPublish, finishScopedPublish } from "../../../lib/server/ai-sketch/m2-scoped-receipt";
 
 type ConceptBriefResponse = {

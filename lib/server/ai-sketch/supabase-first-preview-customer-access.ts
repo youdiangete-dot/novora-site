@@ -39,6 +39,9 @@ export interface FirstPreviewCustomerAccessDatabaseClient {
     jobId: string,
     limit: typeof FIRST_PREVIEW_CUSTOMER_ACCESS_CANDIDATE_LIMIT,
   ): CandidateResult;
+  verifyCurrentRevisionLineage?(input: Readonly<{
+    conceptBriefId: string; publicReference: string; outputId: string; now: number;
+  }>): Promise<boolean>;
 }
 
 export type FirstPreviewCustomerAccessAuthorizer =
@@ -86,6 +89,7 @@ const JOB_COLUMNS = [
   "generation_purpose",
   "status",
   "completed_at",
+  "source_output_id",
 ].join(", ");
 
 function normalizedCandidates(
@@ -102,6 +106,14 @@ export function createFirstPreviewCustomerAccessDatabaseClient(
   supabase: SupabaseClient,
 ): FirstPreviewCustomerAccessDatabaseClient {
   return {
+    async verifyCurrentRevisionLineage(input) {
+      const { createFirstPreviewCustomerViewDatabaseClient, createSupabaseFirstPreviewCustomerViewStateSource } = await import("./supabase-first-preview-customer-view");
+      const result = await createSupabaseFirstPreviewCustomerViewStateSource(
+        createFirstPreviewCustomerViewDatabaseClient(supabase), { clock: () => input.now },
+      ).readExactCustomerPreviewState(input);
+      return isRecord(result) && result.state === "ready" && result.conceptBriefId === input.conceptBriefId &&
+        result.publicReference === input.publicReference && result.outputId === input.outputId;
+    },
     async findBriefCandidates(publicReference, limit) {
       try {
         const { data, error } = await supabase
@@ -349,6 +361,13 @@ export class SupabaseFirstPreviewCustomerAccessAuthorizer
       ) {
         return unavailableAuthorization();
       }
+
+      if (job.source_output_id != null && (
+        typeof job.source_output_id !== "string" || !isValidFirstPreviewAssetUuid(job.source_output_id) ||
+        !this.database.verifyCurrentRevisionLineage ||
+        await this.database.verifyCurrentRevisionLineage({ conceptBriefId: brief.id,
+          publicReference: request.publicReference, outputId: request.outputId, now: this.clock() }) !== true
+      )) return unavailableAuthorization();
 
       return {
         authorized: true,

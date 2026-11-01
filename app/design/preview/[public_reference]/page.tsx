@@ -5,13 +5,7 @@ import { resolveCustomerPreview } from "./resolve-customer-preview";
 import { FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV } from "../../../../lib/server/ai-sketch/first-preview-customer-access-contract";
 import { createFirstPreviewCustomerDesignConfirmationBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-design-confirmation";
 import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
-import { prepareCommercialSpecificationConfirmation } from "../../../../lib/server/commercial-specification-confirmation";
-import { readCustomerCommercialQuotation } from "../../../../lib/server/commercial-quotation";
-import { prepareCommercialPayment } from "../../../../lib/server/commercial-payment";
 import sharedStyles from "../../brief/brief.module.css";
-import CommercialPayment from "./CommercialPayment";
-import CommercialQuotation from "./CommercialQuotation";
-import CommercialSpecificationConfirmation from "./CommercialSpecificationConfirmation";
 import FirstPreviewDesignConfirmation from "./FirstPreviewDesignConfirmation";
 import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
 import styles from "./preview.module.css";
@@ -126,25 +120,6 @@ export default async function CustomerPreviewPage({
         process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? "",
       )
     : null;
-  const commercialSpecification = preview.state === "ready"
-    ? await prepareCommercialSpecificationConfirmation(
-        preview.publicReference,
-        preview.outputId,
-      )
-    : null;
-  const commercialQuotation = preview.state === "ready"
-    ? await readCustomerCommercialQuotation(
-        preview.publicReference,
-        preview.outputId,
-      )
-    : null;
-  const commercialPayment = preview.state === "ready" && commercialQuotation
-    ? await prepareCommercialPayment(
-        preview.publicReference,
-        preview.outputId,
-        commercialQuotation,
-      )
-    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -198,24 +173,6 @@ export default async function CustomerPreviewPage({
             {confirmationBinding ? (
               <FirstPreviewDesignConfirmation
                 confirmationBinding={confirmationBinding}
-                publicReference={preview.publicReference}
-              />
-            ) : null}
-            {commercialSpecification ? (
-              <CommercialSpecificationConfirmation
-                confirmationBinding={commercialSpecification.binding}
-                items={commercialSpecification.items}
-                publicReference={preview.publicReference}
-              />
-            ) : null}
-            {commercialQuotation ? (
-              <CommercialQuotation quotation={commercialQuotation} />
-            ) : null}
-            {commercialPayment ? (
-              <CommercialPayment
-                binding={commercialPayment.binding}
-                initialPayment={commercialPayment.payment}
-                providerConfigured={commercialPayment.providerConfigured}
                 publicReference={preview.publicReference}
               />
             ) : null}

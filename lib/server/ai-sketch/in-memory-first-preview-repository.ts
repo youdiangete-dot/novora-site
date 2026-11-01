@@ -159,6 +159,8 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         existing.attemptNumber === input.attemptNumber &&
         existing.parentJobId === input.parentJobId &&
         existing.sourceOutputId === input.sourceOutputId &&
+        JSON.stringify(existing.revisionDirectives ?? null) === JSON.stringify(input.revisionDirectives ?? null) &&
+        existing.revisionParentOutcome === input.revisionParentOutcome &&
         existing.designSpecVersion === input.designSpecVersion &&
         existing.designSpecSha256 === input.designSpecSha256 &&
         existing.handSketchInstructionVersion ===
@@ -213,7 +215,9 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
           return failure("retry_not_eligible");
         }
       } else {
-        if (parent.status !== "succeeded") {
+        const continuation = input.revisionParentOutcome === "definite_failure" &&
+          ["failed", "cancelled", "timed_out"].includes(parent.status) && parent.sourceOutputId === input.sourceOutputId;
+        if (parent.status !== "succeeded" && !continuation) {
           return failure("revision_not_eligible");
         }
         const output = this.outputsById.get(input.sourceOutputId);
@@ -222,11 +226,13 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
         }
         if (
           output.id !== input.sourceOutputId ||
-          output.jobId !== parent.id ||
+          (output.jobId !== parent.id && !continuation) ||
           output.conceptBriefId !== input.conceptBriefId
         ) {
           return failure("linkage_mismatch");
         }
+        const sourceJob = this.jobsById.get(output.jobId);
+        if (!sourceJob || sourceJob.status !== "succeeded" || sourceJob.conceptBriefId !== input.conceptBriefId || sourceJob.attemptNumber > parent.attemptNumber) return failure("linkage_mismatch");
         if (
           output.readinessStatus !== "first_preview_ready" ||
           output.isCurrentCustomerPreview !== true
@@ -260,6 +266,8 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       lineageIdentity: FIRST_PREVIEW_LINEAGE_IDENTITY,
       parentJobId: input.parentJobId,
       sourceOutputId: input.sourceOutputId,
+      ...(input.revisionDirectives ? { revisionDirectives: [...input.revisionDirectives] } : {}),
+      ...(input.revisionParentOutcome ? { revisionParentOutcome: input.revisionParentOutcome } : {}),
       designSpecVersion: input.designSpecVersion,
       designSpecSha256: input.designSpecSha256,
       handSketchInstructionVersion: input.handSketchInstructionVersion,
@@ -514,12 +522,12 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     const job = this.jobsById.get(subject.jobId);
     const now = Date.parse(this.clock());
     if (!job || job.conceptBriefId !== subject.conceptBriefId || job.status !== "processing" ||
-      (job.attemptNumber !== 1 && job.attemptNumber !== 2) || job.actualCostMicros === null ||
+      (!job.sourceOutputId && job.attemptNumber !== 1 && job.attemptNumber !== 2) || job.actualCostMicros === null ||
       !isNonblank(job.providerRequestId ?? "") || !job.deadlineAt ||
       !Number.isFinite(now) || !Number.isFinite(Date.parse(job.deadlineAt)) ||
       Date.parse(job.deadlineAt) <= now) return failure("job_not_active");
     const briefOutputs = [...this.outputsById.values()].filter(
-      (candidate) => candidate.conceptBriefId === subject.conceptBriefId,
+      (candidate) => candidate.conceptBriefId === subject.conceptBriefId && (!job.sourceOutputId || candidate.jobId === job.id),
     );
     if (briefOutputs.length > 2) return failure("automatic_gates_not_passed");
     let accountedCost: number = FIRST_PREVIEW_VISUAL_PRIVACY_RESERVATION_MICROS;
@@ -686,13 +694,25 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       Date.parse(job.completedAt) < Date.parse(output.assetValidatedAt) ||
       nowTime < Date.parse(job.completedAt)) return failure("job_not_active");
 
-    const conflictingCurrent = [...this.outputsById.values()].some(
+    const current = [...this.outputsById.values()].filter(
       (candidate) =>
         candidate.id !== output.id &&
         candidate.conceptBriefId === output.conceptBriefId &&
         candidate.isCurrentCustomerPreview,
     );
-    if (conflictingCurrent) {
+    const source = job.sourceOutputId ? this.outputsById.get(job.sourceOutputId) : null;
+    const parent = job.parentJobId ? this.jobsById.get(job.parentJobId) : null;
+    const continuation = job.revisionParentOutcome === "definite_failure" && parent &&
+      ["failed", "cancelled", "timed_out"].includes(parent.status) && parent.sourceOutputId === job.sourceOutputId;
+    const sourceReview = this.reviewsByConceptBriefId.get(input.conceptBriefId);
+    if (job.sourceOutputId && (!source || source.conceptBriefId !== input.conceptBriefId ||
+      (source.jobId !== job.parentJobId && !continuation) || source.readinessStatus !== "first_preview_ready" ||
+      !source.isCurrentCustomerPreview || current.length !== 1 || current[0].id !== source.id ||
+      sourceReview?.outputId !== source.id || sourceReview.reviewStatus !== "needs_revision" ||
+      !sourceReview.revisionInstruction)) {
+      return failure("linkage_mismatch");
+    }
+    if (!job.sourceOutputId && current.length > 0) {
       return failure("attempt_identity_conflict");
     }
 
@@ -708,7 +728,13 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
       automaticGateEvidence: sanitizedGateEvidence(input.gates),
       automaticGatePassedAt: readyAt,
     };
+    // No await occurs between these in-memory writes. The real repository uses
+    // one DB transaction and never revokes the source in a separate request.
+    if (source) this.outputsById.set(source.id, { ...source, readinessStatus: "revoked", isCurrentCustomerPreview: false, revokedAt: readyAt });
     this.outputsById.set(ready.id, ready);
+    if (source && sourceReview) this.reviewsByConceptBriefId.set(input.conceptBriefId, {
+      ...sourceReview, outputId: ready.id, reviewStatus: "draft_generated_internal_only", revisionInstruction: null,
+    });
     await this.ensureReadyReviewLink(ready.id, ready.conceptBriefId);
     return { ok: true, value: copyOutput(ready) };
   }
@@ -740,6 +766,18 @@ export class InMemoryFirstPreviewRepository implements FirstPreviewRepository {
     };
     this.reviewsByConceptBriefId.set(conceptBriefId, review);
     return { ok: true, value: review };
+  }
+
+  async findOutputByJobId(jobId: string, conceptBriefId: string): Promise<FirstPreviewOutputRecord | null> {
+    const id = this.outputIdByJobId.get(jobId);
+    const output = id ? this.outputsById.get(id) : null;
+    return output?.conceptBriefId === conceptBriefId ? copyOutput(output) : null;
+  }
+
+  async findLatestJobForBrief(conceptBriefId: string): Promise<FirstPreviewJobRecord | null> {
+    const job = [...this.jobsById.values()].filter(value => value.conceptBriefId === conceptBriefId)
+      .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
+    return job ? copyJob(job) : null;
   }
 
   async revokeOutput(
