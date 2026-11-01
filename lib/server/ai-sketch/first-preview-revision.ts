@@ -16,14 +16,16 @@ export type RevisionDispatchBinding = Readonly<{
 type Claim = "claimed" | "already_claimed" | "denied" | "unknown";
 type Outcome = "delivered" | "definite_failure" | "unknown";
 type UseResult = Readonly<{ ok: boolean; duplicate?: boolean; state?: string; reason?: string }>;
-type RevisionSource = Readonly<{
+export type RevisionSource = Readonly<{
   owner: RevisionDispatchBinding["owner"]; purchaseId: string; subjectId: string;
   conceptBriefId: string; publicReference: string; sourceOutputId: string;
   // Constructed from the persisted original Brief through the existing safe
   // structured-input builder, never accepted directly from a customer body.
   originalInput: FirstPreviewPreparedGenerationInput;
+  requestedDirectives?: readonly RevisionDirective[];
+  sourceRevisionDirectives?: readonly RevisionDirective[];
 }>;
-type Dependencies = Readonly<{
+export type RevisionServiceDependencies = Readonly<{
   repository: FirstPreviewRepository;
   // Must verify the current invitation/session and exact owned Brief/source, or
   // the existing protected admin acting for that owner. Never echo body IDs.
@@ -41,6 +43,7 @@ type Dependencies = Readonly<{
   // remaining engineering/API spend. These callbacks must use trusted records.
   reserveCost(work: FirstPreviewGenerationWork, binding: RevisionDispatchBinding): Promise<"reserved" | "denied" | "unknown">;
   verifyCostReservation(work: FirstPreviewGenerationWork, binding: RevisionDispatchBinding): Promise<boolean>;
+  claimCostReservation?(work: FirstPreviewGenerationWork, binding: RevisionDispatchBinding): Promise<boolean>;
   publish(work: FirstPreviewGenerationWork): Promise<void>;
   createWorkerDependencies(repository: FirstPreviewRepository): AutomaticFirstPreviewWorkerDependencies;
 }>;
@@ -72,7 +75,7 @@ export function buildRevisedPreparedInput(original: FirstPreviewPreparedGenerati
   return createFirstPreviewQueueMessage({ conceptBriefId, publicReference, generationInput: prepared }).ok ? prepared : null;
 }
 
-export function createSourceBoundRevisionService(deps: Dependencies) {
+export function createSourceBoundRevisionService(deps: RevisionServiceDependencies) {
   const reject = (status: "denied" | "unavailable" | "unknown") => ({ status } as const);
   return Object.freeze({
     async prepare(request: unknown, operationId: string) {
@@ -82,14 +85,20 @@ export function createSourceBoundRevisionService(deps: Dependencies) {
         if (!source || !validOwner(source.owner) || !UUID.test(source.subjectId) || !UUID.test(source.purchaseId) ||
           !UUID.test(source.conceptBriefId) || !UUID.test(source.sourceOutputId)) return reject("denied");
         const existing = await deps.repository.findJobById(operationId);
-        if (existing) return existing.conceptBriefId === source.conceptBriefId && existing.sourceOutputId === source.sourceOutputId
-          ? { status: "existing" as const, operationId: existing.id } : reject("denied");
+        if (existing) {
+          const expected = source.requestedDirectives ? buildRevisedPreparedInput(source.originalInput,
+            source.sourceRevisionDirectives ?? [], source.requestedDirectives, source.publicReference, source.conceptBriefId) : null;
+          if (source.requestedDirectives && (!expected || existing.designSpecSha256 !== expected.designSpecSha256 ||
+            existing.handSketchInstructionSha256 !== expected.handSketchInstructionSha256)) return reject("denied");
+          return existing.conceptBriefId === source.conceptBriefId && existing.sourceOutputId === source.sourceOutputId
+            ? { status: "existing" as const, operationId: existing.id } : reject("denied");
+        }
         const [current, review] = await Promise.all([
           deps.repository.findCustomerReadyOutput(source.conceptBriefId), deps.repository.findReviewByConceptBriefId(source.conceptBriefId),
         ]);
         if (!current || current.id !== source.sourceOutputId || current.readinessStatus !== "first_preview_ready" || !current.isCurrentCustomerPreview ||
           !review || review.outputId !== current.id || review.reviewStatus !== "needs_revision") return reject("denied");
-        const requested = parseRevisionDirectives(review.revisionInstruction);
+        const requested = source.requestedDirectives ? readRevisionDirectives(source.requestedDirectives) : parseRevisionDirectives(review.revisionInstruction);
         const sourceJob = await deps.repository.findJobById(current.jobId);
         if (!requested || !sourceJob || sourceJob.status !== "succeeded" || (sourceJob.sourceOutputId && !sourceJob.revisionDirectives) ||
           !hasPassedFirstPreviewAutomaticGateEvidence(current.automaticGateEvidence, { conceptBriefId: current.conceptBriefId, jobId: current.jobId, outputId: current.id, contentSha256: current.contentSha256 })) return reject("denied");
@@ -155,7 +164,10 @@ export function createSourceBoundRevisionService(deps: Dependencies) {
           return { status: "ready" as const, operationId, outputId: output.id };
         }
         if (job.status === "queued" || job.status === "processing") return { status: "pending" as const, operationId };
-        return { status: job.actualCostMicros === 0 ? "failed" as const : "unknown" as const, operationId };
+        const binding = await deps.resolveDispatch(job.id);
+        const released = binding && binding.owner.scope === source.owner.scope && binding.owner.identity === source.owner.identity &&
+          binding.briefId === job.conceptBriefId && binding.sourceOutputId === job.sourceOutputId && await deps.isDefiniteFailure?.(binding) === true;
+        return { status: released ? "failed" as const : "unknown" as const, operationId };
       } catch { return reject("unknown"); }
     },
 
@@ -176,7 +188,13 @@ export function createSourceBoundRevisionService(deps: Dependencies) {
         if (stored.status === "queued") result = await runAutomaticFirstPreviewWorker(work, {
           ...deps.createWorkerDependencies(deps.repository), repository: deps.repository,
           revisionAdmission: { verifyReservation: candidate => deps.verifyCostReservation(candidate, binding),
-            claimDispatch: async () => { claim = await deps.entitlements.claimDispatch(binding); return claim; } },
+            claimDispatch: async () => {
+              try {
+                claim = await deps.entitlements.claimDispatch(binding);
+                if (claim === "claimed" && deps.claimCostReservation && await deps.claimCostReservation(work, binding) !== true) claim = "unknown";
+              } catch { claim = "unknown"; }
+              return claim;
+            } },
         });
         else if (stored.status === "processing") return reject("unknown");
         const job = await deps.repository.findJobById(work.jobId);

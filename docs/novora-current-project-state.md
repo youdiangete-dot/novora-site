@@ -53,6 +53,18 @@ Preview/Production target. Its identity scope is separate from spending authorit
 budget admission, dispatch claims and expiry remain independently mandatory.
 No settings or credentials have been provisioned by this local implementation.
 
+When the explicit invitation-trial receipt flag is true, the stable trial namespace
+takes precedence over temporary M2 deployment-bound identity, including on an
+otherwise M2-compatible Preview. Keep that namespace and verified invitation
+identity stable between releases; Preview and Production remain different scopes.
+With the flag absent/false the original M2 path is unchanged. Old M2 receipts and
+packages are not migrated or silently treated as trial-owned. This identity scope
+does not replace the separately funded spending ledger or its expiry/dispatch gate.
+The revision route uses the canonical TEST-01 package identity mapping, existing
+private delivery rules and explicit structured customer changes. No new human
+approval precedes automatic image generation. These are local integration changes;
+no release configuration or live authority has been changed.
+
 ## 1. Purpose
 
 This document is the durable NOVORA project state ledger and the first file to

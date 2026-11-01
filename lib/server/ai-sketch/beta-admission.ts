@@ -321,8 +321,8 @@ export function authenticateM2ReceiptRequest(request: Request, environment: Envi
 // scope must be explicitly configured on the server, never selected by a body,
 // request ID, user email, or client header. No authority/ledger is created here.
 export function authenticateScopedReceiptRequest(request: Request, environment: Environment = process.env): Readonly<{ identity: string; scope: string }> | null {
-  const m2 = authenticateM2ReceiptRequest(request, environment);
-  if (m2) return m2;
+  const trial = environment.NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED;
+  if (trial !== "true") return trial === undefined || trial === "false" ? authenticateM2ReceiptRequest(request, environment) : null;
   if (betaAdmissionMode(environment) !== "enabled" ||
     environment.NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED !== "true") return null;
   const namespace = environment.NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE;
@@ -338,6 +338,23 @@ export function authenticateScopedReceiptRequest(request: Request, environment: 
     target, namespace,
   ].join("\n")).digest("hex");
   return { identity, scope };
+}
+
+// Queue work carries no bearer. Recheck only the persisted, server-bound owner
+// against the CURRENT roster and scope before its funded dispatch claim.
+export function isScopedReceiptOwnerActive(owner: Readonly<{ identity: string; scope: string }>, environment: Environment = process.env): boolean {
+  if (betaAdmissionMode(environment) !== "enabled" || !invitations(environment)?.some(item => item.identity === owner.identity)) return false;
+  const trial = environment.NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED;
+  if (trial !== "true") {
+    return (trial === undefined || trial === "false") && inspectBetaAdmissionBinding(environment).binding?.runtimeBinding === owner.scope;
+  }
+  const namespace = environment.NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE;
+  const target = environment.VERCEL_TARGET_ENV ?? environment.VERCEL_ENV;
+  return environment.NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED === "true" && Boolean(namespace && /^[a-zA-Z0-9_-]{16,64}$/.test(namespace)) &&
+    environment.VERCEL_PROJECT_ID === "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg" && (target === "preview" || target === "production") &&
+    environment.VERCEL_ENV === target && owner.scope === createHash("sha256").update([
+      "novora_invitation_trial_receipt_v1", environment.VERCEL_PROJECT_ID, target!, namespace!,
+    ].join("\n")).digest("hex");
 }
 
 export function resolveBetaAdmissionBinding(environment: Environment): BetaAdmissionBinding | null {

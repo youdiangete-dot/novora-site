@@ -84,3 +84,45 @@ test("disabled invitation mode preserves ordinary anonymous brief submission", a
   await expect(page).toHaveURL(/\/design\/submitted$/);
   expect(submissions).toBe(1);
 });
+
+test("revision browser reads one existing operation after refresh and confirms only the refreshed current image", async ({ page }) => {
+  const source = "423e4567-e89b-42d3-a456-426614174001", revised = "423e4567-e89b-42d3-a456-426614174002";
+  const headers = (output: string) => ({ "x-novora-preview-ui-test-token": "novora-first-preview-ui-focused-test-v1",
+    "x-novora-preview-ui-test-state": "ready", "x-novora-preview-ui-test-reference": reference, "x-novora-preview-ui-test-output": output });
+  await page.setExtraHTTPHeaders(headers(source));
+  await page.route("**/api/first-preview-assets/**", route => route.fulfill({ status: 404, body: "" }));
+  await page.route("**/api/invitation-access", route => route.fulfill({ json: route.request().headers().authorization ? { state: "verified", partition: "c".repeat(64) } : { state: "required" } }));
+  let posts = 0, reads = 0, operationId = "";
+  await page.route(`**/api/first-preview-revisions/${reference}*`, async route => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${credential}`);
+    if (route.request().method() === "POST") {
+      posts++; const body = route.request().postDataJSON(); operationId = body.operationId;
+      expect(body.sourceOutputId).toBe(source); expect(body.directives).toEqual(["lower_setting"]);
+      await route.fulfill({ status: 202, json: { status: "accepted", operationId } });
+    } else { reads++; await route.fulfill({ json: { status: reads === 1 ? "pending" : "ready", operationId, ...(reads === 1 ? {} : { outputId: revised }) } }); }
+  });
+  let confirmed = "";
+  await page.route(`**/api/first-preview-design-confirmation/${reference}`, async route => {
+    const binding = route.request().postDataJSON().binding;
+    confirmed = JSON.parse(Buffer.from(binding.split(".")[0], "base64url").toString()).outputId;
+    await route.fulfill({ status: 201, json: { ok: true } });
+  });
+  await page.goto(`/design/preview/${reference}`);
+  await invitation(page);
+  await page.getByLabel("lower setting", { exact: true }).check();
+  await page.getByRole("button", { name: "Request revision", exact: true }).click();
+  await expect(page.getByText("Revision received. Check again to read its existing status.", { exact: true })).toBeVisible();
+  await page.reload(); await invitation(page);
+  await page.getByLabel("lower setting", { exact: true }).check();
+  await page.getByRole("button", { name: "Request revision", exact: true }).click();
+  await expect(page.getByRole("button", { name: "View revised image and confirmation", exact: true })).toBeVisible();
+  expect(posts).toBe(1); expect(reads).toBe(2);
+  expect(await page.evaluate(() => JSON.stringify(Object.entries(sessionStorage)))).not.toContain(credential);
+  await page.setExtraHTTPHeaders(headers(revised));
+  await Promise.all([page.waitForEvent("framenavigated", frame => frame === page.mainFrame()),
+    page.getByRole("button", { name: "View revised image and confirmation", exact: true }).click()]);
+  await expect(page.getByText("An invitation is required for this test.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: enDictionary.firstPreview.fp031, exact: true }).click();
+  await expect(page.getByText(enDictionary.firstPreview.fp024, { exact: true })).toBeVisible();
+  expect(confirmed).toBe(revised);
+});

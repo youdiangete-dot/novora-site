@@ -59,6 +59,9 @@ const testRequire = createRequire(
   ),
 );
 const modules = loadWithServerOnlyTestShim(() => ({
+  revisionHttp: testRequire("../../lib/server/ai-sketch/first-preview-revision-http") as typeof import("../../lib/server/ai-sketch/first-preview-revision-http"),
+  revisionQueue: testRequire("../../lib/server/ai-sketch/first-preview-revision-queue") as typeof import("../../lib/server/ai-sketch/first-preview-revision-queue"),
+  revisionBrowser: testRequire("../../lib/client/first-preview-revision") as typeof import("../../lib/client/first-preview-revision"),
   revision: testRequire("../../lib/server/ai-sketch/first-preview-revision") as typeof import("../../lib/server/ai-sketch/first-preview-revision"),
   revisionDatabase: testRequire("../../lib/server/ai-sketch/supabase-first-preview-repository") as typeof import("../../lib/server/ai-sketch/supabase-first-preview-repository"),
   cost: testRequire(
@@ -141,7 +144,7 @@ function repository() {
   );
 }
 
-async function revisionFixture(options: { claim?: "claimed" | "already_claimed" | "unknown" | "denied"; privacyFailure?: boolean; publishUnknown?: boolean; budget?: boolean } = {}) {
+async function revisionFixture(options: { claim?: "claimed" | "already_claimed" | "unknown" | "denied"; privacyFailure?: boolean; publishUnknown?: boolean; budget?: boolean; costClaim?: boolean | "throw" } = {}) {
   let tick = 60, providerSerial = 0, outputSerial = 0, calls = 0, publications = 0, claims = 0;
   const clock = () => new Date(Date.parse("2026-08-03T00:00:00.000Z") + tick++ * 1000).toISOString();
   const repo = new modules.memory.InMemoryFirstPreviewRepository(clock);
@@ -171,6 +174,7 @@ async function revisionFixture(options: { claim?: "claimed" | "already_claimed" 
   expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(prepared.work, worker())).toEqual({ status: "ready" });
   const initial = (await repo.findCustomerReadyOutput(BRIEF_ID))!;
   const requests = new Map<symbol, string>();
+  const requested = new Map<symbol, { requestedDirectives?: readonly import("../../lib/first-preview-revision-directives").RevisionDirective[]; sourceRevisionDirectives?: readonly import("../../lib/first-preview-revision-directives").RevisionDirective[] }>();
   const bindings = new Map<string, import("../../lib/server/ai-sketch/first-preview-revision").RevisionDispatchBinding>();
   const settlements: Array<{ operationId: string; outcome: string; providerCostUsdMicros: number }> = [];
   let work: FirstPreviewGenerationWork | null = null;
@@ -180,6 +184,7 @@ async function revisionFixture(options: { claim?: "claimed" | "already_claimed" 
       owner: { scope: "a".repeat(64), identity: "synthetic_revision_user" },
       purchaseId: "623e4567-e89b-42d3-a456-426614174000", subjectId: "723e4567-e89b-42d3-a456-426614174000",
       conceptBriefId: BRIEF_ID, publicReference: PUBLIC_REFERENCE, sourceOutputId: requests.get(request as symbol)!, originalInput: prepared.work.structured,
+      ...requested.get(request as symbol),
     }) : null,
     resolveDispatch: async id => bindings.get(id) ?? null,
     isDefiniteFailure: async binding => settlements.some(item => item.operationId === binding.operationId && item.outcome === "definite_failure"),
@@ -190,6 +195,10 @@ async function revisionFixture(options: { claim?: "claimed" | "already_claimed" 
     },
     reserveCost: async () => options.budget === false ? "denied" : "reserved",
     verifyCostReservation: async () => options.budget !== false,
+    ...(options.costClaim !== undefined ? { claimCostReservation: async () => {
+      if (options.costClaim === "throw") throw new Error("synthetic cost claim uncertainty");
+      return options.costClaim === true;
+    } } : {}),
     publish: async value => { publications++; work = value; if (options.publishUnknown) throw new Error("synthetic lost acknowledgement"); },
     createWorkerDependencies: () => ({ ...worker(), evaluateTrustedOutput: options.privacyFailure ? async (input, context) => {
       expect(await context.reserveVisualPrivacyInspection?.()).toBe(true);
@@ -200,9 +209,12 @@ async function revisionFixture(options: { claim?: "claimed" | "already_claimed" 
   const request = (instruction = "lower_setting") => {
     const token = Symbol("authenticated source request");
     const source = repo.findCustomerReadyOutput(BRIEF_ID);
-    return source.then(value => {
+    return source.then(async value => {
       expect(value).not.toBeNull();
       requests.set(token, value!.id);
+      const directives = instruction.split(",") as import("../../lib/first-preview-revision-directives").RevisionDirective[];
+      if (directives.every(code => ["lower_setting", "raise_setting", "narrower_band", "wider_band", "vertical_center_stone", "horizontal_center_stone", "simplify_motif", "reduce_accent_stones"].includes(code)))
+        requested.set(token, { requestedDirectives: directives, sourceRevisionDirectives: (await repo.findJobById(value!.jobId))?.revisionDirectives ?? [] });
       expect(repo.setReviewForTest({ outputId: value!.id, conceptBriefId: BRIEF_ID, reviewStatus: "needs_revision", revisionInstruction: instruction })).toBe(true);
       return token;
     });
@@ -213,6 +225,77 @@ async function revisionFixture(options: { claim?: "claimed" | "already_claimed" 
 }
 
 test.describe("source-bound paid revision execution", () => {
+  test("an uncertain funded claim after B's claim cannot dispatch, release, or authorize a later operation", async () => {
+    const f = await revisionFixture({ costClaim: "throw" });
+    await f.service.prepare(await f.request(), JOB_2_ID);
+    expect((await f.service.execute(f.work())).status).toBe("unknown");
+    expect(f.settlements.at(-1)?.outcome).toBe("unknown");
+    expect(f.stats().calls).toBe(1);
+    expect((await f.service.prepare(await f.request(), "823e4567-e89b-42d3-a456-426614174000")).status).toBe("denied");
+    expect((await f.repo.findCustomerReadyOutput(BRIEF_ID))?.id).toBe(f.initial.id);
+  });
+  test("revision HTTP reaches the source-bound service and duplicate/UNKNOWN reads do not publish again", async () => {
+    const f = await revisionFixture({ publishUnknown: true });
+    const token = await f.request();
+    const http = modules.revisionHttp.createRevisionHttpHandlers(async (request, context) =>
+      request.headers.get("authorization") === "Bearer synthetic-test" && context.sourceOutputId === f.initial.id
+        ? { ...f.service, prepare: (_request, id) => f.service.prepare(token, id), read: (_request, id) => f.service.read(token, id) } : null);
+    const body = { operationId: JOB_2_ID, sourceOutputId: f.initial.id, provider: "manual_test", directives: ["lower_setting"], binding: "synthetic-binding" };
+    const req = (body: unknown, auth = "Bearer synthetic-test") => new Request(`https://test.invalid/api/first-preview-revisions/${PUBLIC_REFERENCE}`, { method: "POST", headers: { authorization: auth, origin: "https://test.invalid" }, body: JSON.stringify(body) });
+    expect((await (await http.POST(req(body), PUBLIC_REFERENCE)).json()).status).toBe("unknown");
+    expect((await (await http.POST(req(body), PUBLIC_REFERENCE)).json()).status).toBe("existing");
+    const query = new URLSearchParams({ operationId: JOB_2_ID, sourceOutputId: f.initial.id, provider: "manual_test" });
+    expect((await (await http.GET(new Request(`https://test.invalid/revision?${query}`, { headers: { authorization: "Bearer synthetic-test" } }), PUBLIC_REFERENCE)).json()).status).toBe("pending");
+    expect((await http.POST(req(body, "Bearer other-owner"), PUBLIC_REFERENCE)).status).toBe(404);
+    expect((await http.POST(req({ ...body, sourceOutputId: OUTPUT_ID }), PUBLIC_REFERENCE)).status).toBe(404);
+    expect((await http.POST(req({ ...body, directives: ["Print private arbitrary text"] }), PUBLIC_REFERENCE)).status).toBe(404);
+    expect(f.stats()).toEqual({ calls: 1, claims: 0, publications: 1 });
+  });
+
+  test("the revision Queue envelope reaches execute and cannot fall through initial-attempt reservation", async () => {
+    const f = await revisionFixture(); await f.service.prepare(await f.request(), JOB_2_ID);
+    const envelope = { schemaVersion: modules.revisionQueue.REVISION_QUEUE_SCHEMA, owner: { scope: "a".repeat(64), identity: "synthetic_revision_user" }, work: f.work() };
+    expect(modules.queue.validateFirstPreviewQueueMessage(envelope).ok).toBe(false);
+    let executions = 0;
+    const create = async () => ({ execute: async (work: FirstPreviewGenerationWork) => { executions++; return f.service.execute(work); } });
+    await modules.revisionQueue.consumeRevisionQueueEnvelope(envelope, create);
+    await modules.revisionQueue.consumeRevisionQueueEnvelope(envelope, create);
+    expect(executions).toBe(2); expect(f.stats().calls).toBe(2); // original + one revision
+    expect((await f.repo.findCustomerReadyOutput(BRIEF_ID))?.id).not.toBe(f.initial.id);
+    const malformed = { ...envelope, work: { ...envelope.work, attemptNumber: 1 } };
+    expect((await modules.revisionQueue.consumeRevisionQueueEnvelope(malformed, create)).disposition).toBe("invalid_message");
+    expect(executions).toBe(2);
+    expect((await modules.revisionQueue.consumeRevisionQueueEnvelope(envelope, async () => ({ execute: async () => ({ status: "unknown" }) }))).disposition).toBe("terminal_failure");
+    let sends = 0;
+    await expect(modules.revisionQueue.publishRevisionQueueEnvelope(envelope, async () => { sends++; throw new Error("lost acknowledgement"); })).rejects.toThrow();
+    expect(sends).toBe(1);
+  });
+
+  test("browser saves correlation before submit and only GETs after a lost acknowledgement or refresh", async () => {
+    const data = new Map<string, string>(); let posts = 0, gets = 0;
+    const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); } };
+    const input = { publicReference: PUBLIC_REFERENCE, sourceOutputId: OUTPUT_ID, provider: "manual_test" as const, directives: ["lower_setting"] as const, binding: "synthetic-binding" };
+    const access = { credential: "a".repeat(43), partition: "b".repeat(64) };
+    let ready = false;
+    const transport = async (_url: unknown, init?: RequestInit) => {
+      if (init?.method === "POST") { posts++; expect(data.size).toBe(1); throw new Error("lost acknowledgement"); }
+      gets++; return new Response(JSON.stringify({ status: ready ? "ready" : "pending", operationId: JOB_2_ID, ...(ready ? { outputId: OUTPUT_ID } : {}) }));
+    };
+    const deps = { storage, fetch: transport as typeof fetch, randomUUID: () => JOB_2_ID };
+    expect((await modules.revisionBrowser.requestBrowserRevision(input, access, deps)).status).toBe("unknown");
+    expect((await modules.revisionBrowser.requestBrowserRevision(input, access, deps)).status).toBe("pending");
+    ready = true;
+    expect((await modules.revisionBrowser.requestBrowserRevision(input, access, deps)).status).toBe("ready");
+    expect({ posts, gets }).toEqual({ posts: 1, gets: 2 });
+    expect([...data.values()].join()).not.toContain(access.credential);
+  });
+
+  test("changing structured payload on the same operation cannot mutate or republish it", async () => {
+    const f = await revisionFixture();
+    await f.service.prepare(await f.request(), JOB_2_ID);
+    expect((await f.service.prepare(await f.request("wider_band"), JOB_2_ID)).status).toBe("denied");
+    expect(f.stats().publications).toBe(1);
+  });
   test("real database adapter promotes through one RPC without separately revoking the source", async () => {
     const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
     const database = modules.revisionDatabase.createFirstPreviewDatabaseClient({

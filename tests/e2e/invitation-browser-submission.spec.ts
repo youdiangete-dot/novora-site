@@ -70,7 +70,14 @@ test("trial receipt identity is server verified, explicit and partitioned by tar
   };
   const originalM2 = beta.authenticateM2ReceiptRequest(request(), m2Environment);
   expect(originalM2).not.toBeNull();
-  expect(beta.authenticateScopedReceiptRequest(request(), m2Environment)).toEqual(originalM2);
+  const stable = beta.authenticateScopedReceiptRequest(request(), m2Environment);
+  expect(stable).toEqual(a);
+  expect(stable).not.toEqual(originalM2);
+  expect(beta.authenticateScopedReceiptRequest(request(), { ...m2Environment, VERCEL_DEPLOYMENT_ID: "dpl_otherSyntheticDeployment123", VERCEL_GIT_COMMIT_SHA: "b".repeat(40) })).toEqual(stable);
+  expect(beta.isScopedReceiptOwnerActive(stable!, m2Environment)).toBe(true);
+  expect(beta.isScopedReceiptOwnerActive(originalM2!, m2Environment)).toBe(false);
+  expect(beta.authenticateScopedReceiptRequest(request(), { ...m2Environment, NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED: "false" })).toEqual(originalM2);
+  expect(beta.authenticateScopedReceiptRequest(request(), { ...m2Environment, NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED: "invalid" })).toBeNull();
 });
 
 test("invitation status reveals no bearer, identity, digest or scope and legacy remains disabled", async () => {
