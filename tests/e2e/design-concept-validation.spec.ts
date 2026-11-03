@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { getDictionary } from '../../lib/i18n/dictionaries';
 
 const wrongFocalFields = [
   'Focal stone / pearl / bead type',
@@ -1916,5 +1917,85 @@ test.describe('/admin/briefs protected review UI', () => {
       status: 'Reviewing',
       internalNotes: 'Check stone scale before any CAD discussion.',
     });
+  });
+});
+
+
+test.describe('Gold color options', () => {
+  const colors = [
+    ['14k_yellow_gold', '14K KY (Yellow gold)'],
+    ['14k_white_gold', '14K KW (White gold)'],
+    ['14k_rose_gold', '14K KR (Rose gold)'],
+    ['18k_yellow_gold', '18K KY (Yellow gold)'],
+    ['18k_white_gold', '18K KW (White gold)'],
+    ['18k_rose_gold', '18K KR (Rose gold)'],
+  ] as const;
+
+  for (const [value, label] of colors) {
+    test(label + ' survives review, reload and submission without changing its color', async ({ page }) => {
+      let received: { brief?: { metalDirection?: string }; conceptBrief?: { metalDirection?: string } } | null = null;
+      await page.route('**/api/invitation-access', route => route.fulfill({ json: { state: 'disabled' } }));
+      await page.route('**/api/concept-briefs', async route => {
+        received = route.request().postDataJSON();
+        // Offline capture only: do not assert a real persistence receipt.
+        await route.fulfill({ status: 503, json: { ok: false, persisted: false } });
+      });
+      await openConcept(page, 'ring');
+      await chooseButton(page, 'Simple band / wedding band');
+      await goToMetalAndWearability(page);
+      for (const [, option] of colors) await expect(page.getByRole('button', { name: option, exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '14K Gold', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '18K Gold', exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await goToReviewBrief(page);
+      await expect(page.getByLabel('Brief summary').getByText(label, { exact: true })).toBeVisible();
+      await continueToBriefResult(page);
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+      expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('novora_concept_brief')!).metalDirection)).toBe(value);
+      await page.reload();
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+      await fillValidContactFields(page);
+      await page.getByRole('button', { name: 'Submit concept brief', exact: true }).click();
+      await expect.poll(() => received?.brief?.metalDirection).toBe(value);
+      expect(received?.conceptBrief?.metalDirection).toBe(value);
+      await expect(page).toHaveURL(/\/design\/brief$/);
+      await expect(page.getByRole('heading', { name: 'Concept brief received', exact: true })).toHaveCount(0);
+    });
+  }
+
+  for (const [value, label] of [['14k_gold', '14K Gold'], ['18k_gold', '18K Gold']]) {
+    test('legacy ' + value + ' remains unspecified rather than acquiring a color', async ({ page }) => {
+      await page.addInitScript(({ value }) => sessionStorage.setItem('novora_concept_brief', JSON.stringify({
+        pieceType: 'ring', structure: 'ring_simple_band', metalDirection: value, summaryItems: [],
+      })), { value });
+      await page.goto('/design/brief');
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+      expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('novora_concept_brief')!).metalDirection)).toBe(value);
+      for (const [, color] of colors) await expect(page.getByText(color, { exact: true })).toHaveCount(0);
+    });
+  }
+
+  test('mobile shows all six colors without horizontal overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openConcept(page, 'ring');
+    await goToMetalAndWearability(page);
+    for (const [, label] of colors) {
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+    }
+    await page.screenshot({ path: test.info().outputPath('gold-colors-mobile.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+
+  test('Traditional Chinese dictionaries preserve all six labels and both legacy values', () => {
+    const dictionary = getDictionary('zh-TW');
+    for (const karat of ['14K', '18K']) {
+      for (const [code, color] of [['KY', '黃金色'], ['KW', '白色'], ['KR', '玫瑰金色']]) {
+        const label = karat + ' ' + code + '（' + color + '）';
+        expect(Object.values(dictionary.designConcept)).toContain(label);
+        expect(Object.values(dictionary.designBrief.labels.metalDirection)).toContain(label);
+      }
+    }
+    expect(dictionary.designBrief.labels.metalDirection['14k_gold']).toBe('14K 金');
+    expect(dictionary.designBrief.labels.metalDirection['18k_gold']).toBe('18K 金');
   });
 });

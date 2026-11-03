@@ -188,7 +188,7 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
+export function isValidatedFirstPreviewPng(bytes: Uint8Array): boolean {
   if (
     bytes.byteLength < 45 ||
     bytes.byteLength > FIRST_PREVIEW_GENERATED_ASSET_MAX_BYTES

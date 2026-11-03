@@ -901,13 +901,17 @@ export class SupabaseFirstPreviewCustomerViewStateSource
         jobResult = { data: extended.jobs, error: null };
       }
 
-      const outputs = outputResult.data.map((output) =>
+      // Re-establish the narrowed rows after the optional lineage replacement.
+      const outputRows = outputResult.data;
+      const jobRows = jobResult.data;
+      if (!outputRows || !jobRows) return unavailable();
+      const outputs = outputRows.map((output) =>
         mapSafeOutput(output, lookup.conceptBriefId),
       );
       if (outputs.some((output) => output === null)) {
         return unavailable();
       }
-      const jobs = jobResult.data.map((job) =>
+      const jobs = jobRows.map((job) =>
         mapSafeJob(job, lookup.conceptBriefId),
       );
       if (jobs.some((job) => job === null)) {

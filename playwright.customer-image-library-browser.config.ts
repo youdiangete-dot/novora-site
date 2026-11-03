@@ -1,0 +1,2 @@
+import {defineConfig} from "@playwright/test";
+export default defineConfig({testDir:"./tests/e2e",testMatch:"customer-image-library-browser.spec.ts",reporter:"list",workers:1,use:{baseURL:"http://localhost:3147"},webServer:{command:"node ../../node_modules/next/dist/bin/next dev --port 3147",env:{NOVORA_CUSTOMER_IMAGE_LIBRARY_ENABLED:"true"},url:"http://localhost:3147",reuseExistingServer:false,timeout:120000}});

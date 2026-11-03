@@ -2,6 +2,8 @@ import "server-only";
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { resolveTrialSpending, TRIAL_SPENDING_MODE_ENV, TRIAL_SPENDING_SCRIPT, trialSpendingContract } from "./invitation-trial-spending";
+import { resolveTestPeriodSpending, TEST_PERIOD_SPENDING_SCRIPT, testPeriodSpendingContract } from "./invitation-test-period-spending";
+import { resolveTestPeriod025Spending, TEST_PERIOD_025_SPENDING_SCRIPT, testPeriod025SpendingContract } from "./invitation-test-period-025-spending";
 
 import {
   FIRST_PREVIEW_COST_CONTRACT,
@@ -24,6 +26,18 @@ export function revisionSpendingFingerprint(work: SpendingWork): string {
     work.structured.designSpecSha256,work.structured.handSketchInstructionSha256])).digest("hex");
 }
 type Invitation = Readonly<{ identity: string; credentialSha256: string }>;
+function resolveSpending(environment: Environment, roster: readonly Invitation[] | null, runtime: string | undefined) {
+  if (environment[TRIAL_SPENDING_MODE_ENV] === testPeriod025SpendingContract.MODE) {
+    const trial = resolveTestPeriod025Spending(environment, roster, runtime);
+    return trial ? { ...trial, expected: testPeriod025SpendingContract.authority(trial.selected, trial.binding), script: TEST_PERIOD_025_SPENDING_SCRIPT } : null;
+  }
+  if (environment[TRIAL_SPENDING_MODE_ENV] === testPeriodSpendingContract.MODE) {
+    const trial = resolveTestPeriodSpending(environment, roster, runtime);
+    return trial ? { ...trial, expected: testPeriodSpendingContract.authority(trial.selected, trial.binding), script: TEST_PERIOD_SPENDING_SCRIPT } : null;
+  }
+  const trial = resolveTrialSpending(environment, roster, runtime);
+  return trial ? { ...trial, expected: trialSpendingContract.authority(trial.selected, trial.binding), script: TRIAL_SPENDING_SCRIPT } : null;
+}
 export type BetaReservation = Readonly<{
   identity: string;
   requestKey: string;
@@ -53,7 +67,7 @@ export type BetaAdmissionDependencies = Readonly<{
 export async function recordTrialSpendingOutcome(work: SpendingWork, outcome: "delivered" | "definite_failure" | "unknown", usageMicros: number | null, dependencies: BetaAdmissionDependencies = {}): Promise<boolean> {
   const environment = dependencies.environment ?? process.env;
   if (environment[TRIAL_SPENDING_MODE_ENV] === undefined) return true;
-  if (environment[TRIAL_SPENDING_MODE_ENV] !== trialSpendingContract.MODE || betaAdmissionMode(environment) !== "enabled") return false;
+  if (![trialSpendingContract.MODE, testPeriodSpendingContract.MODE, testPeriod025SpendingContract.MODE].includes(environment[TRIAL_SPENDING_MODE_ENV]) || betaAdmissionMode(environment) !== "enabled") return false;
   try {
     const ledger = dependencies.ledger ?? createRedisBetaAdmissionLedger(environment);
     return Boolean(ledger?.recordOutcome && await ledger.recordOutcome({
@@ -306,7 +320,7 @@ export function inspectBetaAdmissionBinding(environment: Environment): Readonly<
     targetValid: isPreviewTarget(target),
   };
   if (environment[TRIAL_SPENDING_MODE_ENV] !== undefined) {
-    const trial = runtimeConsistent ? resolveTrialSpending(environment, roster, runtime) : null;
+    const trial = runtimeConsistent ? resolveSpending(environment, roster, runtime) : null;
     return { binding: trial?.binding ?? null, diagnostics: { ...diagnostics,
       invitationValid:Boolean(trial && roster && roster.length >= 1 && roster.length <= BETA_IDENTITY_LIMIT) } };
   }
@@ -427,12 +441,14 @@ export function createRedisBetaAdmissionLedger(
   const binding = resolveBetaAdmissionBinding(environment);
   const roster = invitations(environment);
   const runtime = environment === process.env ? process.env.NEXT_RUNTIME : environment.NEXT_RUNTIME;
-  const trial = environment[TRIAL_SPENDING_MODE_ENV] !== undefined ? resolveTrialSpending(environment, roster, runtime) : null;
+  const trial = environment[TRIAL_SPENDING_MODE_ENV] !== undefined ? resolveSpending(environment, roster, runtime) : null;
   const url = environment.UPSTASH_REDIS_REST_URL ?? environment.KV_REST_API_URL;
   const credential = environment.UPSTASH_REDIS_REST_URL
     ? environment.UPSTASH_REDIS_REST_TOKEN
     : environment.KV_REST_API_TOKEN;
   if (!roster || !binding || !url || !credential) return null;
+  // Capture guarded values for the asynchronous transport closures.
+  const guardedBinding = binding;
   try {
     const endpoint = new URL(url);
     if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
@@ -440,12 +456,13 @@ export function createRedisBetaAdmissionLedger(
     }
   } catch { return null; }
   if (trial) {
-    const expected = trialSpendingContract.authority(trial.selected,trial.binding);
+    const expected = trial.expected;
+    const script = trial.script;
     async function executeTrial(operation: "reserve" | "dispatch" | "record", input: BetaDispatch & Partial<BetaReservation> & { outcome?: string; usageMicros?: number | null }) {
       const value = { ...input, kind: input.kind ?? "initial", sourceBriefId: input.sourceBriefId ?? input.briefId };
       const response = await fetchImplementation(url!, {
         method: "POST", headers: { Authorization: `Bearer ${credential}`, "Content-Type": "application/json" },
-        body: JSON.stringify(["EVAL",TRIAL_SPENDING_SCRIPT,"1",binding!.ledgerKey,operation,binding!.authorityId,binding!.runtimeBinding,JSON.stringify(expected),JSON.stringify(value)]),
+        body: JSON.stringify(["EVAL",script,"1",guardedBinding.ledgerKey,operation,guardedBinding.authorityId,guardedBinding.runtimeBinding,JSON.stringify(expected),JSON.stringify(value)]),
         signal: AbortSignal.timeout(5000), redirect: "error", cache: "no-store",
       });
       if (!response.ok) return "denied";
@@ -464,12 +481,12 @@ export function createRedisBetaAdmissionLedger(
       method: "POST",
       headers: { Authorization: `Bearer ${credential}`, "Content-Type": "application/json" },
       body: JSON.stringify([
-        "EVAL", binding.runtimeBinding ? M2_PREVIEW_ADMISSION_SCRIPT : BETA_ADMISSION_SCRIPT, "1", binding.ledgerKey,
-        operation, binding.authorityId, FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
+        "EVAL", guardedBinding.runtimeBinding ? M2_PREVIEW_ADMISSION_SCRIPT : BETA_ADMISSION_SCRIPT, "1", guardedBinding.ledgerKey,
+        operation, guardedBinding.authorityId, FIRST_PREVIEW_PRICING_ASSUMPTION_VERSION,
         String(FIRST_PREVIEW_COST_CONTRACT.lifetimeBudgetPerConceptBriefMicros),
         input.identity ?? "", input.requestKey ?? "", input.briefId, input.fingerprint,
         `|${roster!.map(value => value.identity).join("|")}|`,
-        ...(binding.runtimeBinding ? [binding.runtimeBinding] : []),
+        ...(guardedBinding.runtimeBinding ? [guardedBinding.runtimeBinding] : []),
       ]),
       signal: AbortSignal.timeout(5000),
       redirect: "error",

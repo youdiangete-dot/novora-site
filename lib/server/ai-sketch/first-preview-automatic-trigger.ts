@@ -1,6 +1,7 @@
 import "server-only";
 
 import { reserveBetaAdmission, type BetaAdmissionDependencies } from "./beta-admission";
+import { isLowReservationPreviewInputAllowed } from "./openai-first-preview-provider";
 
 import {
   prepareFirstPreviewGenerationInput,
@@ -145,6 +146,10 @@ export async function triggerAutomaticFirstPreviewAfterPersistence(
     return { status: "not_enqueued", reason: "queue_message_rejected" };
   }
 
+  if (!isLowReservationPreviewInputAllowed(message.value.generationInput,
+      dependencies.betaAdmissionDependencies?.environment ?? process.env)) {
+    return {status:"not_enqueued",reason:"structured_input_rejected",structuredInputCategory:"oversized_input",structuredInputRejectStage:"output_contract"};
+  }
   const admission = await reserveBetaAdmission({
     request: input.admissionRequest,
     briefId: input.conceptBriefId,

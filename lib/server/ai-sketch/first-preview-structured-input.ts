@@ -71,6 +71,17 @@ const CUSTOM_JEWELRY_STRUCTURE_MAP: Readonly<Record<string, string>> = {
   not_sure: "custom jewelry type to confirm",
 };
 
+// Normalize only the six guided color choices for the existing skills parser.
+// Legacy gold values have no declared color and must remain unspecified.
+const GOLD_METAL_DIRECTIONS: ReadonlyMap<string, string> = new Map([
+  ["14k_yellow_gold", "14K yellow gold"],
+  ["14k_white_gold", "14K white gold"],
+  ["14k_rose_gold", "14K rose gold"],
+  ["18k_yellow_gold", "18K yellow gold"],
+  ["18k_white_gold", "18K white gold"],
+  ["18k_rose_gold", "18K rose gold"],
+]);
+
 const LONG_TEXT_FIELDS = new Set([
   "designIntent",
   "aiSketchInstruction",
@@ -263,6 +274,8 @@ function createCoreInput(payload: unknown): Record<string, unknown> | null {
         : null
       : readString(brief, "otherJewelryType", 500);
 
+  const metalDirection = readString(brief, "metalDirection", 500);
+
   return {
     pieceType,
     pieceSubtype:
@@ -287,7 +300,7 @@ function createCoreInput(payload: unknown): Record<string, unknown> | null {
     ]),
     materialDirection: compact([
       ...readStringList(brief, "materialDirection"),
-      readString(brief, "metalDirection", 500),
+      metalDirection ? GOLD_METAL_DIRECTIONS.get(metalDirection) ?? metalDirection : null,
       readString(brief, "customMetalDirection", 500),
     ]),
     stones: buildStoneInput(brief),

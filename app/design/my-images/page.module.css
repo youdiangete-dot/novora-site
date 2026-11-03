@@ -1,0 +1,7 @@
+.page { max-width: 60rem; margin: 0 auto; padding: 2rem 1rem; overflow-wrap: anywhere; }
+.page button { padding: .65rem 1rem; cursor: pointer; }
+.page button:disabled { cursor: default; }
+.list { padding: 0; list-style: none; }
+.list li { margin-block: 1rem; padding: 1rem; border: 1px solid #b3a99c; border-radius: .5rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.image { display: block; width: 100%; height: auto; margin-block: 1rem; }

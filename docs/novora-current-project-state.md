@@ -1,5 +1,45 @@
 # NOVORA Current Project State
 
+## Local two-tester seven-day candidate (2026-11-03; not released)
+
+Owner's current nonpayment pilot target is TWO invited testers, each with3 initial
+images and1 revision during seven days of anytime self-service. Payment remains
+deferred/OFF. Keep each owner's safe original and revised images privately
+available for repeat viewing and PNG download, with a personal-backup reminder;
+no browser-close or one-hour deletion policy is implemented or authorized.
+
+This is an UNCOMMITTED local candidate on `codex/customer-image-history-v1`,
+based on integration23feabb9. It is not merged, deployed, activated or part of
+current `main`/Production. The exact branch has Git auto-deployment disabled in
+the proposed configuration; existing branch settings and Queue triggers remain.
+The local library route is `/design/my-images`; access requires the existing
+stable trial invitation identity and owned receipt, plus renewed brief-bound
+private-image cookies. Generation expiry and image/viewing retention differ.
+Historical unclassified revoked outputs are not backfilled or reopened.
+
+Selected policy: `owner_expected_cost_seven_day_trial_025_v1`, eight fixedUSD0.25
+reservations/USD2 aggregate. Prior commitments stay USD5.05 M2/USD95.05 total;
+projected totals USD7.05/USD97.05 fit unchanged USD10/USD200 ceilings. This is an
+engineering reservation with invoice uncertainty, not a verified Provider hard
+bill cap or current funding approval. LegacyUSD1 modes and obligations remain.
+
+Actual local evidence:124 assertions passed on Redis8.10.1 for the exact025 Lua
+and contract;13 PostgreSQL17.11 checks passed for the history migration including
+roles, triggers and races. Both isolated synthetic containers were verified
+removed. Build/focused mocks and the injected mobile-browser proof are retained.
+These do not prove the deployed Supabase schema/PostgREST FK query, a current
+tester entitlement, spending authority, external browser access or new paid use.
+Preview20's earlier accepted flow and cleanup remain separate, preserved proof.
+
+Pending release work: reviewed exact commit publication; exact isolated history
+migration and deployed-query verification; two explicitly nonpayment TEST
+fixtures through existing RPCs; final source/deployment-bound025 provisioning;
+one retained protected Preview, separately approved platform sharing/invitation
+delivery and lifecycle. Private setup hosts/journals/SQL handoff artifacts stay
+outside public product source. No new website admin route or permanent privilege.
+See `novora-seven-day-usd025-local-candidate.md` for actual evidence/limits and
+the minimum proposed external-access method. No Production operation is implied.
+
 ## Owner-approved invitation-trial release boundary (2026-11-01)
 
 Owner confirmed on 2026-11-01 that the current intermediate MVP release is:
