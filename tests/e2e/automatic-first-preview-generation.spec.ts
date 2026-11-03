@@ -2947,3 +2947,70 @@ test.describe("Goal 2 idempotent trigger and lifecycle", () => {
     ).toEqual({ ok: false, category: "precondition_failed" });
   });
 });
+
+
+test.describe("Gold color generation compatibility", () => {
+  const choices = [
+    ["14k_yellow_gold", "14K yellow gold", "yellow gold"],
+    ["14k_white_gold", "14K white gold", "white gold"],
+    ["14k_rose_gold", "14K rose gold", "rose gold"],
+    ["18k_yellow_gold", "18K yellow gold", "yellow gold"],
+    ["18k_white_gold", "18K white gold", "white gold"],
+    ["18k_rose_gold", "18K rose gold", "rose gold"],
+    ["14k_gold", "14k_gold", "unspecified"],
+    ["18k_gold", "18k_gold", "unspecified"],
+  ] as const;
+
+  for (const [storedValue, material, goldColor] of choices) {
+    test(storedValue + " reaches the serialized Provider instruction without mutating stored input", async () => {
+      const brief = validBrief({ materialDirection: [], metalDirection: storedValue });
+      const original = JSON.stringify(brief);
+      const structured = modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: { brief }, publicReference: PUBLIC_REFERENCE,
+      });
+      expect(structured.ok).toBe(true);
+      if (!structured.ok) throw new Error("Expected guided gold choice to build.");
+      expect(structured.value.structuredBrief.materials.directions).toContain(material);
+      expect(structured.value.designSpec.materials.gold_color).toBe(goldColor);
+      expect(structured.value.handSketchInstruction.jewelry_rendering_instructions.material_rendering_direction).toContain(goldColor);
+      expect(JSON.stringify(brief)).toBe(original);
+      expect(brief.metalDirection).toBe(storedValue);
+
+      const prepared = await preparedWork({ payload: { brief } });
+      let calls = 0;
+      let prompt = "";
+      const binding = modules.client.createOpenAiFirstPreviewProviderBinding({
+        environment: { OPENAI_API_KEY: `sk-${"a".repeat(32)}` },
+        fetchImplementation: async (_url, init) => {
+          calls += 1;
+          prompt = JSON.parse(String(init?.body)).prompt;
+          return new Response(JSON.stringify({
+            data: [{ b64_json: Buffer.from(VALID_PNG).toString("base64") }],
+            usage: { input_tokens: 20, output_tokens: 80, total_tokens: 100,
+              input_tokens_details: { text_tokens: 20, image_tokens: 0 } },
+          }), { status: 200, headers: { "x-request-id": "req_gold_color_synthetic_001" } });
+        },
+      });
+      if (!binding) throw new Error("Expected synthetic Provider binding.");
+      expect(await modules.lifecycle.runAutomaticFirstPreviewWorker(
+        prepared.work, workerDependencies(prepared.repository, binding),
+      )).toMatchObject({ status: "ready" });
+      expect(calls).toBe(1);
+      const instruction = JSON.parse(prompt.split("\n").at(-1)!);
+      expect(instruction.jewelry_rendering_instructions.material_rendering_direction).toContain(material);
+      expect(instruction.jewelry_rendering_instructions.material_rendering_direction).toContain(goldColor);
+      expect(JSON.stringify(brief)).toBe(original);
+    });
+  }
+
+  test("mapped choices retain contradictory-color rejection", () => {
+    for (const overrides of [
+      { materialDirection: ["yellow gold"], metalDirection: "14k_white_gold" },
+      { materialDirection: [], metalDirection: "18k_rose_gold", avoid: ["rose gold"] },
+    ]) {
+      expect(modules.structured.buildFirstPreviewStructuredGenerationInput({
+        payload: { brief: validBrief(overrides) }, publicReference: PUBLIC_REFERENCE,
+      })).toMatchObject({ ok: false, category: "contradictory_input" });
+    }
+  });
+});

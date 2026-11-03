@@ -338,8 +338,12 @@ const styleDirections: Option[] = [
 
 const metalOptions: Option[] = [
   { labelKey: 'dc166', value: '925_sterling_silver' },
-  { labelKey: 'dc167', value: '14k_gold' },
-  { labelKey: 'dc168', value: '18k_gold' },
+  { labelKey: 'dc14ky', value: '14k_yellow_gold' },
+  { labelKey: 'dc14kw', value: '14k_white_gold' },
+  { labelKey: 'dc14kr', value: '14k_rose_gold' },
+  { labelKey: 'dc18ky', value: '18k_yellow_gold' },
+  { labelKey: 'dc18kw', value: '18k_white_gold' },
+  { labelKey: 'dc18kr', value: '18k_rose_gold' },
   { labelKey: 'dc169', value: 'platinum' },
   { labelKey: 'dc010', value: 'not_sure' },
 ];
