@@ -34,6 +34,7 @@ export type RevisionServiceDependencies = Readonly<{
   // Read the exact immutable binding's durable released outcome. A failed job
   // alone (including an UNKNOWN dispatch) never authorizes a new operation.
   isDefiniteFailure?(binding: RevisionDispatchBinding): Promise<boolean>;
+  validatePreparedInput?(prepared: FirstPreviewPreparedGenerationInput): boolean;
   entitlements: Readonly<{
     reserve(input: RevisionDispatchBinding & { purchaseId: string; subjectId: string }): Promise<UseResult>;
     claimDispatch(input: RevisionDispatchBinding): Promise<Claim>;
@@ -117,7 +118,7 @@ export function createSourceBoundRevisionService(deps: RevisionServiceDependenci
         }
         const previous = sourceJob.revisionDirectives ?? [];
         const prepared = buildRevisedPreparedInput(source.originalInput, previous, requested, source.publicReference, source.conceptBriefId);
-        if (!prepared) return reject("denied");
+        if (!prepared || deps.validatePreparedInput?.(prepared) === false) return reject("denied");
         const merged = Object.keys(REVISION_DIRECTIVES).filter(code => prepared.designSpec.jewelry_structure.construction_consistency_notes.includes(REVISION_DIRECTIVES[code as RevisionDirective])) as RevisionDirective[];
         const reserved = await deps.repository.reserveJob({ jobId: operationId, conceptBriefId: source.conceptBriefId,
           parentJobId: parent.id, sourceOutputId: current.id, attemptNumber: parent.attemptNumber + 1,

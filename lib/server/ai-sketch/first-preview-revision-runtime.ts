@@ -17,6 +17,7 @@ import { isFirstPreviewQueueExecutionConfirmed } from "./first-preview-queue";
 import { publishRevisionQueueEnvelope, REVISION_QUEUE_SCHEMA, type RevisionQueueEnvelope } from "./first-preview-revision-queue";
 import type { RevisionHttpContext } from "./first-preview-revision-http";
 import { isValidFirstPreviewAssetUuid } from "./first-preview-generated-assets-contract";
+import { isLowReservationPreviewInputAllowed } from "./openai-first-preview-provider";
 
 type PackageRepository = ReturnType<typeof createImagePackageRepository> & {
   isDefiniteFailure?(binding: RevisionDispatchBinding): Promise<boolean>;
@@ -32,6 +33,7 @@ function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], s
   });
   const fingerprint = revisionSpendingFingerprint;
   return createSourceBoundRevisionService({
+    validatePreparedInput: prepared => isLowReservationPreviewInputAllowed(prepared, process.env),
     repository, resolveSource: async () => source,
     resolveDispatch: async operationId => {
       const job = await repository.findJobById(operationId);

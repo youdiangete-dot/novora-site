@@ -28,6 +28,9 @@ export default async function SiteHeader() {
         </nav>
         <div className={styles.actions}>
           <LanguageSwitcher />
+          {process.env.NOVORA_CUSTOMER_IMAGE_LIBRARY_ENABLED === 'true' ? (
+            <Link href={localizePath('/design/my-images', locale)}>My images</Link>
+          ) : null}
           <Link href={localizePath('/design/start', locale)} className="btn" aria-label={copy.nav007}>
             {copy.nav007}</Link>
         </div>

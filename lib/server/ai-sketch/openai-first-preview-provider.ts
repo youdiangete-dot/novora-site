@@ -12,6 +12,7 @@ import {
   NOVORA_FIRST_PREVIEW_PRINTED_LABEL,
   NOVORA_FIRST_PREVIEW_PRINTED_DISCLAIMER,
 } from "./hand-sketch-instruction";
+import lowReservation from "../../../tools/invitation-test-period-025-contract.cjs";
 
 export const OPENAI_FIRST_PREVIEW_MODEL =
   "gpt-image-2-2026-04-21" as const;
@@ -366,8 +367,9 @@ function sortJsonValue(value: JsonValue): JsonValue {
   return value;
 }
 
-function buildOpenAiRequest(
+export function buildOpenAiFirstPreviewRequest(
   request: FirstPreviewProviderRequest,
+  maximumPromptUtf8Bytes?: 16000,
 ): OpenAiImageGenerateRequest | null {
   if (
     request.contractVersion !== FIRST_PREVIEW_PROVIDER_CONTRACT_VERSION ||
@@ -406,7 +408,8 @@ function buildOpenAiRequest(
       JSON.stringify(sortJsonValue(allowedInstruction)),
     ].join("\n");
 
-    if (prompt.length > MAX_PROMPT_LENGTH) {
+    if (prompt.length > MAX_PROMPT_LENGTH || (maximumPromptUtf8Bytes !== undefined &&
+        (maximumPromptUtf8Bytes !== 16000 || Buffer.byteLength(prompt, "utf8") > maximumPromptUtf8Bytes))) {
       return null;
     }
 
@@ -422,6 +425,21 @@ function buildOpenAiRequest(
   } catch {
     return null;
   }
+}
+
+// The exact final prompt includes the fixed policy and complete serialized
+// instruction. Never truncate, summarize or normalize to squeeze under budget.
+export function isLowReservationPreviewMode(environment:Readonly<Record<string,string|undefined>>):boolean {
+  return environment.NOVORA_INVITATION_TRIAL_SPENDING_MODE === lowReservation.MODE;
+}
+export function isLowReservationPreviewInputAllowed(
+  structured: Pick<FirstPreviewProviderRequest, "designSpec" | "handSketchInstruction">,
+  environment: Readonly<Record<string,string|undefined>>,
+): boolean {
+  return !isLowReservationPreviewMode(environment) ||
+    buildOpenAiFirstPreviewRequest({contractVersion:FIRST_PREVIEW_PROVIDER_CONTRACT_VERSION,
+      purpose:"first_preview",imageCount:1,designSpec:structured.designSpec,
+      handSketchInstruction:structured.handSketchInstruction},16000) !== null;
 }
 
 function readErrorCode(error: unknown): string | null {
@@ -645,6 +663,7 @@ function normalizeProviderResponse(
 export function createOpenAiFirstPreviewProviderAdapter(dependencies: {
   client: OpenAiImageClient;
   configuration: OpenAiApiKeyConfiguration;
+  maximumPromptUtf8Bytes?: 16000;
 }): OpenAiFirstPreviewProviderAdapter {
   return {
     async generateFirstPreviewImage(request, context) {
@@ -656,7 +675,7 @@ export function createOpenAiFirstPreviewProviderAdapter(dependencies: {
         return failure("cancelled");
       }
 
-      const openAiRequest = buildOpenAiRequest(request);
+      const openAiRequest = buildOpenAiFirstPreviewRequest(request, dependencies.maximumPromptUtf8Bytes);
 
       if (!openAiRequest) {
         return failure("invalid_request");

@@ -44,6 +44,8 @@ import {
 } from "./openai-first-preview-trusted-output";
 import {
   OPENAI_FIRST_PREVIEW_TIMEOUT_MS,
+  isLowReservationPreviewInputAllowed,
+  isLowReservationPreviewMode,
   type OpenAiFirstPreviewAdapterResult,
 } from "./openai-first-preview-provider";
 import {
@@ -685,6 +687,14 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
     );
   }
 
+  const admissionEnvironment = dependencies.betaAdmissionDependencies?.environment ?? process.env;
+  const lowReservation = isLowReservationPreviewMode(admissionEnvironment);
+  // A Queue replay cannot bypass the new policy's producer-side preflight.
+  if (!isLowReservationPreviewInputAllowed(work.structured,
+      admissionEnvironment)) {
+    return recordFailure(dependencies.repository, work.jobId, "budget_blocked", false, 0);
+  }
+
   let binding: OpenAiFirstPreviewProviderBinding | null;
   try {
     binding = dependencies.createProvider();
@@ -710,7 +720,7 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   // Capture the verified deployment binding before the dispatch claim. Later
   // flag changes must not turn an M2 attempt into a legacy cost path.
   const admissionBinding = !revision && work.betaAdmission === true
-    ? resolveBetaAdmissionBinding(dependencies.betaAdmissionDependencies?.environment ?? process.env)
+    ? resolveBetaAdmissionBinding(admissionEnvironment)
     : null;
   const betaAllowed = revision
     ? await dependencies.revisionAdmission!.claimDispatch(work) === "claimed"
@@ -779,7 +789,8 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
         usage,
       });
       const m2Preview = Boolean(admissionBinding?.runtimeBinding);
-      if (((m2Preview || revision) && !imageCost.usageTrusted) || firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
+      const unexpectedLowUsage = lowReservation && (!usage || usage.textInputTokens < 1 || usage.textInputTokens > 16000 || usage.imageOutputTokens < 1);
+      if (unexpectedLowUsage || ((m2Preview || revision) && !imageCost.usageTrusted) || firstPreviewActualCostExceedsReservation(imageCost.actualCostMicros)) {
         trustedEvidenceFailureCategory = "budget_blocked";
         return { outcome: "invalid_output" };
       }
@@ -917,7 +928,11 @@ async function runAutomaticFirstPreviewWorkerUnsafe(
   if (runtime.providerInvoked && !runtime.gates.ready) {
     const verdict = visualEvidence as FirstPreviewVisualPrivacyEvidence | null;
     const known = cost.usageTrusted && providerRequestId !== null && verdict?.usageTrusted === true && verdict.result === "failed";
-    await recordTrialSpendingOutcome(work, known ? "definite_failure" : "unknown", known ? cost.actualCostMicros + verdict!.actualCostMicros : null, dependencies.betaAdmissionDependencies);
+    // Preserve a trusted anomalous image charge when no privacy request was
+    // admitted. No invented combined actual cost when inspection is uncertain.
+    const observed = known ? cost.actualCostMicros + verdict!.actualCostMicros :
+      lowReservation && cost.usageTrusted && !inspectionReserved ? cost.actualCostMicros : null;
+    await recordTrialSpendingOutcome(work, known ? "definite_failure" : "unknown", observed, dependencies.betaAdmissionDependencies);
   }
   if (inspectionReserved && (!trustedEvidence || !runtime.gates.ready)) {
     const output = candidateOutput as FirstPreviewOutputRecord | null;
