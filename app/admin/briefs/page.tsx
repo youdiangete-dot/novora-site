@@ -132,6 +132,7 @@ export default async function AdminBriefsPage({ searchParams }: AdminBriefsPageP
             are loaded from Supabase when admin_notes persistence is available.
           </p>
           <p><Link href="/admin/test-image-packages">Owner TEST-01 manual confirmation</Link></p>
+          <p><Link href="/admin/orders">Commercial order records (read-only)</Link></p>
         </section>
 
         <section className={styles.notice} aria-label="Protected admin warning">
