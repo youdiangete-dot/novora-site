@@ -307,6 +307,50 @@ test("same normalized quotation is idempotent", async () => {
   expect(fixture.writes).toHaveLength(0);
 });
 
+for (const outcome of ["inserted", "unique_conflict"] as const) {
+  for (const change of ["specification", "specification_hash", "output", "unavailable"] as const) {
+    test(`${outcome} quotation does not report success when ${change} changes after persistence`, async () => {
+      const fixture = dependencies();
+      const originalJourney = fixture.value.repository.resolveCurrentJourneyByConceptBriefId;
+      const originalBasis = fixture.value.repository.findLatestSpecificationConfirmation;
+      let settled = false;
+      fixture.value.repository.resolveCurrentJourneyByConceptBriefId = async id => {
+        const journey = await originalJourney(id);
+        return settled && change === "output" && journey
+          ? { ...journey, outputId: "523e4567-e89b-42d3-a456-426614174000" }
+          : journey;
+      };
+      fixture.value.repository.findLatestSpecificationConfirmation = async journey => {
+        const basis = await originalBasis(journey);
+        if (!basis || !settled) return basis;
+        if (change === "unavailable") throw new Error("Synthetic read unavailable");
+        return { ...basis,
+          id: change === "specification" ? OLDER_CONFIRMATION_ID : basis.id,
+          specificationSha256: change === "specification_hash" ? "b".repeat(64) : basis.specificationSha256 };
+      };
+      fixture.value.repository.findExactQuotation = async () => settled ? row() : null;
+      fixture.value.repository.insertQuotation = async value => {
+        fixture.writes.push(value);
+        settled = true;
+        return outcome === "unique_conflict" ? "conflict" : row(value.quotationSnapshot as ReturnType<typeof snapshot>);
+      };
+      const result = await quotationModule.issueCommercialQuotation(quotationInput(), fixture.value);
+      expect(result).toEqual({ ok: false, reason: change === "unavailable" ? "unavailable" : "journey_unavailable" });
+      expect(fixture.writes).toHaveLength(1);
+      expect(result).not.toHaveProperty("quotation");
+    });
+  }
+}
+
+test("a concurrent unique match on the unchanged basis is read back without a second insert", async () => {
+  const fixture = dependencies({ insertResult: "conflict" });
+  let reads = 0;
+  fixture.value.repository.findExactQuotation = async () => ++reads === 1 ? null : row();
+  expect(await quotationModule.issueCommercialQuotation(quotationInput(), fixture.value)).toMatchObject({ ok: true, status: "already_issued" });
+  expect(reads).toBe(2);
+  expect(fixture.writes).toHaveLength(1);
+});
+
 test("changed quotation content creates a different hash and append-only history row", async () => {
   const fixture = dependencies();
   await quotationModule.issueCommercialQuotation(quotationInput(), fixture.value);
@@ -371,10 +415,12 @@ test("customer quotation copy preserves payment, order, CAD, and production boun
     path.join(process.cwd(), "app", "design", "preview", "[public_reference]", "CommercialQuotation.tsx"),
     "utf8",
   );
-  expect(source).toContain("does not make a payment");
-  expect(source).toContain("place an order");
-  expect(source).toContain("approve CAD");
-  expect(source).toContain("approve production");
+  const copy = testRequire("../../lib/i18n/dictionaries/customer-ui-copy").customerUICopy.quotation;
+  expect(copy.qt011).toContain("does not make a payment");
+  expect(copy.qt011).toContain("place an order");
+  expect(copy.qt011).toContain("approve CAD");
+  expect(copy.qt011).toContain("approve production");
+  expect(source).toContain("copy.qt011");
   expect(source).not.toMatch(/Accept quote|Pay now|checkout|payment link/i);
 });
 
