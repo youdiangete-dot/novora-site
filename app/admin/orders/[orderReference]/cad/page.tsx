@@ -35,7 +35,8 @@ export default async function CadHandoffPage({ params, searchParams }: {
         <Link href={`/admin/briefs/${encodeURIComponent(result.order.publicReference)}`}>{result.order.publicReference}</Link>
         {check && <p role="alert">The requested write was not confirmed or conflicts with the persisted handoff. Check the record shown below before any further action. No automatic retry was made.</p>}
         {result.handoff ? <><h3>CAD handoff recorded</h3><p>{result.handoff.handoffReference}</p><time dateTime={result.handoff.recordedAt}>{result.handoff.recordedAt}</time>
-          <p>This is the recorded handoff reference, not CAD completion or production approval.</p></> : <>
+          <p>This is the recorded handoff reference, not CAD completion or production approval.</p>
+          <Link href={`/admin/orders/${encodeURIComponent(result.order.orderReference)}/production`}>Manual production handoff record</Link></> : <>
           <p>No CAD handoff is recorded. Use the exact quotation and confirmed specifications associated with this order, rather than a newer concept image.</p>
           {!check && <form action={saveCadHandoff}>
             <input type="hidden" name="orderReference" value={result.order.orderReference}/>
