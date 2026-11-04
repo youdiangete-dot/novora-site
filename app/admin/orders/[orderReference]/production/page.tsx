@@ -39,7 +39,8 @@ export default async function ProductionHandoffPage({ params, searchParams }: {
         {check && <p role="alert">The requested write was not confirmed or conflicts with the persisted handoff. Check the record below. No automatic retry was made.</p>}
         {result.handoff ? <><h3>Production handoff recorded</h3><p>Offline manual decision reference: {result.handoff.decisionReference}</p>
           <p>Offline production handoff reference: {result.handoff.handoffReference}</p><time dateTime={result.handoff.recordedAt}>{result.handoff.recordedAt}</time>
-          <p>This is a handoff record, not CAD completion, production approval, manufacturing progress or shipment confirmation.</p></> : <>
+          <p>This is a handoff record, not CAD completion, production approval, manufacturing progress or shipment confirmation.</p>
+          <Link href={`/admin/orders/${encodeURIComponent(result.order.orderReference)}/delivery`}>Manual delivery handoff record</Link></> : <>
           <p>No production handoff is recorded. Confirm the required CAD and production decisions offline first, using the specifications and quotation bound to this paid order.</p>
           {!check && <form action={saveProductionHandoff}>
             <input type="hidden" name="orderReference" value={result.order.orderReference}/>

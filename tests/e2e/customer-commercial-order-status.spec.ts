@@ -20,7 +20,7 @@ function row(n = 1): any {
   return { order_reference: reference("O", n), order_version: "commercial_order_v1", commercial_payment_reference: reference("P", n), commercial_quotation_reference: reference("Q", n), amount_minor: 123, currency: "USD", created_at: "2026-11-04T01:00:00Z",
     payment: { payment_reference: reference("P", n), commercial_quotation_reference: reference("Q", n), payment_version: "commercial_payment_v1", status: "paid", amount_minor: 123, currency: "USD", paid_at: "2026-11-04T00:59:00Z", provider_payment_id: "TEST private provider ID" },
     quotation: { quote_reference: reference("Q", n), commercial_specification_confirmation_id: spec, quotation_version: "commercial_quotation_v1", quotation_snapshot: snapshot, quotation_sha256: quotes.hashCommercialQuotationSnapshot(snapshot), specification: { id: spec, concept_brief_id: brief, ai_sketch_output_id: output, brief: { id: brief, public_reference: ref, email: "test-private@example.invalid" }, output: { id: output, concept_brief_id: brief, is_current_customer_preview: false, private_path: "TEST private storage" } } },
-    cad: { order_reference: reference("O", n), recorded_at: "2026-11-04T02:00:00Z", handoff_reference: "TEST private CAD", production: { order_reference: reference("O", n), recorded_at: "2026-11-04T03:00:00Z", manual_decision_reference: "TEST private manual decision" } }, internal_notes: "TEST private admin notes" };
+    cad: { order_reference: reference("O", n), recorded_at: "2026-11-04T02:00:00Z", handoff_reference: "TEST private CAD", production: { order_reference: reference("O", n), recorded_at: "2026-11-04T03:00:00Z", manual_decision_reference: "TEST private manual decision", delivery: { order_reference: reference("O", n), recorded_at: "2026-11-04T04:00:00Z", delivery_reference: "TEST private delivery" } } }, internal_notes: "TEST private admin notes" };
 }
 const request = (who = "A", query = `publicReference=${ref}`, method = "GET", headers: Record<string, string> = {}) => new Request(`https://test.invalid/api/customer-commercial-order-status?${query}`, { method, headers: { ...(who ? { Authorization: `Bearer ${who}` } : {}), ...headers } });
 function fixture(rows: unknown = [row()]) {
@@ -32,7 +32,7 @@ function fixture(rows: unknown = [row()]) {
 }
 test("owned historical paid order exposes only exact customer-safe record timestamps", async () => {
   const f = fixture(), result = await f.service.read(request(), ref);
-  expect(result).toEqual({ state: "ready", publicReference: ref, hasMore: false, orders: [{ orderReference: reference("O", 1), recordedAt: "2026-11-04T01:00:00.000Z", cadHandoffRecordedAt: "2026-11-04T02:00:00.000Z", productionHandoffRecordedAt: "2026-11-04T03:00:00.000Z" }] });
+  expect(result).toEqual({ state: "ready", publicReference: ref, hasMore: false, orders: [{ orderReference: reference("O", 1), recordedAt: "2026-11-04T01:00:00.000Z", cadHandoffRecordedAt: "2026-11-04T02:00:00.000Z", productionHandoffRecordedAt: "2026-11-04T03:00:00.000Z", deliveryHandoffRecordedAt: "2026-11-04T04:00:00.000Z" }] });
   for (const forbidden of ["private", "provider", "manual_decision", "quotation", brief, output, "approval", "shipment"]) expect(JSON.stringify(result)).not.toContain(forbidden);
 });
 test("unauthenticated callers and revoked identities cannot query receipts or orders", async () => {
@@ -52,6 +52,12 @@ test("verified empty, missing CAD and missing production are distinct factual re
   expect(await fixture([]).service.read(request(), ref)).toMatchObject({ state: "ready", orders: [] });
   const noCad = row(); noCad.cad = null; expect(await fixture([noCad]).service.read(request(), ref)).toMatchObject({ orders: [{ cadHandoffRecordedAt: null, productionHandoffRecordedAt: null }] });
   const noProduction = row(); noProduction.cad.production = null; expect(await fixture([noProduction]).service.read(request(), ref)).toMatchObject({ orders: [{ productionHandoffRecordedAt: null }] });
+  const noDelivery = row(); noDelivery.cad.production.delivery = null; expect(await fixture([noDelivery]).service.read(request(), ref)).toMatchObject({ orders: [{ deliveryHandoffRecordedAt: null }] });
+});
+test("delivery timestamp requires exact ownership, a valid joined record and correct chronology", async () => {
+  for (const mutate of [(r: any) => r.cad.production.delivery.order_reference = reference("O", 2), (r: any) => delete r.cad.production.delivery, (r: any) => r.cad.production.delivery.recorded_at = "2026-11-04T02:00:00Z"]) {
+    const value = row(); mutate(value); expect(await fixture([value]).service.read(request(), ref)).toBeNull();
+  }
 });
 for (const [name, mutate] of Object.entries({ unpaid: (r: any) => r.payment.status = "pending", amount: (r: any) => r.payment.amount_minor = 124, currency: (r: any) => r.payment.currency = "TWD", hash: (r: any) => r.quotation.quotation_sha256 = "0".repeat(64), ownerBrief: (r: any) => r.quotation.specification.concept_brief_id = output, receipt: (r: any) => r.quotation.specification.brief.public_reference = "NOVORA-CB-20261104-ST02", cadBinding: (r: any) => r.cad.order_reference = reference("O", 2), productionBinding: (r: any) => r.cad.production.order_reference = reference("O", 2), missingJoin: (r: any) => delete r.cad, malformedJoin: (r: any) => r.cad = [], chronology: (r: any) => r.cad.production.recorded_at = "2026-11-04T00:00:00Z" })) {
   test(`fails closed for ${name}`, async () => { const changed = row(); mutate(changed); expect(await fixture([changed]).service.read(request(), ref)).toBeNull(); });
@@ -70,7 +76,7 @@ test("repository constrains scoped receipt and root orders with inner joins, rea
   expect(await repo.ownedReceipt(owner, ref)).toEqual(receipt); await repo.orders(brief);
   for (const c of [["eq", "scope_sha256", owner.scope], ["eq", "invitation_identity", owner.identity], ["eq", "public_reference", ref], ["eq", "quotation.specification.concept_brief_id", brief], ["limit", 2], ["limit", 26]]) expect(calls).toContainEqual(c);
   const select = calls.filter(c => c[0] === "select")[1][1]; expect(select).toContain("commercial_orders_commercial_quotation_reference_fkey!inner"); expect(select).toContain("commercial_quotations_specification_confirmation_fkey!inner");
-  for (const column of ["manual_decision_reference", "handoff_reference", "provider_payment_id", "email", "internal_notes"]) expect(select).not.toContain(column);
+  for (const column of ["manual_decision_reference", "handoff_reference", "delivery_reference", "provider_payment_id", "email", "internal_notes"]) expect(select).not.toContain(column);
 });
 test("runtime is default OFF before credentials and real invitation auth remains server derived", async () => {
   let reads = 0; expect(status.getCustomerCommercialOrderStatus({ environment: {}, client: () => { reads++; return null; } })).toBeNull(); expect(reads).toBe(0);
