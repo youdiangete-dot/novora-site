@@ -28,6 +28,7 @@ export default async function AdminOrdersPage() {
           <p>Quotation: {order.quoteReference}</p>
           <p>Recorded: <time dateTime={order.recordedAt}>{order.recordedAt}</time></p>
           <Link href={`/admin/briefs/${encodeURIComponent(order.publicReference)}`}>{order.publicReference}</Link>
+          <p><Link href={`/admin/orders/${encodeURIComponent(order.orderReference)}/cad`}>Manual CAD handoff record</Link></p>
         </li>)}</ol></>}
   </div></main>;
 }

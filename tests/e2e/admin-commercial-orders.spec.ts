@@ -37,6 +37,12 @@ test("database failure is unavailable, verified empty is empty, with no mock fal
 });
 test("bounded recent-order result reports additional records",async()=>{const result=await read(Array.from({length:26},(_,i)=>row(i+1)));expect(result.ok).toBe(true);expect(result.orders).toHaveLength(25);expect(result.hasMore).toBe(true);});
 test("currency minor units are formatted without rounding",async()=>{for(const [currency,amount,expected]of [["JPY","1234","1234"],["KWD","1.23","1.230"]]){const r=await read([row(1,currency,amount)]);expect(r.ok).toBe(true);expect(r.orders[0]?.amount).toBe(expected);}});
+test("exact lookup preserves a historical verified order without relying on recent-list position",async()=>{
+  const referenceValue=reference("O",99),value=row(99);
+  const result=await orders.readAdminCommercialOrder(referenceValue,{readRows:async()=>[value]});
+  expect(result).toMatchObject({ok:true,order:{orderReference:referenceValue,quoteReference:reference("Q",99),amount:"1.23"}});
+  expect(await orders.readAdminCommercialOrder(reference("O",98),{readRows:async()=>[value]})).toEqual({ok:false,order:null});
+});
 test("repository uses only a bounded stable read with historical FK relations",async()=>{
   const calls:any[]=[];const query={select:(s:string)=>{calls.push(["select",s]);return query;},order:(...a:any[])=>{calls.push(["order",...a]);return query;},limit:async(n:number)=>{calls.push(["limit",n]);return {data:[],error:null};}};
   await orders.createAdminCommercialOrderReader({from:(table:string)=>{calls.push(["from",table]);return query;}} as never)();
