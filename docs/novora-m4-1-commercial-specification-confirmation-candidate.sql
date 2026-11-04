@@ -47,6 +47,8 @@ ALTER TABLE public.commercial_specification_confirmations
 
 REVOKE ALL ON TABLE public.commercial_specification_confirmations
   FROM public, anon, authenticated;
+REVOKE ALL ON TABLE public.commercial_specification_confirmations
+  FROM service_role;
 GRANT SELECT, INSERT ON TABLE public.commercial_specification_confirmations
   TO service_role;
 
