@@ -44,6 +44,8 @@ ALTER TABLE public.commercial_quotations
 
 REVOKE ALL ON TABLE public.commercial_quotations
   FROM public, anon, authenticated;
+REVOKE ALL ON TABLE public.commercial_quotations
+  FROM service_role;
 
 GRANT SELECT, INSERT ON TABLE public.commercial_quotations
   TO service_role;
