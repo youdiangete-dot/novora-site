@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
 import styles from "./preview.module.css";
 import { useI18n } from '../../../../lib/i18n/client';
@@ -17,10 +17,12 @@ type CommercialSpecificationInputField = Readonly<{
 
 export default function CommercialSpecificationConfirmation({
   confirmationBinding,
+  confirmed = false,
   items,
   publicReference,
 }: {
   confirmationBinding: string;
+  confirmed?: boolean;
   items: CommercialSpecificationInputField[];
   publicReference: string;
 }) {
@@ -29,11 +31,22 @@ export default function CommercialSpecificationConfirmation({
   const [specification, setSpecification] = useState<Record<string, string>>(
     () => Object.fromEntries(items.map((item) => [item.key, item.value])),
   );
-  const [state, setState] = useState<"idle" | "submitting" | "success" | "error">("idle");
-  const [message, setMessage] = useState("");
+  const [fields, setFields] = useState(items);
+  const [state, setState] = useState<"idle" | "submitting" | "success" | "error">(confirmed ? "success" : "idle");
+  const [message, setMessage] = useState(confirmed ? copy.cs002 : "");
+  const requestVersion = useRef(0);
+  useEffect(() => {
+    requestVersion.current += 1;
+    setFields(items);
+    setSpecification(Object.fromEntries(items.map(item => [item.key, item.value])));
+    setState(confirmed ? "success" : "idle");
+    setMessage(confirmed ? copy.cs002 : "");
+    return () => { requestVersion.current += 1; };
+  }, [confirmationBinding, confirmed, items, copy.cs002]);
 
   async function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const version = ++requestVersion.current;
     setState("submitting");
     setMessage("");
     try {
@@ -48,8 +61,26 @@ export default function CommercialSpecificationConfirmation({
           }),
         },
       );
-      const result = (await response.json()) as { message?: unknown };
-      if (!response.ok) {
+      const result = (await response.json()) as { ok?: unknown; message?: unknown; reason?: unknown; currentItems?: unknown };
+      if (version !== requestVersion.current) return;
+      if (response.status === 409 && result.reason === "conflict") {
+        const current = result.currentItems;
+        if (Array.isArray(current) && current.length > 0 && current.length <= Object.keys(copy.fieldLabels).length &&
+            current.every(item => item && typeof item.key === "string" && Object.hasOwn(copy.fieldLabels, item.key) &&
+              typeof item.value === "string" && [160, 500].includes(item.maxLength) && item.value.length <= item.maxLength &&
+              typeof item.multiline === "boolean" && typeof item.required === "boolean") &&
+            new Set(current.map(item => item.key)).size === current.length &&
+            ["pieceType", "structure"].every(key => current.some(item => item.key === key && item.value.trim()))) {
+          setFields(current);
+          setSpecification(Object.fromEntries(current.map(item => [item.key, item.value])));
+          setMessage(copy.cs010);
+        } else {
+          setMessage(copy.cs001);
+        }
+        setState("error");
+        return;
+      }
+      if (!response.ok || result.ok !== true) {
         throw new Error(
           locale !== 'zh-TW' && typeof result.message === "string"
             ? result.message
@@ -61,6 +92,7 @@ export default function CommercialSpecificationConfirmation({
         copy.cs002,
       );
     } catch (error) {
+      if (version !== requestVersion.current) return;
       setState("error");
       setMessage(
         error instanceof Error
@@ -78,18 +110,21 @@ export default function CommercialSpecificationConfirmation({
         {copy.cs006}</p>
       <form className={styles.specificationForm} onSubmit={confirm}>
         <div className={styles.specificationList}>
-          {items.map((item) => {
+          {fields.map((item) => {
             const fieldId = `commercial-specification-${item.key}`;
             const sharedProps = {
               id: fieldId,
               maxLength: item.maxLength,
               name: item.key,
+              disabled: state === "submitting",
               onChange: (
                 event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-              ) => setSpecification((current) => ({
-                ...current,
-                [item.key]: event.target.value,
-              })),
+              ) => {
+                requestVersion.current += 1;
+                setSpecification((current) => ({ ...current, [item.key]: event.target.value }));
+                setState("idle");
+                setMessage("");
+              },
               required: item.required,
               value: specification[item.key] ?? "",
             };

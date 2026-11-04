@@ -23,6 +23,13 @@ export async function POST(request: Request, context: RouteContext) {
     body,
   );
   if (result.ok === false) {
+    if (result.reason === "conflict") {
+      return NextResponse.json(
+        { ok: false, reason: "conflict", currentItems: result.currentItems,
+          message: "The latest confirmed specifications differ from this submission. The latest values are shown; review them before confirming again." },
+        { status: 409 },
+      );
+    }
     if (result.reason === "invalid") {
       return NextResponse.json(
         { ok: false, message: "This specification confirmation request is invalid." },

@@ -765,6 +765,7 @@ export const customerUICopy = {
     cs007: "This confirms only the specification basis NOVORA may use to prepare a quotation. It does not accept a quotation, make a payment, place an order, approve CAD, or approve production.",
     cs008: "Confirming…",
     cs009: "I confirm these specifications as the basis for NOVORA to prepare a quotation.",
+    cs010: "The latest confirmed specifications differ from this submission. The latest values are shown; review them before confirming again.",
   },
   quotation: {
     qt001: "Confirmed-specification quotation",

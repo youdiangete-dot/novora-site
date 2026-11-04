@@ -2963,7 +2963,7 @@ test.describe("Gold color generation compatibility", () => {
 
   for (const [storedValue, material, goldColor] of choices) {
     test(storedValue + " reaches the serialized Provider instruction without mutating stored input", async () => {
-      const brief = validBrief({ materialDirection: [], metalDirection: storedValue });
+      const brief = { ...validBrief({ materialDirection: [] }), metalDirection: storedValue };
       const original = JSON.stringify(brief);
       const structured = modules.structured.buildFirstPreviewStructuredGenerationInput({
         payload: { brief }, publicReference: PUBLIC_REFERENCE,
