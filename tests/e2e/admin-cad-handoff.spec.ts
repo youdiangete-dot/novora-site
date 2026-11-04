@@ -98,9 +98,11 @@ test("server action validates order and redirects UNKNOWN to reconciliation, nev
 test("success comes from persisted record, query string cannot invent it", async () => {
   const empty = pageModule("TEST valid", { ok: true, order, handoff: null });
   const html = await empty.render("required"); expect(html).not.toContain("CAD handoff recorded"); expect(html).not.toContain("<form"); expect(html).toContain("Outcome remains unconfirmed");
+  expect(html).not.toContain("Manual production handoff record");
   expect(await pageModule("TEST valid", { ok: false }).render()).toContain("CAD handoff unavailable");
   const confirmed = await pageModule("TEST valid", { ok: true, order, handoff: { handoffReference: "TEST-CAD-1", recordedAt: "2026-11-04T02:00:00Z" } }).render();
   expect(confirmed).toContain("CAD handoff recorded"); expect(confirmed).not.toContain("<form"); expect(confirmed).toContain("not CAD completion or production approval");
+  expect(confirmed).toContain(`href="/admin/orders/${ref}/production"`);
 });
 test("mobile admin handoff form and confirmed record preserve bounded readable layout", async ({ page }) => {
   const empty = await pageModule("TEST valid", { ok: true, order, handoff: null }).render();
