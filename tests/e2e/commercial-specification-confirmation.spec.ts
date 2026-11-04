@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import path from "node:path";
+import ts from "typescript";
 
 const internals = Module as unknown as {
   _resolveFilename(request: string, parent: unknown, isMain: boolean, options?: unknown): string;
@@ -17,6 +18,7 @@ const testRequire = createRequire(
 const specificationModule = testRequire(
   "../../lib/server/commercial-specification-confirmation",
 ) as typeof import("../../lib/server/commercial-specification-confirmation");
+const quotationModule = testRequire("../../lib/server/commercial-quotation") as typeof import("../../lib/server/commercial-quotation");
 internals._resolveFilename = original;
 
 const BRIEF_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -77,8 +79,10 @@ function dependencies(input: {
   viewOutputId?: string;
   viewState?: "ready" | "pending" | "unavailable" | "denied";
   insert?: "inserted" | "already_confirmed" | "unavailable";
+  saved?: Record<string, string> | null | "unavailable";
 } = {}) {
   const writes: unknown[] = [];
+  let latest: import("../../lib/server/commercial-specification-confirmation").CommercialSpecificationInput | null | "unavailable" = input.saved ?? null;
   return {
     writes,
     value: {
@@ -109,8 +113,18 @@ function dependencies(input: {
         async hasExactDesignDirectionConfirmation() {
           return input.m3Confirmed ?? true;
         },
-        async insertExactConfirmation(value: unknown) {
+        async readLatestExactConfirmation(
+          _conceptBriefId: string,
+          _outputId: string,
+        ): Promise<import("../../lib/server/commercial-specification-confirmation").CommercialSpecificationInput | null | "unavailable"> {
+          return latest;
+        },
+        async insertExactConfirmation(value: Parameters<import("../../lib/server/commercial-specification-confirmation").CommercialSpecificationConfirmationRepository["insertExactConfirmation"]>[0]) {
           writes.push(value);
+          if (!input.insert || input.insert === "inserted") {
+            const s = value.specificationSnapshot;
+            latest = specificationModule.normalizeCommercialSpecificationInput({ ...s.piece, ...s.material, ...s.gemstones, ...s.sizeAndWear, ...s.constraints });
+          }
           return input.insert ?? "inserted";
         },
       },
@@ -226,7 +240,7 @@ test("rejects a wrong output and a stale or revoked customer view", async () => 
 });
 
 test("same normalized customer-confirmed state is idempotent", async () => {
-  const fixture = dependencies({ insert: "already_confirmed" });
+  const fixture = dependencies({ insert: "already_confirmed", saved: customerSpecification({ metalDirection: "white gold" }) });
   await expect(
     specificationModule.persistCommercialSpecificationConfirmation(
       REFERENCE,
@@ -284,12 +298,215 @@ test("customer copy keeps quotation, payment, order, CAD, and production separat
     ),
     "utf8",
   ).toLowerCase();
-  expect(source).toContain("specifications for quotation");
-  expect(source).toContain("i confirm these specifications as the basis for novora to prepare a quotation");
-  expect(source).toContain("does not accept a quotation");
+  const copy = testRequire("../../lib/i18n/dictionaries/customer-ui-copy").customerUICopy.commercialSpecification;
+  expect(copy.cs004.toLowerCase()).toContain("specifications for quotation");
+  expect(copy.cs009.toLowerCase()).toContain("i confirm these specifications as the basis for novora to prepare a quotation");
+  expect(copy.cs007.toLowerCase()).toContain("does not accept a quotation");
+  expect(source).toContain("copy.cs007");
   for (const boundary of ["payment", "order", "cad", "production"]) {
-    expect(source).toContain(boundary);
+    expect(copy.cs007.toLowerCase()).toContain(boundary);
   }
   expect(source).toContain("binding: confirmationbinding");
   expect(source).toContain("specification,");
+});
+
+function savedRepository(row: Record<string, unknown> | null, error: unknown = null) {
+  const calls: unknown[][] = [];
+  const query = {
+    select: (...args: unknown[]) => { calls.push(["select", ...args]); return query; },
+    eq: (...args: unknown[]) => { calls.push(["eq", ...args]); return query; },
+    order: (...args: unknown[]) => { calls.push(["order", ...args]); return query; },
+    limit: async (...args: unknown[]) => { calls.push(["limit", ...args]); return { data: row ? [row] : [], error }; },
+  };
+  const repository = specificationModule.createSupabaseCommercialSpecificationConfirmationRepository({
+    from(table: string) { calls.push(["from", table]); return query; },
+  } as never);
+  return { repository, calls };
+}
+
+function savedRow(input = customerSpecification({ metalDirection: "18k_white_gold", sizeDirection: "US 7" })) {
+  const normalized = specificationModule.normalizeCommercialSpecificationInput(input)!;
+  const snapshot = specificationModule.buildCommercialSpecificationSnapshot(normalized);
+  return { concept_brief_id: BRIEF_ID, ai_sketch_output_id: OUTPUT_ID,
+    specification_version: specificationModule.COMMERCIAL_SPECIFICATION_SNAPSHOT_VERSION,
+    specification_snapshot: snapshot, specification_sha256: specificationModule.hashCommercialSpecificationSnapshot(snapshot) };
+}
+
+test("reload restores the latest exact confirmed snapshot instead of the old Brief, without display rewriting", async () => {
+  const stored = savedRepository(savedRow());
+  const fixture = dependencies();
+  fixture.value.repository.readLatestExactConfirmation = stored.repository.readLatestExactConfirmation;
+  const prepared = await specificationModule.prepareCommercialSpecificationConfirmation(REFERENCE, OUTPUT_ID, fixture.value);
+  expect(prepared?.confirmed).toBe(true);
+  expect(prepared?.items.find(x => x.key === "metalDirection")?.value).toBe("18k_white_gold");
+  expect(prepared?.items.find(x => x.key === "sizeDirection")?.value).toBe("US 7");
+  expect(stored.calls).toContainEqual(["eq", "concept_brief_id", BRIEF_ID]);
+  expect(stored.calls).toContainEqual(["eq", "ai_sketch_output_id", OUTPUT_ID]);
+  expect(stored.calls.filter(x => x[0] === "order")).toEqual([
+    ["order", "confirmed_at", { ascending: false }], ["order", "created_at", { ascending: false }], ["order", "id", { ascending: false }],
+  ]);
+  expect(stored.calls).toContainEqual(["limit", 1]);
+  expect(fixture.writes).toHaveLength(0);
+});
+
+test("only an absent confirmation permits original Brief prefill; failed or corrupt reads fail closed", async () => {
+  const noSaved = dependencies();
+  const prefill = await specificationModule.prepareCommercialSpecificationConfirmation(REFERENCE, OUTPUT_ID, noSaved.value);
+  expect(prefill?.confirmed).toBe(false);
+  expect(prefill?.items.find(x => x.key === "metalDirection")?.value).toBe("yellow gold");
+  for (const patch of [
+    { concept_brief_id: OTHER_OUTPUT_ID }, { ai_sketch_output_id: OTHER_OUTPUT_ID },
+    { specification_sha256: "a".repeat(64) }, { specification_version: "wrong" },
+    { specification_snapshot: { ...savedRow().specification_snapshot, customerEmail: "excluded@example.com" } },
+  ]) {
+    const stored = savedRepository({ ...savedRow(), ...patch }), fixture = dependencies();
+    fixture.value.repository.readLatestExactConfirmation = stored.repository.readLatestExactConfirmation;
+    expect(await specificationModule.prepareCommercialSpecificationConfirmation(REFERENCE, OUTPUT_ID, fixture.value)).toBeNull();
+  }
+  expect(await savedRepository(null, { message: "synthetic failure" }).repository.readLatestExactConfirmation(BRIEF_ID, OUTPUT_ID)).toBe("unavailable");
+});
+
+test("saved confirmation recovery still requires own current output and durable design confirmation, including final recheck", async () => {
+  for (const input of [
+    { viewState: "denied" as const }, { viewState: "unavailable" as const },
+    { viewOutputId: OTHER_OUTPUT_ID }, { m3Confirmed: false },
+  ]) {
+    const fixture = dependencies({ ...input, saved: customerSpecification() });
+    expect(await specificationModule.prepareCommercialSpecificationConfirmation(REFERENCE, OUTPUT_ID, fixture.value)).toBeNull();
+    expect(fixture.writes).toHaveLength(0);
+  }
+  const revoked = dependencies({ saved: customerSpecification() });
+  let views = 0;
+  revoked.value.readCustomerView = async () => ++views === 1
+    ? { state: "ready" as const, assetRequest: { publicReference: REFERENCE, outputId: OUTPUT_ID } }
+    : { state: "unavailable" as const };
+  expect(await specificationModule.prepareCommercialSpecificationConfirmation(REFERENCE, OUTPUT_ID, revoked.value)).toBeNull();
+});
+
+function statefulConfirmationDatabase() {
+  const rows: Record<string, any>[] = [];
+  let afterInsert: ((row: Record<string, any>) => Promise<void>) | undefined;
+  const client = {
+    from(table: string) {
+      const filters: [string, unknown][] = [], orders: [string, boolean][] = [];
+      const query = {
+        select() { return query; },
+        eq(key: string, value: unknown) { filters.push([key, value]); return query; },
+        is(key: string, value: unknown) { filters.push([key, value]); return query; },
+        order(key: string, options: { ascending: boolean }) { orders.push([key, options.ascending]); return query; },
+        async limit(limit: number) {
+          const tables: Record<string, Record<string, any>[]> = {
+            concept_briefs: [{ id: BRIEF_ID, public_reference: REFERENCE, brief_payload: briefPayload() }],
+            ai_sketch_outputs: [{ id: OUTPUT_ID, concept_brief_id: BRIEF_ID, readiness_status: "first_preview_ready", is_current_customer_preview: true, readiness_revoked_at: null }],
+            first_preview_design_direction_confirmations: [{ id: OTHER_OUTPUT_ID, concept_brief_id: BRIEF_ID, ai_sketch_output_id: OUTPUT_ID }],
+            commercial_specification_confirmations: rows,
+          };
+          if (!Object.hasOwn(tables, table)) throw new Error("Unexpected synthetic table.");
+          const selected = tables[table].filter(row => filters.every(([key, value]) => row[key] === value));
+          selected.sort((a, b) => {
+            for (const [key, ascending] of orders) {
+              const order = String(a[key]).localeCompare(String(b[key]));
+              if (order) return ascending ? order : -order;
+            }
+            return 0;
+          });
+          return { data: structuredClone(selected.slice(0, limit)), error: null };
+        },
+        async insert(value: Record<string, unknown>) {
+          expect(table).toBe("commercial_specification_confirmations");
+          if (rows.some(row => row.concept_brief_id === value.concept_brief_id && row.ai_sketch_output_id === value.ai_sketch_output_id && row.specification_sha256 === value.specification_sha256)) {
+            return { error: { code: "23505" } };
+          }
+          const ordinal = rows.length + 1, time = new Date(Date.parse("2026-11-04T01:00:00.000Z") + ordinal * 1000).toISOString();
+          const row = { ...structuredClone(value), id: `623e4567-e89b-42d3-a456-${String(ordinal).padStart(12, "0")}`, confirmed_at: time, created_at: time };
+          rows.push(row);
+          await afterInsert?.(row);
+          return { error: null };
+        },
+      };
+      return query;
+    },
+  };
+  const repository = specificationModule.createSupabaseCommercialSpecificationConfirmationRepository(client as never);
+  const base = dependencies().value;
+  return { rows, client, deps: { ...base, repository }, setAfterInsert(hook: typeof afterInsert) { afterInsert = hook; } };
+}
+
+test("A -> B -> A conflicts instead of falsely reconfirming history; restore and real quotation repository agree on B", async () => {
+  const db = statefulConfirmationDatabase(), a = customerSpecification({ metalDirection: "yellow gold" }), b = customerSpecification({ metalDirection: "platinum" });
+  expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(a), db.deps)).toEqual({ ok: true, status: "created" });
+  expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(b), db.deps)).toEqual({ ok: true, status: "created" });
+  const before = JSON.stringify(db.rows);
+  const conflict = await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(a), db.deps);
+  expect(conflict).toMatchObject({ ok: false, reason: "conflict" });
+  if (conflict.ok === false && conflict.reason === "conflict") expect(conflict.currentItems.find(x => x.key === "metalDirection")?.value).toBe("platinum");
+  expect(JSON.stringify(db.rows)).toBe(before);
+  expect(db.rows).toHaveLength(2);
+  const restored = await specificationModule.prepareCommercialSpecificationConfirmation(REFERENCE, OUTPUT_ID, db.deps);
+  expect(restored?.items.find(x => x.key === "metalDirection")?.value).toBe("platinum");
+  const basis = await quotationModule.createSupabaseCommercialQuotationRepository(db.client as never).findLatestSpecificationConfirmation({ conceptBriefId: BRIEF_ID, outputId: OUTPUT_ID });
+  expect(basis).toMatchObject({ id: db.rows[1].id, specificationSha256: db.rows[1].specification_sha256 });
+  expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(b), db.deps)).toEqual({ ok: true, status: "already_confirmed" });
+  expect(JSON.stringify(db.rows)).toBe(before);
+});
+
+test("a concurrent newer confirmation overtaking an inserted row returns conflict, not created success", async () => {
+  const db = statefulConfirmationDatabase();
+  let inserted!: () => void, release!: () => void;
+  const insertedA = new Promise<void>(resolve => { inserted = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
+  db.setAfterInsert(async row => { if (row.specification_snapshot.material.metalDirection === "yellow gold") { inserted(); await gate; } });
+  const a = specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(customerSpecification({ metalDirection: "yellow gold" })), db.deps);
+  await insertedA;
+  expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(customerSpecification({ metalDirection: "platinum" })), db.deps)).toEqual({ ok: true, status: "created" });
+  release();
+  expect(await a).toMatchObject({ ok: false, reason: "conflict", currentItems: expect.arrayContaining([expect.objectContaining({ key: "metalDirection", value: "platinum" })]) });
+  expect(db.rows).toHaveLength(2);
+});
+
+test("a newer state committed during the final access recheck cannot be hidden by an earlier readback", async () => {
+  const db = statefulConfirmationDatabase(), readView = db.deps.readCustomerView;
+  let views = 0, injected = false;
+  db.deps.readCustomerView = async () => {
+    views += 1;
+    if (!injected && views === 3) {
+      injected = true;
+      expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(customerSpecification({ metalDirection: "platinum" })), db.deps)).toEqual({ ok: true, status: "created" });
+    }
+    return readView();
+  };
+  expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(), db.deps)).toMatchObject({
+    ok: false, reason: "conflict", currentItems: expect.arrayContaining([expect.objectContaining({ key: "metalDirection", value: "platinum" })]),
+  });
+  expect(db.rows).toHaveLength(2);
+});
+
+test("unverified post-write readback or revoked access never returns success or exposes latest values", async () => {
+  const failed = dependencies();
+  failed.value.repository.readLatestExactConfirmation = async () => "unavailable";
+  expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(), failed.value)).toEqual({ ok: false, reason: "unavailable" });
+  const revoked = dependencies();
+  let views = 0;
+  revoked.value.readCustomerView = async () => ++views < 3
+    ? { state: "ready" as const, assetRequest: { publicReference: REFERENCE, outputId: OUTPUT_ID } }
+    : { state: "denied" as const };
+  expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(), revoked.value)).toEqual({ ok: false, reason: "denied" });
+});
+
+test("actual POST route returns409 with owned display fields for a service conflict", async () => {
+  const db = statefulConfirmationDatabase();
+  await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(), db.deps);
+  await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(customerSpecification({ metalDirection: "platinum" })), db.deps);
+  const source = readFileSync(path.join(process.cwd(), "app/api/commercial-specification-confirmation/[public_reference]/route.ts"), "utf8");
+  const module = { exports: {} as { POST?: (request: Request, context: unknown) => Promise<Response> } };
+  new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(module, module.exports, (id: string) => {
+    if (id === "next/server") return testRequire("next/server");
+    if (id.endsWith("/commercial-specification-confirmation")) return { persistCommercialSpecificationConfirmation: (reference: string, value: unknown) => specificationModule.persistCommercialSpecificationConfirmation(reference, value, db.deps) };
+    throw new Error("Unexpected route dependency.");
+  });
+  const response = await module.exports.POST!(new Request("https://novora.test/api/commercial-specification-confirmation/" + REFERENCE, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body()) }), { params: Promise.resolve({ public_reference: REFERENCE }) });
+  expect(response.status).toBe(409);
+  const result = await response.json();
+  expect(result).toMatchObject({ ok: false, reason: "conflict" });
+  expect(result.currentItems).toContainEqual(expect.objectContaining({ key: "metalDirection", value: "platinum" }));
+  for (const privateField of ["conceptBriefId", "specificationSha256", "confirmedAt", "excluded@example.com"]) expect(JSON.stringify(result)).not.toContain(privateField);
 });

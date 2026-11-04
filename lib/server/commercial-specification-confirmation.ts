@@ -164,6 +164,10 @@ export interface CommercialSpecificationConfirmationRepository {
     conceptBriefId: string,
     outputId: string,
   ): Promise<boolean>;
+  readLatestExactConfirmation(
+    conceptBriefId: string,
+    outputId: string,
+  ): Promise<CommercialSpecificationInput | null | "unavailable">;
   insertExactConfirmation(input: Readonly<{
     conceptBriefId: string;
     outputId: string;
@@ -183,6 +187,11 @@ type Dependencies = Readonly<{
 
 export type CommercialSpecificationConfirmationWriteResult =
   | Readonly<{ ok: true; status: "created" | "already_confirmed" }>
+  | Readonly<{
+      ok: false;
+      reason: "conflict";
+      currentItems: CommercialSpecificationDisplayItem[];
+    }>
   | Readonly<{
       ok: false;
       reason: "invalid" | "denied" | "unavailable" | "design_unconfirmed";
@@ -341,6 +350,31 @@ export function hashCommercialSpecificationSnapshot(
   return createHash("sha256")
     .update(serializeCommercialSpecificationSnapshot(snapshot), "utf8")
     .digest("hex");
+}
+
+function confirmedSpecificationInput(snapshot: unknown, hash: unknown): CommercialSpecificationInput | null {
+  const sections = {
+    piece: PIECE_SPECIFICATION_KEYS,
+    material: MATERIAL_SPECIFICATION_KEYS,
+    gemstones: GEMSTONE_SPECIFICATION_KEYS,
+    sizeAndWear: SIZE_AND_WEAR_SPECIFICATION_KEYS,
+    constraints: CONSTRAINT_SPECIFICATION_KEYS,
+  };
+  const record = snapshotOwnDataRecord(snapshot, ["specificationVersion", ...Object.keys(sections)]);
+  if (!record || record.specificationVersion !== COMMERCIAL_SPECIFICATION_SNAPSHOT_VERSION ||
+      Object.keys(record).length !== 6 || typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash)) return null;
+  const flattened: Record<string, string> = {};
+  for (const [section, keys] of Object.entries(sections)) {
+    const values = snapshotOwnDataRecord(record[section], keys);
+    if (!values || Object.values(values).some(value => typeof value !== "string")) return null;
+    Object.assign(flattened, values);
+  }
+  const input = normalizeCommercialSpecificationInput(flattened);
+  if (!input) return null;
+  const canonical = buildCommercialSpecificationSnapshot(input);
+  return hashCommercialSpecificationSnapshot(canonical) === hash &&
+    serializeCommercialSpecificationSnapshot(canonical) === serializeCommercialSpecificationSnapshot(snapshot as CommercialSpecificationSnapshot)
+    ? input : null;
 }
 
 const DISPLAY_LABELS: Readonly<Record<string, string>> = {
@@ -650,6 +684,27 @@ export function createSupabaseCommercialSpecificationConfirmationRepository(
         return false;
       }
     },
+    async readLatestExactConfirmation(conceptBriefId, outputId) {
+      try {
+        const { data, error } = await supabase
+          .from("commercial_specification_confirmations")
+          .select("concept_brief_id, ai_sketch_output_id, specification_version, specification_snapshot, specification_sha256")
+          .eq("concept_brief_id", conceptBriefId)
+          .eq("ai_sketch_output_id", outputId)
+          .order("confirmed_at", { ascending: false })
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(1);
+        if (error || !Array.isArray(data)) return "unavailable";
+        if (data.length === 0) return null;
+        const row = data[0];
+        if (data.length !== 1 || row.concept_brief_id !== conceptBriefId ||
+            row.ai_sketch_output_id !== outputId || row.specification_version !== COMMERCIAL_SPECIFICATION_SNAPSHOT_VERSION) return "unavailable";
+        return confirmedSpecificationInput(row.specification_snapshot, row.specification_sha256) ?? "unavailable";
+      } catch {
+        return "unavailable";
+      }
+    },
     async insertExactConfirmation(input) {
       try {
         const { error } = await supabase
@@ -684,43 +739,50 @@ function exactReadyOutputFromView(
 export async function prepareCommercialSpecificationConfirmation(
   publicReference: string,
   outputId: string,
+  dependencies?: Dependencies,
 ): Promise<
   Readonly<{
     binding: string;
     items: CommercialSpecificationDisplayItem[];
+    confirmed: boolean;
   }> | null
 > {
   if (
     !isValidFirstPreviewPublicReference(publicReference) ||
     !isValidFirstPreviewAssetUuid(outputId)
   ) return null;
-  const signingSecret =
+  const signingSecret = dependencies?.signingSecret ??
     process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? "";
-  const supabase = createSupabaseAdminClientOrNull();
-  if (!supabase || !isUsableSigningSecret(signingSecret)) return null;
-  const repository =
-    createSupabaseCommercialSpecificationConfirmationRepository(supabase);
-  const authority = await repository.resolveExactCurrentAuthority(
-    publicReference,
-    outputId,
-  );
-  if (!authority) return null;
-  const prefill = commercialSpecificationPrefillFromBrief(authority.briefPayload);
-  if (!prefill) return null;
-  const binding = createCommercialSpecificationConfirmationBinding(
-    {
+  const supabase = dependencies ? null : createSupabaseAdminClientOrNull();
+  if ((!dependencies && !supabase) || !isUsableSigningSecret(signingSecret)) return null;
+  const repository = dependencies?.repository ?? createSupabaseCommercialSpecificationConfirmationRepository(supabase!);
+  const readView = dependencies?.readCustomerView ?? readFirstPreviewCustomerViewBinding;
+  try {
+    if (exactReadyOutputFromView(await readView({ publicReference }), publicReference, outputId) !== "exact") return null;
+    const authority = await repository.resolveExactCurrentAuthority(publicReference, outputId);
+    if (!authority) return null;
+    const saved = await repository.readLatestExactConfirmation(authority.conceptBriefId, outputId);
+    if (saved === "unavailable") return null;
+    if (saved && !await repository.hasExactDesignDirectionConfirmation(authority.conceptBriefId, outputId)) return null;
+    const prefill = saved ?? commercialSpecificationPrefillFromBrief(authority.briefPayload);
+    if (!prefill) return null;
+    if (exactReadyOutputFromView(await readView({ publicReference }), publicReference, outputId) !== "exact") return null;
+    const finalAuthority = await repository.resolveExactCurrentAuthority(publicReference, outputId);
+    if (!finalAuthority || finalAuthority.conceptBriefId !== authority.conceptBriefId || finalAuthority.outputId !== outputId) return null;
+    const binding = createCommercialSpecificationConfirmationBinding({
       publicReference,
       conceptBriefId: authority.conceptBriefId,
       outputId,
-    },
-    signingSecret,
-  );
-  return binding
-    ? {
-        binding,
-        items: commercialSpecificationDisplayItems(prefill),
-      }
-    : null;
+    }, signingSecret);
+    return binding ? {
+      binding,
+      // Stored confirmed strings must not be prettified into a different state.
+      items: commercialSpecificationDisplayItems(prefill).map(item => saved ? { ...item, value: prefill[item.key] ?? "" } : item),
+      confirmed: saved !== null,
+    } : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function persistCommercialSpecificationConfirmation(
@@ -813,6 +875,31 @@ export async function persistCommercialSpecificationConfirmation(
       specificationSnapshot: snapshot,
       specificationSha256,
     });
+    if (inserted === "unavailable") return { ok: false, reason: "unavailable" };
+    // A historical unique-key match is not proof that this state is latest.
+    // Also detect a concurrent confirmation that overtook a successful insert.
+    const readback = await active.repository.readLatestExactConfirmation(authority.conceptBriefId, authority.outputId);
+    if (!readback || readback === "unavailable") return { ok: false, reason: "unavailable" };
+    const responseView = exactReadyOutputFromView(await active.readCustomerView({ publicReference }), publicReference, claims.outputId);
+    if (responseView !== "exact") return { ok: false, reason: responseView };
+    const responseAuthority = await active.repository.resolveExactCurrentAuthority(publicReference, claims.outputId);
+    if (!responseAuthority || responseAuthority.conceptBriefId !== authority.conceptBriefId || responseAuthority.outputId !== authority.outputId) {
+      return { ok: false, reason: "unavailable" };
+    }
+    if (!await active.repository.hasExactDesignDirectionConfirmation(authority.conceptBriefId, authority.outputId)) {
+      return { ok: false, reason: "design_unconfirmed" };
+    }
+    // Access checks can themselves yield to another request. Compare the final
+    // latest read, then return without another asynchronous operation.
+    const latest = await active.repository.readLatestExactConfirmation(authority.conceptBriefId, authority.outputId);
+    if (!latest || latest === "unavailable") return { ok: false, reason: "unavailable" };
+    if (hashCommercialSpecificationSnapshot(buildCommercialSpecificationSnapshot(latest)) !== specificationSha256) {
+      return {
+        ok: false,
+        reason: "conflict",
+        currentItems: commercialSpecificationDisplayItems(latest).map(item => ({ ...item, value: latest[item.key] ?? "" })),
+      };
+    }
     if (inserted === "inserted") return { ok: true, status: "created" };
     if (inserted === "already_confirmed") {
       return { ok: true, status: "already_confirmed" };
