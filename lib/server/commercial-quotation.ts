@@ -632,18 +632,19 @@ export async function issueCommercialQuotation(
       quotationSha256,
       quoteReference: (active.createQuoteReference ?? generateCommercialQuotationReference)(),
     });
-    if (inserted === "conflict") {
-      const idempotentRow = await active.repository.findExactQuotation(basis.id, quotationSha256);
-      if (idempotentRow === "unavailable") return { ok: false, reason: "unavailable" };
-      const idempotent = safeQuotationFromRow(idempotentRow);
-      return idempotent
-        ? { ok: true, status: "already_issued", quotation: idempotent }
-        : { ok: false, reason: "unavailable" };
+    const persisted = inserted === "conflict"
+      ? await active.repository.findExactQuotation(basis.id, quotationSha256)
+      : inserted;
+    if (persisted === "unavailable") return { ok: false, reason: "unavailable" };
+    const quotation = safeQuotationFromRow(persisted);
+    if (!quotation) return { ok: false, reason: "unavailable" };
+    // Persistence or conflict readback can yield to a newer specification or
+    // current output. Retain the row, but never report it as currently issued
+    // against a basis that changed while this request was pending.
+    if (!await revalidateAdminBasis(record.conceptBriefId, journey, basis, active.repository)) {
+      return { ok: false, reason: "journey_unavailable" };
     }
-    const quotation = safeQuotationFromRow(inserted);
-    return quotation
-      ? { ok: true, status: "created", quotation }
-      : { ok: false, reason: "unavailable" };
+    return { ok: true, status: inserted === "conflict" ? "already_issued" : "created", quotation };
   } catch {
     return { ok: false, reason: "unavailable" };
   }
