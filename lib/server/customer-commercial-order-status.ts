@@ -8,7 +8,7 @@ import { isValidFirstPreviewAssetUuid, isValidFirstPreviewPublicReference } from
 type Owner = Readonly<{ scope: string; identity: string }>;
 type Receipt = Readonly<{ briefId: string; publicReference: string }>;
 export type CustomerOrderRecord = Readonly<{
-  orderReference: string; recordedAt: string; cadHandoffRecordedAt: string | null; productionHandoffRecordedAt: string | null;
+  orderReference: string; recordedAt: string; cadHandoffRecordedAt: string | null; productionHandoffRecordedAt: string | null; deliveryHandoffRecordedAt: string | null;
 }>;
 type Repository = {
   ownedReceipt(owner: Owner, publicReference: string): Promise<Receipt | null>;
@@ -23,7 +23,8 @@ specification:commercial_specification_confirmations!commercial_quotations_speci
 brief:concept_briefs!commercial_specification_confirmations_brief_fkey(id,public_reference),
 output:ai_sketch_outputs!commercial_specification_confirmations_output_brief_fkey(id,concept_brief_id))),
 cad:commercial_cad_handoffs!commercial_cad_handoffs_order_reference_fkey(order_reference,recorded_at,
-production:commercial_production_handoffs!commercial_production_handoffs_order_reference_fkey(order_reference,recorded_at))`;
+production:commercial_production_handoffs!commercial_production_handoffs_order_reference_fkey(order_reference,recorded_at,
+delivery:commercial_delivery_handoffs!commercial_delivery_handoffs_order_reference_fkey(order_reference,recorded_at)))`;
 
 export function createCustomerOrderStatusRepository(client: () => SupabaseClient): Repository {
   return {
@@ -51,13 +52,19 @@ function safeStatus(value: unknown, receipt: Receipt): CustomerOrderRecord | nul
   if (!row || spec?.concept_brief_id !== receipt.briefId || brief?.id !== receipt.briefId || brief?.public_reference !== receipt.publicReference) return null;
   const recordedAt = at(row.created_at);
   if (!recordedAt) return null;
-  if (row.cad === null) return { orderReference: row.order_reference, recordedAt, cadHandoffRecordedAt: null, productionHandoffRecordedAt: null };
+  if (row.cad === null) return { orderReference: row.order_reference, recordedAt, cadHandoffRecordedAt: null, productionHandoffRecordedAt: null, deliveryHandoffRecordedAt: null };
   const cad = object(row.cad), cadAt = at(cad?.recorded_at);
   if (!cad || cad.order_reference !== row.order_reference || !cadAt || cadAt < recordedAt) return null;
-  if (cad.production === null) return { orderReference: row.order_reference, recordedAt, cadHandoffRecordedAt: cadAt, productionHandoffRecordedAt: null };
+  if (cad.production === null) return { orderReference: row.order_reference, recordedAt, cadHandoffRecordedAt: cadAt, productionHandoffRecordedAt: null, deliveryHandoffRecordedAt: null };
   const production = object(cad.production), productionAt = at(production?.recorded_at);
   if (!production || production.order_reference !== row.order_reference || !productionAt || productionAt < cadAt) return null;
-  return { orderReference: row.order_reference, recordedAt, cadHandoffRecordedAt: cadAt, productionHandoffRecordedAt: productionAt };
+  let deliveryAt: string | null = null;
+  if (production.delivery !== null) {
+    const delivery = object(production.delivery);
+    deliveryAt = at(delivery?.recorded_at);
+    if (!delivery || delivery.order_reference !== row.order_reference || !deliveryAt || deliveryAt < productionAt) return null;
+  }
+  return { orderReference: row.order_reference, recordedAt, cadHandoffRecordedAt: cadAt, productionHandoffRecordedAt: productionAt, deliveryHandoffRecordedAt: deliveryAt };
 }
 
 export function createCustomerCommercialOrderStatus(deps: {

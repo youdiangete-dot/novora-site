@@ -8,7 +8,8 @@ const timestamp = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/
 function validRecord(v: CustomerOrderRecord) {
   return v && /^NOVORA-O-[A-F0-9]{24}$/.test(v.orderReference) && timestamp(v.recordedAt) &&
     (v.cadHandoffRecordedAt === null || timestamp(v.cadHandoffRecordedAt)) &&
-    (v.productionHandoffRecordedAt === null || (v.cadHandoffRecordedAt !== null && timestamp(v.productionHandoffRecordedAt)));
+    (v.productionHandoffRecordedAt === null || (v.cadHandoffRecordedAt !== null && timestamp(v.productionHandoffRecordedAt))) &&
+    (v.deliveryHandoffRecordedAt === null || (v.productionHandoffRecordedAt !== null && timestamp(v.deliveryHandoffRecordedAt)));
 }
 export default function CustomerOrderStatus() {
   const [access, setAccess] = useState<BrowserInvitationState>({ state: "checking" });
@@ -39,7 +40,7 @@ export default function CustomerOrderStatus() {
   return <main className={styles.page}>
     <h1>My commercial order records</h1>
     <p>Use your own invitation and Brief reference. This page reads existing records only.</p>
-    <p>A CAD or production handoff record is not CAD completion, production approval, manufacturing progress, shipment or delivery confirmation. Contact the studio through your existing contact channel for actual progress.</p>
+    <p>A CAD, production or delivery handoff record is not CAD completion, production approval, manufacturing progress, shipment or customer receipt confirmation. Contact the studio through your existing contact channel for actual progress.</p>
     <InvitationAccess onChange={onAccess} disabled={busy}/>
     <form onSubmit={read}>
       <label htmlFor="order-brief-reference">Brief reference</label>
@@ -53,6 +54,7 @@ export default function CustomerOrderStatus() {
       <p>Paid order recorded: {date(order.recordedAt)}</p>
       <p>CAD handoff recorded: {date(order.cadHandoffRecordedAt)}</p>
       <p>Production handoff recorded: {date(order.productionHandoffRecordedAt)}</p>
+      <p>Offline delivery handoff recorded: {date(order.deliveryHandoffRecordedAt)}</p>
     </li>)}</ul>
     {hasMore && <p>Only the latest 25 verified records are shown. Contact the studio for earlier records.</p>}
   </main>;

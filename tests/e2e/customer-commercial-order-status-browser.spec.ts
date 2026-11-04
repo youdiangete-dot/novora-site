@@ -11,7 +11,7 @@ for (const [id, file] of Object.entries({ component: "app/account/orders/status/
 const bundle = `(()=>{const sources=${JSON.stringify(modules)},cache={};function load(id){if(id.endsWith('.module.css'))return {__esModule:true,default:{page:'page',list:'list'}};if(id.endsWith('/components/InvitationAccess'))id='invitation';if(cache[id])return cache[id].exports;if(!Object.hasOwn(sources,id))throw Error('Unexpected test dependency '+id);const m={exports:{}};cache[id]=m;new Function('module','exports','require','process',sources[id])(m,m.exports,load,{env:{NODE_ENV:'development'}});return m.exports;}const React=load('react'),client=load('react-dom/client');client.createRoot(document.getElementById('root')).render(React.createElement(load('component').default));})();`;
 const ref = "NOVORA-CB-20261104-ST01", nextRef = "NOVORA-CB-20261104-ST02", order = "NOVORA-O-" + "1".repeat(24);
 const credential = "SYNTHETIC_A_" + "a".repeat(43);
-const response = { state: "ready", publicReference: ref, hasMore: false, orders: [{ orderReference: order, recordedAt: "2026-11-04T01:00:00.000Z", cadHandoffRecordedAt: "2026-11-04T02:00:00.000Z", productionHandoffRecordedAt: "2026-11-04T03:00:00.000Z" }] };
+const response = { state: "ready", publicReference: ref, hasMore: false, orders: [{ orderReference: order, recordedAt: "2026-11-04T01:00:00.000Z", cadHandoffRecordedAt: "2026-11-04T02:00:00.000Z", productionHandoffRecordedAt: "2026-11-04T03:00:00.000Z", deliveryHandoffRecordedAt: "2026-11-04T04:00:00.000Z" }] };
 async function mount(page: Page, result: unknown = response, code = 200) {
   await page.route("**/*", route => route.abort());
   await page.route("http://novora.test/", route => route.fulfill({ contentType: "text/html; charset=utf-8", body: `<html><head><meta charset="utf-8"><style>${readFileSync("app/design/my-images/page.module.css", "utf8")}</style></head><body><div id="root"></div></body></html>` }));
@@ -28,6 +28,8 @@ test("mobile customer reads only factual handoff records and can recover after c
   await mount(page); await expect(read(page)).toBeDisabled(); await authenticate(page); await page.getByLabel("Brief reference", { exact: true }).fill(ref); await read(page).click();
   await expect(page.getByRole("heading", { name: order })).toBeVisible(); await expect(page.getByText("Production handoff recorded:", { exact: false })).toBeVisible();
   await expect(page.getByText("not CAD completion, production approval", { exact: false })).toBeVisible();
+  await expect(page.getByText("Offline delivery handoff recorded:", { exact: false })).toBeVisible();
+  await expect(page.getByText("customer receipt confirmation", { exact: false })).toBeVisible();
   expect(calls).toHaveLength(1); expect(calls[0].method).toBe("GET"); expect(calls[0].auth).toBe(`Bearer ${credential}`); expect(calls[0].cookie).toBeUndefined(); expect(calls[0].url).not.toContain(credential);
   expect(await page.evaluate(() => JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)]))).not.toContain("SYNTHETIC_"); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.close(); const reopened = await context.newPage(); await mount(reopened); await expect(read(reopened)).toBeDisabled(); await expect(reopened.getByRole("heading", { name: order })).toHaveCount(0);

@@ -104,11 +104,13 @@ test("unavailable and unconfirmed screens never invent production success", asyn
   expect(await pageModule("TEST valid", { ok: false }).render()).toContain("Production handoff unavailable");
   const html = await pageModule("TEST valid", { ok: true, order, cadHandoff, handoff: null }).render("required");
   expect(html).not.toContain("Production handoff recorded"); expect(html).not.toContain("<form"); expect(html).toContain("Outcome remains unconfirmed");
+  expect(html).not.toContain("Manual delivery handoff record");
 });
 test("persisted reference is read-only and explicitly does not assert approval or shipment", async () => {
   const html = await pageModule("TEST valid", { ok: true, order, cadHandoff, handoff: { decisionReference: "TEST-DECISION-1", handoffReference: "TEST-PRODUCTION-1", recordedAt: "2026-11-04T03:00:00Z" } }).render();
   expect(html).toContain("Production handoff recorded"); expect(html).not.toContain("<form"); expect(html).toContain("not CAD completion, production approval, manufacturing progress or shipment confirmation");
   expect(html).toContain("TEST-CAD-1"); expect(html).toContain("TEST-DECISION-1"); expect(html).toContain("TEST-PRODUCTION-1");
+  expect(html).toContain(`href="/admin/orders/${ref}/delivery"`);
 });
 test("mobile form requires separate manual evidence and explicit confirmation", async ({ page }) => {
   const html = await pageModule("TEST valid", { ok: true, order, cadHandoff, handoff: null }).render();
