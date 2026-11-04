@@ -80,3 +80,23 @@ export async function readAdminCommercialOrders(dependencies?: Dependencies): Pr
     return { ok: false, orders: [], hasMore: false };
   }
 }
+
+// Exact lookup keeps an existing order usable after it leaves the recent-order list.
+export async function readAdminCommercialOrder(orderReference: string, dependencies?: Dependencies): Promise<
+  { ok: true; order: AdminCommercialOrder | null } | { ok: false; order: null }
+> {
+  if (!/^NOVORA-O-[A-F0-9]{24}$/.test(orderReference)) return { ok: false, order: null };
+  try {
+    const client = dependencies ? null : createSupabaseAdminClientOrNull();
+    if (!dependencies && !client) return { ok: false, order: null };
+    const rows = dependencies ? await dependencies.readRows() : await (async () => {
+      const { data, error } = await client!.from("commercial_orders").select(SELECT).eq("order_reference", orderReference).limit(2);
+      if (error) throw new Error("Order data unavailable");
+      return data;
+    })();
+    if (!Array.isArray(rows) || rows.length > 1) return { ok: false, order: null };
+    if (!rows.length) return { ok: true, order: null };
+    const order = normalize(rows[0]);
+    return order?.orderReference === orderReference ? { ok: true, order } : { ok: false, order: null };
+  } catch { return { ok: false, order: null }; }
+}
