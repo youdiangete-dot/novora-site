@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { createRequire } from "node:module";
 import { getDictionary } from "../../lib/i18n/dictionaries";
 const customerUICopy = getDictionary("en");
 
@@ -20,13 +21,14 @@ for (const [id, file] of Object.entries({
 modules.component = ts.transpileModule(readFileSync(path.join(root, "app/design/preview/[public_reference]/CommercialSpecificationConfirmation.tsx"), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
 }).outputText;
-const bundle = `(() => {
+const browserRuntime = `
  const sources=${JSON.stringify(modules)},cache={};
  function load(id){if(id==='./preview.module.css')return {};if(id==='../../../../lib/i18n/client')return {useI18n:()=>({locale:'en',dictionary:{commercialSpecification:${JSON.stringify(customerUICopy.commercialSpecification)}}})};
   if(id==='next/navigation')return {useRouter:()=>({refresh:()=>{window.commercialRefreshes=(window.commercialRefreshes||0)+1;}})};
   if(cache[id])return cache[id].exports;if(!Object.hasOwn(sources,id))throw Error('Unexpected test dependency '+id);
   const m={exports:{}};cache[id]=m;new Function('module','exports','require','process',sources[id])(m,m.exports,load,{env:{NODE_ENV:'development'}});return m.exports;}
- const React=load('react'),client=load('react-dom/client'),Component=load('component').default;
+ const React=load('react'),client=load('react-dom/client'),Component=load('component').default;`;
+const bundle = `(() => {${browserRuntime}
  const app=client.createRoot(document.getElementById('root'));
  window.renderSpecification=props=>{const {testQuotation,...value}=props;app.render(React.createElement(Component,{...value,quotation:testQuotation?React.createElement('p',{'data-testid':'test-quotation'},testQuotation):null}));};
 })();`;
@@ -47,6 +49,68 @@ async function mount(page: Page, value = props()) {
 }
 const submit = (page: Page) => page.getByRole("button", { name: customerUICopy.commercialSpecification.cs009 });
 const metal = (page: Page) => page.locator('[name="metalDirection"]');
+
+test("server-rendered fields stay disabled until hydration, then editing hides the quotation and reload restores A", async ({ page }) => {
+  const value = { ...props(true), items: [...props(true).items,
+    { key: "productionConcernNote", label: "Production note", value: "TEST A", maxLength: 500, multiline: true, required: false }],
+  };
+  const localRequire = createRequire(path.join(root, "package.json"));
+  const React = localRequire("react");
+  const server = localRequire("react-dom/server");
+  const componentModule = { exports: {} as any };
+  new Function("module", "exports", "require", modules.component)(componentModule, componentModule.exports, (id: string) => {
+    if (id === "./preview.module.css") return {};
+    if (id === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
+    if (id === "../../../../lib/i18n/client") return { useI18n: () => ({ locale: "en", dictionary: customerUICopy }) };
+    return localRequire(id);
+  });
+  const quotation = React.createElement("section", null,
+    React.createElement("h2", { id: "commercial-quotation-heading" }, "TEST quotation A"));
+  const rendered = server.renderToString(React.createElement(componentModule.exports.default, { ...value, quotation }));
+  const hydration = `(() => {${browserRuntime}
+    const quotation=React.createElement('section',null,React.createElement('h2',{id:'commercial-quotation-heading'},'TEST quotation A'));
+    function Hydrated(){React.useEffect(()=>{window.commercialHydrated=true;},[]);return React.createElement(Component,{...${JSON.stringify(value)},quotation});}
+    client.hydrateRoot(document.getElementById('root'),React.createElement(Hydrated));
+  })();`;
+  let release!: () => void;
+  const delayedScript = new Promise<void>(resolve => { release = resolve; });
+  let writes = 0;
+  await page.route("http://novora.test/_next/static/hydrate-test.js", async route => {
+    await delayedScript;
+    await route.fulfill({ contentType: "text/javascript", body: hydration });
+  });
+  await page.route("http://novora.test/", route => route.fulfill({ contentType: "text/html",
+    body: `<html><body><div id="root">${rendered}</div><script async src="/_next/static/hydrate-test.js"></script></body></html>`,
+  }));
+  await page.route("**/api/commercial-specification-confirmation/**", route => { writes++; return route.abort(); });
+  try {
+    await page.goto("http://novora.test/", { waitUntil: "domcontentloaded" });
+    const note = page.locator('[name="productionConcernNote"]');
+    const quote = page.locator("#commercial-quotation-heading");
+    await expect(quote).toBeVisible();
+    expect(await page.evaluate(() => Boolean((window as any).commercialHydrated))).toBe(false);
+    // On the unfixed component this reproduces the live symptom without loading React:
+    // the input accepts B while the persisted A quotation stays visible.
+    if (await note.isEnabled()) {
+      await note.fill("TEST B before hydration");
+      await expect(note).toHaveValue("TEST B before hydration");
+      await expect(quote).toBeVisible();
+      await test.info().attach("pre-hydration-reproduction", { body: JSON.stringify({ editableBeforeHydration: true, quotationStayedVisibleAfterEdit: true, writes }), contentType: "application/json" });
+    }
+    await expect(note).toBeDisabled({ timeout: 1000 });
+    release();
+    await page.waitForFunction(() => (window as any).commercialHydrated === true);
+    await expect(note).toBeEnabled();
+    await expect(note).toHaveValue("TEST A");
+    await note.fill("TEST B after hydration");
+    await expect(quote).toHaveCount(0);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => (window as any).commercialHydrated === true);
+    await expect(note).toHaveValue("TEST A");
+    await expect(quote).toBeVisible();
+    expect(writes).toBe(0);
+  } finally { release(); }
+});
 async function deliverPendingResponse(page: Page, release: () => void) {
   const delivered = page.waitForResponse("**/api/commercial-specification-confirmation/**");
   release();
