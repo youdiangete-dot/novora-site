@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 import styles from "./preview.module.css";
 import { useI18n } from '../../../../lib/i18n/client';
@@ -20,24 +21,31 @@ export default function CommercialSpecificationConfirmation({
   confirmed = false,
   items,
   publicReference,
+  quotation = null,
+  refreshOnConfirmed = false,
 }: {
   confirmationBinding: string;
   confirmed?: boolean;
   items: CommercialSpecificationInputField[];
   publicReference: string;
+  quotation?: ReactNode;
+  refreshOnConfirmed?: boolean;
 }) {
+  const router = useRouter();
   const { dictionary, locale } = useI18n();
   const copy = dictionary.commercialSpecification;
   const [specification, setSpecification] = useState<Record<string, string>>(
     () => Object.fromEntries(items.map((item) => [item.key, item.value])),
   );
   const [fields, setFields] = useState(items);
+  const [showQuotation, setShowQuotation] = useState(confirmed);
   const [state, setState] = useState<"idle" | "submitting" | "success" | "error">(confirmed ? "success" : "idle");
   const [message, setMessage] = useState(confirmed ? copy.cs002 : "");
   const requestVersion = useRef(0);
   useEffect(() => {
     requestVersion.current += 1;
     setFields(items);
+    setShowQuotation(confirmed);
     setSpecification(Object.fromEntries(items.map(item => [item.key, item.value])));
     setState(confirmed ? "success" : "idle");
     setMessage(confirmed ? copy.cs002 : "");
@@ -47,6 +55,7 @@ export default function CommercialSpecificationConfirmation({
   async function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const version = ++requestVersion.current;
+    setShowQuotation(false);
     setState("submitting");
     setMessage("");
     try {
@@ -91,6 +100,7 @@ export default function CommercialSpecificationConfirmation({
       setMessage(
         copy.cs002,
       );
+      if (refreshOnConfirmed) router.refresh();
     } catch (error) {
       if (version !== requestVersion.current) return;
       setState("error");
@@ -103,7 +113,7 @@ export default function CommercialSpecificationConfirmation({
   }
 
   return (
-    <section className={styles.specificationCard} aria-labelledby="commercial-specification-heading">
+    <><section className={styles.specificationCard} aria-labelledby="commercial-specification-heading">
       <p className={styles.confirmationEyebrow}>{copy.cs004}</p>
       <h2 id="commercial-specification-heading">{copy.cs005}</h2>
       <p>
@@ -124,6 +134,7 @@ export default function CommercialSpecificationConfirmation({
                 setSpecification((current) => ({ ...current, [item.key]: event.target.value }));
                 setState("idle");
                 setMessage("");
+                setShowQuotation(false);
               },
               required: item.required,
               value: specification[item.key] ?? "",
@@ -161,6 +172,6 @@ export default function CommercialSpecificationConfirmation({
           </>
         )}
       </form>
-    </section>
+    </section>{state === "success" && showQuotation ? quotation : null}</>
   );
 }

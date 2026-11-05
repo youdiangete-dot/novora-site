@@ -393,6 +393,26 @@ test("a newer M4-1 specification without a quote hides the older quotation", asy
   ).resolves.toBeNull();
 });
 
+test("customer quotation must match the specification hash displayed by the server", async () => {
+  const fixture = dependencies({ latestRows: { [LATEST_CONFIRMATION_ID]: row() } });
+  let reads = 0; fixture.value.repository.findLatestQuotation = async () => { reads++; return row(); };
+  expect(await quotationModule.readCustomerCommercialQuotation(REFERENCE, OUTPUT_ID, fixture.value, "b".repeat(64))).toBeNull();
+  expect(reads).toBe(0);
+  expect(await quotationModule.readCustomerCommercialQuotation(REFERENCE, OUTPUT_ID, fixture.value, "a".repeat(64))).not.toBeNull();
+});
+test("customer quotation rejects an output change while its row is being read", async () => {
+  const fixture = dependencies({ latestRows: { [LATEST_CONFIRMATION_ID]: row() } }); let reads = 0;
+  fixture.value.repository.resolveCurrentJourneyByPublicReference = async () => ++reads === 1 ? { conceptBriefId: BRIEF_ID, outputId: OUTPUT_ID } : { conceptBriefId: BRIEF_ID, outputId: "523e4567-e89b-42d3-a456-426614174000" };
+  expect(await quotationModule.readCustomerCommercialQuotation(REFERENCE, OUTPUT_ID, fixture.value)).toBeNull();
+});
+test("customer quotation rejects a new specification ID or hash during its read", async () => {
+  for (const change of [{ id: OLDER_CONFIRMATION_ID, specificationSha256: "a".repeat(64) }, { id: LATEST_CONFIRMATION_ID, specificationSha256: "b".repeat(64) }]) {
+    const fixture = dependencies({ latestRows: { [LATEST_CONFIRMATION_ID]: row() } }); let reads = 0;
+    fixture.value.repository.findLatestSpecificationConfirmation = async journey => ({ conceptBriefId: journey.conceptBriefId, outputId: journey.outputId, ...(++reads === 1 ? { id: LATEST_CONFIRMATION_ID, specificationSha256: "a".repeat(64) } : change) });
+    expect(await quotationModule.readCustomerCommercialQuotation(REFERENCE, OUTPUT_ID, fixture.value)).toBeNull();
+  }
+});
+
 test("historical quotation-v1 currency snapshots remain readable with their original hash", async () => {
   const historical = snapshot({ currency: "CAD" });
   const originalHash = quotationModule.hashCommercialQuotationSnapshot(historical);

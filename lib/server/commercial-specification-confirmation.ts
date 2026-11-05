@@ -769,6 +769,10 @@ export async function prepareCommercialSpecificationConfirmation(
     if (exactReadyOutputFromView(await readView({ publicReference }), publicReference, outputId) !== "exact") return null;
     const finalAuthority = await repository.resolveExactCurrentAuthority(publicReference, outputId);
     if (!finalAuthority || finalAuthority.conceptBriefId !== authority.conceptBriefId || finalAuthority.outputId !== outputId) return null;
+    const latest = await repository.readLatestExactConfirmation(authority.conceptBriefId, outputId);
+    if (latest === "unavailable" || (latest === null) !== (saved === null)) return null;
+    if (saved && latest && hashCommercialSpecificationSnapshot(buildCommercialSpecificationSnapshot(saved)) !==
+        hashCommercialSpecificationSnapshot(buildCommercialSpecificationSnapshot(latest))) return null;
     const binding = createCommercialSpecificationConfirmationBinding({
       publicReference,
       conceptBriefId: authority.conceptBriefId,

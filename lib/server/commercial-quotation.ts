@@ -654,6 +654,7 @@ export async function readCustomerCommercialQuotation(
   publicReference: unknown,
   outputId: unknown,
   dependencies?: Dependencies,
+  expectedSpecificationSha256?: string,
 ): Promise<SafeCommercialQuotation | null> {
   if (
     typeof publicReference !== "string" ||
@@ -661,6 +662,7 @@ export async function readCustomerCommercialQuotation(
     typeof outputId !== "string" ||
     !isValidFirstPreviewAssetUuid(outputId)
   ) return null;
+  if (expectedSpecificationSha256 !== undefined && !/^[0-9a-f]{64}$/.test(expectedSpecificationSha256)) return null;
   const active = activeDependencies(dependencies);
   if (!active) return null;
   try {
@@ -670,8 +672,15 @@ export async function readCustomerCommercialQuotation(
     );
     const basis = await latestBasisForJourney(journey, active.repository);
     if (!basis || basis === "unavailable") return null;
+    if (expectedSpecificationSha256 !== undefined && basis.specificationSha256 !== expectedSpecificationSha256) return null;
     const row = await active.repository.findLatestQuotation(basis.id);
-    return row === "unavailable" ? null : safeQuotationFromRow(row);
+    const quotation = row === "unavailable" ? null : safeQuotationFromRow(row);
+    if (!quotation || !journey) return null;
+    const finalJourney = await active.repository.resolveCurrentJourneyByPublicReference(publicReference, outputId);
+    if (!finalJourney || finalJourney.conceptBriefId !== journey.conceptBriefId || finalJourney.outputId !== journey.outputId) return null;
+    const finalBasis = await latestBasisForJourney(finalJourney, active.repository);
+    return finalBasis && finalBasis !== "unavailable" && finalBasis.id === basis.id &&
+      finalBasis.specificationSha256 === basis.specificationSha256 ? quotation : null;
   } catch {
     return null;
   }

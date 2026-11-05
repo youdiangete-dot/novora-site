@@ -5,6 +5,9 @@ import { resolveCustomerPreview } from "./resolve-customer-preview";
 import { FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV } from "../../../../lib/server/ai-sketch/first-preview-customer-access-contract";
 import { createFirstPreviewCustomerDesignConfirmationBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-design-confirmation";
 import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
+import { prepareCustomerCommercialConfiguration } from "../../../../lib/server/customer-commercial-configuration";
+import CommercialSpecificationConfirmation from "./CommercialSpecificationConfirmation";
+import CommercialQuotation from "./CommercialQuotation";
 import sharedStyles from "../../brief/brief.module.css";
 import FirstPreviewDesignConfirmation from "./FirstPreviewDesignConfirmation";
 import FirstPreviewFeedbackForm from "./FirstPreviewFeedbackForm";
@@ -120,6 +123,9 @@ export default async function CustomerPreviewPage({
         process.env[FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV] ?? "",
       )
     : null;
+  const commercialConfiguration = preview.state === "ready"
+    ? await prepareCustomerCommercialConfiguration(preview.publicReference, preview.outputId)
+    : null;
 
   return (
     <main className={sharedStyles.pageBackground}>
@@ -174,6 +180,16 @@ export default async function CustomerPreviewPage({
               <FirstPreviewDesignConfirmation
                 confirmationBinding={confirmationBinding}
                 publicReference={preview.publicReference}
+              />
+            ) : null}
+            {commercialConfiguration ? (
+              <CommercialSpecificationConfirmation
+                confirmationBinding={commercialConfiguration.specification.binding}
+                confirmed={commercialConfiguration.specification.confirmed}
+                items={commercialConfiguration.specification.items}
+                publicReference={preview.publicReference}
+                refreshOnConfirmed
+                quotation={commercialConfiguration.quotation ? <CommercialQuotation quotation={commercialConfiguration.quotation} /> : null}
               />
             ) : null}
             {feedbackBinding ? (

@@ -342,10 +342,11 @@ test("reload restores the latest exact confirmed snapshot instead of the old Bri
   expect(prepared?.items.find(x => x.key === "sizeDirection")?.value).toBe("US 7");
   expect(stored.calls).toContainEqual(["eq", "concept_brief_id", BRIEF_ID]);
   expect(stored.calls).toContainEqual(["eq", "ai_sketch_output_id", OUTPUT_ID]);
-  expect(stored.calls.filter(x => x[0] === "order")).toEqual([
+  const exactLatestOrder = [
     ["order", "confirmed_at", { ascending: false }], ["order", "created_at", { ascending: false }], ["order", "id", { ascending: false }],
-  ]);
-  expect(stored.calls).toContainEqual(["limit", 1]);
+  ];
+  expect(stored.calls.filter(x => x[0] === "order")).toEqual([...exactLatestOrder, ...exactLatestOrder]);
+  expect(stored.calls.filter(x => x[0] === "limit")).toEqual([["limit", 1], ["limit", 1]]);
   expect(fixture.writes).toHaveLength(0);
 });
 
@@ -490,6 +491,12 @@ test("unverified post-write readback or revoked access never returns success or 
     ? { state: "ready" as const, assetRequest: { publicReference: REFERENCE, outputId: OUTPUT_ID } }
     : { state: "denied" as const };
   expect(await specificationModule.persistCommercialSpecificationConfirmation(REFERENCE, body(), revoked.value)).toEqual({ ok: false, reason: "denied" });
+});
+
+test("preparation rejects a specification that changed during its view and authority checks", async () => {
+  const db = dependencies({ saved: customerSpecification() }); let reads = 0;
+  db.value.repository.readLatestExactConfirmation = async () => ++reads === 1 ? customerSpecification() : customerSpecification({ metalDirection: "platinum" });
+  expect(await specificationModule.prepareCommercialSpecificationConfirmation(REFERENCE, OUTPUT_ID, db.value)).toBeNull();
 });
 
 test("actual POST route returns409 with owned display fields for a service conflict", async () => {
