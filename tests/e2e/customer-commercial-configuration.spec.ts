@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import path from "node:path";
@@ -10,6 +11,9 @@ internals._resolveFilename = function (name, ...args) { return name === "server-
 const entry = req("../../lib/server/customer-commercial-configuration") as typeof import("../../lib/server/customer-commercial-configuration");
 const spec = req("../../lib/server/commercial-specification-confirmation") as typeof import("../../lib/server/commercial-specification-confirmation");
 const quote = req("../../lib/server/commercial-quotation") as typeof import("../../lib/server/commercial-quotation");
+const beta = req("../../lib/server/ai-sketch/beta-admission") as typeof import("../../lib/server/ai-sketch/beta-admission");
+const receiptAccess = req("../../app/api/concept-briefs/receipt/access/handler") as typeof import("../../app/api/concept-briefs/receipt/access/handler");
+const customerView = req("../../lib/server/ai-sketch/first-preview-customer-view") as typeof import("../../lib/server/ai-sketch/first-preview-customer-view");
 internals._resolveFilename = original;
 const ref = "NOVORA-CB-20261105-CF01", output = "123e4567-e89b-42d3-a456-426614174000";
 const env = { NOVORA_COMMERCIAL_CONFIGURATION_ENABLED: "true", NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED: "false" };
@@ -22,10 +26,125 @@ function dependencies() {
   let preparedCalls = 0, quoteCalls = 0, expectedHash: string | undefined;
   return { value: { environment: env, prepareSpecification: async () => { preparedCalls++; return prepared(); }, readQuotation: async (_reference: unknown, _output: unknown, _deps?: unknown, expected?: string) => { quoteCalls++; expectedHash = expected; return quotation; } }, counts: () => ({ preparedCalls, quoteCalls, expectedHash }) };
 }
-test("default OFF and invitation trials never read commercial data or credentials", async () => {
+test("default OFF and ordinary invitation trials never read commercial data or credentials", async () => {
   for (const environment of [{}, { ...env, NOVORA_COMMERCIAL_CONFIGURATION_ENABLED: "false" }, { NOVORA_COMMERCIAL_CONFIGURATION_ENABLED: "true" }, { ...env, NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED: "true" }, { ...env, NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED: "invalid" }]) {
     const d = dependencies(); expect(await entry.prepareCustomerCommercialConfiguration(ref, output, { ...d.value, environment })).toBeNull(); expect(d.counts().preparedCalls).toBe(0); expect(d.counts().quoteCalls).toBe(0);
   }
+});
+
+const invitation = "a".repeat(43), otherInvitation = "b".repeat(43);
+const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+const isolatedEnv = {
+  NOVORA_COMMERCIAL_CONFIGURATION_ENABLED: "true",
+  NOVORA_COMMERCIAL_CONFIGURATION_CONTEXT: "isolated_invitation_acceptance_v1",
+  NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED: "true",
+  NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE: "synthetic_m4_commercial_acceptance",
+  NOVORA_BETA_ADMISSION_ENABLED: "true", NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "true",
+  NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "false",
+  NOVORA_INVITATION_TRIAL_SPENDING_MODE: "disabled",
+  NOVORA_TEST_IMAGE_PACKAGES_ENABLED: "false", NOVORA_PAYPAL_SANDBOX_ENABLED: "false",
+  NOVORA_BETA_INVITATIONS_JSON: JSON.stringify([
+    { identity: "synthetic_m4_owner", credentialSha256: digest(invitation) },
+    { identity: "synthetic_m4_other", credentialSha256: digest(otherInvitation) },
+  ]),
+  NEXT_PUBLIC_SUPABASE_URL: "https://dibpksbbzjczpjusujwk.supabase.co",
+  NODE_ENV: "production", NEXT_RUNTIME: "nodejs", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_TARGET_ENV: "preview",
+  VERCEL_PROJECT_ID: "prj_H9Di3TIvXiZJHO06WwoaW8RqFfVg",
+  VERCEL_GIT_COMMIT_REF: "integration/instant-first-preview-agent",
+  VERCEL_GIT_COMMIT_SHA: "1".repeat(40), VERCEL_DEPLOYMENT_ID: "dpl_SyntheticCommercialAcceptance123",
+};
+const receiptRequest = (credential = invitation, requestId = "1".repeat(32), origin = "https://synthetic.example.invalid") => new Request("https://synthetic.example.invalid/api/concept-briefs/receipt/access", {
+  method: "POST", headers: { Authorization: `Bearer ${credential}`, Origin: origin }, body: JSON.stringify({ clientRequestId: requestId }),
+});
+
+test("only explicit isolated non-generating context can coexist with stable trial receipts", async () => {
+  const d = dependencies();
+  expect(await entry.prepareCustomerCommercialConfiguration(ref, output, { ...d.value, environment: isolatedEnv })).not.toBeNull();
+  expect(d.counts().quoteCalls).toBe(1);
+  const { NOVORA_COMMERCIAL_CONFIGURATION_CONTEXT: _context, ...ordinaryTrial } = isolatedEnv;
+  const baselineOwner = beta.authenticateScopedReceiptRequest(receiptRequest(), ordinaryTrial);
+  expect(baselineOwner?.identity).toBe("synthetic_m4_owner");
+  expect(beta.authenticateScopedReceiptRequest(receiptRequest(), isolatedEnv)).toEqual(baselineOwner);
+  expect(beta.authenticateScopedReceiptRequest(receiptRequest(), { ...isolatedEnv, VERCEL_DEPLOYMENT_ID: "dpl_SyntheticReplacementAcceptance456", VERCEL_GIT_COMMIT_SHA: "2".repeat(40) })).toEqual(baselineOwner);
+  const hidden = dependencies();
+  expect(await entry.prepareCustomerCommercialConfiguration(ref, output, { ...hidden.value, environment: ordinaryTrial })).toBeNull();
+  expect(hidden.counts().preparedCalls).toBe(0);
+});
+
+test("isolated context rejects incomplete, cross-environment and spending-capable configurations before reading data", async () => {
+  const changes: Record<string, string | undefined>[] = [
+    { NOVORA_COMMERCIAL_CONFIGURATION_ENABLED: undefined }, { NOVORA_COMMERCIAL_CONFIGURATION_ENABLED: "false" },
+    { NOVORA_COMMERCIAL_CONFIGURATION_CONTEXT: "unknown" }, { NODE_ENV: "development" }, { NEXT_RUNTIME: "edge" }, { NEXT_PHASE: "phase-production-build" },
+    { VERCEL: undefined }, { VERCEL_ENV: "production" }, { VERCEL_TARGET_ENV: "production" },
+    { VERCEL_PROJECT_ID: "unrelated" }, { VERCEL_GIT_COMMIT_REF: "main" }, { VERCEL_GIT_COMMIT_SHA: "invalid" }, { VERCEL_DEPLOYMENT_ID: "invalid" },
+    { NEXT_PUBLIC_SUPABASE_URL: "https://other.example.invalid" }, { NOVORA_INVITATION_TRIAL_RECEIPTS_ENABLED: "false" },
+    { NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE: "short" }, { NOVORA_BETA_ADMISSION_ENABLED: "false" }, { NOVORA_INSTANT_PREVIEW_AGENT_ENABLED: "false" },
+    { NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: "true" }, { NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED: undefined },
+    { NOVORA_INVITATION_TRIAL_SPENDING_MODE: "owner_expected_cost_seven_day_trial_025_v1" }, { NOVORA_INVITATION_TRIAL_SPENDING_MODE: undefined },
+    { NOVORA_TEST_IMAGE_PACKAGES_ENABLED: "true" }, { NOVORA_PAYPAL_SANDBOX_ENABLED: "true" },
+  ];
+  for (const change of changes) {
+    const d = dependencies();
+    expect(await entry.prepareCustomerCommercialConfiguration(ref, output, { ...d.value, environment: { ...isolatedEnv, ...change } }), JSON.stringify(change)).toBeNull();
+    expect(d.counts().preparedCalls).toBe(0); expect(d.counts().quoteCalls).toBe(0);
+  }
+  const legacy = dependencies();
+  expect(await entry.prepareCustomerCommercialConfiguration(ref, output, { ...legacy.value, environment: { ...env, NOVORA_COMMERCIAL_CONFIGURATION_CONTEXT: "unknown" } })).toBeNull();
+});
+
+test("same durable owned receipt renews the real signed cookie and prepares the real commercial form without rebind or writes", async () => {
+  const briefId = "223e4567-e89b-42d3-a456-426614174000", requestId = "1".repeat(32), now = 2_000_000_000;
+  const signingSecret = "synthetic_m4_owned_receipt_signing_secret";
+  const originalOwner = beta.authenticateScopedReceiptRequest(receiptRequest(), { ...isolatedEnv, NOVORA_COMMERCIAL_CONFIGURATION_CONTEXT: undefined })!;
+  const stored = { ...originalOwner, requestId, briefId, reference: ref };
+  let receiptReads = 0, writes = 0, quoteReads = 0;
+  const handler = (environment = isolatedEnv) => receiptAccess.createReceiptAccessPostHandler({
+    authenticate: request => beta.authenticateScopedReceiptRequest(request, environment),
+    read: async (owner, id) => { receiptReads++; return owner.identity === stored.identity && owner.scope === stored.scope && id === stored.requestId
+      ? { briefId: stored.briefId, reference: stored.reference, stage: "published", reason: "enqueued" } : null; },
+    session: { featureFlagValue: "true", signingSecret, clock: () => now, nonceSource: () => "synthetic_nonce_m4_acceptance" },
+  });
+  const response = await handler()(receiptRequest());
+  expect(response.status).toBe(200);
+  const cookie = response.cookies.get("__Host-novora_first_preview_access")!;
+  expect(cookie).toBeTruthy(); expect(response.headers.get("set-cookie")).toMatch(/HttpOnly/i);
+  const prepare = (accessProof: string) => (reference: string, exactOutput: string) => spec.prepareCommercialSpecificationConfirmation(reference, exactOutput, {
+    signingSecret,
+    readCustomerView: request => customerView.readFirstPreviewCustomerView({ ...request, accessProof }, {
+      clock: () => now + 1, signingSecret,
+      stateSource: { readExactCustomerPreviewState: lookup => ({ state: "ready", conceptBriefId: lookup.conceptBriefId, publicReference: lookup.publicReference,
+        outputId: output, authorizationEligible: true, isCurrentCustomerPreview: true, readinessRevokedAt: null, readinessStatus: "first_preview_ready" }) },
+    }),
+    repository: {
+      resolveExactCurrentAuthority: async (reference, exactOutput) => reference === stored.reference && exactOutput === output
+        ? { conceptBriefId: stored.briefId, outputId: output, briefPayload: { brief: input } } : null,
+      hasExactDesignDirectionConfirmation: async () => true,
+      readLatestExactConfirmation: async () => input,
+      insertExactConfirmation: async () => { writes++; return "unavailable"; },
+    },
+  });
+  const readQuotation = async () => { quoteReads++; return quotation; };
+  expect(await entry.prepareCustomerCommercialConfiguration(ref, output, { environment: isolatedEnv, prepareSpecification: prepare(cookie.value), readQuotation })).toMatchObject({ specification: { confirmed: true }, quotation });
+  expect(quoteReads).toBe(1);
+  for (const accessProof of ["", cookie.value + "corrupt"]) {
+    expect(await entry.prepareCustomerCommercialConfiguration(ref, output, { environment: isolatedEnv, prepareSpecification: prepare(accessProof), readQuotation })).toBeNull();
+  }
+  expect(quoteReads).toBe(1);
+  for (const request of [receiptRequest(otherInvitation), receiptRequest("wrong"), receiptRequest(invitation, "2".repeat(32)), receiptRequest(invitation, requestId, "https://other.example.invalid")]) {
+    const denied = await handler()(request); expect(denied.status).toBe(404); expect(denied.cookies.get("__Host-novora_first_preview_access")).toBeUndefined();
+  }
+  expect((await handler({ ...isolatedEnv, NOVORA_INVITATION_TRIAL_RECEIPT_NAMESPACE: "synthetic_other_receipt_namespace" })(receiptRequest())).status).toBe(404);
+  expect((await handler({ ...isolatedEnv, NOVORA_BETA_INVITATIONS_JSON: "[]" })(receiptRequest())).status).toBe(404);
+  expect(receiptReads).toBeGreaterThan(0); expect(writes).toBe(0);
+  expect(stored).toEqual({ ...originalOwner, requestId, briefId, reference: ref });
+});
+
+test("the display context creates no spending authority and cannot reserve or dispatch work", async () => {
+  const work = { briefId: "223e4567-e89b-42d3-a456-426614174000", fingerprint: "synthetic_fingerprint", request: receiptRequest() };
+  expect(beta.resolveBetaAdmissionBinding(isolatedEnv)).toBeNull();
+  expect(beta.createRedisBetaAdmissionLedger(isolatedEnv)).toBeNull();
+  expect(await beta.reserveBetaAdmission(work, { environment: isolatedEnv })).toBe("denied");
+  expect(await beta.claimBetaDispatch({ ...work, betaAdmission: true }, { environment: isolatedEnv })).toBe(false);
 });
 test("invalid route identity is denied before preparation", async () => {
   for (const [r, o] of [["invalid", output], [ref, "forged"]]) { const d = dependencies(); expect(await entry.prepareCustomerCommercialConfiguration(r, o, d.value)).toBeNull(); expect(d.counts().preparedCalls).toBe(0); }
