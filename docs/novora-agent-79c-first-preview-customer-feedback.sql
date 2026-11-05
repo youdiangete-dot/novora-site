@@ -22,6 +22,7 @@ create table public.first_preview_customer_feedback (
 alter table public.first_preview_customer_feedback enable row level security;
 
 revoke all on table public.first_preview_customer_feedback from public, anon, authenticated;
+revoke all on table public.first_preview_customer_feedback from service_role;
 grant select, insert on table public.first_preview_customer_feedback to service_role;
 
 create or replace function public.enforce_current_ready_first_preview_feedback()
