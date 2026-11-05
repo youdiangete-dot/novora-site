@@ -23,11 +23,12 @@ modules.component = ts.transpileModule(readFileSync(path.join(root, "app/design/
 const bundle = `(() => {
  const sources=${JSON.stringify(modules)},cache={};
  function load(id){if(id==='./preview.module.css')return {};if(id==='../../../../lib/i18n/client')return {useI18n:()=>({locale:'en',dictionary:{commercialSpecification:${JSON.stringify(customerUICopy.commercialSpecification)}}})};
+  if(id==='next/navigation')return {useRouter:()=>({refresh:()=>{window.commercialRefreshes=(window.commercialRefreshes||0)+1;}})};
   if(cache[id])return cache[id].exports;if(!Object.hasOwn(sources,id))throw Error('Unexpected test dependency '+id);
   const m={exports:{}};cache[id]=m;new Function('module','exports','require','process',sources[id])(m,m.exports,load,{env:{NODE_ENV:'development'}});return m.exports;}
  const React=load('react'),client=load('react-dom/client'),Component=load('component').default;
  const app=client.createRoot(document.getElementById('root'));
- window.renderSpecification=props=>app.render(React.createElement(Component,props));
+ window.renderSpecification=props=>{const {testQuotation,...value}=props;app.render(React.createElement(Component,{...value,quotation:testQuotation?React.createElement('p',{'data-testid':'test-quotation'},testQuotation):null}));};
 })();`;
 const reference = "NOVORA-CB-20260811-M411";
 function props(confirmed = false, metal = "yellow gold", binding = "synthetic-owned-binding") {
@@ -105,6 +106,18 @@ test("HTTP success without server confirmation cannot display confirmed status",
   await submit(page).click();
   await expect(page.getByRole("alert")).toHaveText("Synthetic denied confirmation");
   await expect(page.getByRole("status")).toHaveCount(0);
+});
+
+test("editing hides the persisted quote until fresh server props follow successful confirmation", async ({ page }) => {
+  await page.route("**/api/commercial-specification-confirmation/**", route => route.fulfill({ status: 201, json: { ok: true } }));
+  await mount(page, { ...props(true), testQuotation: "TEST persisted quote A", refreshOnConfirmed: true } as any);
+  await expect(page.getByTestId("test-quotation")).toHaveText("TEST persisted quote A");
+  await metal(page).fill("platinum"); await expect(page.getByTestId("test-quotation")).toHaveCount(0);
+  await submit(page).click(); await expect(page.getByRole("status")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).commercialRefreshes)).toBe(1);
+  await expect(page.getByTestId("test-quotation")).toHaveCount(0);
+  await page.evaluate(value => (window as any).renderSpecification(value), { ...props(true, "platinum"), testQuotation: "TEST new basis quote B", refreshOnConfirmed: true });
+  await expect(page.getByTestId("test-quotation")).toHaveText("TEST new basis quote B");
 });
 
 test("A -> B -> A conflict shows actual B fields without success; matching B can then be confirmed", async ({ page }) => {
