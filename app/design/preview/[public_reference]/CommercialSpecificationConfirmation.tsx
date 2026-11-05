@@ -41,7 +41,9 @@ export default function CommercialSpecificationConfirmation({
   const [showQuotation, setShowQuotation] = useState(confirmed);
   const [state, setState] = useState<"idle" | "submitting" | "success" | "error">(confirmed ? "success" : "idle");
   const [message, setMessage] = useState(confirmed ? copy.cs002 : "");
+  const [interactiveReady, setInteractiveReady] = useState(false);
   const requestVersion = useRef(0);
+  useEffect(() => { setInteractiveReady(true); }, []);
   useEffect(() => {
     requestVersion.current += 1;
     setFields(items);
@@ -54,6 +56,7 @@ export default function CommercialSpecificationConfirmation({
 
   async function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!interactiveReady) return;
     const version = ++requestVersion.current;
     setShowQuotation(false);
     setState("submitting");
@@ -118,7 +121,7 @@ export default function CommercialSpecificationConfirmation({
       <h2 id="commercial-specification-heading">{copy.cs005}</h2>
       <p>
         {copy.cs006}</p>
-      <form className={styles.specificationForm} onSubmit={confirm}>
+      <form className={styles.specificationForm} onSubmit={confirm} aria-busy={!interactiveReady || state === "submitting"}>
         <div className={styles.specificationList}>
           {fields.map((item) => {
             const fieldId = `commercial-specification-${item.key}`;
@@ -126,7 +129,7 @@ export default function CommercialSpecificationConfirmation({
               id: fieldId,
               maxLength: item.maxLength,
               name: item.key,
-              disabled: state === "submitting",
+              disabled: !interactiveReady || state === "submitting",
               onChange: (
                 event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
               ) => {
@@ -159,7 +162,7 @@ export default function CommercialSpecificationConfirmation({
           <>
             <button
               className={styles.confirmationButton}
-              disabled={state === "submitting"}
+              disabled={!interactiveReady || state === "submitting"}
               type="submit"
             >
               {state === "submitting"
