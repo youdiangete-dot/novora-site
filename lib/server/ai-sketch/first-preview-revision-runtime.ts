@@ -6,7 +6,7 @@ import { createSupabaseAdminClientOrNull } from "../supabase";
 // not duplicate their identity scheme, ledger, or payment verification logic.
 import { createImagePackageRepository } from "../image-packages/repository";
 import { testPackagePurchase, testPackageSubject } from "../image-packages/identity";
-import { authenticateScopedReceiptRequest, createRedisBetaAdmissionLedger, isScopedReceiptOwnerActive, revisionSpendingFingerprint, type BetaAdmissionLedger } from "./beta-admission";
+import { authenticateScopedReceiptRequest, createRedisBetaAdmissionLedger, isScopedReceiptOwnerActive, isSharedTrialBudgetActive, revisionSpendingFingerprint, type BetaAdmissionLedger } from "./beta-admission";
 import { createFirstPreviewRepository } from "./first-preview-persistence";
 import { buildFirstPreviewStructuredGenerationInput } from "./first-preview-structured-input";
 import { prepareFirstPreviewGenerationInput, createProductionAutomaticFirstPreviewWorkerDependencies, type FirstPreviewGenerationWork } from "./first-preview-generation-lifecycle";
@@ -25,6 +25,7 @@ type PackageRepository = ReturnType<typeof createImagePackageRepository> & {
 type RuntimeOptions = Readonly<{ db?: SupabaseClient | null; packages?: PackageRepository; ledger?: BetaAdmissionLedger | null }>;
 
 function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], source: RevisionSource | null, options: RuntimeOptions = {}) {
+  const sharedTrial = isSharedTrialBudgetActive();
   const repository = createFirstPreviewRepository({ supabaseClient: db });
   const packages: PackageRepository = options.packages ?? createImagePackageRepository(db);
   const ledger = Object.hasOwn(options, "ledger") ? options.ledger : createRedisBetaAdmissionLedger();
@@ -33,6 +34,7 @@ function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], s
   });
   const fingerprint = revisionSpendingFingerprint;
   return createSourceBoundRevisionService({
+    ...(sharedTrial ? { sharedTrialBudgetOnly: true as const } : {}),
     validatePreparedInput: prepared => isLowReservationPreviewInputAllowed(prepared, process.env),
     repository, resolveSource: async () => source,
     resolveDispatch: async operationId => {
@@ -43,7 +45,9 @@ function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], s
       return bindingFor(operationId, job.conceptBriefId, job.sourceOutputId);
     },
     isDefiniteFailure: async binding => {
-      return typeof packages.isDefiniteFailure === "function" && await packages.isDefiniteFailure(binding) === true;
+      // Shared-budget failures are never automatic retry authority. An UNKNOWN
+      // cost reservation continues to block all new dispatch in the Lua ledger.
+      return !sharedTrial && typeof packages.isDefiniteFailure === "function" && await packages.isDefiniteFailure(binding) === true;
     },
     entitlements: packages,
     reserveCost: async (work, binding) => {
@@ -61,7 +65,7 @@ function services(db: SupabaseClient, owner: RevisionDispatchBinding["owner"], s
     // ledger claim run; both must confirm before any Provider request. Uncertain
     // or duplicate claims hold the operation and never authorize another call.
     claimCostReservation: async (work, binding) => Boolean(ledger && isScopedReceiptOwnerActive(binding.owner) &&
-      isFirstPreviewQueueExecutionConfirmed() && await ledger.claimDispatch({ briefId: work.jobId, sourceBriefId:work.conceptBriefId, kind:"revision",fingerprint: fingerprint(work) })),
+      isFirstPreviewQueueExecutionConfirmed() && await ledger.claimDispatch({ identity: binding.owner.identity, briefId: work.jobId, sourceBriefId:work.conceptBriefId, kind:"revision",fingerprint: fingerprint(work) })),
     publish: async work => publishRevisionQueueEnvelope({ schemaVersion: REVISION_QUEUE_SCHEMA, owner, work }),
     createWorkerDependencies: createProductionAutomaticFirstPreviewWorkerDependencies,
   });
@@ -78,11 +82,14 @@ export async function createProductionRevisionHttpService(request: Request, cont
     const receipt = { briefId: owned.data[0].concept_brief_id as string, reference: context.publicReference };
     if (!isValidFirstPreviewAssetUuid(receipt.briefId)) return null;
     const packages = options.packages ?? createImagePackageRepository(db);
-    if (typeof (packages as PackageRepository).isDefiniteFailure !== "function") return null;
+    const sharedTrial = isSharedTrialBudgetActive();
+    if (!sharedTrial && typeof (packages as PackageRepository).isDefiniteFailure !== "function") return null;
     const purchaseId = testPackagePurchase(owner, context.provider), subjectId = testPackageSubject(owner);
-    const purchase = await packages.findPurchase(purchaseId);
-    if (!purchase || purchase === "unavailable" || purchase.owner.scope !== owner.scope || purchase.owner.identity !== owner.identity ||
-      purchase.subjectId !== subjectId || purchase.purchaseId !== purchaseId || purchase.provider !== context.provider) return null;
+    if (!sharedTrial) {
+      const purchase = await packages.findPurchase(purchaseId);
+      if (!purchase || purchase === "unavailable" || purchase.owner.scope !== owner.scope || purchase.owner.identity !== owner.identity ||
+        purchase.subjectId !== subjectId || purchase.purchaseId !== purchaseId || purchase.provider !== context.provider) return null;
+    } else if (context.provider !== "manual_test") return null;
     const [briefResult, outputResult] = await Promise.all([
       db.from("concept_briefs").select("id,public_reference,brief_payload").eq("id", receipt.briefId).eq("public_reference", receipt.reference).maybeSingle(),
       db.from("ai_sketch_outputs").select("id,job_id,concept_brief_id").eq("id", context.sourceOutputId).eq("concept_brief_id", receipt.briefId).maybeSingle(),
@@ -108,7 +115,7 @@ export async function createProductionRevisionHttpService(request: Request, cont
         if (updated.error || updated.data?.ai_sketch_output_id !== output.id) return null;
       }
     }
-    return services(db, owner, { owner, purchaseId, subjectId, conceptBriefId: receipt.briefId, publicReference: receipt.reference,
+    return services(db, owner, { owner, ...(!sharedTrial ? { purchaseId, subjectId } : {}), conceptBriefId: receipt.briefId, publicReference: receipt.reference,
       sourceOutputId: output.id, originalInput: prepareFirstPreviewGenerationInput(built.value),
       ...(context.directives ? { requestedDirectives: context.directives, sourceRevisionDirectives: sourceJob.revisionDirectives ?? [] } : {}) }, { ...options, packages });
   } catch { return null; }

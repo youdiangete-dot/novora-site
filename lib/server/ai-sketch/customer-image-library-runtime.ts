@@ -19,7 +19,7 @@ export function createProductionCustomerImageLibrary() {
         .eq("brief.owner_receipts.scope_sha256",owner.scope).eq("brief.owner_receipts.invitation_identity",owner.identity)
         .eq("asset_validation_status","passed").eq("automatic_gate_status","passed")
         .or("and(readiness_status.eq.first_preview_ready,is_current_customer_preview.eq.true,readiness_revoked_at.is.null),and(customer_history_state.eq.superseded,readiness_status.eq.revoked,is_current_customer_preview.eq.false)")
-        .order("created_at",{ascending:false}).order("id").limit(48);
+        .order("created_at",{ascending:false}).order("id").limit(80);
       if(r.error||!r.data)return null;
       const rows=r.data as unknown as {id:string;concept_brief_id:string;brief:{public_reference:string}|{public_reference:string}[]}[];
       return rows.map(x=>{const b=Array.isArray(x.brief)?x.brief.length===1?x.brief[0]:null:x.brief;return {outputId:x.id,receipt:{briefId:x.concept_brief_id,publicReference:b?.public_reference??""}};});

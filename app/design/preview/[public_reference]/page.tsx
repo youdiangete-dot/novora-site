@@ -6,6 +6,7 @@ import { FIRST_PREVIEW_CUSTOMER_ACCESS_SIGNING_SECRET_ENV } from "../../../../li
 import { createFirstPreviewCustomerDesignConfirmationBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-design-confirmation";
 import { createFirstPreviewCustomerFeedbackBinding } from "../../../../lib/server/ai-sketch/first-preview-customer-feedback";
 import { prepareCustomerCommercialConfiguration } from "../../../../lib/server/customer-commercial-configuration";
+import { isSharedTrialBudgetActive } from "../../../../lib/server/ai-sketch/beta-admission";
 import CommercialSpecificationConfirmation from "./CommercialSpecificationConfirmation";
 import CommercialQuotation from "./CommercialQuotation";
 import sharedStyles from "../../brief/brief.module.css";
@@ -196,6 +197,7 @@ export default async function CustomerPreviewPage({
               <FirstPreviewFeedbackForm
                 feedbackBinding={feedbackBinding}
                 publicReference={preview.publicReference}
+                sharedTrialBudget={isSharedTrialBudgetActive()}
               />
             ) : null}
           </>

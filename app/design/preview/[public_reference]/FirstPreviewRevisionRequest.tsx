@@ -5,7 +5,7 @@ import { REVISION_DIRECTIVES, readRevisionDirectives, type RevisionDirective } f
 import { requestBrowserRevision } from "../../../../lib/client/first-preview-revision";
 import styles from "./preview.module.css";
 
-export default function FirstPreviewRevisionRequest({ publicReference, feedbackBinding }: { publicReference: string; feedbackBinding: string }) {
+export default function FirstPreviewRevisionRequest({ publicReference, feedbackBinding, sharedTrialBudget = false }: { publicReference: string; feedbackBinding: string; sharedTrialBudget?: boolean }) {
   const [invitation, setInvitation] = useState<BrowserInvitationState>({ state: "checking" });
   const onAccess = useCallback((next: BrowserInvitationState) => setInvitation(next), []);
   const [directives, setDirectives] = useState<RevisionDirective[]>([]);
@@ -14,13 +14,13 @@ export default function FirstPreviewRevisionRequest({ publicReference, feedbackB
   if (invitation.state === "disabled") return null;
   return <section className={styles.feedbackCard} aria-labelledby="revision-request-heading">
     <h3 id="revision-request-heading">Request a design revision</h3>
-    <p>Use an active TEST-01 package. Your current safe image stays available if a revision fails. Feedback notes are not sent as generation instructions.</p>
+    <p>{sharedTrialBudget ? "This invited test uses a shared generation budget; no package purchase is required." : "Use an active TEST-01 package."} Your current safe image stays available if a revision fails. Feedback notes are not sent as generation instructions.</p>
     <InvitationAccess onChange={onAccess} disabled={busy} />
     {invitation.state === "verified" ? <>
-      <label htmlFor="revision-package-provider">Confirmed test package</label>
+      {!sharedTrialBudget ? <><label htmlFor="revision-package-provider">Confirmed test package</label>
       <select id="revision-package-provider" value={provider} disabled={busy} onChange={event => setProvider(event.target.value as typeof provider)}>
         <option value="manual_test">Manual TEST confirmation</option><option value="paypal_sandbox">PayPal Sandbox</option>
-      </select>
+      </select></> : null}
       <fieldset disabled={busy}><legend>Requested changes</legend>
         {(Object.keys(REVISION_DIRECTIVES) as RevisionDirective[]).map(code => <label key={code} style={{ display: "block", marginBlock: "0.5rem" }}>
           <input type="checkbox" checked={directives.includes(code)} onChange={event => setDirectives(previous => event.target.checked ? [...previous, code] : previous.filter(item => item !== code))} /> {code.replaceAll("_", " ")}
@@ -34,7 +34,7 @@ export default function FirstPreviewRevisionRequest({ publicReference, feedbackB
           // the signature, current source and owner independently.
           const encoded = feedbackBinding.split(".")[0].replaceAll("-", "+").replaceAll("_", "/");
           const source = JSON.parse(atob(encoded)).outputId;
-          const result = await requestBrowserRevision({ publicReference, sourceOutputId: source, directives, provider, binding: feedbackBinding }, invitation.access);
+          const result = await requestBrowserRevision({ publicReference, sourceOutputId: source, directives, provider: sharedTrialBudget ? "manual_test" : provider, binding: feedbackBinding }, invitation.access);
           setReady(result.status === "ready");
           setMessage(result.status === "storage_unavailable" ? "Browser recovery storage is unavailable. No new revision was submitted." : result.status === "denied" ? "Revision access or the selected changes were rejected." : result.status === "ready" ? "Your safe revision is ready. Refresh to view and confirm the new direction." : result.status === "failed"
             ? "This revision definitely failed. Your current image is unchanged. A new request requires another explicit click."

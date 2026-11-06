@@ -17,7 +17,7 @@ type Claim = "claimed" | "already_claimed" | "denied" | "unknown";
 type Outcome = "delivered" | "definite_failure" | "unknown";
 type UseResult = Readonly<{ ok: boolean; duplicate?: boolean; state?: string; reason?: string }>;
 export type RevisionSource = Readonly<{
-  owner: RevisionDispatchBinding["owner"]; purchaseId: string; subjectId: string;
+  owner: RevisionDispatchBinding["owner"]; purchaseId?: string; subjectId?: string;
   conceptBriefId: string; publicReference: string; sourceOutputId: string;
   // Constructed from the persisted original Brief through the existing safe
   // structured-input builder, never accepted directly from a customer body.
@@ -26,6 +26,9 @@ export type RevisionSource = Readonly<{
   sourceRevisionDirectives?: readonly RevisionDirective[];
 }>;
 export type RevisionServiceDependencies = Readonly<{
+  // Server-only selection of the validated, funded two-person budget mode.
+  // Never selected by an HTTP body or a Queue payload. It grants no package.
+  sharedTrialBudgetOnly?: true;
   repository: FirstPreviewRepository;
   // Must verify the current invitation/session and exact owned Brief/source, or
   // the existing protected admin acting for that owner. Never echo body IDs.
@@ -83,7 +86,7 @@ export function createSourceBoundRevisionService(deps: RevisionServiceDependenci
       try {
         if (!UUID.test(operationId)) return reject("denied");
         const source = await deps.resolveSource(request);
-        if (!source || !validOwner(source.owner) || !UUID.test(source.subjectId) || !UUID.test(source.purchaseId) ||
+        if (!source || !validOwner(source.owner) || (!deps.sharedTrialBudgetOnly && (!UUID.test(source.subjectId ?? "") || !UUID.test(source.purchaseId ?? ""))) ||
           !UUID.test(source.conceptBriefId) || !UUID.test(source.sourceOutputId)) return reject("denied");
         const existing = await deps.repository.findJobById(operationId);
         if (existing) {
@@ -128,7 +131,8 @@ export function createSourceBoundRevisionService(deps: RevisionServiceDependenci
         if (!reserved.ok) return reject("unavailable");
         if (reserved.value.disposition === "existing") return { status: "existing" as const, operationId: reserved.value.job.id };
         const binding: RevisionDispatchBinding = { owner: source.owner, reservationId: operationId, operationId, kind: "revision", briefId: source.conceptBriefId, sourceOutputId: current.id };
-        const entitlement = await deps.entitlements.reserve({ ...binding, purchaseId: source.purchaseId, subjectId: source.subjectId });
+        const entitlement: UseResult = deps.sharedTrialBudgetOnly ? { ok: true, state: "reserved" } :
+          await deps.entitlements.reserve({ ...binding, purchaseId: source.purchaseId!, subjectId: source.subjectId! });
         if (!entitlement.ok || entitlement.duplicate || entitlement.state !== "reserved") {
           const denied = !entitlement.ok && entitlement.reason !== "unavailable" && entitlement.reason !== undefined;
           if (denied) await deps.repository.recordJobFailure(operationId, { category: "budget_blocked", retryEligible: false, actualCostMicros: 0 });
@@ -140,7 +144,7 @@ export function createSourceBoundRevisionService(deps: RevisionServiceDependenci
         if (cost !== "reserved") {
           if (cost === "denied") {
             await deps.repository.recordJobFailure(operationId, { category: "budget_blocked", retryEligible: false, actualCostMicros: 0 });
-            await deps.entitlements.settleDispatch({ ...binding, outcome: "definite_failure", failurePhase: "before_dispatch", providerCostUsdMicros: 0 });
+            if (!deps.sharedTrialBudgetOnly) await deps.entitlements.settleDispatch({ ...binding, outcome: "definite_failure", failurePhase: "before_dispatch", providerCostUsdMicros: 0 });
           }
           return reject(cost === "denied" ? "denied" : "unknown");
         }
@@ -184,6 +188,10 @@ export function createSourceBoundRevisionService(deps: RevisionServiceDependenci
         if (!stored || stored.conceptBriefId !== work.conceptBriefId || stored.sourceOutputId !== work.sourceOutputId ||
           stored.parentJobId !== work.parentJobId || stored.attemptNumber !== work.attemptNumber ||
           stored.designSpecSha256 !== work.structured.designSpecSha256 || stored.handSketchInstructionSha256 !== work.structured.handSketchInstructionSha256) return reject("denied");
+        // A lost Redis dispatch ACK can leave a zero-cost failed job while the
+        // ledger still holds an uncertain claim. A Queue replay must not turn
+        // that into a definite failure/released allowance from job state alone.
+        if (deps.sharedTrialBudgetOnly && stored.status !== "queued" && stored.status !== "succeeded") return reject("unknown");
         let claim: Claim | undefined;
         let result;
         if (stored.status === "queued") result = await runAutomaticFirstPreviewWorker(work, {
@@ -191,8 +199,12 @@ export function createSourceBoundRevisionService(deps: RevisionServiceDependenci
           revisionAdmission: { verifyReservation: candidate => deps.verifyCostReservation(candidate, binding),
             claimDispatch: async () => {
               try {
-                claim = await deps.entitlements.claimDispatch(binding);
-                if (claim === "claimed" && deps.claimCostReservation && await deps.claimCostReservation(work, binding) !== true) claim = "unknown";
+                if (deps.sharedTrialBudgetOnly) {
+                  claim = deps.claimCostReservation && await deps.claimCostReservation(work, binding) === true ? "claimed" : "unknown";
+                } else {
+                  claim = await deps.entitlements.claimDispatch(binding);
+                  if (claim === "claimed" && deps.claimCostReservation && await deps.claimCostReservation(work, binding) !== true) claim = "unknown";
+                }
               } catch { claim = "unknown"; }
               return claim;
             } },
@@ -211,7 +223,8 @@ export function createSourceBoundRevisionService(deps: RevisionServiceDependenci
         const outcome: Outcome = unknownClaim ? "unknown" : ready ? "delivered" : definite ? "definite_failure" : "unknown";
         const knownCost = trustedVisual ? (job?.actualCostMicros ?? 0) + (visual as { actualCostMicros: number }).actualCostMicros : 0;
         const beforeDispatch = outcome === "definite_failure" && (claim === undefined || claim === "denied") && job?.actualCostMicros === 0;
-        const settled = await deps.entitlements.settleDispatch({ ...binding, outcome, ...(beforeDispatch ? { failurePhase: "before_dispatch" as const } : {}), providerCostUsdMicros: knownCost });
+        const settled: UseResult = deps.sharedTrialBudgetOnly ? { ok: true, state: outcome === "delivered" ? "settled" : outcome === "definite_failure" ? "released" : "unknown" } :
+          await deps.entitlements.settleDispatch({ ...binding, outcome, ...(beforeDispatch ? { failurePhase: "before_dispatch" as const } : {}), providerCostUsdMicros: knownCost });
         const expectedState = outcome === "delivered" ? "settled" : outcome === "definite_failure" ? "released" : "unknown";
         return settled.ok && settled.state === expectedState ? { status: outcome, operationId: work.jobId, knownProviderCostUsdMicros: trustedVisual || job?.actualCostMicros === 0 ? knownCost : null }
           : { status: "unknown" as const, operationId: work.jobId };

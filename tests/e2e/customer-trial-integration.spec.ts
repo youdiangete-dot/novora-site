@@ -13,6 +13,7 @@ const {InMemoryFirstPreviewRepository}=req("../../lib/server/ai-sketch/in-memory
 const {createSourceBoundRevisionService}=req("../../lib/server/ai-sketch/first-preview-revision") as typeof import("../../lib/server/ai-sketch/first-preview-revision");
 const {testPeriodSpendingContract:c,TEST_PERIOD_SPENDING_SCRIPT}=req("../../lib/server/ai-sketch/invitation-test-period-spending") as typeof import("../../lib/server/ai-sketch/invitation-test-period-spending");
 const {testPeriod025SpendingContract:low,TEST_PERIOD_025_SPENDING_SCRIPT}=req("../../lib/server/ai-sketch/invitation-test-period-025-spending") as typeof import("../../lib/server/ai-sketch/invitation-test-period-025-spending");
+const {sharedBudgetSpendingContract:shared,SHARED_BUDGET_SPENDING_SCRIPT}=req("../../lib/server/ai-sketch/invitation-shared-budget-spending") as typeof import("../../lib/server/ai-sketch/invitation-shared-budget-spending");
 const lifecycle=req("../../lib/server/ai-sketch/first-preview-generation-lifecycle") as typeof import("../../lib/server/ai-sketch/first-preview-generation-lifecycle");
 const providerPolicy=req("../../lib/server/ai-sketch/openai-first-preview-provider") as typeof import("../../lib/server/ai-sketch/openai-first-preview-provider");
 loader._resolveFilename=original;
@@ -25,14 +26,15 @@ function environment(){const start=Math.floor(Date.now()/1000)-2*86400;return {
  // Smaller synthetic commitments exercise valid paths; the real commitments are denied below.
  NOVORA_INVITATION_TRIAL_SPENDING_CONFIG:JSON.stringify({maximumInitialImages:6,maximumRevisions:2,limitMicros:8000000,expectedCostMicros:668217,reserveMicros:250000,m2CommittedMicros:1000000,mvpCommittedMicros:90000000,startsAt:start,expiresAt:start+c.PERIOD_SECONDS,maximumInitialImagesPerIdentity:3,maximumRevisionsPerIdentity:1}),
  NOVORA_INSTANT_PREVIEW_AGENT_ENABLED:"true",NOVORA_FIRST_PREVIEW_QUEUE_EXECUTION_CONFIRMED:"true",NOVORA_TEST_IMAGE_PACKAGES_ENABLED:"false",NOVORA_PAYPAL_SANDBOX_ENABLED:"false",VERCEL:"1",VERCEL_ENV:"preview",VERCEL_TARGET_ENV:"preview",NODE_ENV:"production",NEXT_RUNTIME:"nodejs",VERCEL_PROJECT_ID:c.PROJECT,VERCEL_GIT_COMMIT_REF:c.BRANCH,VERCEL_GIT_COMMIT_SHA:"c".repeat(40),VERCEL_DEPLOYMENT_ID:"dpl_syntheticIntegration12345678",UPSTASH_REDIS_REST_URL:"https://synthetic.invalid",UPSTASH_REDIS_REST_TOKEN:"synthetic-only"};}
-function fixture(options:{unknownDispatch?:boolean;unknownRevision?:boolean;lowMode?:boolean;imageOutputTokens?:number}={}){
+function fixture(options:{unknownDispatch?:boolean;unknownRevision?:boolean;lowMode?:boolean;sharedMode?:boolean;imageOutputTokens?:number}={}){
  const env=environment(),commands:any[][]=[],published:unknown[]=[],calls:string[]=[];
  if(options.lowMode){env.NOVORA_INVITATION_TRIAL_SPENDING_MODE=low.MODE;env.NOVORA_INVITATION_TRIAL_SPENDING_CONFIG=JSON.stringify({...JSON.parse(env.NOVORA_INVITATION_TRIAL_SPENDING_CONFIG),limitMicros:2000000,expectedCostMicros:100000,reserveMicros:150000,m2CommittedMicros:5050000,mvpCommittedMicros:95050000,costPolicyVersion:low.POLICY,pricingAssumptionVersion:low.PRICING});}
+ if(options.sharedMode){const cfg=JSON.parse(env.NOVORA_INVITATION_TRIAL_SPENDING_CONFIG);env.NOVORA_INVITATION_TRIAL_SPENDING_MODE=shared.MODE;env.NOVORA_INVITATION_TRIAL_SPENDING_CONFIG=JSON.stringify({limitMicros:20000000,expectedCostMicros:100000,reserveMicros:150000,m2CommittedMicros:5050000,mvpCommittedMicros:95050000,startsAt:cfg.startsAt,expiresAt:cfg.expiresAt,costPolicyVersion:shared.POLICY,pricingAssumptionVersion:shared.PRICING});}
  let tick=60,dispatches=0;
  const repository=new InMemoryFirstPreviewRepository(()=>new Date(Date.parse("2026-08-06T00:00:00Z")+tick++*1000).toISOString());
  // Injected HTTP fixture: it proves transport/application wiring, not execution or atomicity of Lua.
  const ledger=beta.createRedisBetaAdmissionLedger(env,async(_url,init)=>{
-  const cmd=JSON.parse(String(init?.body));commands.push(cmd);expect(cmd[0]).toBe("EVAL");expect(cmd[1]).toBe(options.lowMode?TEST_PERIOD_025_SPENDING_SCRIPT:TEST_PERIOD_SPENDING_SCRIPT);
+  const cmd=JSON.parse(String(init?.body));commands.push(cmd);expect(cmd[0]).toBe("EVAL");expect(cmd[1]).toBe(options.sharedMode?SHARED_BUDGET_SPENDING_SCRIPT:options.lowMode?TEST_PERIOD_025_SPENDING_SCRIPT:TEST_PERIOD_SPENDING_SCRIPT);
   const op=cmd[4],v=JSON.parse(cmd[8]);calls.push(`cost:${op}:${v.kind}`);
   if(op==="dispatch"){dispatches++;if(options.unknownDispatch||(options.unknownRevision&&v.kind==="revision"))throw Error("SYNTHETIC_UNKNOWN_DISPATCH");}
   return new Response(JSON.stringify({result:op==="record"?"recorded":"reserved"}));
@@ -112,4 +114,55 @@ test("025 Queue worker rejects oversized complete prompt before cost dispatch or
  const work=structuredClone(reserved.work);work.structured.handSketchInstruction.source_design_spec_summary.customer_intent_summary="中".repeat(6000);
  expect(await lifecycle.runAutomaticFirstPreviewWorker({...work,betaAdmission:true},{...h.worker,createProvider:()=>{throw Error("MUST_NOT_CONSTRUCT_PROVIDER");}})).toMatchObject({status:"failed",failureCategory:"budget_blocked"});
   expect(h.commands).toHaveLength(1);expect(h.dispatches()).toBe(0);expect(h.calls).not.toContain("provider");expect(await h.repository.findJobById(job)).toMatchObject({actualCostMicros:0,providerRequestId:null});
+});
+
+test("shared trial keeps server-only selection fail-closed and removes package dependence for repeated revisions",async()=>{
+ for(const unknownRevision of [false,true]){
+ const h=fixture({sharedMode:true,unknownRevision});
+ expect(beta.isSharedTrialBudgetActive(h.env)).toBe(true);
+ for(const patch of [{NOVORA_BETA_ADMISSION_ENABLED:"false"},{NOVORA_INVITATION_TRIAL_SPENDING_MODE:undefined},{VERCEL_ENV:"production"},{NOVORA_PAYPAL_SANDBOX_ENABLED:"true"},{NOVORA_BETA_INVITATIONS_JSON:JSON.stringify(roster.slice(0,1))},{NOVORA_INVITATION_TRIAL_SPENDING_CONFIG:'{}'}])expect(beta.isSharedTrialBudgetActive({...h.env,...patch})).toBe(false);
+ expect(await h.triggerOne()).toMatchObject({status:"enqueued"});expect(await h.consumeOne()).toMatchObject({disposition:"completed"});
+ const owner=beta.authenticateScopedReceiptRequest(h.request,h.env)!;
+ const initial=h.published[0] as import("../../lib/server/ai-sketch/first-preview-queue").FirstPreviewGenerationQueueMessage;
+ let queued:import("../../lib/server/ai-sketch/first-preview-generation-lifecycle").FirstPreviewGenerationWork|undefined;
+ let nextOutput=0;
+ const forbidden=async()=>{throw Error("NO_PACKAGE_OR_PAYMENT_IN_SHARED_TRIAL");};
+ for(let step=0;step<(unknownRevision?1:3);step++){
+  const current=(await h.repository.findCustomerReadyOutput(brief))!;
+  const sourceJob=(await h.repository.findJobById(current.jobId))!;
+  const op=`${step+5}23e4567-e89b-42d3-a456-426614174000`;
+  const directive=step%2?"raise_setting":"lower_setting";
+  expect(h.repository.setReviewForTest({conceptBriefId:brief,outputId:current.id,reviewStatus:"needs_revision",revisionInstruction:directive})).toBe(true);
+  const binding={owner,reservationId:op,operationId:op,kind:"revision" as const,briefId:brief,sourceOutputId:current.id};
+  const service=createSourceBoundRevisionService({sharedTrialBudgetOnly:true,repository:h.repository,
+   resolveSource:async r=>r===h.request?{owner,conceptBriefId:brief,publicReference:reference,sourceOutputId:current.id,originalInput:initial.generationInput,requestedDirectives:[directive],sourceRevisionDirectives:sourceJob.revisionDirectives??[]}:null,
+   resolveDispatch:async id=>id===op?binding:null,isDefiniteFailure:async()=>false,
+   validatePreparedInput:v=>providerPolicy.isLowReservationPreviewInputAllowed(v,h.env),
+   entitlements:{reserve:forbidden,claimDispatch:forbidden,settleDispatch:forbidden},
+   reserveCost:async(w,b)=>{const r=await h.ledger.reserve({identity:b.owner.identity,briefId:w.jobId,sourceBriefId:w.conceptBriefId,kind:"revision",requestKey:hash(`${b.owner.scope}\n${b.owner.identity}\n${w.jobId}`),fingerprint:beta.revisionSpendingFingerprint(w)});return r==="reserved"?"reserved":"denied";},
+   verifyCostReservation:async()=>true,claimCostReservation:async w=>h.ledger.claimDispatch({identity:owner.identity,briefId:w.jobId,sourceBriefId:w.conceptBriefId,kind:"revision",fingerprint:beta.revisionSpendingFingerprint(w)}),
+   publish:async w=>{queued=w;},createWorkerDependencies:()=>({...h.worker,
+    createProvider:()=>{const provider=h.worker.createProvider()!;const requestId=`req_synthetic_shared_${step}`;return {...provider,readProviderRequestId:()=>requestId,adapter:{async generateFirstPreviewImage(v,context){const result=await provider.adapter.generateFirstPreviewImage(v,context);return result.ok?{...result,providerRequestId:requestId}:result;}}};},
+    outputIdSource:()=>`${++nextOutput}33e4567-e89b-42d3-a456-426614174000`})});
+  expect(await service.prepare(new Request('https://wrong.invalid'),op)).toMatchObject({status:"denied"});
+  expect(await service.prepare(h.request,op)).toMatchObject({status:"accepted"});
+  const delivered=await service.execute(queued!);
+  if(unknownRevision){
+   expect(delivered).toMatchObject({status:'unknown'});
+   expect(await service.prepare(h.request,'823e4567-e89b-42d3-a456-426614174000')).toMatchObject({status:'denied'});
+   expect(await service.execute(queued!)).toMatchObject({status:'unknown'});
+   continue;
+  }
+  expect(delivered,JSON.stringify({job:await h.repository.findJobById(op),output:await h.repository.findOutputByJobId(op,brief)})).toMatchObject({status:"delivered"});
+  expect(await service.prepare(h.request,op)).toMatchObject({status:"existing"});
+  expect(await service.execute(queued!)).toMatchObject({status:"delivered"});
+ }
+ expect(h.calls.filter(v=>v==='provider')).toHaveLength(unknownRevision?1:4);
+ expect(h.calls.filter(v=>v==='privacy')).toHaveLength(unknownRevision?1:4);
+ expect(h.commands.filter(cmd=>cmd[4]==='dispatch')).toHaveLength(unknownRevision?2:4);
+ expect(h.commands.filter(cmd=>cmd[4]==='reserve')).toHaveLength(unknownRevision?2:4);
+ const costRecord=h.commands.filter(cmd=>cmd[4]==='record').at(-1)!;
+ expect(JSON.parse(costRecord[8])).toMatchObject({outcome:'delivered',kind:unknownRevision?'initial':'revision'});
+ if(unknownRevision)expect(h.commands.filter(cmd=>cmd[4]==='record')).toHaveLength(1); // The uncertain revision claim is never released.
+ }
 });

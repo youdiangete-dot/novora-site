@@ -13,6 +13,7 @@ import {
   NOVORA_FIRST_PREVIEW_PRINTED_DISCLAIMER,
 } from "./hand-sketch-instruction";
 import lowReservation from "../../../tools/invitation-test-period-025-contract.cjs";
+import sharedBudget from "../../../tools/invitation-shared-budget-contract.cjs";
 
 export const OPENAI_FIRST_PREVIEW_MODEL =
   "gpt-image-2-2026-04-21" as const;
@@ -430,7 +431,7 @@ export function buildOpenAiFirstPreviewRequest(
 // The exact final prompt includes the fixed policy and complete serialized
 // instruction. Never truncate, summarize or normalize to squeeze under budget.
 export function isLowReservationPreviewMode(environment:Readonly<Record<string,string|undefined>>):boolean {
-  return environment.NOVORA_INVITATION_TRIAL_SPENDING_MODE === lowReservation.MODE;
+  return [lowReservation.MODE, sharedBudget.MODE].includes(environment.NOVORA_INVITATION_TRIAL_SPENDING_MODE);
 }
 export function isLowReservationPreviewInputAllowed(
   structured: Pick<FirstPreviewProviderRequest, "designSpec" | "handSketchInstruction">,
