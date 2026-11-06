@@ -17,7 +17,7 @@ export default function MyImages(){
   try{await action({Authorization:`Bearer ${access.access.credential}`},c.signal,valid);}catch{if(valid())setMessage("Access is unavailable. Re-enter your invitation if needed; no new design or image was submitted.");}finally{if(valid())setBusy(false);}
  }
  async function recover(){await run(async(headers,signal,valid)=>{const r=await fetch("/api/customer-image-library",{headers,signal,cache:"no-store"});const b=await r.json();
-  if(!r.ok||!Array.isArray(b.items)||b.items.length>48||b.items.some((v:Item)=>!/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(v.publicReference)||!/^[a-f0-9-]{36}$/.test(v.outputId)||!Number.isFinite(Date.parse(v.generatedAt))||typeof v.current!=="boolean"))throw Error("unavailable");
+  if(!r.ok||!Array.isArray(b.items)||b.items.length>80||b.items.some((v:Item)=>!/^NOVORA-CB-\d{8}-[A-Z0-9]{4}$/.test(v.publicReference)||!/^[a-f0-9-]{36}$/.test(v.outputId)||!Number.isFinite(Date.parse(v.generatedAt))||typeof v.current!=="boolean"))throw Error("unavailable");
   if(valid()){setItems(b.items);setMessage(b.items.length?"Your safely delivered images are available below.":"No safely delivered images are available for this invitation yet.");}});}
  async function open(item:Item,kind:"view"|"download"|"current") {await run(async(headers,signal,valid)=>{
   const session=await fetch("/api/customer-image-library",{method:"POST",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({publicReference:item.publicReference}),signal,cache:"no-store"});if(!session.ok||!valid())throw Error("unavailable");

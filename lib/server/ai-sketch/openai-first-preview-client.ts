@@ -10,6 +10,7 @@ import {
 } from "./openai-first-preview-provider";
 import type { FirstPreviewValidatedUsage } from "./first-preview-cost-contract";
 import lowReservation from "../../../tools/invitation-test-period-025-contract.cjs";
+import sharedBudget from "../../../tools/invitation-shared-budget-contract.cjs";
 
 const OPENAI_IMAGE_GENERATION_URL =
   "https://api.openai.com/v1/images/generations" as const;
@@ -174,7 +175,7 @@ export function createOpenAiFirstPreviewProviderBinding(options: {
   return {
     adapter: createOpenAiFirstPreviewProviderAdapter({
       client,
-      ...(environment.NOVORA_INVITATION_TRIAL_SPENDING_MODE === lowReservation.MODE ? {maximumPromptUtf8Bytes:16000 as const} : {}),
+      ...([lowReservation.MODE, sharedBudget.MODE].includes(environment.NOVORA_INVITATION_TRIAL_SPENDING_MODE) ? {maximumPromptUtf8Bytes:16000 as const} : {}),
       configuration: validateOpenAiApiKeyConfiguration({
         [OPENAI_API_KEY_ENV_NAME]: apiKey,
       }),

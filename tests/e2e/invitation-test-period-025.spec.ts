@@ -55,5 +55,5 @@ test("unexpected combined usage is held not released; single-mutation UNKNOWN ha
  expect(lua).toContain("v.usageMicros<=130000");expect(lua).toContain("pending or found");expect(lua).toContain("found.state='unknown'");expect(lua.match(/redis.call\('SET'/g)).toHaveLength(1);
  expect(costs.FIRST_PREVIEW_COST_CONTRACT.perAttemptReservationLimitMicros).toBe(100000);expect(costs.firstPreviewActualCostExceedsReservation(100001)).toBe(true);
  // Existing USD1 source remains unchanged, including the historical pricing policy.
- expect(hash(readFileSync("lib/server/ai-sketch/invitation-test-period-spending.ts","utf8"))).toBe("694f2ceff66cdc934f3afd7fd3410f7e0c06dffb595a09b47729daca83e7a865");
+ expect(hash(readFileSync("lib/server/ai-sketch/invitation-test-period-spending.ts","utf8").replace(/\r\n/g,"\n"))).toBe("694f2ceff66cdc934f3afd7fd3410f7e0c06dffb595a09b47729daca83e7a865");
 });

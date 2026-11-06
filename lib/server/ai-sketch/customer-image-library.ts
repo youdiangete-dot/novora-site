@@ -67,7 +67,7 @@ export function createCustomerImageLibrary(deps: Readonly<{
   return {
     async list(request:Request) {
       const owner=ownerFor(request);if(!owner)return null;
-      const candidates=await deps.repository.deliveredCandidates(owner);if(!candidates||candidates.length>48)return null;
+      const candidates=await deps.repository.deliveredCandidates(owner);if(!candidates||candidates.length>80)return null;
       const items=[],seen=new Set<string>();
       for(const candidate of candidates){
         if(!uuid(candidate.outputId)||seen.has(candidate.outputId))return null;seen.add(candidate.outputId);

@@ -4,6 +4,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { resolveTrialSpending, TRIAL_SPENDING_MODE_ENV, TRIAL_SPENDING_SCRIPT, trialSpendingContract } from "./invitation-trial-spending";
 import { resolveTestPeriodSpending, TEST_PERIOD_SPENDING_SCRIPT, testPeriodSpendingContract } from "./invitation-test-period-spending";
 import { resolveTestPeriod025Spending, TEST_PERIOD_025_SPENDING_SCRIPT, testPeriod025SpendingContract } from "./invitation-test-period-025-spending";
+import { resolveSharedBudgetSpending, SHARED_BUDGET_SPENDING_SCRIPT, sharedBudgetSpendingContract } from "./invitation-shared-budget-spending";
 
 import {
   FIRST_PREVIEW_COST_CONTRACT,
@@ -27,6 +28,10 @@ export function revisionSpendingFingerprint(work: SpendingWork): string {
 }
 type Invitation = Readonly<{ identity: string; credentialSha256: string }>;
 function resolveSpending(environment: Environment, roster: readonly Invitation[] | null, runtime: string | undefined) {
+  if (environment[TRIAL_SPENDING_MODE_ENV] === sharedBudgetSpendingContract.MODE) {
+    const trial = resolveSharedBudgetSpending(environment, roster, runtime);
+    return trial ? { ...trial, expected: sharedBudgetSpendingContract.authority(trial.selected, trial.binding), script: SHARED_BUDGET_SPENDING_SCRIPT } : null;
+  }
   if (environment[TRIAL_SPENDING_MODE_ENV] === testPeriod025SpendingContract.MODE) {
     const trial = resolveTestPeriod025Spending(environment, roster, runtime);
     return trial ? { ...trial, expected: testPeriod025SpendingContract.authority(trial.selected, trial.binding), script: TEST_PERIOD_025_SPENDING_SCRIPT } : null;
@@ -47,6 +52,7 @@ export type BetaReservation = Readonly<{
   sourceBriefId?: string;
 }>;
 export type BetaDispatch = Readonly<{
+  identity?: string;
   briefId: string;
   fingerprint: string;
   kind?: "initial" | "revision";
@@ -67,7 +73,7 @@ export type BetaAdmissionDependencies = Readonly<{
 export async function recordTrialSpendingOutcome(work: SpendingWork, outcome: "delivered" | "definite_failure" | "unknown", usageMicros: number | null, dependencies: BetaAdmissionDependencies = {}): Promise<boolean> {
   const environment = dependencies.environment ?? process.env;
   if (environment[TRIAL_SPENDING_MODE_ENV] === undefined) return true;
-  if (![trialSpendingContract.MODE, testPeriodSpendingContract.MODE, testPeriod025SpendingContract.MODE].includes(environment[TRIAL_SPENDING_MODE_ENV]) || betaAdmissionMode(environment) !== "enabled") return false;
+  if (![trialSpendingContract.MODE, testPeriodSpendingContract.MODE, testPeriod025SpendingContract.MODE, sharedBudgetSpendingContract.MODE].includes(environment[TRIAL_SPENDING_MODE_ENV]) || betaAdmissionMode(environment) !== "enabled") return false;
   try {
     const ledger = dependencies.ledger ?? createRedisBetaAdmissionLedger(environment);
     return Boolean(ledger?.recordOutcome && await ledger.recordOutcome({
@@ -405,6 +411,11 @@ export function isScopedReceiptOwnerActive(owner: Readonly<{ identity: string; s
 
 export function resolveBetaAdmissionBinding(environment: Environment): BetaAdmissionBinding | null {
   return inspectBetaAdmissionBinding(environment).binding;
+}
+
+export function isSharedTrialBudgetActive(environment: Environment = process.env): boolean {
+  return environment[TRIAL_SPENDING_MODE_ENV] === sharedBudgetSpendingContract.MODE &&
+    Boolean(resolveBetaAdmissionBinding(environment)?.ledgerKey.startsWith(sharedBudgetSpendingContract.PREFIX));
 }
 
 // These extra checks execute INSIDE the same atomic EVAL, before the unchanged

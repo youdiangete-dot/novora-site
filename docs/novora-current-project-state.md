@@ -1,5 +1,38 @@
 # NOVORA Current Project State
 
+## Local two-person shared-budget change (2026-11-06; not activated)
+
+Owner superseded the pilot's fixed3 initial+1 revision package with two invited
+testers freely trying the existing sketch functions during the seven-day period,
+sharing an initial USD20 software allocation. No automatic top-up or account
+fallback is authorized. The later proposed formal-invitation daily3+1 policy is
+outside this pilot and is not implemented by this change.
+
+Local default-OFF mode `owner_shared_budget_seven_day_trial_v1` uses a separate
+deployment/source/roster/config-bound permanent ledger. Initial images and
+revisions share the same atomic budget, with no per-person/day/kind package
+quota. Each accepted operation permanently retains USD0.25, including failures;
+therefore USD20 admits at most80 operations in any mix. This conservative
+allocation is not actual billed usage or a Provider-enforced cap. UNKNOWN or
+unexpected usage stops new dispatch. LegacyUSD1/025 ledgers are not repriced,
+refunded, reset or migrated. Previous USD5.05 M2/USD95.05 global commitments
+remain; the new independent pilot allocation projects USD115.05 globally under
+USD200. Old modes retain their original USD10 M2 cap.
+
+The validated new mode authorizes owned revisions directly against the shared
+spending ledger, without buying, granting or consuming a TEST-01 package. Exact
+receipt/source/current-output, review, job CAS, safety/privacy and single
+dispatch checks remain. Paid modes retain their existing entitlement checks.
+Personal history reads remain separate from generation expiry; the bounded
+library accommodates all80 possible current-pilot outputs. No automatic image
+deletion is added.
+
+This is uncommitted local implementation, not a ready customer entry or an
+activated budget. Current API organization, actual credit balance/expiry and
+hard-limit settings remain unverified. Existing private setup hosts pin an old
+025 source/config and must not be used for this candidate. No account switch,
+credentials, funding, TEST grants, deployment or paid calls occurred.
+
 ## Local two-tester seven-day candidate (2026-11-03; not released)
 
 Owner's current nonpayment pilot target is TWO invited testers, each with3 initial

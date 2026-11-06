@@ -69,3 +69,22 @@ test("expired seven-day spending still permits same-owner recovery/download whil
  expect(await h.service.list(wrong)).toEqual([]);expect(await h.service.image(wrong,ref,id,proof)).toBeNull();
  configured.NOVORA_BETA_INVITATIONS_JSON="[]";expect(await h.service.session(own,ref)).toBeNull();expect(await h.service.image(own,ref,id,proof)).toBeNull();
 });
+
+test("shared-budget owner can recover all80 eligible images without the former48-row cutoff",async()=>{
+ const h=fixture();
+ for(let n=1;n<80;n++){
+  const b=`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`,j=`20000000-0000-4000-8000-${String(n).padStart(12,'0')}`,o=`30000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+  const r={briefId:b,publicReference:`NOVORA-CB-20261106-${n.toString(36).toUpperCase().padStart(4,'0')}`};
+  const s=structuredClone(h.snapshot);
+  Object.assign(s.output,{id:o,job_id:j,concept_brief_id:b,object_path:`first-preview/${b}/${j}/${o}.png`});
+  Object.assign(s.job,{id:j,concept_brief_id:b});
+  const subject={conceptBriefId:b,jobId:j,outputId:o,contentSha256:hash};
+  s.output.automatic_gate_evidence.visualPrivacyEvidence.subject=subject;
+  h.receipts.push(r);h.snapshots.set(o,s);
+ }
+ expect(await h.service.list(request())).toHaveLength(80);
+ expect(await h.service.list(request('B'))).toEqual([]);
+ const last=h.receipts.at(-1)!;
+ expect(await h.service.session(request(),last.publicReference)).toBeTruthy();
+ expect(await h.service.session(request('B'),last.publicReference)).toBeNull();
+});

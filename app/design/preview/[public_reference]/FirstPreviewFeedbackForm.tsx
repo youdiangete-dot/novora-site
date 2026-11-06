@@ -10,9 +10,11 @@ import FirstPreviewRevisionRequest from "./FirstPreviewRevisionRequest";
 export default function FirstPreviewFeedbackForm({
   feedbackBinding,
   publicReference,
+  sharedTrialBudget = false,
 }: {
   feedbackBinding: string;
   publicReference: string;
+  sharedTrialBudget?: boolean;
 }) {
   const { dictionary, locale } = useI18n();
   const copy = dictionary.feedback;
@@ -73,6 +75,6 @@ export default function FirstPreviewFeedbackForm({
           {state === "error" ? <p className={styles.feedbackError} role="alert">{message}</p> : null}
         </form>
       )}
-    </section><FirstPreviewRevisionRequest publicReference={publicReference} feedbackBinding={feedbackBinding} /></>
+    </section><FirstPreviewRevisionRequest publicReference={publicReference} feedbackBinding={feedbackBinding} sharedTrialBudget={sharedTrialBudget} /></>
   );
 }
